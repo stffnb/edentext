@@ -13,7 +13,7 @@ export const PICTURE = 6; // [to, 0 for all][key length][key][head length][head]
 export const WANT = 7;    // [to][from][keys, comma-separated]
 export const HAS = 14;    // [to][from][keys]: pictures the sender lacked when the receiver asked, now held
 const BATCH_MS = 50;
-const STALL_MS = 10_000;  // an ask that hears nothing this long goes to the next client
+const STALL_MS = 10_000;  // an ask whose client sends no picture or part this long goes to the next
 const MAX_OWED = 256;     // keys whose askers a client remembers lacking, to tell them once it holds one
 const PER_PEER = 3;       // pictures asked of one client at a time, nearest the viewport first
 const BASE64 = ';base64,';
@@ -87,7 +87,8 @@ type Wire = {
   peers(): number[];
   /** Whether the relay counts clients in the room that are not known yet. */
   unknown(): boolean;
-  heard(): number;
+  /** When the last part of a message from that client came. */
+  heard(from: number): number;
   /** Whether a message in parts from that client is on its way in, which may be the picture. */
   incoming(id: number): boolean;
   changed(): void;
@@ -103,6 +104,8 @@ export type Pictures = {
   recheck(): void;
   /** A client the relay says left: a picture sent to all may not have reached it. */
   forget(id: number): void;
+  /** This client is on a new line: answers coming on the old one are lost, so every ask goes again. */
+  again(): void;
   /** Pictures this client is still sending to someone who asked. */
   serving(): number;
   /** Pictures no one here could send, while everyone in the room is known. */
@@ -117,15 +120,18 @@ export type Pictures = {
 export function sessionPictures(w: Wire): Pictures {
   const enc = new TextEncoder(), dec = new TextDecoder();
   // A lack means "not yet": a picture every known client lacks stays wanted (`short`) and is
-  // asked again of a client newly known, or of one that says it holds it now (`HAS`).
-  const wants = new Map<string, { tried: Set<number>; to: number | null; at: number; short: boolean }>();
+  // asked again of a client newly known, or of one that says it holds it now (`HAS`). Asks go
+  // round the clients; one whose answer was lost is asked again once the round is through.
+  const wants = new Map<string, { tried: Set<number>; lacks: Set<number>; to: number | null; at: number; short: boolean }>();
   const owed = new Map<string, Set<number>>();
   // Pictures on their way to everyone, with the clients there then: their edit may arrive
   // first, and an ask of theirs meanwhile would send the picture twice. Kept STALL_MS after the
   // last part left, as the parts may still be on their way and the ask sent before them.
   const sharing = new Map<string, Set<number>>();
-  // Answers to asks still on their way out: someone loads them from this client.
+  // Answers to asks still on their way out: someone loads them from this client. An ask
+  // repeated meanwhile, as one gets after hearing nothing, is not answered twice.
   let serving = 0;
+  const giving = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let watch: ReturnType<typeof setInterval> | undefined;
   const shortOf = () => { let n = 0; for (const x of wants.values()) if (x.short) n++; return n; };
@@ -137,7 +143,13 @@ export function sessionPictures(w: Wire): Pictures {
     const [head, body] = src ? picturePayload(src, enc) : [new Uint8Array(), new Uint8Array()];
     if (!src && to && (owed.has(key) || owed.size < MAX_OWED)) owed.set(key, (owed.get(key) ?? new Set()).add(to));
     if (to && !src) return w.send(PICTURE, to, k.length, k, head.length, head, body);
-    if (to) { serving++; return w.post(() => serving--, PICTURE, to, k.length, k, head.length, head, body); }
+    if (to) {
+      const id = `${to} ${key}`;
+      if (giving.has(id)) return;
+      giving.add(id);
+      serving++;
+      return w.post(() => { serving--; giving.delete(id); }, PICTURE, to, k.length, k, head.length, head, body);
+    }
     const those = new Set(w.peers());
     sharing.set(key, those);
     w.post(() => setTimeout(() => { if (sharing.get(key) === those) sharing.delete(key); }, STALL_MS), PICTURE, to, k.length, k, head.length, head, body);
@@ -155,7 +167,11 @@ export function sessionPictures(w: Wire): Pictures {
     }
     const open = [...wants].filter(([, x]) => x.to === null).map(([key, x]) => ({ key, x, far: distanceOf(key) }));
     for (const { key, x } of open.sort((a, b) => a.far - b.far)) {
-      const untried = peers.filter((p) => !x.tried.has(p));
+      let untried = peers.filter((p) => !x.tried.has(p));
+      if (!untried.length) {
+        x.tried = new Set(x.lacks);
+        untried = peers.filter((p) => !x.tried.has(p));
+      }
       x.short = !untried.length;
       const next = untried.find((p) => (load.get(p) ?? 0) < PER_PEER);
       if (next === undefined) continue;
@@ -174,16 +190,18 @@ export function sessionPictures(w: Wire): Pictures {
     else { clearInterval(watch); watch = undefined; }
   };
   const soon = () => { timer ??= setTimeout(ask, BATCH_MS); };
+  // When a picture last came from each client, which shows its answers are moving.
+  const came = new Map<number, number>();
   const recheck = () => {
     const peers = new Set(w.peers());
     for (const x of wants.values()) {
-      if (x.to !== null && (!peers.has(x.to) || Date.now() - Math.max(x.at, w.heard()) > STALL_MS)) x.to = null;
+      if (x.to !== null && (!peers.has(x.to) || Date.now() - Math.max(x.at, w.heard(x.to), came.get(x.to) ?? 0) > STALL_MS)) x.to = null;
     }
     if ([...wants.values()].some((x) => x.to === null)) soon();
   };
   const want = (key: string) => {
     if (heldImage(key) || wants.has(key)) return;
-    wants.set(key, { tried: new Set(), to: null, at: 0, short: false });
+    wants.set(key, { tried: new Set(), lacks: new Set(), to: null, at: 0, short: false });
     soon();
   };
   fetchImagesWith(want);
@@ -223,6 +241,7 @@ export function sessionPictures(w: Wire): Pictures {
     receive(plain, from) {
       const v = new DataView(plain.buffer, plain.byteOffset, plain.byteLength);
       if (plain[0] === PICTURE) {
+        came.set(from, Date.now());
         const n = v.getUint32(5), key = dec.decode(plain.subarray(9, 9 + n));
         const h = v.getUint32(9 + n), head = plain.subarray(13 + n, 13 + n + h), body = plain.subarray(13 + n + h);
         if (h || body.length) {
@@ -238,7 +257,9 @@ export function sessionPictures(w: Wire): Pictures {
             owed.delete(key);
           }
         } else if (v.getUint32(1) === w.me && wants.get(key)?.to === from) {
-          wants.get(key)!.to = null;
+          const x = wants.get(key)!;
+          x.lacks.add(from);
+          x.to = null;
           soon();
         }
         return true;
@@ -247,6 +268,7 @@ export function sessionPictures(w: Wire): Pictures {
         if (v.getUint32(1) !== w.me) return true;
         for (const key of dec.decode(plain.subarray(9)).split(',')) {
           const x = wants.get(key);
+          x?.lacks.delete(from);
           if (x?.tried.delete(from) && x.to === null) soon();
         }
         return true;
@@ -259,7 +281,11 @@ export function sessionPictures(w: Wire): Pictures {
       return true;
     },
     recheck,
-    forget: (id) => { for (const those of sharing.values()) those.delete(id); },
+    forget: (id) => { for (const those of sharing.values()) those.delete(id); came.delete(id); },
+    again: () => {
+      for (const x of wants.values()) x.to = null;
+      if (wants.size) soon();
+    },
     serving: () => serving,
     missing,
     pack: (value, share) => mapSrcs(value, (src) => {
@@ -280,6 +306,8 @@ export function sessionPictures(w: Wire): Pictures {
       if (typeof document !== 'undefined') document.removeEventListener('scroll', scrolled, { capture: true });
       wants.clear();
       owed.clear();
+      giving.clear();
+      came.clear();
       sharing.clear();
       fetchImagesWith(null);
     },

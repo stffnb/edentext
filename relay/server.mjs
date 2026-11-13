@@ -53,11 +53,12 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
   const slow = (to) => {
     to.slow = true;
     others(to, { t: 'slow', id: to.id });
+    // A line that ended holds nothing either: its id may be back on a new one already.
     const wait = setInterval(() => {
       if (full(to, hold / 2)) return;
       clearInterval(wait);
       to.slow = false;
-      if (to.readyState === to.OPEN) others(to, { t: 'drained', id: to.id });
+      others(to, { t: 'drained', id: to.id });
     }, DRAIN_MS);
   };
   const deliver = (from, to, data) => {

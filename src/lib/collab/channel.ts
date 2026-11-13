@@ -11,8 +11,9 @@ export type Channel = {
    *  rest, and `done` runs once its last part went to the socket or it was dropped. */
   send(plain: Uint8Array, to?: number, bulk?: boolean, done?: () => void): void;
   close(): void;
-  /** When the last peer frame (or part of one) came in that `onFrame` did not call chatter, for a session waiting on an answer. */
-  heard(): number;
+  /** When the last peer frame (or part of one) came in that `onFrame` did not call chatter, for a session waiting on an answer;
+   *  with `from`, when the last part of a message from that client came. */
+  heard(from?: number): number;
   /** Whether a message in parts from the client `from` is on its way in. */
   incoming(from: number): boolean;
 };
@@ -138,8 +139,8 @@ function joiner() {
     for (const part of p.parts as Uint8Array[]) { out.set(part, at); at += part.length; }
     return out;
   };
-  /** A sender gone: its unfinished messages go too. */
-  const forget = (from: number) => { senders.delete(from); };
+  /** A sender gone: its unfinished messages go too; with none, every sender's. */
+  const forget = (from?: number) => { if (from === undefined) senders.clear(); else senders.delete(from); };
   const open = (from: number) => {
     const now = Date.now();
     return [...senders.get(from)?.values() ?? []].some((p) => now - p.at <= PART_TTL);
@@ -184,6 +185,7 @@ export function openChannel(o: Options): Channel {
   let down = false;
   let size = MAX_PART;
   let heard = Date.now();
+  const partAt = new Map<number, number>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stable: ReturnType<typeof setTimeout> | undefined;
   // The open line's check after a wake-up, and the way to drop it as dead.
@@ -358,8 +360,10 @@ export function openChannel(o: Options): Channel {
             setTimeout(() => { if (ws === sock && last < woke) dead?.(); }, GRACE);
           } : null;
           peers = msg.peers ?? 1;
-          // A message cut short with the last line goes again from its start, under a new id.
+          // A message cut short with the last line goes again from its start, under a new id;
+          // one coming in on it lost its parts there and can never be whole.
           for (const m of bulk) if (m.next) { m.next = 0; m.parts = undefined; }
+          parts.forget();
           slow.clear();
           sent = acked = 0;
           acking = false;
@@ -381,6 +385,7 @@ export function openChannel(o: Options): Channel {
           peers = msg.n ?? 1;
           if (msg.gone) {
             parts.forget(msg.gone);
+            partAt.delete(msg.gone);
             if (slow.delete(msg.gone)) later();
             for (let i = bulk.length - 1; i >= 0; i--) if (bulk[i].to === msg.gone) bulk.splice(i, 1)[0].done?.();
           }
@@ -400,7 +405,7 @@ export function openChannel(o: Options): Channel {
       const env = await box.open(data.subarray(TO)).catch(() => null);
       if (!env) return;
       // Each part of a long message counts, so one still on its way is no stall.
-      if (env[0] !== WHOLE) heard = at;
+      if (env[0] !== WHOLE) { heard = at; partAt.set(from, at); }
       const plain = parts.take(env, from);
       if (plain && o.onFrame(plain, from) !== false) heard = at;
     };
@@ -463,7 +468,7 @@ export function openChannel(o: Options): Channel {
       void out.then(() => sock?.close());
       o.onStatus('closed');
     },
-    heard: () => heard,
+    heard: (from) => (from === undefined ? heard : partAt.get(from) ?? 0),
     incoming: (from) => parts.open(from),
   };
 }

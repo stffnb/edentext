@@ -1345,7 +1345,30 @@ try {
     stall.rate = 0;
     check(alone < 200_000 && quick < 1000 && loading < 4 && serving > 0 && got.every(Boolean) && gaps.join() === '0,0',
       `start file and pictures put in alone take ${alone} bytes; on a slow line typing arrives in ${quick} ms while the joiner shows ${loading} of 4 and the starter serves ${serving}, and a third joining meanwhile gets all (${got}, missing ${gaps})`);
-    for (const p of [h, iv, jo]) await p.context().close();
+
+    // A joiner whose line drops while pictures come asks again for those lost with it, also
+    // while the only holder types on and so is never silent.
+    for (const p of [iv, jo]) await p.context().close();
+    stall.rate = 1e6;
+    const k = await client('Kai');
+    await k.addInitScript(() => {
+      const Orig = window.WebSocket;
+      window.WebSocket = class extends Orig { constructor(...x) { super(...x); if (String(x[0]).includes('/relay')) window.__relay = this; } };
+    });
+    await joinLink(k, link5);
+    await caret(h, 'end');
+    let typing = true;
+    const typer = (async () => { while (typing) { await h.keyboard.type('#'); await h.waitForTimeout(300); } })();
+    await k.waitForFunction(() => [...document.querySelectorAll('.tiptap-host .tiptap img')].some((i) => i.src.startsWith('data:') && i.src.length > 1e6), null, { timeout: 60_000, polling: 20 }).catch(() => {});
+    const had = await shown(k);
+    await k.evaluate(() => window.__relay.close());
+    const rest = await all(k);
+    typing = false;
+    await typer;
+    stall.rate = 0;
+    check(had > 0 && had < 4 && rest && await k.evaluate(() => window.__collab.view().missing) === 0,
+      `a joiner whose line drops with ${had} of 4 pictures here gets the rest while the only holder types (${rest})`);
+    for (const p of [h, k]) await p.context().close();
   }
 
   // The starter choosing New in a session is asked, leaves, and starts empty; the joiner keeps the document.
