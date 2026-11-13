@@ -767,7 +767,8 @@ try {
     'Characteristically, administrators underestimate the incomprehensibility of telecommunications infrastructure, whereas representatives of manufacturing establishments overemphasize interchangeability.',
     'Notwithstanding these misunderstandings, the experimentation demonstrated unquestionable improvements in reproducibility, accountability and recommendations concerning environmental sustainability.'];
   const hyKeys = await page.evaluate((d) => {
-    const old = Object.fromEntries(['edentext-hyphenation', 'edentext-doc-language'].map((k) => [k, localStorage.getItem(k)]));
+    const old = Object.fromEntries(['edentext-hyphenation', 'edentext-doc-language', 'edentext-word-completion'].map((k) => [k, localStorage.getItem(k)]));
+    localStorage.setItem('edentext-word-completion', JSON.stringify({ enabled: true, words: ['considerationally'] }));
     localStorage.setItem('edentext-doc', JSON.stringify(d));
     localStorage.setItem('edentext-hyphenation', 'true');
     localStorage.setItem('edentext-doc-language', 'en-US');
@@ -795,6 +796,24 @@ try {
   const hyphens = await page.evaluate(() => getComputedStyle(document.querySelector('.tiptap p')).hyphens);
   check(hyphens === 'auto' && /\| \d/.test(hyBase) && !moved.length,
     `showing and clearing a find moves no line or page break under hyphenation (${terms.length} terms, ${hyphens}; moved by ${moved.join(', ') || 'none'})`);
+  // The word-completion offer is drawn over the page, so only where nothing follows on the
+  // line: at a paragraph's end, never mid-line.
+  const offerAt = async (where) => {
+    await page.evaluate((w) => {
+      const ed = document.querySelector('.tiptap').editor;
+      const pos = w === 'end' ? ed.state.doc.content.size - 1 : 1 + ed.state.doc.firstChild.textContent.indexOf('considerations') + 14;
+      ed.chain().focus().setTextSelection(pos).run();
+    }, where);
+    await page.waitForTimeout(150);
+    await page.keyboard.type(' consi');
+    await page.waitForTimeout(300);
+    return page.evaluate(() => document.querySelector('.word-completion')?.textContent ?? null);
+  };
+  const atEnd = await offerAt('end'), midLine = await offerAt('mid');
+  check(atEnd === 'derationally' && midLine === null,
+    `the word offer shows at a paragraph's end and not mid-line (${atEnd}, ${midLine})`);
+  // The typing's autosave lands now, not over the document the next reload is given.
+  await page.waitForTimeout(1500);
   await page.evaluate((old) => {
     for (const [k, v] of Object.entries(old)) if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v);
   }, hyKeys);

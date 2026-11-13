@@ -268,13 +268,10 @@
 }
 
 /* The word being offered (wordCompletion.ts): after the caret, in the text's own font
-   (set inline), greyed — it is not in the document until Enter takes it. Drawn over
-   the text, so it covers what follows the caret on the page's own ground. */
+   (set inline), greyed — it is not in the document until Enter takes it. */
 .paper .word-completion {
   white-space: pre;
-  margin-left: 1px;
   color: color-mix(in srgb, var(--offer-color, currentColor) 45%, transparent);
-  background: var(--color-page-bg);
   pointer-events: none;
   user-select: none;
 }
