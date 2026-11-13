@@ -233,7 +233,7 @@ describe('collaboration key', () => {
     await relay.close();
   });
 
-  it('keeps a line whose messages wait behind a late beat tick, drops a silent one, and dials at once back online', async () => {
+  it('keeps a line whose messages wait behind a late deadline, drops a silent one, and dials at once back online', async () => {
     vi.useFakeTimers();
     type Sock = { onopen?: () => void; onmessage?: ((ev: { data: unknown }) => void) | null; closed?: boolean };
     const socks: Sock[] = [];
@@ -252,10 +252,10 @@ describe('collaboration key', () => {
       };
       socks[0].onopen!();
       await say({ t: 'welcome', peers: 2, beat: 1000 });
-      vi.advanceTimersByTime(1000);
-      // The tab froze for ten seconds; its tick runs before the beats that came meanwhile.
+      vi.advanceTimersByTime(2500);
+      // The tab froze for ten seconds; its deadline runs before the beats that came meanwhile.
       vi.setSystemTime(Date.now() + 10_000);
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(500);
       await say({ t: 'peers', n: 2 });
       vi.advanceTimersByTime(1000);
       expect(socks.map((s) => !!s.closed)).toEqual([false]);

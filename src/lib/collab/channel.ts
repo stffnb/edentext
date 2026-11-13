@@ -64,11 +64,11 @@ const MIN_PART = 1024;
 const STABLE_MS = 5000;
 const FAILS = 3;
 const MAX_WAIT = 30_000;
-// A relay that announces a beat sends one that often; a line silent for BEATS of them is dead,
-// checked every TICK ms. Back online or in view, one silent for a beat is dead once GRACE
-// passes without a message, so a tab waking from a freeze first hears what waited for it.
+// A relay that announces a beat sends one that often; a line silent for BEATS of them is dead.
+// Back online, in view, or with that deadline LATE_MS overdue (a frozen tab), one silent for a
+// beat is dead once GRACE passes without a message, so a waking tab first hears what waited.
 const BEATS = 3;
-const TICK = 1000;
+const LATE_MS = 2000;
 const GRACE = 1000;
 // The bulk lane sends while the socket holds less than LOW (a hidden tab's timers wake once a
 // second, so it fills more); otherwise it looks again after POLL ms.
@@ -344,12 +344,14 @@ export function openChannel(o: Options): Channel {
     ws = sock;
     ready = false;
     let welcomed = false, held = false, gone = false, last = Date.now();
-    let alive: ReturnType<typeof setInterval> | undefined;
+    let alive: ReturnType<typeof setTimeout> | undefined;
+    let watch: (() => void) | null = null;
     const lost = () => {
       if (gone) return;
       gone = true;
       clearTimeout(stable);
-      clearInterval(alive);
+      clearTimeout(alive);
+      watch = null;
       if (ws === sock) { ws = null; ready = false; doubt = dead = null; }
       if (closed) return;
       if (welcomed && !held) fails++;
@@ -368,26 +370,26 @@ export function openChannel(o: Options): Channel {
           welcomed = ready = true;
           down = false;
           if (msg.frame) size = Math.max(PART_HEAD + MIN_PART, Math.min(MAX_PART, msg.frame - SEALING - TO));
-          // A half-open line never closes by itself: it is dropped and dialled again.
-          // A tick that comes late (a frozen tab) waits a tick for the messages queued behind it.
+          // A half-open line never closes by itself: it is dropped and dialled again. Each message
+          // sets the deadline anew, never a timer, so a hidden tab's throttling delays it a second
+          // at most, not to the minute that chained timers get after five minutes hidden.
           const beat = msg.beat ?? 0;
-          let tick = Date.now();
           dead = () => {
             sock.onmessage = sock.onclose = null;
             sock.close();
             lost();
           };
-          if (beat > 0) alive = setInterval(() => {
-            const now = Date.now(), late = now - tick > 2 * TICK;
-            tick = now;
-            if (late || now - last <= BEATS * beat) return;
-            dead?.();
-          }, TICK);
           doubt = beat > 0 ? () => {
             if (Date.now() - last <= beat) return;
             const woke = Date.now();
             setTimeout(() => { if (ws === sock && last < woke) dead?.(); }, GRACE);
           } : null;
+          watch = beat > 0 ? () => {
+            clearTimeout(alive);
+            const due = Date.now() + BEATS * beat;
+            alive = setTimeout(() => (Date.now() - due > LATE_MS ? doubt : dead)?.(), BEATS * beat);
+          } : null;
+          watch?.();
           peers = msg.peers ?? 1;
           // A message cut short with the last line goes again from its start, under a new id;
           // one coming in on it lost its parts there and can never be whole.
@@ -443,6 +445,7 @@ export function openChannel(o: Options): Channel {
     const inOrder = (fn: () => unknown) => { inbound = inbound.then(fn).catch((e) => queueMicrotask(() => { throw e; })); };
     sock.onmessage = (ev) => {
       const at = last = Date.now();
+      watch?.();
       inOrder(() => hear(ev, at));
     };
     sock.onclose = (ev) => inOrder(() => {
