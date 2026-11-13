@@ -197,16 +197,21 @@ describe('collaboration key', () => {
     await relay.close();
   });
 
-  it('keeps a line whose messages wait behind a late beat tick, and drops a silent one', async () => {
+  it('keeps a line whose messages wait behind a late beat tick, drops a silent one, and dials at once back online', async () => {
     vi.useFakeTimers();
     type Sock = { onopen?: () => void; onmessage?: ((ev: { data: unknown }) => void) | null; closed?: boolean };
     const socks: Sock[] = [];
     vi.stubGlobal('WebSocket', class { constructor() { socks.push(this as Sock); } send() {} close() { (this as Sock).closed = true; } });
+    const win = new EventTarget();
+    vi.stubGlobal('addEventListener', win.addEventListener.bind(win));
+    vi.stubGlobal('removeEventListener', win.removeEventListener.bind(win));
+    vi.stubGlobal('document', Object.assign(new EventTarget(), { visibilityState: 'visible', hidden: false }));
+    const fire = (type: string) => win.dispatchEvent(new Event(type));
     try {
       const ch = openChannel({ url: 'ws://relay', key: keyBytes(newKey())!, id: 1, onFrame: () => {}, onPeers: () => {}, onStatus: () => {}, onOpen: () => {} });
       // A message is handled in order behind those before it, a few promise turns later.
       const say = async (m: object) => {
-        socks[0].onmessage!({ data: JSON.stringify(m) });
+        socks.at(-1)!.onmessage!({ data: JSON.stringify(m) });
         for (let i = 0; i < 5; i++) await Promise.resolve();
       };
       socks[0].onopen!();
@@ -220,6 +225,28 @@ describe('collaboration key', () => {
       expect(socks.map((s) => !!s.closed)).toEqual([false]);
       vi.advanceTimersByTime(4000);
       expect(socks[0].closed).toBe(true);
+      // Back online, the redial waiting goes at once.
+      fire('online');
+      expect(socks.length).toBe(2);
+      socks[1].onopen!();
+      await say({ t: 'welcome', peers: 2, beat: 1000 });
+      // Restored after a freeze with a beat unheard: what waited arrives and keeps the line,
+      // nothing arriving drops it within a second, before three beats are missed.
+      vi.setSystemTime(Date.now() + 1500);
+      fire('pageshow');
+      await say({ t: 'peers', n: 2 });
+      vi.advanceTimersByTime(1000);
+      expect(socks[1].closed).toBeFalsy();
+      vi.setSystemTime(Date.now() + 1500);
+      fire('pageshow');
+      vi.advanceTimersByTime(1000);
+      expect(socks[1].closed).toBe(true);
+      // Offline drops an open line at once.
+      fire('online');
+      socks[2].onopen!();
+      await say({ t: 'welcome', peers: 2, beat: 1000 });
+      fire('offline');
+      expect([socks.length, socks[2].closed]).toEqual([3, true]);
       ch.close();
     } finally {
       vi.unstubAllGlobals();

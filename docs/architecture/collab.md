@@ -132,7 +132,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
 - **Parts and failures** (`collab/channel.ts`): a message beyond the welcome's `frame`
   (at most 256 kB) goes as sealed numbered parts. Such messages and pictures wait in a bulk lane, sent part by part while the socket holds little, behind edits, carets, pings and the sync (`collab-pictures.md`); nothing goes to everyone while the relay counts nobody else. A receiver keeps at most four unfinished messages and 256 MiB per sender, which the relay puts in front of every frame, and drops them when the sender goes: a sender can fill only its own room. Retries back off from 0.5 to 30 s; three
   connections lost within 5 s of their welcome show `failing` until one holds for 5 s; a
-  line silent for three `beat`s (15 s) is taken as half-open and redialled.
+  line silent for three `beat`s (15 s) is taken as half-open and redialled. Back online, shown again or restored (`online`, `visibilitychange`, `pageshow`), a redial waiting goes at once from the shortest pause, and a line silent for a beat is redialled unless a message comes within a second (a tab back from a freeze hears what waited first); `offline` drops the line at once.
 - **Start and join.** The starter puts its document, exported as `.odt` (`buildBytes`),
   into the map `meta` with the app version and the name, then binds the body
   (`attachYjsUndo`). A tab opened from the link waits for a peer and refuses another
@@ -190,7 +190,7 @@ the script (`page.route`): its text and page setup reach the joiner, which keeps
 recorded marks and adds none; the starter's undo takes back each on both sides. A relay
 dropping every connection after its welcome makes the line `failing` (notice, 4–5
 connections in 12 s) until it holds. A line that hears and sends nothing leaves `live`
-within a few beats, asks nothing while down, and comes back. `tests/relay.test.ts` and
+within a few beats, asks nothing while down, and comes back; offline leaves `live` at once, and back online a line that is down is live again within 2 s. `tests/relay.test.ts` and
 `tests/collab.test.ts` cover rooms, limits, beats, addressing, sealing, links, signatures, parts and their cap per sender, claimed ids and the protocol version. All
 scripts run in the three engines (`BROWSER`); concurrent edits: `collab-conflicts.md`; load,
 soak and typing speed: `collab-soak.md`. `node tests/collab/presence.mjs`: the name is asked once without one, never with one; two guests are named alike everywhere; six people, two of them Ben, get six colours that hold when one goes; a rename reaches circle, list and caret label; four circles, a fifth `+1`, a reader a ring; going to a caret on page five or a header keeps the selection and sends nothing; following holds over three pages, ends on scrolling and on leaving, works for a reader and stays quiet; one line per arrival, two at once in one, none for oneself or a reload; `@Ben` reaches Ben alone and stays plain text in the `.odt`; markup, 500 characters, blanks, an emoji and Arabic stay text.
