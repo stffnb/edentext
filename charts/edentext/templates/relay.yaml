@@ -46,8 +46,9 @@ spec:
               value: {{ .Values.relay.maxPeers | quote }}
             - name: MAX_CONNS
               value: {{ .Values.relay.maxConns | quote }}
+            # Behind an ingress without trusted proxies every client shares its address.
             - name: MAX_CONNS_PER_IP
-              value: {{ .Values.relay.maxConnsPerIp | quote }}
+              value: {{ if and .Values.ingress.enabled (not .Values.relay.trustedProxies) }}"0"{{ else }}{{ .Values.relay.maxConnsPerIp | quote }}{{ end }}
             - name: DIALS_PER_MIN
               value: {{ .Values.relay.dialsPerMin | quote }}
             # nginx in front sets X-Real-IP to the client's address.

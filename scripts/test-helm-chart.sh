@@ -62,6 +62,8 @@ assert_contains "$workdir/ingress.yaml" 'ingressClassName: "traefik"' 'Ingress c
 assert_contains "$workdir/ingress.yaml" 'cert-manager.io/cluster-issuer: "?letsencrypt-prod"?$' 'Ingress annotation was not rendered'
 assert_contains "$workdir/ingress.yaml" 'host: "word.example.com"' 'Ingress host was not rendered'
 assert_contains "$workdir/ingress.yaml" 'secretName: word-example-com-tls' 'Ingress TLS secret was not rendered'
+grep -A1 'name: MAX_CONNS_PER_IP' "$workdir/ingress.yaml" | grep -q 'value: "0"' || fail 'behind the ingress all clients share one connection limit'
+grep -A1 'name: MAX_CONNS_PER_IP' "$workdir/default.yaml" | grep -q 'value: "20"' || fail 'the relay has no connection limit per address'
 
 printf '%s\n' 'Rendering an immutable image reference'
 digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
