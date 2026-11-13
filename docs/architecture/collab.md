@@ -144,7 +144,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   memory (`imageStore.ts`): the start file carries none, a new one goes to all as bytes
   (`PICTURE`) from whoever puts it in. One missing is asked of each other client in turn (`WANT`, awareness
   `peer`); a lack means not yet, so a newly confirmed client or one that got it since (`HAS`) is asked again; while nobody in the room has it: a grey box and a note. Files, autosave, clipboard and vector PDF get
-  pictures; a save with one still on its way fails. Leaving puts them back in.
+  pictures; saving, printing, PDF and copying wait for one still on its way under a notice, and fail only when nobody here has it. Leaving puts them back in.
 - **Headers and footers** go as whole zones, so one person edits a zone at a time
   (`collab/zones.svelte.ts`, awareness field `zone`): the others see the name at it and
   cannot open it. Opened at once, the higher client id yields and may lose its first keys.
@@ -183,7 +183,7 @@ and follows typing; keys, paste, commands, undo, a header and the assistant chan
 and it signs nothing, but a hint says why; each dialog shows its links. A patched reader's unsigned, falsely signed or altered updates,
 offers, answers, pictures and presences change no document, zone, caret or list; replayed
 presences hold no zone, at a newcomer neither. A reader dialling in under a writer's id gets none of its frames nor makes it leave or free its header, a picture asked for thirty times in one frame goes once, and forty readers made up in one tab are listed nowhere, while a real one still is. A picture whose only holder leaves unsent is a
-grey box with a note within seconds, as the relay says who left, and the line stays `live`. Pictures put in alone go nowhere; on a 2 MB/s uplink the starter's typing reaches a joiner within 1.5 s while its pictures still load, and a third joining meanwhile gets them all. Two writers and four
+grey box with a note within seconds, as the relay says who left, and the line stays `live`. Pictures put in alone go nowhere; on a 2 MB/s uplink the starter's typing reaches a joiner within 1 s while its pictures still load, a save started then waits for them under a notice and holds them all, and a third joining meanwhile gets them all. Two writers and four
 readers fill a room of six, so a seventh is refused; with the writers gone the reader is told, a new reader finds it
 empty, and the reader's kept copy is editable. Chat: a writer's, a joiner's and a reader's messages reach the other two by name, the reader's marked, in one order; the relay sees no text or name, A's `.odt`, `.docx`, autosave and shared doc none either. The pane drags and keys wider, docks left beside the page and keeps both after a reload, apart from the comments pane's; a reload or a late joiner starts empty. A closed pane counts new messages without taking the typist's focus. A patched reader's unsigned or falsely signed `CHAT`, a `SAY` from an unlisted id and a 1 MB text show nowhere, 50 in a second at most five, markup as text, only `http(s)` addresses as links. Idle with the pane open, nothing is sent; a line down shuts the field and its return opens it. Taller lines (6 against 7 pages) stay quiet too. The assistant on the starter, answered by
 the script (`page.route`): its text and page setup reach the joiner, which keeps its

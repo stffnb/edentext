@@ -125,6 +125,10 @@ export function sweepImages(): Promise<boolean> {
 const held = new Map<string, string>();
 const waiting = new Map<string, Set<() => void>>();
 let wanted: ((key: string) => void) | null = null;
+// Where each awaited picture shows, so a session asks for those nearest the viewport first.
+const places = new Map<string, Set<Element>>();
+let waits = 0;
+let told: ((waiting: boolean) => void) | null = null;
 
 /** The key a session holds this data-URI under, or null when it is small enough to stay inline. */
 export const imageKey = (src: unknown): string | null =>
@@ -154,6 +158,7 @@ export function mapSrcs(value: unknown, fn: (src: string) => string): unknown {
 export function holdImage(key: string, src: string): boolean {
   if (held.has(key)) return false;
   held.set(key, src);
+  places.delete(key);
   for (const fn of waiting.get(key) ?? []) fn();
   waiting.delete(key);
   return true;
@@ -166,12 +171,54 @@ export function shownSrc(src: unknown): string {
   return (s.startsWith(IDB_SRC) && held.get(s.slice(IDB_SRC.length))) || s;
 }
 
-/** Calls `fn` once a key's picture arrives and asks the session for it; returns the unsubscribe. */
-export function awaitImage(key: string, fn: () => void): () => void {
+/** Calls `fn` once a key's picture arrives and asks the session for it; `at` shows it meanwhile. Returns the unsubscribe. */
+export function awaitImage(key: string, fn: () => void, at?: Element): () => void {
   const set = waiting.get(key) ?? new Set();
   waiting.set(key, set.add(fn));
+  if (at) places.set(key, (places.get(key) ?? new Set()).add(at));
   wanted?.(key);
-  return () => { set.delete(fn); };
+  return () => { set.delete(fn); if (at) places.get(key)?.delete(at); };
+}
+
+/** How far in px the nearest place showing a key's awaited picture is from the viewport; Infinity when none shows. */
+export function distanceOf(key: string): number {
+  let best = Infinity;
+  for (const el of places.get(key) ?? []) {
+    const r = el.getBoundingClientRect();
+    if (!el.isConnected || (!r.width && !r.height)) continue;
+    best = Math.min(best, r.bottom < 0 ? -r.bottom : r.top > innerHeight ? r.top - innerHeight : 0);
+  }
+  return best;
+}
+
+/** The session keys in `value` no one here holds yet, each asked for. */
+export function lackedKeys(value: unknown): string[] {
+  const keys = new Set<string>();
+  if (wanted) mapSrcs(value, (src) => {
+    const key = src.startsWith(IDB_SRC) ? src.slice(IDB_SRC.length) : '';
+    if (key && !held.has(key)) keys.add(key);
+    return src;
+  });
+  for (const key of keys) wanted?.(key);
+  return [...keys];
+}
+
+/** Who shows that something waits for pictures (`untilHeld`). */
+export function showWaitingWith(fn: ((waiting: boolean) => void) | null): void { told = fn; }
+
+/** Resolves true once every key is held, false when `lost` says one cannot come or the session ends. */
+export async function untilHeld(keys: string[], lost: () => boolean): Promise<boolean> {
+  if (keys.every((k) => held.has(k))) return true;
+  if (!waits++) told?.(true);
+  try {
+    while (keys.some((k) => !held.has(k))) {
+      if (!wanted || lost()) return false;
+      await new Promise((ok) => setTimeout(ok, 200));
+    }
+    return true;
+  } finally {
+    if (!--waits) told?.(false);
+  }
 }
 
 /** The session that fetches missing pictures, or null; null also lets go of every held one. */

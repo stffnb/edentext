@@ -1283,6 +1283,20 @@ try {
     const loading = await shown(iv);
     const serving = await h.evaluate(() => window.__served);
     await joined;
+    // Saving before the pictures are all here waits for them, saying so, and the file has all.
+    const lacking = 4 - await shown(jo);
+    await jo.evaluate(() => { window.showSaveFilePicker = undefined; });
+    await jo.click('.ribbon-tab-file');
+    const saving = Promise.all([
+      jo.waitForEvent('download', { timeout: 60_000 }),
+      jo.locator('.ribbon-menu button', { hasText: '(.odt)' }).first().click()
+        .then(() => jo.locator('dialog[open] button.primary').click({ timeout: 2_000 }).catch(() => {})),
+    ]).catch(() => [null]);
+    const noted = await jo.waitForSelector('.collab-notice[data-notice="loading"]', { timeout: 5000 }).then(() => true, () => false);
+    const [file] = await saving;
+    // Each noise photo is about 1.9 MB that no zip shrinks, so three would stay under 7 MB.
+    const savedMB = file ? (await readFile(await file.path())).length / 1e6 : 0;
+    check(savedMB > 7 && (!lacking || noted), `a save while ${lacking} of 4 pictures are on their way waits for them (notice ${noted}) and holds them all (${savedMB.toFixed(1)} MB)`);
     const all = (p) => p.waitForFunction(() => [...document.querySelectorAll('.tiptap-host .tiptap img')].filter((i) => i.src.startsWith('data:') && i.src.length > 1e6).length === 4, null, { timeout: 60_000 }).then(() => true, () => false);
     const got = [await all(iv), await all(jo)];
     const gaps = [await iv.evaluate(() => window.__collab.view().missing), await jo.evaluate(() => window.__collab.view().missing)];

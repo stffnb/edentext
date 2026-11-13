@@ -254,6 +254,7 @@ const it: Messages = {
     peers: (n: number) => n === 1 ? 'Un\'altra persona presente' : `${n} altre persone presenti`,
     missing: (n: number) => n === 1 ? 'Non è stato possibile recuperare un\'immagine: chi l\'aveva se n\'è andato. Resta un riquadro grigio finché non entra qualcuno che ce l\'ha.' : `Non è stato possibile recuperare ${n} immagini: chi le aveva se n'è andato. Restano riquadri grigi finché non entra qualcuno che le ha.`,
     picturesPending: 'Alcune immagini non ti sono ancora arrivate e mancherebbero nel file. Riprova appena compaiono.',
+    picturesLoading: 'Le immagini sono ancora in caricamento…',
     stillServing: (n: number) => n === 1 ? 'Qualcuno sta ancora caricando un’immagine da te. Se esci ora, potrebbe non riceverla. Uscire comunque?' : `Altri stanno ancora caricando ${n} immagini da te. Se esci ora, potrebbero non riceverle. Uscire comunque?`,
     keepLacking: (n: number) => n === 1 ? 'Un’immagine non ti è ancora arrivata: la tua copia mostrerà un riquadro grigio al suo posto. Tenerla comunque?' : `${n} immagini non ti sono ancora arrivate: la tua copia mostrerà riquadri grigi al loro posto. Tenerla comunque?`,
     paused: 'Modifica sospesa',

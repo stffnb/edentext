@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type CollabNotice = 'unreachable' | 'failing' | 'unkept' | 'unwritten' | 'missing' | 'dropped';
+  export type CollabNotice = 'unreachable' | 'failing' | 'unkept' | 'unwritten' | 'missing' | 'dropped' | 'loading';
 </script>
 
 <script lang="ts">
@@ -175,7 +175,7 @@
 
 {#if notice && view && !open}
   <aside class="collab-notice" role="status" data-notice={notice}>
-    <p>{notice === 'unkept' ? t().collab.unkept : notice === 'unwritten' ? t().collab.unwritten : notice === 'missing' ? t().collab.missing(view.missing) : notice === 'dropped' ? t().collab.dropped : t().collab.status[notice]}</p>
+    <p>{notice === 'unkept' ? t().collab.unkept : notice === 'unwritten' ? t().collab.unwritten : notice === 'missing' ? t().collab.missing(view.missing) : notice === 'dropped' ? t().collab.dropped : notice === 'loading' ? t().collab.picturesLoading : t().collab.status[notice]}</p>
     <div class="actions">
       <button data-cmd="collabDetails" onclick={() => { notice = null; open = true; }}>{t().collab.menu}</button>
       <span class="spacer"></span>

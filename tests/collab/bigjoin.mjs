@@ -113,6 +113,9 @@ const milestones = (target) => {
     P.imgs = imgs;
     if (imgs >= 1) mark('firstPic');
     if (target.pics && imgs >= target.pics) mark('allPics');
+    // The screen is complete once text shows and no picture in view still waits.
+    const inView = (el) => { const r = el.getBoundingClientRect(); return r.width && r.bottom > 0 && r.top < innerHeight; };
+    if (P.t.firstText && ![...document.querySelectorAll('.tiptap-host .image-waiting')].some(inView)) mark('screen');
     const pages = +(/of (\d+)/.exec(document.querySelector('.statusbar')?.textContent ?? '')?.[1] ?? 0);
     if (target.pages && pages >= target.pages) mark('pages');
   }, 100);
