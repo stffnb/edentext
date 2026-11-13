@@ -13,7 +13,7 @@ import { cleanColor, shownName } from './names';
 
 // A shared session: the Yjs doc behind the body (`undoYjs.ts`) goes over a sealed channel
 // to the others in the room. Frames are one kind byte and its payload; the relay sees none
-// of it. Edits leave and arrive in batches of 50 ms, always as a task of their own.
+// of it. Edits leave at once when none left in the last 50 ms, else batched with the caret.
 // Ids are random per session; frames with a `to` that is not this client are ignored, and
 // a relay that knows ids passes them to that client alone (`channel.ts`). Every frame that
 // changes a receiver's state is signed with the writers' key; a reader (`#view=`) can only
@@ -247,9 +247,11 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   const send = (kind: number, ...parts: (number | Uint8Array)[]) => post(undefined, kind, ...parts);
   const enc = new TextEncoder();
   // A new clock: others that dropped this client when its line broke take it back.
-  const present = () => reading
-    ? send(VIEWER, me, enc.encode(JSON.stringify(host.user())))
-    : awareness.setLocalState(awareness.getLocalState());
+  const present = () => {
+    if (reading) return send(VIEWER, me, enc.encode(JSON.stringify(host.user())));
+    awareness.setLocalState(awareness.getLocalState());
+    ship();
+  };
 
   // A signed presence may be replayed from a writer long gone, so it takes effect only once
   // its `peer` answered a fresh nonce (PING, signed PONG), until the relay says it is gone.
@@ -348,23 +350,45 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     peers: () => [...awareness.getStates()].filter(([id, s]) => id !== ydoc.clientID && typeof s.peer === 'number').map(([, s]) => s.peer as number),
   });
 
-  // Outgoing: this client's own updates, merged per batch.
+  // Outgoing: this client's own updates, then its caret, right after the change when the last
+  // batch left BATCH_MS ago or more, else once that much passed, with what came meanwhile.
+  // Anything else in its presence (zone, name, rank) goes at once, after the edits before it.
   let out: Uint8Array[] = [];
   let outTimer: ReturnType<typeof setTimeout> | undefined;
-  const onUpdate = (u: Uint8Array, origin: unknown) => {
-    if (origin === REMOTE) return;
-    out.push(u);
-    outTimer ??= setTimeout(() => {
-      outTimer = undefined;
+  let shipped = -Infinity, caretDue = false, told = '';
+  const ship = () => {
+    clearTimeout(outTimer);
+    outTimer = undefined;
+    if (!out.length && !caretDue) return;
+    shipped = performance.now();
+    if (out.length) {
       const merged = Y.mergeUpdates(out);
       out = [];
       send(UPDATE, merged);
-    }, BATCH_MS);
+    }
+    if (caretDue) { caretDue = false; send(PRESENCE, encodeAwarenessUpdate(awareness, [ydoc.clientID])); }
+  };
+  let due = false;
+  const batch = () => {
+    if (outTimer !== undefined || due) return;
+    const wait = shipped + BATCH_MS - performance.now();
+    if (wait > 0) outTimer = setTimeout(ship, wait);
+    else { due = true; queueMicrotask(() => { due = false; ship(); }); }
+  };
+  const onUpdate = (u: Uint8Array, origin: unknown) => {
+    if (origin === REMOTE) return;
+    out.push(u);
+    batch();
   };
   ydoc.on('update', onUpdate);
   type Change = { added: number[]; updated: number[]; removed: number[] };
   const onPresence = ({ added, updated, removed }: Change, origin: unknown) => {
-    if (origin === 'local') send(PRESENCE, encodeAwarenessUpdate(awareness, [...added, ...updated, ...removed]));
+    if (origin === 'local') {
+      const state = awareness.getLocalState(), rest = JSON.stringify(state && { ...state, cursor: undefined });
+      caretDue = true;
+      if (rest === told) batch();
+      else { told = rest; ship(); }
+    }
     if (added.length || removed.length) pictures.recheck();
     if (binding && repairer && removed.length) binding.setRepairer(repairer);
     changed();
@@ -554,8 +578,10 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   if (keeps) awareness.setLocalStateField('keeps', true);
   if (bound) bind(bound(pictures));
 
-  // Leaving tells the others at once; a closed tab drops out after awareness's timeout.
+  // Leaving tells the others at once, after the edits still batched; a closed tab drops out after awareness's timeout.
   const goodbye = () => {
+    caretDue = false;
+    ship();
     if (reading) return send(VIEWER, me);
     removeAwarenessStates(awareness, [ydoc.clientID], 'leave');
     send(PRESENCE, encodeAwarenessUpdate(awareness, [ydoc.clientID]));
@@ -577,7 +603,6 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     ...(import.meta.env.DEV ? { debug: { send: (p: Uint8Array, to = 0) => channel.send(p, to), get tap() { return tap; }, set tap(f) { tap = f; }, ydoc } } : {}),
     leave() {
       removeEventListener('pagehide', goodbye);
-      clearTimeout(outTimer);
       clearTimeout(inTimer);
       clearTimeout(emptyTimer);
       clearTimeout(doubtTimer);
