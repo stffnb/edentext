@@ -9,7 +9,7 @@ const ROOM = /^[A-Za-z0-9_-]{16,64}$/;
 const ID = (v) => Number.isInteger(v) && v > 0 && v < 2 ** 32;
 const CLAIM = /^[A-Za-z0-9_-]{22,64}$/;
 // The protocol this relay speaks; a hello with another `v` gets `version` and close 4002.
-const VERSION = 2;
+const VERSION = 3;
 // Ids a room remembers, live or gone; past it the oldest gone one is forgotten.
 const MAX_IDS = 256;
 // A receiver holding more than `hold` bytes not yet sent is announced `slow` to the others, whose
