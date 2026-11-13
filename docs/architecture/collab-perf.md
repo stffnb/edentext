@@ -59,3 +59,39 @@ pacing by the relay's receipts (`got`) and asks nearest the view first. The 25.2
 with the old asks (all at once, in document order). At 10 Mbit/s the second and third joiner
 share the starter's uplink, so the second now finishes with the third instead of first; both
 need twice 49 MB through 1.25 MB/s.
+
+## Latency
+
+How soon others see a key, how a join splits into its steps, and how fast a dead line is
+noticed. Fluency rows: `FLUENCY_CLIENTS=2,4 node tests/collab/fluency.mjs` (method in
+`collab-soak.md`; "frames per key" counts every frame A sends while typing, over its keys).
+Join rows: `npm run bench:bigjoin` with `SCEN=S1 NET=none` (150 pages, 25 pictures) and a
+`MODE`: the joiner's steps are the session's `collab:*` performance marks (dial, socket open,
+`welcome`, first `OFFER`, `ANSWER`, bound) beside the milestones above, in seconds from opening
+the link. `cold` serves the joiner the built app (`vite preview`, build with
+`VITE_COLLAB_RELAY=same-origin`) on a new profile, its download at `GUEST_NET` Mbit/s by
+Chromium's emulation (the relay line too), `WARM=1` from the service worker of a first visit.
+`hidden` makes the starter's tab look hidden and runs its timers as Chrome runs a hidden tab's
+(headless Chromium never hides one): to the next second, with `INTENSIVE=1` chained timers to
+the next minute. `rejoin` reloads the joiner once it has everything; `drop` (relay beat 15 s)
+makes the joiner's line deaf without a close, then takes it offline by emulation.
+
+| | before |
+|---|---|
+| key at A to B's screen, short / mixed, 2 clients, median (p95) | 113 (126) / 122 (140) ms |
+| same, 4 clients | 113 (140) / 98 (123) ms |
+| same, 177 pages, 2 / 4 clients | 240 (339) / 342 (823) ms |
+| A's key on 177 pages, 2 / 4 clients, median (p95); longest frame gap | 8.9 (13.2) / 12.9 (26.5) ms; 167 / 583 ms |
+| frames A sends per key (edit, caret) | 2.0 (1.0, 1.0) |
+| join, 150 pages: app up, socket open, `welcome`, first offer, answer | 0.79, 0.82, 0.83, 0.84, 1.02 s |
+| same: text shown, bound, pages laid out, all pictures | 1.62, 1.94, 2.16, 7.0 s |
+| `ANSWER` for 150 pages, raw / deflate-raw | 776 / 68 kB |
+| built app, new profile, 10 Mbit/s: app up, answer, text, all pictures | 1.11, 3.43, 4.04, 68.9 s |
+| same at 40 Mbit/s | 0.47, 0.81, 1.36, 13.1 s |
+| same at 10 Mbit/s from the service worker | 0.35, 1.42, 1.98 s; 15 of 25 pictures after 300 s |
+| starter's tab hidden / hidden over 5 minutes: text, all pictures | 1.33 / 1.25 s, 11.9 / 11.3 s (shown: 1.4, 6.2–7.0 s) |
+| reload and rejoin: bytes sent again, all pictures | 49.9 MB, 6.6 s |
+| line deaf without a close: not `live` after, `live` again after it works | 58.8 s, 0.5 s |
+| offline by emulation: not `live` after, `live` again after online | 57.0 s, 0.9 s |
+
+"before" is `integrate/collab` at `539f7d96`, measured 2026-11-13, one run each.

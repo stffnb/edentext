@@ -144,8 +144,12 @@ async function measure(doc, n) {
   });
   // A types 80 keys, every eighth a '#' for the latency, at about eight a second.
   const text = Array.from({ length: 80 }, (_, i) => (i % 8 === 7 ? '#' : 'abcdefg'[i % 7])).join('');
+  const sent = () => a.evaluate(() => [...(window.__collab?.session?.stats.sent ?? [])]);
+  const sent0 = await sent();
   for (const ch of text) { await a.keyboard.type(ch); await a.waitForTimeout(120); }
   await a.waitForTimeout(1500);
+  // A's frames per key it typed (all kinds; UPDATE is 1, PRESENCE 2).
+  const sentBy = (await sent()).map((n, k) => n - (sent0[k] ?? 0));
   typing = false;
   await Promise.all(background);
   for (const p of [a, ...others]) await p.evaluate(() => { window.__probe.on = false; });
@@ -162,6 +166,7 @@ async function measure(doc, n) {
     paginate: { n: calc.n, avg: calc.n ? +(calc.ms / calc.n).toFixed(1) : 0, max: +calc.max.toFixed(1) },
     gaps: { p95: pct(pa.gaps, 0.95), max: pct(pa.gaps, 1), over50: pa.gaps.filter((g) => g > 50).length },
     frames: top,
+    perKey: n > 1 ? { all: +(sentBy.reduce((x, y) => x + y, 0) / text.length).toFixed(2), update: +(sentBy[1] / text.length).toFixed(2), presence: +(sentBy[2] / text.length).toFixed(2) } : null,
   };
   // B's caret and view when A writes a line above it.
   if (others[0]) {

@@ -1,13 +1,22 @@
 // Big-document join bench, not part of test:collab: A builds ~150 generated pages with 25 noise
 // pictures (49 MB), B (and C) join; prints one JSON line of timings. Rows and method:
-// docs/architecture/collab-perf.md. Env: SCEN, NET, THROTTLE, THIRD, VIEW, TYPING, LIMIT, BIGJOIN_PORT/_OUT.
+// docs/architecture/collab-perf.md. Env: SCEN, NET, THROTTLE, THIRD, VIEW, TYPING, LIMIT, BIGJOIN_PORT/_OUT,
+// MODE (join, cold, hidden, rejoin, drop) with GUEST_NET, WARM and INTENSIVE.
 import net from 'node:net';
 import { appendFileSync } from 'node:fs';
-import { devServer, openApp, settle } from '../browser.mjs';
+import { devServer, openApp, previewServer, settle } from '../browser.mjs';
 import { startRelay } from '../../relay/server.mjs';
 
 const OUT = process.env.BIGJOIN_OUT;
-const PORT = +(process.env.BIGJOIN_PORT ?? 4401), RELAY_PORT = PORT + 1, PROXY_PORT = PORT + 2;
+const PORT = +(process.env.BIGJOIN_PORT ?? 4401), RELAY_PORT = PORT + 1, PROXY_PORT = PORT + 2, PREVIEW_PORT = PORT + 3;
+// cold: the joiner loads the built app (`vite preview` of dist/, built with a relay at the same
+// commit) with an empty cache, its download at GUEST_NET Mbit/s, or WARM=1 from the service
+// worker; hidden: A's tab is hidden (emulated, below) when B joins; rejoin: B
+// reloads once it has everything; drop: B's line goes deaf, then offline, and comes back.
+const MODE = process.env.MODE ?? 'join';
+const GUEST_NET = +(process.env.GUEST_NET ?? 0);
+const WARM = process.env.WARM === '1';
+const INTENSIVE = process.env.INTENSIVE === '1';
 const SCEN = process.env.SCEN ?? 'S1';
 const NET = process.env.NET ?? 'none';
 const THROTTLE = process.env.THROTTLE ?? 'proxy';
@@ -37,7 +46,7 @@ const tap = (data) => {
     else T.big ??= [], T.big.push({ t, from, to, size });
   });
 };
-const relay = await startRelay({ port: RELAY_PORT, beat: 0, tap });
+const relay = await startRelay({ port: RELAY_PORT, beat: MODE === 'drop' ? 15_000 : 0, tap });
 let maxBuffered = 0, lagMax = 0;
 let lastTick = Date.now();
 const sampler = setInterval(() => {
@@ -81,6 +90,7 @@ await new Promise((r) => proxy.listen(PROXY_PORT, '127.0.0.1', r));
 
 process.env.RELAY_PORT = String(RELAY_PORT);
 const server = await devServer(PORT);
+const preview = MODE === 'cold' ? await previewServer(PREVIEW_PORT) : null;
 const { browser, page: first } = await openApp(PORT);
 await first.close();
 const URL0 = `http://localhost:${PORT}/`;
@@ -115,7 +125,7 @@ const milestones = (target) => {
       }
       if (d.lastChild?.textContent.includes('END-OF-DOCUMENT') || d.textBetween(Math.max(0, d.content.size - 400), d.content.size).includes('END-OF-DOCUMENT')) mark('allText');
     }
-    if (window.__collab?.view()?.status === 'live') mark('live');
+    if (window.__collab ? window.__collab.view()?.status === 'live' : performance.getEntriesByName('collab:bound').length) mark('live');
     const imgs = [...document.querySelectorAll('.tiptap-host img')].filter((i) => i.naturalWidth >= 500).length;
     P.imgs = imgs;
     if (imgs >= 1) mark('firstPic');
@@ -130,24 +140,30 @@ const milestones = (target) => {
   }, 100);
 };
 
-async function tab(name, { viaProxy = false, cdpRate = 0 } = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
+async function tab(name, { viaProxy = false, cdpRate = 0, down = 0, ctx = null } = {}) {
+  ctx ??= await browser.newContext({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: MODE === 'cold' && WARM ? 'allow' : 'block' });
   const page = await ctx.newPage();
   await page.addInitScript((n) => { if (!localStorage.getItem('edentext-user-name')) localStorage.setItem('edentext-user-name', n); }, name);
   await page.addInitScript(probe);
   // Route the relay socket straight to the relay, or for A through the throttling proxy.
   await page.addInitScript((port) => {
     const O = window.WebSocket;
+    // `__line.deaf` drops what the relay socket hears and sends, as a half-open line does.
+    const line = window.__line = { deaf: false };
     window.WebSocket = class extends O {
-      constructor(url, ...x) { super(String(url).includes('/relay') ? `ws://127.0.0.1:${port}/relay` : url, ...x); }
+      constructor(url, ...x) {
+        super(String(url).includes('/relay') ? `ws://127.0.0.1:${port}/relay` : url, ...x);
+        this.addEventListener('message', (ev) => { if (line.deaf) ev.stopImmediatePropagation(); });
+      }
+      send(d) { if (!line.deaf) super.send(d); }
     };
   }, viaProxy ? PROXY_PORT : RELAY_PORT);
   page.on('dialog', (d) => d.accept());
   page.on('pageerror', (e) => log(`${name} pageerror`, String(e).slice(0, 160)));
-  if (cdpRate) {
+  if (cdpRate || down) {
     const s = await ctx.newCDPSession(page);
     await s.send('Network.enable');
-    await s.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: cdpRate });
+    await s.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: down || -1, uploadThroughput: cdpRate || -1 });
   }
   return page;
 }
@@ -255,14 +271,31 @@ async function share(a) {
 }
 
 async function joiner(name, link, target) {
-  const p = await tab(name);
+  let ctx = null;
+  if (MODE === 'cold') {
+    link = link.replace(`:${PORT}/`, `:${PREVIEW_PORT}/`);
+    // A first visit installs the service worker, which keeps the shell for the next.
+    if (WARM) {
+      const w = await tab(name);
+      await w.goto(`http://localhost:${PREVIEW_PORT}/`, { waitUntil: 'load' });
+      await w.evaluate(() => navigator.serviceWorker.ready);
+      ctx = w.context();
+      await w.close();
+    }
+  }
+  const p = await tab(name, { ctx, down: MODE === 'cold' ? (GUEST_NET * 1e6) / 8 : 0 });
   await p.addInitScript(milestones, target);
   const t0 = Date.now();
   await p.goto(link, { waitUntil: 'load' });
   return { p, t0, name };
 }
 const collect = async (j) => {
-  const P = await j.p.evaluate(() => ({ t: window.__probe.t, imgs: window.__probe.imgs, long: window.__probe.long }));
+  const P = await j.p.evaluate(() => {
+    // The session's own marks, the first of each, on the same clock as the milestones.
+    const marks = {};
+    for (const m of performance.getEntriesByType('mark')) if (m.name.startsWith('collab:')) marks[m.name.slice(7)] ??= Math.round(performance.timeOrigin + m.startTime);
+    return { t: { ...marks, ...window.__probe.t }, imgs: window.__probe.imgs, long: window.__probe.long };
+  });
   const rel = Object.fromEntries(Object.entries(P.t).map(([k, v]) => [k, +((v - j.t0) / 1000).toFixed(2)]));
   const lt = P.long.filter(([t]) => t >= j.t0);
   return { ...rel, imgs: P.imgs, longTasks: lt.length, longMax: Math.max(0, ...lt.map((x) => x[1])), longSum: lt.reduce((n, x) => n + x[1], 0) };
@@ -360,6 +393,36 @@ try {
   await a.waitForTimeout(1500);
   const aId = await a.evaluate(() => window.__collab.session.me);
   const target = { pics: NPICS, pages: await pagesOf(a), view: VIEW };
+  // What a joiner's ANSWER holds (the whole doc), raw and as deflate-raw would send it.
+  res.answer = await a.evaluate(async () => {
+    const { Y } = await import('/src/lib/editor/undoYjs.ts');
+    const u = Y.encodeStateAsUpdate(window.__collab.session.awareness.doc);
+    const z = await new Response(new Blob([u]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer();
+    return { kB: Math.round(u.length / 1024), deflateKB: Math.round(z.byteLength / 1024) };
+  });
+  if (MODE === 'hidden') {
+    // Headless Chromium never hides a page, so A's is made to look hidden and its timers run
+    // as Chrome runs a hidden tab's: aligned to the next full second, and with INTENSIVE=1 (a
+    // tab hidden over five minutes) chained ones, five deep or more, to the next full minute.
+    res.hidden = await a.evaluate((intensive) => {
+      for (const [k, v] of [['hidden', true], ['visibilityState', 'hidden']]) Object.defineProperty(document, k, { get: () => v, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      const set = window.setTimeout.bind(window), clear = window.clearTimeout.bind(window);
+      let depth = 0, next = 1e9;
+      const ids = new Map();
+      const at = (ms, level) => { const step = intensive && level >= 5 ? 60_000 : 1000, due = Date.now() + Math.max(0, ms); return Math.ceil(due / step) * step - Date.now(); };
+      const later = (fn, ms, args, level, id, again) => ids.set(id, set(() => {
+        const was = depth;
+        depth = level;
+        try { if (typeof fn === 'function') fn(...args); } finally { depth = was; }
+        if (again && ids.has(id)) later(fn, ms, args, level + 1, id, true); else if (!again) ids.delete(id);
+      }, at(ms, level)));
+      window.setTimeout = (fn, ms = 0, ...args) => { const id = next++; later(fn, ms, args, depth + 1, id, false); return id; };
+      window.setInterval = (fn, ms = 0, ...args) => { const id = next++; later(fn, ms, args, depth + 1, id, true); return id; };
+      window.clearTimeout = window.clearInterval = (id) => { clear(ids.get(id) ?? id); ids.delete(id); };
+      return intensive ? 'emulated, intensive' : 'emulated';
+    }, INTENSIVE);
+  }
 
   // A types a '#' every 700 ms while the others join: when does each reach the relay?
   phase = 'join';
@@ -369,7 +432,7 @@ try {
   await caretAt(a, 0.02);
   await a.evaluate(() => { window.__probe.marks = []; window.__probe.long = []; });
   let typingA = true;
-  const typer = (async () => { while (typingA) { await a.keyboard.type('#'); await a.waitForTimeout(700); } })();
+  const typer = (async () => { while (typingA && MODE !== 'hidden') { await a.keyboard.type('#'); await a.waitForTimeout(700); } })();
 
   const b = await joiner('Ben', sh.link, target);
   let c = null;
@@ -401,10 +464,10 @@ try {
   res.aKeySlow = marks.map((m) => { const t = aSmall.find((x) => x >= m); return [+((m - wall0) / 1000).toFixed(1), t ? t - m : null]; }).filter(([, d]) => d === null || d > 500);
   const aLong = (await a.evaluate(() => window.__probe.long)).filter(([t]) => t >= wall0);
   res.aLong = { n: aLong.length, max: Math.max(0, ...aLong.map((x) => x[1])), sum: aLong.reduce((n, x) => n + x[1], 0) };
-  const bId = await b.p.evaluate(() => window.__collab.session.me);
+  const bId = await b.p.evaluate(() => window.__collab?.session.me ?? 0);
   res.B.firstFrame = +(((T.frames.find((f) => f.from === bId)?.t ?? 0) - b.t0) / 1000).toFixed(2);
-  if (c) { const cId = await c.p.evaluate(() => window.__collab.session.me); res.C.firstFrame = +(((T.frames.find((f) => f.from === cId)?.t ?? 0) - c.t0) / 1000).toFixed(2); }
-  const ids = { [aId]: 'A', [await b.p.evaluate(() => window.__collab.session.me)]: 'B', ...(c ? { [await c.p.evaluate(() => window.__collab.session.me)]: 'C' } : {}), 0: 'all' };
+  if (c) { const cId = await c.p.evaluate(() => window.__collab?.session.me ?? 0); res.C.firstFrame = +(((T.frames.find((f) => f.from === cId)?.t ?? 0) - c.t0) / 1000).toFixed(2); }
+  const ids = { [aId]: 'A', [await b.p.evaluate(() => window.__collab?.session.me ?? 0)]: 'B', ...(c ? { [await c.p.evaluate(() => window.__collab?.session.me ?? 0)]: 'C' } : {}), 0: 'all' };
   const named = (ph) => Object.fromEntries(Object.entries(bytes[ph] ?? {}).map(([k, v]) => { const [f, t] = k.split('>'); return [`${ids[f] ?? f}>${ids[t] ?? t}`, +(v.b / 1048576).toFixed(2)]; }).filter(([, v]) => v > 0.01));
   res.bytesMB = { start: named('start'), join: named('join') };
   // Large frames per receiver: first and last arrival at the relay, seconds after B's goto.
@@ -414,6 +477,36 @@ try {
   res.heapMB = { A: await heap(a), B: await heap(b.p), ...(c ? { C: await heap(c.p) } : {}) };
   log('relay', JSON.stringify(res.relay), 'A key->relay', JSON.stringify(res.aKeyToRelay), 'A long', JSON.stringify(res.aLong));
   log('bytes', JSON.stringify(res.bytesMB), 'big', JSON.stringify(res.bigFrames), 'heap', JSON.stringify(res.heapMB));
+
+  if (MODE === 'rejoin') {
+    phase = 'rejoin';
+    b.t0 = Date.now();
+    await b.p.reload({ waitUntil: 'load' });
+    await waitDone(b, target, limit).catch((e) => log('B not done again', String(e).slice(0, 80)));
+    res.rejoin = await collect(b);
+    ids[await b.p.evaluate(() => window.__collab?.session.me ?? 0)] = 'B2';
+    res.rejoin.bytesMB = named('rejoin');
+    log('rejoin', JSON.stringify(res.rejoin));
+  }
+  if (MODE === 'drop') {
+    // ms until B's status leaves `live` (or comes back), polled every 100 ms.
+    const until = async (ok, ms = 90_000) => {
+      for (const t = Date.now(); Date.now() - t < ms; await b.p.waitForTimeout(100)) if (ok(await b.p.evaluate(() => window.__collab.view()?.status))) return Date.now() - t;
+      return null;
+    };
+    await b.p.evaluate(() => { window.__line.deaf = true; });
+    const deafDown = await until((st) => st !== 'live');
+    await b.p.evaluate(() => { window.__line.deaf = false; });
+    const deafUp = await until((st) => st === 'live');
+    await b.p.waitForTimeout(3000);
+    await b.p.context().setOffline(true);
+    const offDown = await until((st) => st !== 'live', 60_000);
+    await b.p.waitForTimeout(3000);
+    await b.p.context().setOffline(false);
+    const offUp = await until((st) => st === 'live');
+    res.drop = { deafDown, deafUp, offDown, offUp };
+    log('drop', JSON.stringify(res.drop));
+  }
 
   if (TYPING) {
     phase = 'typing';
@@ -433,5 +526,6 @@ try {
   await relay.close();
   proxy.close();
   if (server) process.kill(-server.pid);
+  if (preview) process.kill(-preview.pid);
 }
 process.exit(0);
