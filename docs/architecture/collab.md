@@ -194,6 +194,25 @@ within a few beats, asks nothing while down, and comes back; offline leaves `liv
 scripts run in the three engines (`BROWSER`); concurrent edits: `collab-conflicts.md`; load,
 soak and typing speed: `collab-soak.md`. `node tests/collab/presence.mjs`: the name is asked once without one, never with one; two guests are named alike everywhere; six people, two of them Ben, get six colours that hold when one goes; a rename reaches circle, list and caret label; four circles, a fifth `+1`, a reader a ring; going to a caret on page five or a header keeps the selection and sends nothing; following holds over three pages, ends on scrolling and on leaving, works for a reader and stays quiet; one line per arrival, two at once in one, none for oneself or a reload; `@Ben` reaches Ben alone and stays plain text in the `.odt`; markup, 500 characters, blanks, an emoji and Arabic stay text.
 
+### Limits
+
+What anyone holding a link may ask of the others, measured 2026-11-13 (Chromium) per sender
+as one receiver sees it, from the soak (seeds 1–4, four writers and a reader: reloads, lines
+cut and deaf, frames delayed), `session.mjs` without its forged-frame checks, and the join
+bench (`collab-perf.md`, 25 pictures of 2 MB). Most seen from one sender:
+
+| Kind | In 1 s | In 10 s | In 60 s | Run |
+|---|---|---|---|---|
+| `ASK` | 1 | 2 | 3 | session (redials, stalls) |
+| `PULL` | 1 | 2 | 2 | session, soak |
+| `WANT` (keys) | 9 | 25 | 25 | join bench; at most 3 keys a frame |
+| `PING` | 1 | 2 | 2 | soak, session |
+| `VIEWER` | 2 | 3 | 5 | soak, session |
+| `ECHO`, `NOTHING` | 1 | 1 | 1 | soak, session |
+
+Every message longer than 200 kB came from a writer that had answered a ping, or from the
+sync's pulled peer; the relay held at most 2.5 MiB for a receiver (join bench).
+
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun nor in five runs on a fresh dev server and dep cache (2026-11-11): in Firefox a joiner not live within 20 s on a just-started dev server. Writers share one signing key, so it tells writers from readers, not writers apart, and a
 write link stays valid for the session. A reader can still cost the others what any participant can: asks
 (`ASK`, `PULL`, `WANT`) in a loop, each answered in full, and connections up to `MAX_PEERS`. Readers alone in a room give nobody the doc. What pictures cost: `collab-pictures.md`.
