@@ -101,6 +101,8 @@ export type Pictures = {
   receive(plain: Uint8Array, from: number): boolean;
   /** The others changed: an ask to a client gone goes elsewhere, and one newly known is asked. */
   recheck(): void;
+  /** A client the relay says left: a picture sent to all may not have reached it. */
+  forget(id: number): void;
   /** Pictures this client is still sending to someone who asked. */
   serving(): number;
   /** Pictures no one here could send, while everyone in the room is known. */
@@ -119,7 +121,8 @@ export function sessionPictures(w: Wire): Pictures {
   const wants = new Map<string, { tried: Set<number>; to: number | null; at: number; short: boolean }>();
   const owed = new Map<string, Set<number>>();
   // Pictures on their way to everyone, with the clients there then: their edit may arrive
-  // first, and an ask of theirs meanwhile would send the picture twice.
+  // first, and an ask of theirs meanwhile would send the picture twice. Kept STALL_MS after the
+  // last part left, as the parts may still be on their way and the ask sent before them.
   const sharing = new Map<string, Set<number>>();
   // Answers to asks still on their way out: someone loads them from this client.
   let serving = 0;
@@ -135,8 +138,9 @@ export function sessionPictures(w: Wire): Pictures {
     if (!src && to && (owed.has(key) || owed.size < MAX_OWED)) owed.set(key, (owed.get(key) ?? new Set()).add(to));
     if (to && !src) return w.send(PICTURE, to, k.length, k, head.length, head, body);
     if (to) { serving++; return w.post(() => serving--, PICTURE, to, k.length, k, head.length, head, body); }
-    sharing.set(key, new Set(w.peers()));
-    w.post(() => sharing.delete(key), PICTURE, to, k.length, k, head.length, head, body);
+    const those = new Set(w.peers());
+    sharing.set(key, those);
+    w.post(() => setTimeout(() => { if (sharing.get(key) === those) sharing.delete(key); }, STALL_MS), PICTURE, to, k.length, k, head.length, head, body);
   };
   // Each missing picture is asked of one client at a time, a few per client and those nearest
   // the viewport first; one that arrives makes room for the next.
@@ -255,6 +259,7 @@ export function sessionPictures(w: Wire): Pictures {
       return true;
     },
     recheck,
+    forget: (id) => { for (const those of sharing.values()) those.delete(id); },
     serving: () => serving,
     missing,
     pack: (value, share) => mapSrcs(value, (src) => {

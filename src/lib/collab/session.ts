@@ -331,6 +331,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   // never announced. Knowing more clients than the relay counts, each is pinged afresh and
   // those not answering go, so a reconnected tab keeps no departed peer's caret or zone.
   const drop = (p: number) => {
+    pictures.forget(p);
     live.delete(p);
     held.delete(p);
     asked.delete(p);
