@@ -130,7 +130,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   room shrinks or no peer frame comes for 10 s. Edits leave right after the change when
   none left in the last 50 ms, else in that batch (from a hidden tab, whose timers wait, always at once), the caret right after them; the rest of a presence (zone, name) goes at once, after the edits before it. Arriving edits apply at once while the last batch, with the page layout it set off, cost this tab under 8 ms, else gather for twice that cost (50–100 ms); a caret waits for the edits that came before it.
 - **Parts and failures** (`collab/channel.ts`): a message beyond the welcome's `frame`
-  (at most 256 kB) goes as sealed numbered parts. Edits, offers and answers over 1 kB are deflated first (`CompressionStream('deflate-raw')`, flagged in the sealed envelope; a browser without it sends them as they are), and every client inflates them with fflate a slice at a time, dropping one that would grow past 256 MiB. Such long messages and pictures wait in a bulk lane, sent part by part while the socket holds little, behind edits, carets, pings and the sync (`collab-pictures.md`); nothing goes to everyone while the relay counts nobody else. A receiver keeps at most four unfinished messages per sender, which the relay puts in front of every frame, 256 MiB from a sender it expects a long one from and 8 MiB from any other (Limits), 320 MiB from all together, and drops them when the sender goes: a sender can fill only its own room. Retries back off from 0.5 to 30 s; three
+  (at most 256 kB) goes as sealed numbered parts. Edits, offers and answers over 1 kB are deflated first (`CompressionStream('deflate-raw')`, flagged in the sealed envelope; a browser without it sends them as they are), and every client inflates them with fflate a slice at a time, dropping one that would grow past 256 MiB. Such long messages and pictures wait in a bulk lane, sent part by part while the socket holds little, behind edits, carets, pings and the sync (`collab-pictures.md`); nothing goes to everyone while the relay counts nobody else. A receiver keeps at most four unfinished messages per sender, which the relay puts in front of every frame, 256 MiB from a sender it expects a long one from and 8 MiB from any other (`collab-limits.md`), 320 MiB from all together, and drops them when the sender goes: a sender can fill only its own room. Retries back off from 0.5 to 30 s; three
   connections lost within 5 s of their welcome show `failing` until one holds for 5 s; a
   line silent for three `beat`s (15 s, a deadline each message sets anew, so a long-hidden tab's throttled timers do not hold it off) is taken as half-open and redialled. Back online, shown again or restored (`online`, `visibilitychange`, `pageshow`), a redial waiting goes at once from the shortest pause, and a line silent for a beat is redialled unless a message comes within a second (a tab back from a freeze hears what waited first); `offline` drops the line at once.
 - **Start and join.** The starter puts its document, exported as `.odt` (`buildBytes`),
@@ -194,54 +194,7 @@ within a few beats, asks nothing while down, and comes back; offline leaves `liv
 scripts run in the three engines (`BROWSER`); concurrent edits: `collab-conflicts.md`; load,
 soak and typing speed: `collab-soak.md`. `node tests/collab/presence.mjs`: the name is asked once without one, never with one; two guests are named alike everywhere; six people, two of them Ben, get six colours that hold when one goes; a rename reaches circle, list and caret label; four circles, a fifth `+1`, a reader a ring; going to a caret on page five or a header keeps the selection and sends nothing; following holds over three pages, ends on scrolling and on leaving, works for a reader and stays quiet; one line per arrival, two at once in one, none for oneself or a reload; `@Ben` reaches Ben alone and stays plain text in the `.odt`; markup, 500 characters, blanks, an emoji and Arabic stay text.
 
-### Limits
-
-What anyone holding a link may ask of the others, measured 2026-11-13 (Chromium) per sender
-as one receiver sees it, from the soak (seeds 1–4, four writers and a reader: reloads, lines
-cut and deaf, frames delayed), `session.mjs` without its forged-frame checks, and the join
-bench (`collab-perf.md`, 25 pictures of 2 MB). Most seen from one sender:
-
-| Kind | In 1 s | In 10 s | In 60 s | Run |
-|---|---|---|---|---|
-| `ASK` | 1 | 2 | 3 | session (redials, stalls) |
-| `PULL` | 1 | 2 | 2 | session, soak |
-| `WANT` (keys) | 9 | 25 | 25 | join bench; at most 3 keys a frame |
-| `PING` | 1 | 2 | 2 | soak, session |
-| `VIEWER` | 2 | 3 | 5 | soak, session |
-| `ECHO`, `NOTHING` | 1 | 1 | 1 | soak, session |
-
-Every message longer than 200 kB came from a writer that had answered a ping, or from the
-sync's pulled peer; the relay held at most 2.5 MiB for a receiver (join bench).
-
-Each client therefore takes these kinds from one sender (the relay's id, readers and writers
-alike) only from a bucket per kind (`RATES` in `session.ts`): `ASK`, `PULL` and `NOTHING` 5 at
-once and one more every 10 s, `PING`, `ECHO` and `VIEWER` 6 and one per 10 s, `WANT` 50 keys
-and 10 a second; that is three to six times the most measured. A frame past it is dropped
-unanswered, as are a `WANT`'s keys past it. A dropped ask leaves its sync without offers, so
-one nobody answered starts over after 10 s although others' frames keep the line busy; a
-dropped `WANT` key goes to the next client once that one sends nothing for 10 s. The buckets
-outlive a client's going, so dialling again does not refill them; 32 senders are kept, the
-oldest forgotten. Ever new ids would refill them, which the relay's `DIALS_PER_MIN` bounds.
-A `PING` is answered only with a nonce of 16 bytes, so nobody gets a writer to sign
-something longer of its choosing; the bucket bounds how many it signs.
-A `PULL` naming the same state vector as the `ANSWER` still on its way to that sender is not
-answered again; its next `ASK`, a new sync maybe on a new line, clears that. A `WANT` for a
-picture still being sent to its asker is not answered twice, key by key (`pictures.ts`).
-Unfinished messages and inflating are bounded per sender (`channel.ts`'s `limit`): 256 MiB
-from a writer that answered a ping, the sync's pulled peer (whose first `ANSWER` comes before
-its ping is answered) and a client asked for a picture; 8 MiB from anyone else, as the kinds a
-reader sends are short. All senders together hold at most 320 MiB. A sender one of whose
-signed frames failed its check gets none checked again (32 such senders kept): no writer's
-frame ever fails, and checking a long one costs milliseconds.
-
-What stays open, by design or for later:
-
-- A reader can fill the room with connections of its own, as `MAX_PEERS` counts readers too; the relay's limits per address (`MAX_CONNS_PER_IP`, `DIALS_PER_MIN`) soften that.
-- Attributes inside a Yjs update are not checked one by one; what protects is the checks when rendering and the page's Content-Security-Policy.
-- A link holds as long as the session runs; locking someone out means starting a new session.
-- The relay is trusted with the order of frames and the sender id it stamps; it can neither read nor forge their content.
-- A reader may replay a writer's signed frames, which pass their check: each costs the receiver a check and a no-op apply, unlimited so far.
-- Half-received frames at the relay count toward no budget: up to `MAX_CONNS` × `MAX_FRAME` (`relay/CLAUDE.md`).
+Limits on what one sender may ask, with the measurements behind them, and what stays open: `collab-limits.md`.
 
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun nor in five runs on a fresh dev server and dep cache (2026-11-11): in Firefox a joiner not live within 20 s on a just-started dev server. Writers share one signing key, so it tells writers from readers, not writers apart, and a
-write link stays valid for the session. A reader can still cost the others what any participant can, within the limits above. Readers alone in a room give nobody the doc. What pictures cost: `collab-pictures.md`.
+write link stays valid for the session. A reader can still cost the others what any participant can, within its limits (`collab-limits.md`). Readers alone in a room give nobody the doc. What pictures cost: `collab-pictures.md`.
