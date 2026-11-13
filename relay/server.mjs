@@ -20,6 +20,10 @@ const DRAIN_MS = 50;
 // after ACK_MS, so it can keep little in flight on a slow uplink (`channel.ts`).
 const ACK_BYTES = 32 << 10;
 const ACK_MS = 20;
+// A receiver held past `backlog` for `stuckMs` reads nothing and is dropped; so is the one
+// furthest behind while all together hold more than `maxBuffered`. Checked every SWEEP_MS, at
+// most every DRAIN_MS while a receiver holds more than `hold`, and on each frame past `backlog`.
+const SWEEP_MS = 1000;
 
 // Where a connection comes from, for the limit per address: the socket's, or behind a trusted
 // proxy the `X-Real-IP` it sets. An IPv6 address counts by its /64, which one host holds whole.
@@ -41,7 +45,7 @@ function address(req, trustProxy) {
  * other. A connection that misses a `ping` round is dropped, so its client is gone within
  * two rounds. Resolves once listening, with the port and a way to close it.
  */
-export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, maxConns = 0, maxConnsPerIp = 0, trustProxy = false, beat = 5000, ping: every = 5000, helloWait = 5000, path = '/relay', backlog = 16 << 20, hold = 2 << 20, tap, lag } = {}) {
+export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 20, maxRooms = 10000, maxConns = 0, maxConnsPerIp = 0, trustProxy = false, stuckMs = 0, maxBuffered = 0, beat = 5000, ping: every = 5000, helloWait = 5000, path = '/relay', backlog = 16 << 20, hold = 2 << 20, tap, lag } = {}) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const rooms = new Map();
   // Per room, each client id with the secret its first hello claimed it by, and its socket
@@ -90,9 +94,30 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
       others(to, { t: 'drained', id: to.id });
     }, DRAIN_MS);
   };
+  // Dropped without a close handshake, which a receiver that reads nothing would never finish;
+  // its client sees the line end and dials again.
+  let checked = 0;
+  const behind = () => {
+    const now = checked = Date.now();
+    let total = 0;
+    const open = [];
+    for (const ws of wss.clients) {
+      const n = ws.readyState === ws.OPEN ? ws.bufferedAmount : 0;
+      if (n <= backlog) ws.stuck = undefined;
+      else if (stuckMs && now - (ws.stuck ??= now) >= stuckMs) { ws.terminate(); continue; }
+      total += n;
+      if (n) open.push([n, ws]);
+    }
+    if (!maxBuffered || total <= maxBuffered) return;
+    for (const [n, ws] of open.sort((x, y) => y[0] - x[0])) {
+      ws.terminate();
+      if ((total -= n) <= maxBuffered) return;
+    }
+  };
   const deliver = (from, to, data) => {
     to.send(data, { binary: true });
     if (!to.slow && full(to, hold)) slow(to);
+    if (to.slow && (stuckMs || maxBuffered) && (full(to, backlog) || Date.now() - checked >= DRAIN_MS)) behind();
     if (!full(to, backlog) || from.isPaused || from.readyState !== from.OPEN) return;
     from.pause();
     const wait = setInterval(() => {
@@ -197,6 +222,7 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
       ws.ping();
     }
   }, every);
+  const sweep = stuckMs || maxBuffered ? setInterval(behind, Math.min(SWEEP_MS, stuckMs / 4 || SWEEP_MS)) : undefined;
   // A beat to every client in a room, so a client notices a line that died without a close.
   const beats = beat ? setInterval(() => {
     for (const peers of rooms.values()) for (const ws of peers) send(ws, { t: 'beat' });
@@ -209,6 +235,7 @@ export function startRelay({ port = 4390, host, maxPeers = 0, maxFrame = 16 << 2
       close: () => new Promise((done) => {
         clearInterval(ping);
         clearInterval(beats);
+        clearInterval(sweep);
         for (const ws of wss.clients) ws.terminate();
         wss.close(() => http.close(() => done()));
       }),
@@ -222,11 +249,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     port: env('PORT', 4390),
     host: process.env.HOST,
     maxPeers: env('MAX_PEERS', 6),
-    maxFrame: env('MAX_FRAME', 16 << 20),
+    maxFrame: env('MAX_FRAME', 1 << 20),
     maxRooms: env('MAX_ROOMS', 10000),
     maxConns: env('MAX_CONNS', 2000),
     maxConnsPerIp: env('MAX_CONNS_PER_IP', 20),
     trustProxy: process.env.TRUST_PROXY === '1',
+    stuckMs: env('STUCK_MS', 30_000),
+    maxBuffered: env('MAX_BUFFERED', 256 << 20),
     beat: env('BEAT_MS', 5000),
     ping: env('PING_MS', 5000),
   });
