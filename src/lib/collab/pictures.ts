@@ -126,8 +126,8 @@ export function sessionPictures(w: Wire): Pictures {
   const wants = new Map<string, { tried: Set<number>; lacks: Set<number>; to: number | null; at: number; short: boolean }>();
   const owed = new Map<string, Set<number>>();
   // Pictures on their way to everyone, with the clients there then: their edit may arrive
-  // first, and an ask of theirs meanwhile would send the picture twice. Kept STALL_MS after the
-  // last part left (`until`), as the parts may still be on their way and the ask sent before them.
+  // first, and an ask of theirs, to this client or any that got it already, would send the
+  // picture twice. Kept STALL_MS after the last part left or came (`until`).
   const sharing = new Map<string, { those: Set<number>; until: number }>();
   // Answers to asks still on their way out: someone loads them from this client. An ask
   // repeated meanwhile, as one gets after hearing nothing, is not answered twice.
@@ -251,6 +251,8 @@ export function sessionPictures(w: Wire): Pictures {
           const src = h ? dec.decode(head) + bytesToBase64(body) : dec.decode(body);
           // Any client may send it, so it is taken only under its own key.
           if (imageKey(src) === key && holdImage(key, src)) {
+            // One sent to all reaches the others here too: an ask of theirs is not answered.
+            if (!v.getUint32(1)) sharing.set(key, { those: new Set(w.peers().filter((p) => p !== from)), until: Date.now() + STALL_MS });
             const before = missing();
             if (wants.delete(key)) soon();
             if (missing() !== before) w.changed();
