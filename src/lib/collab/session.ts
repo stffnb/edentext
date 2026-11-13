@@ -13,7 +13,8 @@ import { cleanColor, shownName } from './names';
 
 // A shared session: the Yjs doc behind the body (`undoYjs.ts`) goes over a sealed channel
 // to the others in the room. Frames are one kind byte and its payload; the relay sees none
-// of it. Edits leave at once when none left in the last 50 ms, else batched with the caret.
+// of it. Edits leave at once when none left in the last 50 ms, else batched with the caret,
+// and apply on arrival while that costs this tab little, else batched by that cost.
 // Ids are random per session; frames with a `to` that is not this client are ignored, and
 // a relay that knows ids passes them to that client alone (`channel.ts`). Every frame that
 // changes a receiver's state is signed with the writers' key; a reader (`#view=`) can only
@@ -40,6 +41,11 @@ const SIGNED = new Set([UPDATE, PRESENCE, OFFER, ANSWER, PICTURE, HAS, PONG, CHA
 const MAX_HELD = 8;      // presence frames held per peer until it answers a ping
 const MAX_KNOWN = 32;     // readers listed, and writers awaiting a ping
 const BATCH_MS = 50;
+// Arriving edits apply at once while the last batch, with the page layout it set off, took
+// under CHEAP_MS; dearer ones gather for twice their cost, BATCH_MS to MAX_BATCH_MS.
+const CHEAP_MS = 8;
+const MAX_BATCH_MS = 100;
+const MAX_LATER = 64;     // carets held until the edits before them apply
 const SETTLE_MS = 300;  // how long a sync waits for late offers after the first
 const STALL_MS = 10_000; // a sync that hears nothing this long starts over
 const EMPTY_MS = 5000;   // a joiner alone this long is told the room is empty
@@ -395,22 +401,43 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   };
   awareness.on('update', onPresence);
 
-  // Incoming updates gather for a batch and apply as one Yjs transaction. A joiner binds
-  // the editor once the doc it received carries a start file.
+  // Incoming updates apply at once or gather for a batch, by what the last batch cost this
+  // tab, as one Yjs transaction. A caret waits for the edits that came before it. A joiner
+  // binds the editor once the doc it received carries a start file.
   let inbox: Uint8Array[] = [];
   let inTimer: ReturnType<typeof setTimeout> | undefined;
   let gotAnswer = false;
-  const receive = (u: Uint8Array) => { inbox.push(u.slice()); inTimer ??= setTimeout(flush, BATCH_MS); };
+  let cost = 0, measuring = false;
+  const after: (() => void)[] = [];
+  const receive = (u: Uint8Array) => {
+    inbox.push(u.slice());
+    if (inTimer !== undefined) return;
+    if (cost < CHEAP_MS) void flush();
+    else inTimer = setTimeout(flush, Math.min(MAX_BATCH_MS, Math.max(BATCH_MS, 2 * cost)));
+  };
   // Before telling others what this client has, what already arrived goes in.
   const applyInbox = () => {
     if (!inbox.length) return;
     const merged = Y.mergeUpdates(inbox);
     inbox = [];
     Y.applyUpdate(ydoc, merged, REMOTE);
+    for (const f of after.splice(0)) f();
+  };
+  // A batch's cost includes the frame callbacks it set off (pagination), timed between one
+  // asked for before it and one after.
+  const timed = () => {
+    const measure = !measuring && typeof requestAnimationFrame === 'function';
+    let start = 0;
+    if (measure) { measuring = true; requestAnimationFrame(() => { start = performance.now(); }); }
+    const t0 = performance.now();
+    applyInbox();
+    cost = performance.now() - t0;
+    if (measure) requestAnimationFrame(() => { measuring = false; if (start) cost += performance.now() - start; });
   };
   const flush = async () => {
+    clearTimeout(inTimer);
     inTimer = undefined;
-    applyInbox();
+    if (inbox.length) timed();
     if (gotAnswer) { gotAnswer = false; if (round) { round.target = null; pull(); } }
     if (joining && ydoc.getMap('meta').has('snapshot')) {
       const done = joining;
@@ -496,7 +523,11 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
     if (kind === UPDATE) receive(plain.subarray(1));
     else if (kind === CHAT || kind === SAY) chat(kind, from, plain.subarray(1));
     else if (pictures.receive(plain, from)) return;
-    else if (kind === PRESENCE) presence(plain.subarray(1), from);
+    else if (kind === PRESENCE) {
+      const u = plain.slice(1);
+      if (!inbox.length) presence(u, from);
+      else if (after.push(() => presence(u, from)) > MAX_LATER) after.shift();
+    }
     else if (kind === VIEWER) viewer(v.getUint32(1), plain.subarray(5));
     else if (kind === ASK) {
       if (reading) return;
