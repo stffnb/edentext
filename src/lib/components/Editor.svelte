@@ -443,8 +443,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   });
 
   // Toggling formatting marks flips the .paper class but doesn't touch the doc, so the
-  // pageBreaks plugin wouldn't re-run. The ¶/·/→ marks are zero-footprint, but force a
-  // recalc anyway so page positions can never be left stale by a sub-pixel platform delta.
+  // pageBreaks plugin wouldn't re-run. The span around every space they need can move a
+  // hyphenated line's break (Chromium, WebKit), so the toggle re-paginates.
   let marksRecalcRaf = 0;
   $effect(() => {
     void showFormattingMarks;
