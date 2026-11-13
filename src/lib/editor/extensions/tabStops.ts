@@ -89,6 +89,10 @@ declare module '@tiptap/core' {
 
 export const tabStopsKey = new PluginKey<DecorationSet>('tabStops');
 
+// Opens the Tabs dialog: dispatched on window by the ruler and the toolbar buttons alike,
+// since the dialog is mounted outside both chromes (EventDialogs.svelte).
+export const OPEN_TABS_DIALOG_EVENT = 'odf-open-tabs-dialog';
+
 // A stop past the end of the line is drawn at the end of the line, as LibreOffice does:
 // the Math Guide's footer style puts its right stop at 18cm in a 17cm column, and honoured
 // literally that hangs the page number outside the page — or wraps the footer.

@@ -1864,7 +1864,6 @@
       {zoom}
       onZoom={setZoom}
       onDebugDump={import.meta.env.DEV ? handleDebugDump : undefined}
-      bind:tabIntervalCm
       bind:pageMargins
       bind:pageOrientation
       bind:pageFormat
@@ -2189,7 +2188,6 @@
           bind:showRuler
           bind:splitView
           bind:pageColumns
-          bind:tabIntervalCm
           bind:pageMargins
           bind:pageOrientation
           bind:pageFormat
@@ -2230,7 +2228,7 @@
     </div>
   </div>
   {/if}
-  <EventDialogs editor={activeEditor} tick={activeTick} />
+  <EventDialogs editor={activeEditor} tick={activeTick} bind:tabIntervalCm />
   <!-- Outside the chrome fork: `handleOpen` clicks it wherever the File System
        Access API is missing, and both chromes reach that path. -->
   <input

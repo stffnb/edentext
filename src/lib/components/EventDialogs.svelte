@@ -4,15 +4,22 @@
   import BookmarkDialog from './BookmarkDialog.svelte';
   import CrossRefDialog from './CrossRefDialog.svelte';
   import FormulaDialog from './FormulaDialog.svelte';
+  import TabsDialog from './TabsDialog.svelte';
   import { OPEN_LINK_DIALOG_EVENT } from '../editor/extensions/link';
   import { OPEN_BOOKMARK_DIALOG_EVENT, bookmarkNames, findBookmark } from '../editor/extensions/bookmark';
   import { OPEN_CROSS_REF_DIALOG_EVENT } from '../editor/extensions/crossReference';
   import { EDIT_FORMULA_EVENT } from '../editor/extensions/formula';
+  import { OPEN_TABS_DIALOG_EVENT } from '../editor/extensions/tabStops';
+  import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
 
-  // The four dialogs the toolbar buttons, Ctrl+K, the context menu and a double-click on
-  // a formula all open by event. Mounted once in App.svelte, outside the chrome: a
+  // The dialogs the toolbar buttons, Ctrl+K, the context menu and a double-click on a
+  // formula or a ruler's tab stop all open by event. Mounted once in App.svelte, outside the chrome: a
   // dialog inside a chrome part that is not mounted would hear nothing.
-  let { editor, tick }: { editor: Editor | null; tick: number } = $props();
+  let { editor, tick, tabIntervalCm = $bindable(DEFAULT_TAB_INTERVAL_CM) }: {
+    editor: Editor | null;
+    tick: number;
+    tabIntervalCm?: number;
+  } = $props();
 
   let linkOpen = $state(false);
   let linkUrl = $state('');
@@ -22,6 +29,7 @@
   let formulaLatex = $state('');
   let formulaDisplay = $state(false);
   let formulaPos = $state<number | null>(null);
+  let tabsOpen = $state(false);
 
   let hasSelection = $derived(tick >= 0 && !!editor && !editor.state.selection.empty);
   let isLink = $derived(tick >= 0 && !!editor?.isActive('link'));
@@ -85,6 +93,7 @@
     const onLink = () => openLink();
     const onBm = () => openBookmark();
     const onXr = () => openCrossRef();
+    const onTabs = () => (tabsOpen = true);
     // With a formula's position and source: the double-click on an existing one.
     // Without: a toolbar button, which starts an empty dialog.
     const onFormula = (e: Event) => {
@@ -98,11 +107,13 @@
     window.addEventListener(OPEN_BOOKMARK_DIALOG_EVENT, onBm);
     window.addEventListener(OPEN_CROSS_REF_DIALOG_EVENT, onXr);
     window.addEventListener(EDIT_FORMULA_EVENT, onFormula);
+    window.addEventListener(OPEN_TABS_DIALOG_EVENT, onTabs);
     return () => {
       window.removeEventListener(OPEN_LINK_DIALOG_EVENT, onLink);
       window.removeEventListener(OPEN_BOOKMARK_DIALOG_EVENT, onBm);
       window.removeEventListener(OPEN_CROSS_REF_DIALOG_EVENT, onXr);
       window.removeEventListener(EDIT_FORMULA_EVENT, onFormula);
+      window.removeEventListener(OPEN_TABS_DIALOG_EVENT, onTabs);
     };
   });
 </script>
@@ -111,3 +122,4 @@
 <BookmarkDialog open={bookmarkOpen} names={bmNames} canApply={hasSelection} onApply={(n) => { bookmarkOpen = false; editor?.chain().focus().setBookmark(n).run(); }} onRemove={(n) => editor?.chain().focus().removeBookmark(n).run()} onRename={(from, to) => !!editor?.chain().focus().renameBookmark(from, to).run()} onGoTo={goToBookmark} onClose={() => (bookmarkOpen = false)} />
 <CrossRefDialog open={crossRefOpen} {editor} {tick} onClose={() => (crossRefOpen = false)} />
 <FormulaDialog bind:open={formulaOpen} initialLatex={formulaLatex} initialDisplay={formulaDisplay} onApply={applyFormula} />
+<TabsDialog bind:open={tabsOpen} {editor} {tick} bind:tabIntervalCm />

@@ -171,11 +171,11 @@ in the ribbon or in the island.
 
 ## Dialogs
 
-`ParagraphDialog` and `TabsDialog` open from Word's ↘ launcher in a group's corner. They are
-chrome-agnostic; the island opens them from its own launchers.
+`ParagraphDialog` opens from Word's ↘ launcher in a group's corner; it is chrome-agnostic, and
+the island opens it from its own launcher. `TabsDialog` is one of the event-opened dialogs below.
 
 Every dialog opened by an **event** — link (Ctrl+K, the context menu), bookmark, cross-reference,
-formula (a double-click on one) — is mounted once by `EventDialogs.svelte` in `App.svelte`,
+formula (a double-click on one), tabs (a double-click on a ruler stop, the paragraph dialog's and the header/footer Tabs buttons) — is mounted once by `EventDialogs.svelte` in `App.svelte`,
 outside both chromes, not in the Insert tab or category whose buttons also open it: only the open
 one is mounted, so a listener there would hear nothing while another is up. The tab's buttons fire the same
 events; a formula event without a position starts an empty dialog. The bookmark and

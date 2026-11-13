@@ -17,7 +17,7 @@
   import FrameTabs from './tabs/FrameTabs.svelte';
   import UiLanguagePicker from '../UiLanguagePicker.svelte';
   import ParagraphDialog from '../ParagraphDialog.svelte';
-  import TabsDialog from '../TabsDialog.svelte';
+  import { OPEN_TABS_DIALOG_EVENT } from '../../editor/extensions/tabStops';
   import CommandSearch from './CommandSearch.svelte';
   import { clickOutside, isMenuOpen, pinPanels, toggleMenu, closeMenu, showMenu } from './menu.svelte';
   import { RIBBON_COMMANDS, TABS, actOnCommand, searchableCommands, styleCommands, tabOf, type RibbonCommand, type Tab } from './commands';
@@ -36,7 +36,6 @@
   import type { PageFormat } from '../../storage/pageFormat';
   import { DEFAULT_HF_DISTANCES, type HfDistances, type HfSet, type HfZone } from '../../storage/headerFooter';
   import { isAsianTag, numberingScripts, tagForLanguage, type DocumentLanguage } from '../../storage/documentLanguage';
-  import { DEFAULT_TAB_INTERVAL_CM } from '../../storage/tabInterval';
   import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../../storage/pageNumbering';
   import { EMPTY_PAGE_DECOR, type PageDecor } from '../../storage/pageDecor';
   import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../../storage/lineNumbering';
@@ -61,7 +60,6 @@
     zoom = 100,
     onZoom,
     onDebugDump,
-    tabIntervalCm = $bindable(DEFAULT_TAB_INTERVAL_CM),
     pageMargins = $bindable(DEFAULT_MARGINS),
     pageOrientation = $bindable<Orientation>('portrait'),
     pageFormat = $bindable<PageFormat>('A4'),
@@ -107,7 +105,6 @@
     zoom?: number;
     onZoom?: (value: number) => void;
     onDebugDump?: () => void;
-    tabIntervalCm?: number;
     pageMargins?: PageMargins;
     pageOrientation?: Orientation;
     pageFormat?: PageFormat;
@@ -187,7 +184,7 @@
 
   let docNameSizerWidth = $state(0);
   let paragraphDialogOpen = $state(false);
-  let tabsDialogOpen = $state(false);
+  const openTabs = () => window.dispatchEvent(new CustomEvent(OPEN_TABS_DIALOG_EVENT));
 
   let collapsed = $state(loadRibbonCollapsed());
   $effect(() => saveRibbonCollapsed(collapsed));
@@ -420,7 +417,7 @@
     {:else if tab === 'view'}
       <ViewTab bind:showRuler bind:showFormattingMarks bind:showFieldShading bind:splitView bind:pageColumns {zoom} {onZoom} {onDebugDump} {navigatorOpen} {onToggleNavigator} />
     {:else if tab === 'headerFooter'}
-      <HeaderFooterTab {editor} {hfActive} bind:hfDistances bind:differentFirstPage bind:differentOddEven {onEditZone} onTabsDialog={() => (tabsDialogOpen = true)} />
+      <HeaderFooterTab {editor} {hfActive} bind:hfDistances bind:differentFirstPage bind:differentOddEven {onEditZone} onTabsDialog={openTabs} />
     {:else if tab === 'tableDesign' || tab === 'tableLayout'}
       <TableTabs {editor} {tick} which={tab === 'tableDesign' ? 'design' : 'layout'} />
     {:else if tab === 'pictureFormat' || tab === 'shapeFormat'}
@@ -452,8 +449,7 @@
   </div>
   {/if}
 
-  <ParagraphDialog bind:open={paragraphDialogOpen} {editor} {tick} onTabs={() => (tabsDialogOpen = true)} />
-  <TabsDialog bind:open={tabsDialogOpen} {editor} {tick} bind:tabIntervalCm />
+  <ParagraphDialog bind:open={paragraphDialogOpen} {editor} {tick} onTabs={openTabs} />
 </div>
 
 <style>
