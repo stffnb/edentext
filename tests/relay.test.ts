@@ -104,6 +104,16 @@ describe('collaboration relay', () => {
     expect(b.bin.length).toBe(400);
     for (let i = 0; i < 20 && !a.text.some((m) => m.t === 'drained'); i++) await tick();
     expect(a.text).toContainEqual({ t: 'drained', id: 2 });
+    // One whose line ends while behind is drained too: its id may be back on a new line.
+    a.text.splice(0);
+    b.ws.pause();
+    for (let i = 0; i < 400; i++) a.ws.send(frame);
+    const heard = (t: string) => a.text.some((m) => m.t === t && m.id === 2);
+    for (let i = 0; i < 100 && !heard('slow'); i++) await tick();
+    b.ws.terminate();
+    for (let i = 0; i < 100 && !heard('drained'); i++) await tick();
+    expect(a.text).toContainEqual({ t: 'slow', id: 2 });
+    expect(a.text).toContainEqual({ t: 'drained', id: 2 });
     c.ws.close();
   });
 

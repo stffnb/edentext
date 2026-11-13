@@ -55,8 +55,10 @@ only the key; the bytes travel once to each client.
   `drained`; messages to others go on meanwhile, each receiver's in order.
 - A missing picture is asked of one client at a time, at most three per client and those
   nearest the viewport first (`distanceOf`, where its grey box shows), all keys for it in one
-  frame; each that arrives, and each scroll, asks for the next nearest. One that does not
-  answer within 10 s of silence is passed over. A lack means "not yet": the
+  frame; each that arrives, and each scroll, asks for the next nearest. One whose client sends
+  no picture or part for 10 s is passed over, and once every client was asked, those that did
+  not say they lack it are asked again; an ask repeated while its answer waits to leave is not
+  answered twice. A lack means "not yet": the
   key stays wanted, and is asked again of a client newly confirmed (its awareness answered
   a ping) and of one that lacked it and since got it. That client remembers who asked
   (256 keys) and tells them so (`HAS` `[to][from][keys]`, signed); it does not send it unasked,
@@ -64,8 +66,9 @@ only the key; the bytes travel once to each client.
   only once every client the relay counts is known and none has it, and it goes when the
   picture comes.
 - When a client's line ends, the relay says `gone` with its id, and the others drop its
-  awareness at once, so no ask waits on it. A client on a new line sends its awareness
-  with a new clock, which the others take back.
+  awareness and the answers queued for it at once, so no ask waits on it. A client on a new
+  line sends its awareness with a new clock, which the others take back, drops the messages
+  half come on the old one and asks for every picture it still lacks again.
 
 ## Measured
 
