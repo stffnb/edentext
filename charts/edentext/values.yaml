@@ -97,13 +97,26 @@ relay:
     digest: ""
   # Clients per room, a reload's second connection included; 0 sets no limit.
   maxPeers: 6
+  # Open connections in all and per client address; 0 sets no limit.
+  maxConns: 2000
+  maxConnsPerIp: 20
+  # Behind an ingress controller or load balancer every client reaches nginx from its
+  # address: list its networks (CIDRs) so nginx takes the client's from X-Forwarded-For.
+  trustedProxies: []
+  # Bytes all receivers may hold at the relay together; keep resources.limits.memory above
+  # it plus the process itself. A receiver holding 16 MiB for stuckMs is dropped.
+  maxBuffered: 268435456
+  stuckMs: 30000
+  # Origins whose pages may connect, e.g. https://docs.example.org or app://edentext (the
+  # desktop app); empty allows every origin. It keeps other web pages out, not other programs.
+  allowedOrigins: []
   resources:
     requests:
       cpu: 10m
       memory: 32Mi
     limits:
       cpu: 250m
-      memory: 256Mi
+      memory: 512Mi
 
 nodeSelector: {}
 tolerations: []

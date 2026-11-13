@@ -83,6 +83,11 @@ retaining its readable tag.
 | `relay.image.tag` | Relay tag; chart `appVersion` when empty | `""` |
 | `relay.image.digest` | Optional immutable `sha256:` manifest digest | `""` |
 | `relay.maxPeers` | Clients per session; `0` sets no limit | `6` |
+| `relay.maxConns`, `relay.maxConnsPerIp` | Open connections in all and per client address; `0` sets no limit | `2000`, `20` |
+| `relay.trustedProxies` | Networks (CIDRs) of an ingress controller or load balancer in front, whose `X-Forwarded-For` nginx trusts for the client address | `[]` |
+| `relay.maxBuffered` | Bytes all receivers may hold at the relay; keep the memory limit above it | `268435456` (256 MiB) |
+| `relay.stuckMs` | A receiver holding 16 MiB this long is dropped and reconnects; `0` never | `30000` |
+| `relay.allowedOrigins` | Origins whose pages may connect, e.g. `https://docs.example.org`, `app://edentext` for the desktop app; empty allows all | `[]` |
 | `relay.resources` | Relay requests and limits | See `values.yaml` |
 | `nodeSelector` | Pod node selector | `{}` |
 | `tolerations` | Pod tolerations | `[]` |
@@ -99,6 +104,15 @@ edit: an ingress controller with a short idle timeout cuts it, so raise it for t
 host (for ingress-nginx, `nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"`).
 The browsers reconnect on their own when it does. Disable the relay to hide the
 Collaborate command.
+
+nginx tells the relay each client's address (`X-Real-IP`) for `relay.maxConnsPerIp`.
+Behind an ingress controller or load balancer that address is the controller's for
+everyone, so list its networks in `relay.trustedProxies` (for example the pod CIDR);
+nginx then takes the client's from `X-Forwarded-For`. Without that, set
+`relay.maxConnsPerIp: 0`, or all users together get 20 connections.
+`relay.allowedOrigins` keeps other web pages from using the relay through their
+visitors' browsers; it does not stop a program outside a browser. The relay's memory
+limit must lie above `relay.maxBuffered` plus the process itself (about 64 MiB).
 
 ## Validate changes
 

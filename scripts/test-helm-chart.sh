@@ -80,6 +80,15 @@ assert_contains "$workdir/default.yaml" 'name: edentext-relay$' 'default render 
 assert_contains "$workdir/default.yaml" "image: \"ghcr.io/stffnb/edentext-relay:$app_version\"" 'relay image does not follow appVersion'
 assert_contains "$workdir/default.yaml" 'location /relay' 'nginx does not pass /relay to the relay'
 assert_contains "$workdir/default.yaml" 'app.kubernetes.io/name: "edentext-relay"' 'relay pods share the web server selector'
+assert_contains "$workdir/default.yaml" 'proxy_set_header X-Real-IP \$remote_addr;' 'nginx does not tell the relay the client address'
+assert_contains "$workdir/default.yaml" 'name: TRUST_PROXY' 'the relay does not trust the address nginx passes'
+assert_contains "$workdir/default.yaml" 'value: "268435456"' 'the relay has no buffer budget'
+assert_not_contains "$workdir/default.yaml" 'set_real_ip_from' 'nginx trusts a forwarded address by default'
+assert_not_contains "$workdir/default.yaml" 'ALLOWED_ORIGINS' 'the relay limits origins by default'
+helm template edentext "$chart" --namespace edentext \
+  --set 'relay.trustedProxies={10.0.0.0/8}' --set 'relay.allowedOrigins={https://docs.example.org,app://edentext}' > "$workdir/relaylimits.yaml"
+assert_contains "$workdir/relaylimits.yaml" 'set_real_ip_from 10.0.0.0/8;' 'trusted proxies were not rendered'
+assert_contains "$workdir/relaylimits.yaml" 'value: "https://docs.example.org app://edentext"' 'allowed origins were not rendered'
 helm template edentext "$chart" --namespace edentext --set relay.enabled=false > "$workdir/norelay.yaml"
 assert_not_contains "$workdir/norelay.yaml" 'edentext-relay' 'a disabled relay was rendered'
 assert_not_contains "$workdir/norelay.yaml" 'location /relay' 'nginx passes /relay without a relay'
@@ -106,6 +115,12 @@ fi
 
 if helm template edentext "$chart" --set relay.maxPeers=-1 > /dev/null 2>&1; then
   fail 'relay.maxPeers accepted a negative count'
+fi
+if helm template edentext "$chart" --set 'relay.trustedProxies={10.0.0.0/8; allow all}' > /dev/null 2>&1; then
+  fail 'relay.trustedProxies accepted an nginx directive'
+fi
+if helm template edentext "$chart" --set 'relay.allowedOrigins={docs.example.org}' > /dev/null 2>&1; then
+  fail 'relay.allowedOrigins accepted an origin without a scheme'
 fi
 if helm template edentext "$chart" --set-string 'frameAncestors=https://a.example; add_header X 1' > /dev/null 2>&1; then
   fail 'frameAncestors accepted an nginx directive'

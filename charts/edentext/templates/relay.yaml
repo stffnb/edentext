@@ -44,6 +44,21 @@ spec:
               value: "4390"
             - name: MAX_PEERS
               value: {{ .Values.relay.maxPeers | quote }}
+            - name: MAX_CONNS
+              value: {{ .Values.relay.maxConns | quote }}
+            - name: MAX_CONNS_PER_IP
+              value: {{ .Values.relay.maxConnsPerIp | quote }}
+            # nginx in front sets X-Real-IP to the client's address.
+            - name: TRUST_PROXY
+              value: "1"
+            - name: MAX_BUFFERED
+              value: {{ .Values.relay.maxBuffered | int64 | quote }}
+            - name: STUCK_MS
+              value: {{ .Values.relay.stuckMs | quote }}
+            {{- with .Values.relay.allowedOrigins }}
+            - name: ALLOWED_ORIGINS
+              value: {{ join " " . | quote }}
+            {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           ports:

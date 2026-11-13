@@ -29,6 +29,15 @@ data:
 
         access_log /dev/stdout;
         error_log /dev/stderr warn;
+        {{- if .Values.relay.trustedProxies }}
+
+        # The client's address from the proxy in front, for the relay's limit per address.
+        {{- range .Values.relay.trustedProxies }}
+        set_real_ip_from {{ . }};
+        {{- end }}
+        real_ip_header X-Forwarded-For;
+        real_ip_recursive on;
+        {{- end }}
         {{- with .Values.frameAncestors }}
 
         add_header Content-Security-Policy "frame-ancestors {{ . }}" always;
@@ -45,6 +54,7 @@ data:
           proxy_http_version 1.1;
           proxy_set_header Upgrade $http_upgrade;
           proxy_set_header Connection "upgrade";
+          proxy_set_header X-Real-IP $remote_addr;
           proxy_read_timeout 1h;
           proxy_send_timeout 1h;
         }
