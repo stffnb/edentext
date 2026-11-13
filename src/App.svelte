@@ -21,7 +21,7 @@
   import { exportPdf, printPdf, printRaster } from './lib/export/pdf';
   import { supportsFsAccess, saveDocument, openOdt, allowWrite, protect, mimeOf } from './lib/export/saveFile';
   import { takeOpenedFile } from './lib/storage/desktopFiles';
-  import { withHeldImages } from './lib/storage/imageStore';
+  import { IDB_SRC, imageKey, lackedKeys, mapSrcs, showWaitingWith, untilHeld, withHeldImages } from './lib/storage/imageStore';
   import { loadRecentFiles, rememberRecentFile, readRecentFile, forgetRecentFile, forgetRecentFiles, pruneRecentFiles, getHandle, type RecentFile } from './lib/storage/recentFiles';
   import { isProtected, decryptPackage, WRONG_PASSWORD } from './lib/crypto/protect';
   import { convertUnsupportedImages } from './lib/import/imageFormats';
@@ -63,7 +63,7 @@
   import { zoneHolder } from './lib/collab/zones.svelte';
   import { takeOpening, unload, type Opening } from './lib/collab/leave';
   import { SHELVED, TEMPLATES } from './lib/templates/registry';
-  import { collabRelay, collabView, joinCollab, leaveCollab, probeRelay, startCollab, type SessionApp } from './lib/collab/appSession.svelte';
+  import { collabRelay, collabServing, collabView, joinCollab, leaveCollab, probeRelay, startCollab, type SessionApp } from './lib/collab/appSession.svelte';
   import { startBridge, notify, type EmbedSettings, type ExportFormat } from './lib/embed/bridge';
   import { printMarkup } from './lib/storage/printMarkup.svelte';
   import { commentsInPane, changesInPane, markupAttrs, markupView, setShowChanges, setShowComments, showComments } from './lib/storage/markup.svelte';
@@ -263,6 +263,12 @@
     // A joined session's copy is in this tab alone, whatever file it came as.
     if (embedded || (documentHasFile && !collabKey ? !dirty : tick < 0 || !isDocNonEmpty())) return;
     const warn = (e: BeforeUnloadEvent) => { if (!unload.quiet) e.preventDefault(); };
+    addEventListener('beforeunload', warn);
+    return () => removeEventListener('beforeunload', warn);
+  });
+  $effect(() => {
+    if (!sessionView || sessionView.status === 'closed') return;
+    const warn = (e: BeforeUnloadEvent) => { if (!unload.quiet && collabServing()) e.preventDefault(); };
     addEventListener('beforeunload', warn);
     return () => removeEventListener('beforeunload', warn);
   });
@@ -1317,6 +1323,19 @@
     if (missing) throw new Error(t().collab.picturesPending);
     return full;
   }
+  // What leaves the editor in a session first waits for pictures still on their way, which a
+  // notice says; one nobody here has stops it.
+  async function picturesHere(json: TiptapNode): Promise<void> {
+    const keys = lackedKeys([json, exportArgs()]);
+    if (keys.length && !await untilHeld(keys, () => (collabView()?.missing ?? 0) > 0)) throw new Error(t().collab.picturesPending);
+  }
+  // A session's start file leaves its large pictures out: the shared doc and stores name them
+  // by key and size, and each joiner asks for them, so its text shows before they come.
+  async function startFile(): Promise<Uint8Array> {
+    const { buildOdt } = await import('./lib/export/odt');
+    const keyed = <T,>(v: T) => mapSrcs(v, (src) => { const key = imageKey(src); return key ? IDB_SRC + key : src; }) as T;
+    return buildOdt(keyed(editor!.getJSON() as TiptapNode), ...keyed(exportArgs()));
+  }
   async function buildBytes(kind: DocumentFormat, json: TiptapNode): Promise<Uint8Array> {
     if (kind === 'docx') {
       const { buildDocx } = await import('./lib/export/docx');
@@ -1346,6 +1365,7 @@
       }
       // A document opened as .docx round-trips through the same format, like both
       // reference word processors — not silently rewritten to .odt under its old name.
+      await picturesHere(json);
       const name = documentFormat === 'docx' ? suggestedFilenameDocx(json) : suggestedFilename(json);
       const picked = !fileHandle;
       fileHandle = await saveDocument(await buildBytes(documentFormat, json), name, documentFormat, fileHandle, docPassword);
@@ -1378,6 +1398,7 @@
     const json = editor.getJSON() as TiptapNode;
     const name = kind === 'docx' ? suggestedFilenameDocx(json) : suggestedFilename(json);
     try {
+      await picturesHere(json);
       fileHandle = await saveDocument(await buildBytes(kind, json), name, kind, null, docPassword);
       documentFormat = kind;
       if (fileHandle) documentName = docNameOfFile(fileHandle.name);
@@ -1401,6 +1422,7 @@
     const json = editor.getJSON() as TiptapNode;
     try {
       const { odtToOtt, docxToDotx } = await import('./lib/export/template');
+      await picturesHere(json);
       const kind = documentFormat === 'docx' ? 'dotx' : 'ott';
       const bytes = kind === 'dotx' ? docxToDotx(await buildBytes('docx', json)) : odtToOtt(await buildBytes('odt', json));
       await saveDocument(bytes, `${stripOdtExtension(suggestedFilename(json))}.${kind}`, kind, null, docPassword);
@@ -1453,6 +1475,13 @@
       return;
     }
     exportMenuOpen = false;
+    try {
+      await picturesHere(editor.getJSON() as TiptapNode);
+    } catch (err) {
+      if (toBytes) throw err;
+      reportLoadFailure(t().dialogs.couldNotExportPdf, err);
+      return;
+    }
     pdfBusy = true;
     busyTask = 'pdf';
     await painted();
@@ -1543,6 +1572,10 @@
   let collabAsking = $state(false);
   let collabOpening = $state(false);
   let collabNotice = $state<CollabNotice | null>(null);
+  showWaitingWith((on) => {
+    if (on) collabNotice = 'loading';
+    else if (untrack(() => collabNotice === 'loading')) collabNotice = null;
+  });
   const sessionView = $derived(collabView());
   const inSession = $derived(!!sessionView && sessionView.status !== 'closed');
   // A session that cannot go on (a bad link, a full room, another version, nobody there)
@@ -1607,6 +1640,7 @@
   $effect(() => {
     const n = sessionView?.missing ?? 0;
     if (n > collabMissing) collabNotice = 'missing';
+    else if (!n && untrack(() => collabNotice === 'missing')) collabNotice = null;
     collabMissing = n;
   });
   // And an edit of this tab's that a change around it left no place for.
@@ -1618,7 +1652,7 @@
   });
   const sessionApp: SessionApp = {
     editor: () => editor,
-    snapshot: () => buildBytes('odt', editor!.getJSON() as TiptapNode),
+    snapshot: () => startFile(),
     load: (bytes, name) => applyImport(bytes, null, `${name || 'document'}.odt`, { warn: () => {} }),
     name: () => documentName,
     askName: () => new Promise((resolve) => { collabNamed = resolve; collabNaming = true; collabOpen = true; }),
@@ -1654,6 +1688,10 @@
   });
   // `choice` is a joiner's: keep its copy as a new document or drop it, then reload alone.
   async function leaveSession(choice: 'keep' | 'discard' | null) {
+    // Others may still load pictures only this tab holds, and a kept copy lacks those not come.
+    const serving = collabServing(), lacking = choice === 'keep' && editor ? withHeldImages(editor.getJSON()).missing : 0;
+    if (serving && !confirm(t().collab.stillServing(serving))) return;
+    if (lacking && !confirm(t().collab.keepLacking(lacking))) return;
     const opening = collabOpening ? pendingOpening : null;
     pendingOpening = null;
     let left: boolean;
@@ -1678,6 +1716,11 @@
   async function handlePrint() {
     if (!editor || pdfBusy) return;
     exportMenuOpen = false;
+    try {
+      await picturesHere(editor.getJSON() as TiptapNode);
+    } catch (err) {
+      return reportLoadFailure(t().dialogs.couldNotPrint, err);
+    }
     pdfBusy = true;
     busyTask = 'print';
     await painted();
@@ -1711,6 +1754,7 @@
     exportMenuOpen = false;
     try {
       const json = editor.getJSON() as TiptapNode;
+      await picturesHere(json);
       await printPdf({
         json,
         fileName: suggestedFilename(json),

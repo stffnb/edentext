@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import '../src/lib/editor/yjsRedo';
-import { keyBytes, linkKeys, newKey, opened, roomId, seal, sessionLink, signed, unseal, viewLink, writeKeys } from '../src/lib/collab/key';
+import { cipher, keyBytes, linkKeys, newKey, opened, roomId, seal, sessionLink, signed, unseal, viewLink, writeKeys } from '../src/lib/collab/key';
 import { openChannel } from '../src/lib/collab/channel';
 import { WebSocketServer } from 'ws';
 // @ts-expect-error plain JavaScript module, shipped as its own container
@@ -30,6 +30,20 @@ describe('collaboration key', () => {
     const link = sessionLink(k, 'https://example.org/app/?x=1#old');
     expect(link).toBe(`https://example.org/app/?x=1#collab=${k}`);
     expect(keyBytes(k.slice(1))).toBeNull();
+  });
+
+  it('seals the same frames with WebCrypto and without, so either opens the other', async () => {
+    const key = keyBytes(newKey())!;
+    const web = cipher(key), plain = cipher(key, undefined);
+    for (const [from, to] of [[web, plain], [plain, web], [web, web]]) {
+      const frame = await from.seal(text('Alpha'));
+      expect(new TextDecoder().decode(await to.open(frame))).toBe('Alpha');
+      expect(new TextDecoder().decode(unseal(key, frame))).toBe('Alpha');
+      const bent = frame.slice();
+      bent[bent.length - 1] ^= 1;
+      await expect(to.open(bent)).rejects.toThrow();
+    }
+    await expect(web.open(seal(keyBytes(newKey())!, text('Alpha')))).rejects.toThrow();
   });
 
   it('gives a read link that reaches the same room and opens frames but cannot sign', () => {
@@ -70,17 +84,26 @@ describe('collaboration key', () => {
     const got: string[] = [];
     const big: Uint8Array[] = [];
     const peers: number[] = [];
+    const order: string[] = [];
     const open = (name: string, id?: number) => new Promise<ReturnType<typeof openChannel>>((resolve) => {
       const ch = openChannel({
         url: `ws://127.0.0.1:${relay.port}/relay`, key, id,
-        onFrame: (p) => { if (p.length > 1000) big.push(p); else got.push(`${name}:${new TextDecoder().decode(p)}`); return p[0] !== 33; },
+        onFrame: (p) => { if (p.length > 1000) big.push(p); else got.push(`${name}:${new TextDecoder().decode(p)}`); order.push(`${name}:${p.length}`); return p[0] !== 33; },
         onPeers: (n) => peers.push(n),
         onStatus: () => {},
         onOpen: () => resolve(ch),
       });
     });
     const a = await open('a', 1);
+    // Alone in the room, nothing goes to everyone.
+    a.send(text('alone'));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(frames.length).toBe(0);
+    // One client without WebCrypto, as on a self-hosted http:// page, reads and is read alike.
+    Object.defineProperty(globalThis.crypto, 'subtle', { value: undefined, configurable: true });
     const b = await open('b', 2);
+    delete (globalThis.crypto as { subtle?: unknown }).subtle;
+    expect(globalThis.crypto.subtle).toBeDefined();
     const c = await open('c', 3);
     const long = (seed: number) => Uint8Array.from({ length: 50_000 }, (_, i) => (i * seed) & 255);
     a.send(long(7));
@@ -100,6 +123,8 @@ describe('collaboration key', () => {
     expect(plain.map((m) => m[1]).sort((x, y) => x - y)).toEqual([7, 7, 9, 13, 13]);
     expect(plain.every((m) => m[2] === ((2 * m[1]) & 255))).toBe(true);
     expect(Math.max(...frames)).toBeLessThanOrEqual(4096);
+    // A short message overtakes a long one sent before it.
+    expect(order.indexOf('b:2')).toBeLessThan(order.indexOf('b:50000'));
     expect(peers).toContain(3);
     // A frame the receiver calls chatter ('!') leaves the time it last heard the room unchanged.
     const before = c.heard();
@@ -172,21 +197,25 @@ describe('collaboration key', () => {
     await relay.close();
   });
 
-  it('keeps a line whose messages wait behind a late beat tick, and drops a silent one', () => {
+  it('keeps a line whose messages wait behind a late beat tick, and drops a silent one', async () => {
     vi.useFakeTimers();
     type Sock = { onopen?: () => void; onmessage?: ((ev: { data: unknown }) => void) | null; closed?: boolean };
     const socks: Sock[] = [];
     vi.stubGlobal('WebSocket', class { constructor() { socks.push(this as Sock); } send() {} close() { (this as Sock).closed = true; } });
     try {
       const ch = openChannel({ url: 'ws://relay', key: keyBytes(newKey())!, id: 1, onFrame: () => {}, onPeers: () => {}, onStatus: () => {}, onOpen: () => {} });
-      const say = (m: object) => socks[0].onmessage!({ data: JSON.stringify(m) });
+      // A message is handled in order behind those before it, a few promise turns later.
+      const say = async (m: object) => {
+        socks[0].onmessage!({ data: JSON.stringify(m) });
+        for (let i = 0; i < 5; i++) await Promise.resolve();
+      };
       socks[0].onopen!();
-      say({ t: 'welcome', peers: 2, beat: 1000 });
+      await say({ t: 'welcome', peers: 2, beat: 1000 });
       vi.advanceTimersByTime(1000);
       // The tab froze for ten seconds; its tick runs before the beats that came meanwhile.
       vi.setSystemTime(Date.now() + 10_000);
       vi.advanceTimersByTime(1000);
-      say({ t: 'peers', n: 2 });
+      await say({ t: 'peers', n: 2 });
       vi.advanceTimersByTime(1000);
       expect(socks.map((s) => !!s.closed)).toEqual([false]);
       vi.advanceTimersByTime(4000);

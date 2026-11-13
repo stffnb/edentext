@@ -16,7 +16,7 @@ npm run test:dom     # browser pagination and editing; same BROWSER
 npm run test:layout  # LibreOffice page counts, layout invariants and page starts
 npm run test:monkey  # random editing, undo/redo and save-read invariants
 npm run test:tabs; npm run test:collab  # two documents across reloads; shared sessions (undo per client, concurrent edits, relay)
-npm run test:coverage  # Vitest V8 coverage -> coverage/index.html
+npm run test:coverage  # Vitest V8 coverage -> coverage/index.html; npm run bench:bigjoin times a big shared document (docs/architecture/collab-perf.md)
 npm run test:parity  # render parity; see tests/render-parity/README.md
 node scripts/make-thesaurus.mjs; node scripts/make-shape-presets.mjs; node scripts/collect-licenses.mjs  # re-vendor thesaurus, shape presets, licenses
 node scripts/showcase/run.mjs  # rebuild docs/showcase/; optional [regex] limits it

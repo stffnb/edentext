@@ -1,7 +1,8 @@
 import type { Fragment, Slice } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import { AttrStep, type Step } from '@tiptap/pm/transform';
-import { IDB_SRC, fetchImagesWith, heldImage, holdImage, imageKey } from '../storage/imageStore';
+import { IDB_SRC, distanceOf, fetchImagesWith, heldImage, holdImage, imageKey, lackedKeys, mapSrcs, untilHeld } from '../storage/imageStore';
 import { bytesToBase64 } from '../import/imageFormats';
 
 // Pictures in a session: the shared doc names each large one by its content key, `idb:<key>`
@@ -10,8 +11,11 @@ import { bytesToBase64 } from '../import/imageFormats';
 
 export const PICTURE = 6; // [to, 0 for all][key length][key][head length][head][body]; neither: the sender lacks it
 export const WANT = 7;    // [to][from][keys, comma-separated]
+export const HAS = 14;    // [to][from][keys]: pictures the sender lacked when the receiver asked, now held
 const BATCH_MS = 50;
 const STALL_MS = 10_000;  // an ask that hears nothing this long goes to the next client
+const MAX_OWED = 256;     // keys whose askers a client remembers lacking, to tell them once it holds one
+const PER_PEER = 3;       // pictures asked of one client at a time, nearest the viewport first
 const BASE64 = ';base64,';
 
 // A base64 data-URI travels as its head (`data:image/png;base64,`) and its bytes, a quarter
@@ -77,11 +81,15 @@ const stepBrings = (s: Step) => {
 type Wire = {
   me: number;
   send(kind: number, ...parts: (number | Uint8Array)[]): void;
+  /** As `send`, with `done` once the frame left or was dropped. */
+  post(done: () => void, kind: number, ...parts: (number | Uint8Array)[]): void;
   /** The others' session ids, as their awareness gives them. */
   peers(): number[];
-  /** Whether the relay says anyone else is in the room. */
-  others(): boolean;
+  /** Whether the relay counts clients in the room that are not known yet. */
+  unknown(): boolean;
   heard(): number;
+  /** Whether a message in parts from that client is on its way in, which may be the picture. */
+  incoming(id: number): boolean;
   changed(): void;
   /** A picture came that this client lacked. */
   arrived(key: string): void;
@@ -89,15 +97,15 @@ type Wire = {
 
 export type Pictures = {
   plugin: Plugin;
-  /** Takes a PICTURE or a WANT frame; true when it was one. */
-  receive(plain: Uint8Array): boolean;
-  /** The others changed: an ask to a client gone goes elsewhere, or is lost with nobody left. */
+  /** Takes a PICTURE, WANT or HAS frame from the client `from`; true when it was one. */
+  receive(plain: Uint8Array, from: number): boolean;
+  /** The others changed: an ask to a client gone goes elsewhere, and one newly known is asked. */
   recheck(): void;
-  /** Someone came: pictures nobody had are asked for again. */
-  retry(): void;
-  /** Pictures no one here could send. */
+  /** Pictures this client is still sending to someone who asked. */
+  serving(): number;
+  /** Pictures no one here could send, while everyone in the room is known. */
   missing(): number;
-  /** A store's value with its large pictures named by key and held; `share` sends new ones to all. */
+  /** A store's value (a header, a page decoration) with its large pictures named by key and held; `share` sends new ones to all. */
   pack(value: unknown, share: boolean): unknown;
   /** A store's value with the held pictures back in place of their keys; missing ones are asked for. */
   unpack(value: unknown): unknown;
@@ -106,37 +114,59 @@ export type Pictures = {
 
 export function sessionPictures(w: Wire): Pictures {
   const enc = new TextEncoder(), dec = new TextDecoder();
-  const wants = new Map<string, { tried: Set<number>; to: number | null; at: number }>();
-  const lost = new Set<string>();
+  // A lack means "not yet": a picture every known client lacks stays wanted (`short`) and is
+  // asked again of a client newly known, or of one that says it holds it now (`HAS`).
+  const wants = new Map<string, { tried: Set<number>; to: number | null; at: number; short: boolean }>();
+  const owed = new Map<string, Set<number>>();
+  // Pictures on their way to everyone, with the clients there then: their edit may arrive
+  // first, and an ask of theirs meanwhile would send the picture twice.
+  const sharing = new Map<string, Set<number>>();
+  // Answers to asks still on their way out: someone loads them from this client.
+  let serving = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let watch: ReturnType<typeof setInterval> | undefined;
+  const shortOf = () => { let n = 0; for (const x of wants.values()) if (x.short) n++; return n; };
+  const missing = () => (w.unknown() ? 0 : shortOf());
 
   const give = (to: number, key: string) => {
     const k = enc.encode(key), src = heldImage(key);
+    if (to && sharing.get(key)?.has(to)) return;
     const [head, body] = src ? picturePayload(src, enc) : [new Uint8Array(), new Uint8Array()];
-    w.send(PICTURE, to, k.length, k, head.length, head, body);
+    if (!src && to && (owed.has(key) || owed.size < MAX_OWED)) owed.set(key, (owed.get(key) ?? new Set()).add(to));
+    if (to && !src) return w.send(PICTURE, to, k.length, k, head.length, head, body);
+    if (to) { serving++; return w.post(() => serving--, PICTURE, to, k.length, k, head.length, head, body); }
+    sharing.set(key, new Set(w.peers()));
+    w.post(() => sharing.delete(key), PICTURE, to, k.length, k, head.length, head, body);
   };
-  // Each missing picture is asked of one client at a time, all keys for it in one frame.
+  // Each missing picture is asked of one client at a time, a few per client and those nearest
+  // the viewport first; one that arrives makes room for the next.
   const ask = () => {
     timer = undefined;
-    const peers = w.peers(), to = new Map<number, string[]>();
-    const lostBefore = lost.size;
+    const peers = w.peers(), to = new Map<number, string[]>(), load = new Map<number, number>();
+    let later = false;
+    const before = missing();
     for (const [key, x] of wants) {
-      if (heldImage(key)) { wants.delete(key); continue; }
-      if (x.to !== null) continue;
-      const next = peers.find((p) => !x.tried.has(p));
-      // Others in the room not known yet are waited for; everyone asked, or nobody else
-      // there, it is lost.
-      if (next === undefined && !peers.length && !x.tried.size && w.others()) continue;
-      if (next === undefined) { wants.delete(key); lost.add(key); continue; }
+      if (heldImage(key)) wants.delete(key);
+      else if (x.to !== null) load.set(x.to, (load.get(x.to) ?? 0) + 1);
+    }
+    const open = [...wants].filter(([, x]) => x.to === null).map(([key, x]) => ({ key, x, far: distanceOf(key) }));
+    for (const { key, x } of open.sort((a, b) => a.far - b.far)) {
+      const untried = peers.filter((p) => !x.tried.has(p));
+      x.short = !untried.length;
+      const next = untried.find((p) => (load.get(p) ?? 0) < PER_PEER);
+      if (next === undefined) continue;
+      // A picture sent to all overtaken by its edit is still coming in; asking would get it twice.
+      if (w.incoming(next)) { later = true; continue; }
+      load.set(next, (load.get(next) ?? 0) + 1);
       x.tried.add(next);
       x.to = next;
       x.at = Date.now();
       to.set(next, [...(to.get(next) ?? []), key]);
     }
     for (const [id, keys] of to) w.send(WANT, id, w.me, enc.encode(keys.join(',')));
-    if (lost.size !== lostBefore) w.changed();
-    if (wants.size) watch ??= setInterval(recheck, 1000);
+    if (later) soon();
+    if (missing() !== before) w.changed();
+    if ([...wants.values()].some((x) => x.to !== null)) watch ??= setInterval(recheck, 1000);
     else { clearInterval(watch); watch = undefined; }
   };
   const soon = () => { timer ??= setTimeout(ask, BATCH_MS); };
@@ -148,32 +178,36 @@ export function sessionPictures(w: Wire): Pictures {
     if ([...wants.values()].some((x) => x.to === null)) soon();
   };
   const want = (key: string) => {
-    if (heldImage(key) || wants.has(key) || lost.has(key)) return;
-    wants.set(key, { tried: new Set(), to: null, at: 0 });
+    if (heldImage(key) || wants.has(key)) return;
+    wants.set(key, { tried: new Set(), to: null, at: 0, short: false });
     soon();
   };
   fetchImagesWith(want);
+  // Scrolling elsewhere changes which pictures come next.
+  const scrolled = () => { if ([...wants.values()].some((x) => x.to === null && !x.short)) soon(); };
+  if (typeof document !== 'undefined') document.addEventListener('scroll', scrolled, { capture: true, passive: true });
 
-  // A store value (a header, a page decoration) names its pictures by key as the doc does;
-  // each `src` in it is swapped, the rest copied only where something changed.
-  const swap = (value: unknown, fn: (src: string) => string): unknown => {
-    if (Array.isArray(value)) {
-      const out = value.map((v) => swap(v, fn));
-      return out.some((v, i) => v !== value[i]) ? out : value;
-    }
-    if (!value || typeof value !== 'object') return value;
-    let out: Record<string, unknown> | null = null;
-    for (const [k, v] of Object.entries(value)) {
-      const next = k === 'src' && typeof v === 'string' ? fn(v) : swap(v, fn);
-      if (next !== v) (out ??= { ...value as Record<string, unknown> })[k] = next;
-    }
-    return out ?? value;
+  // A copy or cut naming a picture still on its way goes to the clipboard once it is here.
+  const clip = (view: EditorView, e: Event, cut: boolean) => {
+    const slice = view.state.selection.content();
+    const keys = lackedKeys(slice.content.toJSON());
+    if (!keys.length || typeof ClipboardItem === 'undefined') return false;
+    e.preventDefault();
+    if (cut && view.editable) view.dispatch(view.state.tr.deleteSelection().scrollIntoView().setMeta('uiEvent', 'cut'));
+    void untilHeld(keys, () => keys.some((k) => wants.get(k)?.short)).then(async (ok) => {
+      if (!ok) return;
+      const { dom, text } = view.serializeForClipboard(slice);
+      const blob = (s: string, type: string) => new Blob([s], { type });
+      await navigator.clipboard.write([new ClipboardItem({ 'text/html': blob(dom.innerHTML, 'text/html'), 'text/plain': blob(text, 'text/plain') })]);
+    }).catch(() => {});
+    return true;
   };
 
   // A picture put in during the session (inserted, pasted, a document opened) is named by its
   // key in the same dispatch, before the sync plugin writes the doc; a new one goes to all.
   const plugin = new Plugin({
     key: picturesKey,
+    props: { handleDOMEvents: { copy: (view, e) => clip(view, e, false), cut: (view, e) => clip(view, e, true) } },
     appendTransaction: (trs, _old, state) => {
       if (!trs.some((t) => t.steps.some(stepBrings))) return null;
       return keyed(state, (key) => setTimeout(() => give(0, key)));
@@ -182,7 +216,7 @@ export function sessionPictures(w: Wire): Pictures {
 
   return {
     plugin,
-    receive(plain) {
+    receive(plain, from) {
       const v = new DataView(plain.buffer, plain.byteOffset, plain.byteLength);
       if (plain[0] === PICTURE) {
         const n = v.getUint32(5), key = dec.decode(plain.subarray(9, 9 + n));
@@ -191,37 +225,45 @@ export function sessionPictures(w: Wire): Pictures {
           const src = h ? dec.decode(head) + bytesToBase64(body) : dec.decode(body);
           // Any client may send it, so it is taken only under its own key.
           if (imageKey(src) === key && holdImage(key, src)) {
-            wants.delete(key);
-            if (lost.delete(key)) w.changed();
+            const before = missing();
+            if (wants.delete(key)) soon();
+            if (missing() !== before) w.changed();
             w.arrived(key);
+            // Those that asked while this client lacked it hear it holds it now.
+            for (const p of owed.get(key) ?? []) w.send(HAS, p, w.me, enc.encode(key));
+            owed.delete(key);
           }
-        } else if (v.getUint32(1) === w.me && wants.has(key)) {
+        } else if (v.getUint32(1) === w.me && wants.get(key)?.to === from) {
           wants.get(key)!.to = null;
           soon();
         }
         return true;
       }
+      if (plain[0] === HAS) {
+        if (v.getUint32(1) !== w.me) return true;
+        for (const key of dec.decode(plain.subarray(9)).split(',')) {
+          const x = wants.get(key);
+          if (x?.tried.delete(from) && x.to === null) soon();
+        }
+        return true;
+      }
       if (plain[0] !== WANT) return false;
-      // Each key once: a frame naming one picture many times would send it as often.
-      if (v.getUint32(1) === w.me) for (const key of new Set(dec.decode(plain.subarray(9)).split(','))) give(v.getUint32(5), key);
+      // Each key once: a frame naming one picture many times would send it as often. One
+      // picture per task, so answering many keeps the page responsive.
+      const asker = v.getUint32(5);
+      if (v.getUint32(1) === w.me) for (const key of new Set(dec.decode(plain.subarray(9)).split(','))) setTimeout(() => give(asker, key));
       return true;
     },
     recheck,
-    retry() {
-      if (!lost.size) return;
-      for (const key of lost) wants.set(key, { tried: new Set(), to: null, at: 0 });
-      lost.clear();
-      w.changed();
-      soon();
-    },
-    missing: () => lost.size,
-    pack: (value, share) => swap(value, (src) => {
+    serving: () => serving,
+    missing,
+    pack: (value, share) => mapSrcs(value, (src) => {
       const key = imageKey(src);
       if (!key) return src;
       if (holdImage(key, src) && share) setTimeout(() => give(0, key));
       return IDB_SRC + key;
     }),
-    unpack: (value) => swap(value, (src) => {
+    unpack: (value) => mapSrcs(value, (src) => {
       if (!src.startsWith(IDB_SRC)) return src;
       const key = src.slice(IDB_SRC.length), data = heldImage(key);
       if (!data) want(key);
@@ -230,8 +272,10 @@ export function sessionPictures(w: Wire): Pictures {
     close() {
       clearTimeout(timer);
       clearInterval(watch);
+      if (typeof document !== 'undefined') document.removeEventListener('scroll', scrolled, { capture: true });
       wants.clear();
-      lost.clear();
+      owed.clear();
+      sharing.clear();
       fetchImagesWith(null);
     },
   };
