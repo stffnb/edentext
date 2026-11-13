@@ -234,6 +234,14 @@ reader sends are short. All senders together hold at most 320 MiB. A sender one 
 signed frames failed its check gets none checked again (32 such senders kept): no writer's
 frame ever fails, and checking a long one costs milliseconds.
 
+What stays open, by design or for later:
+
+- A reader can fill the room with connections of its own, as `MAX_PEERS` counts readers too; the relay's limits per address (`MAX_CONNS_PER_IP`, `DIALS_PER_MIN`) soften that.
+- Attributes inside a Yjs update are not checked one by one; what protects is the checks when rendering and the page's Content-Security-Policy.
+- A link holds as long as the session runs; locking someone out means starting a new session.
+- The relay is trusted with the order of frames and the sender id it stamps; it can neither read nor forge their content.
+- A reader may replay a writer's signed frames, which pass their check: each costs the receiver a check and a no-op apply, unlimited so far.
+- Half-received frames at the relay count toward no budget: up to `MAX_CONNS` × `MAX_FRAME` (`relay/CLAUDE.md`).
+
 Gaps: the relay keeps nothing, so a session lives only while someone is in it. Seen once, not on a rerun nor in five runs on a fresh dev server and dep cache (2026-11-11): in Firefox a joiner not live within 20 s on a just-started dev server. Writers share one signing key, so it tells writers from readers, not writers apart, and a
-write link stays valid for the session. A reader can still cost the others what any participant can: asks
-(`ASK`, `PULL`, `WANT`) in a loop, each answered in full, and connections up to `MAX_PEERS`. Readers alone in a room give nobody the doc. What pictures cost: `collab-pictures.md`.
+write link stays valid for the session. A reader can still cost the others what any participant can, within the limits above. Readers alone in a room give nobody the doc. What pictures cost: `collab-pictures.md`.
