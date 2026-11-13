@@ -86,8 +86,9 @@
     strip.releasePointerCapture(event.pointerId);
     if (target.kind === 'stop') {
       const rest = info.stops.filter((_, i) => i !== target.index);
-      // Dragging moves the stop, so it keeps its alignment and its leader.
-      apply(off ? rest : [...rest, { ...info.stops[target.index], pos: cm }]);
+      // Dragging moves the stop, so it keeps its alignment and its leader; it stays in the
+      // text column, where a click adds one, so it never hides in the margin.
+      apply(off ? rest : [...rest, { ...info.stops[target.index], pos: Math.min(Math.max(cm, 0), textCm) }]);
     } else if (target.kind === 'indent') {
       // Moves the whole block: the first line keeps its offset from the indent.
       editor?.chain().focus().setIndent(Math.max(0, cm)).run();
@@ -300,6 +301,9 @@
     margin-left: -5.5px;
     cursor: ew-resize;
     color: var(--color-text);
+    /* Above the indent handles: a stop dragged to the text edge sits on the right
+       indent's handle, which would otherwise take every grab and keep it undeletable. */
+    z-index: 1;
   }
 
   .stop.dragging {
