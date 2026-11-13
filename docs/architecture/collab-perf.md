@@ -90,7 +90,7 @@ makes the joiner's line deaf without a close, then takes it offline by emulation
 | same at 40 Mbit/s | 0.47, 0.81, 1.36, 13.1 s | 0.44, 0.81, 1.26, 14.0 s | 0.47, 0.71, 1.19, 13.1 s |
 | same at 10 Mbit/s from the service worker | 0.35, 1.42, 1.98 s; 15 of 25 after 300 s | 0.31, 1.39, 1.83 s; 23 of 25 after 300 s | – |
 | starter's tab hidden / hidden over 5 minutes: text, all pictures | 1.33 / 1.25 s, 11.9 / 11.3 s | 1.13 / 1.05 s, 10.9 / 11.6 s | 1.14 / 1.13 s, 5.8 / 6.0 s |
-| reload and rejoin: bytes sent again, all pictures | 49.9 MB, 6.6 s | 49.9 MB, 6.0 s | – |
+| reload and rejoin: bytes sent again, all pictures | 49.9 MB, 6.6 s | 49.9 MB, 6.0 s | 0.07 MB, 2.8 s |
 | line deaf without a close: not `live` after, `live` again after it works | 58.8 s, 0.5 s | 15.2 s, 0.4 s | – |
 | offline by emulation: not `live` after, `live` again after online | 57.0 s, 0.9 s | 0.01 s, 0.1 s | – |
 
@@ -106,4 +106,6 @@ channel instead of timers. At 10 Mbit/s a third joiner 10 s later had all 25 pic
 (81 s). Dialling the relay while the app starts, before the editor stands, was built and
 measured and left out: the socket's `open` waits for the page's start-up work anyway, and even
 with 100 ms round trips at 40 Mbit/s (`GUEST_RTT=100`) text came at 1.78–1.80 s with and
-1.74–1.86 s without it.
+1.74–1.86 s without it. The rejoin row is `52a9a524`: a joiner keeps its pictures in IndexedDB
+over a reload (`collab-pictures.md`); at 10 Mbit/s with a third joiner the second had all
+pictures after 68.0 s, the third after 79.8 s.
