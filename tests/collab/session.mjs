@@ -1342,16 +1342,26 @@ try {
     const serving = await h.evaluate(() => window.__served);
     await joined;
     // Saving before the pictures are all here waits for them, saying so, and the file has all.
-    const lacking = 4 - await shown(jo);
-    await jo.evaluate(() => { window.showSaveFilePicker = undefined; });
+    // The notice is caught however briefly it shows; what is missing is counted as the
+    // save starts, since a picture landing before then leaves nothing to wait for.
+    await jo.evaluate(() => {
+      window.showSaveFilePicker = undefined;
+      window.__noted = false;
+      // Counted in the click's own task, before the app's handler starts the save.
+      document.addEventListener('click', () => {
+        window.__lacking = 4 - [...document.querySelectorAll('.tiptap-host .tiptap img')].filter((i) => i.src.startsWith('data:') && i.src.length > 1e6).length;
+      }, { capture: true });
+      new MutationObserver(() => { window.__noted ||= !!document.querySelector('.collab-notice[data-notice="loading"]'); })
+        .observe(document.body, { childList: true, subtree: true, attributes: true });
+    });
     await jo.click('.ribbon-tab-file');
+    const item = jo.locator('.ribbon-menu button', { hasText: '(.odt)' }).first();
     const saving = Promise.all([
       jo.waitForEvent('download', { timeout: 60_000 }),
-      jo.locator('.ribbon-menu button', { hasText: '(.odt)' }).first().click()
-        .then(() => jo.locator('dialog[open] button.primary').click({ timeout: 2_000 }).catch(() => {})),
+      item.click().then(() => jo.locator('dialog[open] button.primary').click({ timeout: 2_000 }).catch(() => {})),
     ]).catch(() => [null]);
-    const noted = await jo.waitForSelector('.collab-notice[data-notice="loading"]', { timeout: 5000 }).then(() => true, () => false);
     const [file] = await saving;
+    const [noted, lacking] = await jo.evaluate(() => [window.__noted, window.__lacking]);
     // Each noise photo is about 1.9 MB that no zip shrinks, so three would stay under 7 MB.
     const savedMB = file ? (await readFile(await file.path())).length / 1e6 : 0;
     check(savedMB > 7 && (!lacking || noted), `a save while ${lacking} of 4 pictures are on their way waits for them (notice ${noted}) and holds them all (${savedMB.toFixed(1)} MB)`);

@@ -838,17 +838,17 @@ try {
   }))));
   const hyBase = await layoutSig();
   const terms = [...new Set(SENT.join(' ').match(/[A-Za-z]{8,}/g).map((w) => w.slice(2, 6)))];
-  const moved = [];
+  const findMoved = [];
   for (const term of terms) {
     await page.evaluate((t) => document.querySelector('.tiptap').editor.commands.setSearch({ term: t, matchCase: true, wholeWord: false, useRegex: false }), term);
     const shown = await layoutSig();
     await page.evaluate(() => document.querySelector('.tiptap').editor.commands.clearSearch());
     const cleared = await layoutSig();
-    if (shown !== hyBase || cleared !== hyBase) moved.push(term);
+    if (shown !== hyBase || cleared !== hyBase) findMoved.push(term);
   }
   const hyphens = await page.evaluate(() => getComputedStyle(document.querySelector('.tiptap p')).hyphens);
-  check(hyphens === 'auto' && /\| \d/.test(hyBase) && !moved.length,
-    `showing and clearing a find moves no line or page break under hyphenation (${terms.length} terms, ${hyphens}; moved by ${moved.join(', ') || 'none'})`);
+  check(hyphens === 'auto' && /\| \d/.test(hyBase) && !findMoved.length,
+    `showing and clearing a find moves no line or page break under hyphenation (${terms.length} terms, ${hyphens}; moved by ${findMoved.join(', ') || 'none'})`);
   // The word-completion offer is drawn over the page, so only where nothing follows on the
   // line: at a paragraph's end, never mid-line.
   const offerAt = async (where) => {
