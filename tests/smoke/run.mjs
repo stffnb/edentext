@@ -284,8 +284,16 @@ try {
     res.writeHead(200, { 'content-type': type }).end(body());
   }).listen(PORT + 1, '127.0.0.1');
   await new Promise((r) => hostServer.once('listening', r));
+  // embed.config.json names who may drive the editor: "self" turns this host away.
+  let origins = ['self'];
+  await host.route('**/embed.config.json', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ origins }) }));
   await host.goto(`http://127.0.0.1:${PORT + 1}/`);
+  await host.waitForTimeout(4000);
+  check(!(await host.evaluate(() => window.isReady)), 'embed: a host embed.config.json does not name is ignored');
+  origins = ['self', `http://127.0.0.1:${PORT + 1}`];
+  await host.reload();
   await host.waitForFunction(() => window.isReady, null, { timeout: 20_000 });
+  check(true, 'embed: a host embed.config.json names is accepted');
   const frame = host.frames().find((f) => f.url().includes('embed=1'));
   check(!!frame, 'embed: the editor boots in the iframe and answers init');
   const storedBefore = await frame.evaluate(() => [localStorage.getItem('edentext-doc'), sessionStorage.getItem('edentext-tab-doc')]);

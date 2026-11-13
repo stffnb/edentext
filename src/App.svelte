@@ -1650,7 +1650,7 @@
   $effect(() => {
     if (!embedded || !editor || bridged) return;
     bridged = true;
-    startBridge({
+    void startBridge({
       configure: configureEmbed,
       load: (bytes, name) => applyImport(bytes, null, name, { warn: (warnings) => notify('warning', { warnings }) }),
       newDocument: (name) => {

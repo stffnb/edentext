@@ -7,8 +7,8 @@ export const CHUNK_FAILURE = /dynamically imported module|Importing a module scr
 // server answering the missing path with its HTML page, means "not shipped": no failure.
 export class NotServed extends Error {}
 
-export async function fetchAsset(url: string): Promise<Response> {
-  const res = await fetch(url);
+export async function fetchAsset(url: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(url, init);
   if (res.status === 404 || (res.ok && res.headers.get('content-type')?.includes('text/html'))) throw new NotServed(url);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
   return res;

@@ -151,10 +151,13 @@ An unknown value is ignored, so the setting keeps what it had.
 - **Who may frame it.** A `<meta>` policy cannot carry `frame-ancestors`, so the
   serving side sends it: the Helm chart's `frameAncestors` value, or the same header
   from any other server. Without it any page may frame the instance.
-- **Who may drive it.** A build with `VITE_EMBED_ORIGINS` (origins separated by spaces
-  or commas) pins the host only to one of those; any other page's `init` is ignored.
-  Without it the first page to send `init` is the host. A host should run its own
-  instance on its own origin, with both settings.
+- **Who may drive it.** `embed.config.json` beside `index.html`, `{ "origins": [...] }`
+  with `"self"` for the editor's own origin, pins the host to one of those; any other
+  page's `init` is ignored. The bridge reads it before `ready`, past the service
+  worker's cache. A build with `VITE_EMBED_ORIGINS` (origins separated by spaces or
+  commas) takes precedence and skips the file. With neither, or when the file does not
+  arrive, the first page to send `init` is the host; a file that arrives malformed
+  admits none. A host should run its own instance on its own origin, with both settings.
 - **`embed.js`.** A host that loads the helper from another origin trusts that origin
   with its page. Copying `embed.js` and `embed.d.ts` into the host's own assets, or
   pinning them with Subresource Integrity, removes that.

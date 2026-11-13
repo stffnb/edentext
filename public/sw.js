@@ -77,6 +77,8 @@ async function assetFrom(event) {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
+  // A request that asks to revalidate (embed.config.json) means it: no cached answer.
+  if (['no-cache', 'no-store', 'reload'].includes(request.cache)) return;
   if (new URL(request.url).origin !== self.location.origin) return;
   // The installation's presets are never kept: a changed file holds from the next start.
   if (new URL(request.url).pathname.endsWith('/edentext.config.json')) return;
