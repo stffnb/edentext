@@ -255,6 +255,20 @@ try {
   const cursor = await b.evaluate(() => document.querySelector('.ProseMirror-yjs-cursor')?.textContent ?? '');
   check(cursor.includes('Anna'), `the joiner sees the starter's caret with the name (${JSON.stringify(cursor)})`);
 
+  // Typed keys reach the joiner as the edit, then the caret in it, at most these two frames a key.
+  await b.evaluate(() => {
+    const st = window.__order = { kinds: '' };
+    window.__collab.session.debug.tap = (d) => { if (d[0] === 1 || d[0] === 2) st.kinds += d[0]; };
+  });
+  const keys0 = [await sent(a, 1), await sent(a, 2)];
+  for (const ch of 'Xyzzy.') { await a.keyboard.type(ch); await a.waitForTimeout(150); }
+  await b.waitForTimeout(400);
+  const keys1 = [await sent(a, 1), await sent(a, 2)];
+  const order = await b.evaluate(() => { window.__collab.session.debug.tap = null; return window.__order; });
+  for (let i = 0; i < 6; i++) await a.keyboard.press('Backspace');
+  const perKey = (keys1[0] + keys1[1] - keys0[0] - keys0[1]) / 6;
+  check(/^(12)+$/.test(order.kinds) && perKey <= 2, `each key goes as its edit, then the caret, ${perKey} frames a key (${order.kinds})`);
+
   const all = Buffer.concat(seen);
   check(seen.length > 0 && !['Alpha', 'Beta', 'Ben', 'Anna'].some((w) => all.includes(Buffer.from(w))),
     `the relay passed ${seen.length} frames, none with plain text`);
