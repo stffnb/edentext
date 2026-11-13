@@ -239,6 +239,15 @@ describe('collaboration relay', () => {
       await relay!.close();
       relay = null;
     }
+    // So many upgrades per minute and address, also when each ends at once.
+    relay = await startRelay({ port: 0, dialsPerMin: 3, trustProxy: true });
+    const statuses = [];
+    for (const ip of ['a', 'a', 'a', 'a', 'b']) {
+      const got = await dial({ 'X-Real-IP': ip });
+      statuses.push(got.status);
+      got.ws.terminate();
+    }
+    expect(statuses).toEqual([101, 101, 101, 429, 101]);
   });
 
   it('takes upgrades from any page without a list of origins, and only from those listed with one', async () => {

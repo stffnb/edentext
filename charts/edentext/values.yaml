@@ -100,6 +100,8 @@ relay:
   # Open connections in all and per client address; 0 sets no limit.
   maxConns: 2000
   maxConnsPerIp: 20
+  # Upgrades per client address and minute; 0 sets no limit.
+  dialsPerMin: 60
   # Behind an ingress controller or load balancer every client reaches nginx from its
   # address: list its networks (CIDRs) so nginx takes the client's from X-Forwarded-For.
   trustedProxies: []

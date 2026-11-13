@@ -118,7 +118,7 @@
     "relay": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "image", "maxPeers", "maxConns", "maxConnsPerIp", "trustedProxies", "maxBuffered", "stuckMs", "allowedOrigins", "resources"],
+      "required": ["enabled", "image", "maxPeers", "maxConns", "maxConnsPerIp", "dialsPerMin", "trustedProxies", "maxBuffered", "stuckMs", "allowedOrigins", "resources"],
       "properties": {
         "enabled": { "type": "boolean" },
         "image": {
@@ -135,6 +135,7 @@
         "maxPeers": { "type": "integer", "minimum": 0 },
         "maxConns": { "type": "integer", "minimum": 0 },
         "maxConnsPerIp": { "type": "integer", "minimum": 0 },
+        "dialsPerMin": { "type": "integer", "minimum": 0 },
         "trustedProxies": { "type": "array", "items": { "type": "string", "pattern": "^[0-9A-Fa-f.:]+(/[0-9]{1,3})?$" } },
         "maxBuffered": { "type": "integer", "minimum": 0 },
         "stuckMs": { "type": "integer", "minimum": 0 },
