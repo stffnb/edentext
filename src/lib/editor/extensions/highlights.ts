@@ -24,8 +24,9 @@ const hasLines = (range: AbstractRange, root: Element) => textsIn(range).some(({
 // Paints `setOf`'s ranges into the highlight `name` (styled as ::highlight(name)) once a
 // frame after any view update. A textblock whose node, squiggle offsets and DOM are all
 // unchanged keeps its ranges: domAtPos walks from the root and costs ~15 ms per 1000 squiggles.
-// Only top-level blocks from a screen above to two below the viewport are painted, repainted
-// on scroll: Chromium re-reads every range of a highlight on a change (~50 ms a key at 60 000).
+// Only top-level blocks from a screen above to two below the viewport are painted: Chromium
+// re-reads every range of a highlight on a change (~50 ms a key at 60 000). A scroll only
+// adds, as WebKit repaints the whole document per change; a view update drops the rest.
 export function paintHighlight(view: EditorView, name: string, setOf: SetOf, priority = 0) {
   if (!HIGHLIGHTS) return { update() {}, destroy() {} };
   const highlight = CSS.highlights.get(name) ?? new Highlight();
@@ -58,7 +59,7 @@ export function paintHighlight(view: EditorView, name: string, setOf: SetOf, pri
   // The document span of the top-level blocks near the viewport, found by bisecting their rects.
   // A page-grid cell is the view's viewport: the view scrolls along with it, so the span
   // stays put while the grid scrolls instead of changing the highlight on every frame.
-  const nearView = (doc: PmNode): [number, number] => {
+  const nearView = (doc: PmNode, above = 1, below = 2): [number, number] => {
     const starts: number[] = [];
     doc.forEach((_, offset) => starts.push(offset));
     const cell = (view.dom as HTMLElement).closest('.page-cell')?.getBoundingClientRect();
@@ -72,19 +73,33 @@ export function paintHighlight(view: EditorView, name: string, setOf: SetOf, pri
       }
       return lo;
     };
-    const first = bisect(0, (r) => r.bottom < top - h);
-    const last = first < 0 ? -1 : bisect(first, (r) => r.top <= top + 2 * h);
+    const first = bisect(0, (r) => r.bottom < top - above * h);
+    const last = first < 0 ? -1 : bisect(first, (r) => r.top <= top + below * h);
     if (last < 0) return [0, doc.content.size];
     return [starts[first] ?? doc.content.size, starts[last] ?? doc.content.size];
   };
+  // Set by anything but a scroll: a view update or a resize prunes and re-places the covers.
+  // A scroll paints ahead in strides of screens, so most of its frames change nothing.
+  let dirty = true;
+  let covered: [number, number] = [0, 0];
   const paint = () => {
     frame = 0;
+    const scrolled = !dirty;
+    dirty = false;
+    const { doc } = view.state;
+    let [from, to] = nearView(doc);
+    if (scrolled) {
+      if (from >= covered[0] && to <= covered[1]) return;
+      const wide = nearView(doc, 3, 6);
+      covered = wide[0] <= covered[1] && wide[1] >= covered[0]
+        ? [Math.min(wide[0], covered[0]), Math.max(wide[1], covered[1])] : wide;
+      [from, to] = wide;
+    } else covered = [from, to];
     const next = new Map<PmNode, Block>();
     const nextLoose: StaticRange[] = [];
     const nextLooseOver: StaticRange[] = [];
-    const { doc } = view.state;
     const set = view.isDestroyed ? null : setOf(view.state);
-    const [from, to] = nearView(doc);
+    let changed = false;
     let decos = set?.find(from, to) ?? [];
     // Footnotes stand on their own pages but hang from the note section at the end.
     const notes = doc.lastChild?.type.name === 'noteSection' ? doc.content.size - doc.lastChild.nodeSize : -1;
@@ -105,6 +120,9 @@ export function paintHighlight(view: EditorView, name: string, setOf: SetOf, pri
         blocks.delete(node);
         continue;
       }
+      changed = true;
+      if (old) for (const r of old.ranges) highlight.delete(r);
+      blocks.delete(node);
       const ranges: StaticRange[] = [], over: StaticRange[] = [];
       for (const d of inBlock) {
         const from = view.domAtPos(d.from), to = view.domAtPos(d.to);
@@ -115,20 +133,26 @@ export function paintHighlight(view: EditorView, name: string, setOf: SetOf, pri
       if (next.has(node)) { nextLoose.push(...ranges); nextLooseOver.push(...over); }
       else next.set(node, { offsets, ranges, over });
     }
+    if (scrolled) {
+      for (const [node, b] of blocks) if (!next.has(node)) next.set(node, b);
+      blocks.clear();
+    }
+    changed ||= blocks.size > 0 || loose.length > 0;
     drop();
     blocks = next;
     loose = nextLoose;
     looseOver = nextLooseOver;
-    if (RESTYLES_LINES) cover();
+    if (RESTYLES_LINES && changed) cover();
   };
-  const update = () => { frame ||= requestAnimationFrame(paint); };
-  window.addEventListener('scroll', update, { capture: true, passive: true });
+  const scroll = () => { frame ||= requestAnimationFrame(paint); };
+  const update = () => { dirty = true; scroll(); };
+  window.addEventListener('scroll', scroll, { capture: true, passive: true });
   window.addEventListener('resize', update);
   update();
   return {
     update,
     destroy() {
-      window.removeEventListener('scroll', update, { capture: true });
+      window.removeEventListener('scroll', scroll, { capture: true });
       window.removeEventListener('resize', update);
       cancelAnimationFrame(frame);
       drop();
