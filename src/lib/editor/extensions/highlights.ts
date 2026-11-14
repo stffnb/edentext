@@ -1,6 +1,7 @@
 import { Plugin, type EditorState } from '@tiptap/pm/state';
 import type { Decoration, DecorationSet, EditorView } from '@tiptap/pm/view';
 import type { Node as PmNode } from '@tiptap/pm/model';
+import { coverRange, textsIn } from './overlay';
 
 type SetOf = (state: EditorState) => DecorationSet | null | undefined;
 
@@ -8,6 +9,17 @@ type SetOf = (state: EditorState) => DecorationSet | null | undefined;
 // element boundary inside or right after a word changes how Chromium and WebKit hyphenate
 // and break its line, which pagination, measuring only on edits, would not see.
 export const HIGHLIGHTS = typeof CSS !== 'undefined' && 'highlights' in CSS;
+
+// WebKit draws every text line under a highlight in the highlight's colour and style (a
+// struck word's line in the squiggle's red), so there a range over such text is an overlay.
+const RESTYLES_LINES = HIGHLIGHTS && /AppleWebKit/.test(navigator.userAgent) && !/Chrome\/|Chromium\//.test(navigator.userAgent);
+
+const hasLines = (range: AbstractRange, root: Element) => textsIn(range).some(({ node }) => {
+  for (let el = node.parentElement; el && el !== root; el = el.parentElement) {
+    if (getComputedStyle(el).textDecorationLine !== 'none') return true;
+  }
+  return false;
+});
 
 // Paints `setOf`'s ranges into the highlight `name` (styled as ::highlight(name)) once a
 // frame after any view update. A textblock whose node, squiggle offsets and DOM are all
@@ -19,14 +31,29 @@ export function paintHighlight(view: EditorView, name: string, setOf: SetOf, pri
   const highlight = CSS.highlights.get(name) ?? new Highlight();
   highlight.priority = priority;
   CSS.highlights.set(name, highlight);
-  type Block = { offsets: number[]; ranges: StaticRange[] };
+  type Block = { offsets: number[]; ranges: StaticRange[]; over: StaticRange[] };
   let blocks = new Map<PmNode, Block>();
   // A node twice in the document (shared on paste) is painted afresh each time, never cached.
   let loose: StaticRange[] = [];
+  let looseOver: StaticRange[] = [];
+  let covers: HTMLElement[] = [];
   let frame = 0;
   const drop = () => {
     for (const r of loose) highlight.delete(r);
     for (const b of blocks.values()) for (const r of b.ranges) highlight.delete(r);
+  };
+  const cover = () => {
+    for (const el of covers) el.remove();
+    covers = [];
+    const make = () => {
+      const el = document.createElement('div');
+      el.className = 'pm-highlight-cover';
+      el.dataset.highlight = name;
+      return el;
+    };
+    for (const r of [...looseOver, ...[...blocks.values()].flatMap((b) => b.over)]) {
+      covers.push(...coverRange(view, r, make));
+    }
   };
   // The document span of the top-level blocks near the viewport, found by bisecting their rects.
   // A page-grid cell is the view's viewport: the view scrolls along with it, so the span
@@ -54,6 +81,7 @@ export function paintHighlight(view: EditorView, name: string, setOf: SetOf, pri
     frame = 0;
     const next = new Map<PmNode, Block>();
     const nextLoose: StaticRange[] = [];
+    const nextLooseOver: StaticRange[] = [];
     const { doc } = view.state;
     const set = view.isDestroyed ? null : setOf(view.state);
     const [from, to] = nearView(doc);
@@ -72,23 +100,26 @@ export function paintHighlight(view: EditorView, name: string, setOf: SetOf, pri
       }
       const old = blocks.get(node);
       if (old && !next.has(node) && old.offsets.join() === offsets.join()
-        && old.ranges.every((r) => r.startContainer.isConnected && r.endContainer.isConnected)) {
+        && [...old.ranges, ...old.over].every((r) => r.startContainer.isConnected && r.endContainer.isConnected)) {
         next.set(node, old);
         blocks.delete(node);
         continue;
       }
-      const ranges = inBlock.map((d) => {
+      const ranges: StaticRange[] = [], over: StaticRange[] = [];
+      for (const d of inBlock) {
         const from = view.domAtPos(d.from), to = view.domAtPos(d.to);
         const r = new StaticRange({ startContainer: from.node, startOffset: from.offset, endContainer: to.node, endOffset: to.offset });
-        highlight.add(r);
-        return r;
-      });
-      if (next.has(node)) nextLoose.push(...ranges);
-      else next.set(node, { offsets, ranges });
+        if (RESTYLES_LINES && hasLines(r, view.dom)) over.push(r);
+        else { highlight.add(r); ranges.push(r); }
+      }
+      if (next.has(node)) { nextLoose.push(...ranges); nextLooseOver.push(...over); }
+      else next.set(node, { offsets, ranges, over });
     }
     drop();
     blocks = next;
     loose = nextLoose;
+    looseOver = nextLooseOver;
+    if (RESTYLES_LINES) cover();
   };
   const update = () => { frame ||= requestAnimationFrame(paint); };
   window.addEventListener('scroll', update, { capture: true, passive: true });
@@ -101,6 +132,7 @@ export function paintHighlight(view: EditorView, name: string, setOf: SetOf, pri
       window.removeEventListener('resize', update);
       cancelAnimationFrame(frame);
       drop();
+      for (const el of covers) el.remove();
     },
   };
 }

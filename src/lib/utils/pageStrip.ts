@@ -24,6 +24,7 @@ export function stripOf(
     const c = node.cloneNode(false);
     for (const child of Array.from(node.childNodes)) {
       const el = child instanceof Element ? child : null;
+      if (el?.hasAttribute('data-overlay')) continue;
       const wanted = holders.has(node)
         ? !el || keep.has(el)
         : other || !el || el.contains(flow) || holders.has(el);

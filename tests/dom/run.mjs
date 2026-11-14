@@ -1329,6 +1329,26 @@ try {
   check(/Deutsch/.test(detectedLabel ?? '') && JSON.stringify(appliedLangs) === '[null,"de-DE"]',
     `the status bar names the detected language and the menu applies it (${detectedLabel?.trim()}, ${JSON.stringify(appliedLangs)})`);
 
+  // WebKit draws a struck or underlined word's own line in a highlight's style, so there
+  // a squiggle on such a word is an overlay; every other engine keeps it a highlight.
+  await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.setContent(
+    '<p lang="en-US">A <s>mispeled</s> and an <u>otther</u> and a plian word.</p>'));
+  const lined = await page.waitForFunction(() => {
+    const ranges = [...CSS.highlights.get('spell-error') ?? []];
+    const lines = [...document.querySelectorAll('.tiptap-host .tiptap :is(s, u)')];
+    const inLine = ranges.filter((r) => {
+      const range = document.createRange();
+      range.setStart(r.startContainer, r.startOffset);
+      range.setEnd(r.endContainer, r.endOffset);
+      return lines.some((el) => range.intersectsNode(el.firstChild));
+    }).length;
+    const covers = document.querySelectorAll('.pm-highlight-cover[data-highlight="spell-error"]').length;
+    return ranges.length + covers >= 3 && { ranges: ranges.length, inLine, covers };
+  }, null, { timeout: 30_000 }).then((h) => h.jsonValue(), () => null);
+  const restyles = process.env.BROWSER === 'webkit';
+  check(!!lined && (restyles ? lined.inLine === 0 && lined.covers >= 2 && lined.ranges >= 1 : lined.inLine === 2 && lined.covers === 0),
+    `a squiggle on struck or underlined text keeps the text's own line (${JSON.stringify(lined)})`);
+
   const priorDoc = await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.getJSON());
   // Pagination settles on any document: each layout-dependent feature (an index's and a
   // reference's page numbers, notes, frames beside a table, kept and cantSplit blocks,

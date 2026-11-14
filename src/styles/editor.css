@@ -1377,6 +1377,30 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   text-decoration-skip-ink: none;
 }
 
+/* WebKit draws a text's own lines under a highlight in the highlight's style, so there
+   highlights.ts covers such text with these instead: a wave or a tint per line box. */
+.pm-highlight-cover {
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+[data-theme="allBlack"] .pm-highlight-cover { mix-blend-mode: screen; }
+.pm-highlight-cover[data-highlight='spell-error'],
+.pm-highlight-cover[data-highlight='grammar-error'] {
+  background-color: red;
+  mix-blend-mode: normal;
+  --wave: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='6' height='3'><path d='M0 1.5Q1.5 0 3 1.5T6 1.5' fill='none' stroke='black' stroke-width='1.1'/></svg>");
+  -webkit-mask: var(--wave) repeat-x left bottom / 6px 3px;
+  mask: var(--wave) repeat-x left bottom / 6px 3px;
+}
+.pm-highlight-cover[data-highlight='grammar-error'] { background-color: #2b6cb0; }
+.pm-highlight-cover[data-highlight='search-match'] { background-color: rgba(255, 213, 0, 0.45); }
+.pm-highlight-cover[data-highlight='search-match-current'] { background-color: rgba(255, 145, 0, 0.8); }
+.pm-highlight-cover[data-highlight='comment-draft'] {
+  box-sizing: border-box;
+  background-color: color-mix(in srgb, #c69200 42%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, #c69200 75%, transparent);
+}
+
 /* A commented range, as Word paints it: a band in its author's colour the text still
    reads through (comment.ts paints it on the span nested inside the mark), heavier on the
    selected one. A resolved comment keeps only a faint underline, greyed out as handled. */
@@ -1531,6 +1555,7 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   ::highlight(grammar-error) {
     text-decoration: none;
   }
+  .pm-highlight-cover { display: none; }
 
   .paper .tiptap > *[data-page-break] {
     page-break-before: always;
