@@ -174,6 +174,15 @@ EdenText のロゴと「Powered by EdenText」という表示が出ます。こ�
 （[NOTICE.md](../../NOTICE.md)）、省略できるのは[商用ライセンス](../../LICENSE.commercial.md)による
 ホワイトラベルのビルド（`VITE_EDENTEXT_ATTRIBUTION=off`）だけです。
 
+自分のサーバーからエディターを配信するには、2 つの npm パッケージをインストールします。
+`@edentext/app` はビルド済みのエディターで、静的ファイルの場所へコピーします（Vite プラグインでも可）。
+`@edentext/embed` はヘルパーで、`<eden-text>` 要素と React コンポーネントも含みます。
+
+```sh
+npm install @edentext/app @edentext/embed
+npx edentext-copy public/edentext --languages en,de
+```
+
 ## アーキテクチャ
 
 ```mermaid

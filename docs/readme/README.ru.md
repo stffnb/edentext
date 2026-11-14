@@ -180,6 +180,16 @@ IP-адреса не сохраняются; в настольном прило�
 сохранять ([NOTICE.md](../../NOTICE.md)) и которые убирает только white-label-сборка по
 [коммерческой лицензии](../../LICENSE.commercial.md) (`VITE_EDENTEXT_ATTRIBUTION=off`).
 
+Чтобы раздавать редактор со своего сервера, установите два npm-пакета. `@edentext/app`
+содержит собранный редактор и копирует его к вашим статическим файлам (или это делает плагин
+для Vite); `@edentext/embed` — вспомогательный скрипт, а также элемент `<eden-text>` и
+компонент для React.
+
+```sh
+npm install @edentext/app @edentext/embed
+npx edentext-copy public/edentext --languages en,de
+```
+
 ## Архитектура
 
 ```mermaid

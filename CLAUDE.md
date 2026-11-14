@@ -16,6 +16,7 @@ npm run test:dom     # browser pagination and editing; same BROWSER
 npm run test:layout  # LibreOffice page counts, layout invariants and page starts
 npm run test:monkey  # random editing, undo/redo and save-read invariants
 npm run test:tabs    # two documents across reloads
+npm run test:npm     # npm packages installed into a fresh Vite project, in Chromium
 npm run test:coverage  # Vitest V8 coverage -> coverage/index.html
 npm run test:parity  # render parity; see tests/render-parity/README.md
 node scripts/make-thesaurus.mjs; node scripts/make-shape-presets.mjs; node scripts/collect-licenses.mjs  # re-vendor thesaurus, shape presets, licenses
@@ -71,6 +72,7 @@ src/
   lib/{export,import,i18n,spell,storage,styles,crypto,templates,embed}/ - I/O, localization, persistence, styles, protection, templates, embed mode (docs/architecture/embed.md)
   lib/{ai,dictation}/       - AI assistant client, serialization and tools; speech input engines and session
   styles/                   - global and editor CSS
+packages/                   - npm package sources; scripts/pack-npm.mjs, docs/architecture/embed.md
 charts/edentext/            - community-maintained Helm chart; test with bash scripts/test-helm-chart.sh
 desktop/                    - Electron shell around dist/ with its own npm commands; see desktop/CLAUDE.md
 ```

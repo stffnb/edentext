@@ -2,6 +2,20 @@
 
 <!-- Newest release first. New entries go here: ## [x.y.z] — YYYY-MM-DD -->
 
+## [Unreleased]
+
+### Added
+- **npm packages** for running the editor from your own server: `@edentext/app` holds the built
+  editor with `edentext-copy` (`--languages`, `--origins`) and a Vite plugin, and `@edentext/embed`
+  holds the helper, an `<eden-text>` element and a React component
+- `embed.config.json` beside `index.html` lists the pages that may drive an embedded editor
+- The embed helper explains why the editor did not start: a page the editor turns away, or an
+  editor on another protocol
+
+### Fixed
+- A copy of the app without some languages' dictionaries no longer alerts when a document is in
+  one of them; its words simply go unchecked
+
 ## [0.14.0] — 2026-11-07
 
 EdenText 0.14.0 brings a new navigator and an embed mode. The navigator docks on either side and

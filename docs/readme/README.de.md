@@ -183,6 +183,16 @@ Beides muss nach den AGPL-Bedingungen erhalten bleiben ([NOTICE.md](../../NOTICE
 ein White-Label-Build unter der [kommerziellen Lizenz](../../LICENSE.commercial.md)
 lässt es weg (`VITE_EDENTEXT_ATTRIBUTION=off`).
 
+Wer den Editor vom eigenen Server ausliefern will, installiert die beiden npm-Pakete.
+`@edentext/app` enthält den fertig gebauten Editor und kopiert ihn zu den statischen Dateien
+(alternativ per Vite-Plugin); `@edentext/embed` ist das Hilfsskript, dazu ein Element
+`<eden-text>` und eine React-Komponente.
+
+```sh
+npm install @edentext/app @edentext/embed
+npx edentext-copy public/edentext --languages en,de
+```
+
 ## Architektur
 
 ```mermaid

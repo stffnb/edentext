@@ -158,6 +158,15 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 EdenText 標誌和「Powered by EdenText」標示，AGPL 條款要求保留兩者（[NOTICE.md](../../NOTICE.md)），
 只有依據[商業授權](../../LICENSE.commercial.md)的白標建置（`VITE_EDENTEXT_ATTRIBUTION=off`）才會省略。
 
+要從自己的伺服器提供編輯器，請安裝這兩個 npm 套件。`@edentext/app` 是建置好的編輯器，
+會把它複製到你的靜態檔案目錄（也可以用 Vite 外掛）；`@edentext/embed` 是輔助腳本，
+另外還有 `<eden-text>` 元素和 React 元件。
+
+```sh
+npm install @edentext/app @edentext/embed
+npx edentext-copy public/edentext --languages en,de
+```
+
 ## 架構
 
 ```mermaid

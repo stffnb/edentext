@@ -104,7 +104,7 @@ gets them without further setup.
 
 | Option (constructor and `configure`) | Values |
 |---|---|
-| `url` | the EdenText instance (constructor only); by default the one serving `embed.js` |
+| `url` | the EdenText instance (constructor only); by default the one serving `embed.js`, `/edentext/` in `@edentext/embed` |
 | `user` | the name on comments and recorded changes |
 | `locale` | a UI language: `en`, `de`, `es`, `fr`, `it`, `pt`, `el`, `ru`, `uk`, `ja`, `zh-Hans` or `zh-Hant` |
 | `theme` | `light`, `dark`, `allBlack` or `auto` (follows the system) |
@@ -126,6 +126,44 @@ An unknown value is ignored, so the setting keeps what it had.
 | `markSaved()` | tells the editor the exported file is stored, which clears `dirty` |
 | `on(event, fn)` | `dirty` (`{ dirty }`), `saveRequest` (the reader pressed Save or Ctrl+S), `warning` (`{ warnings }`, what an import could not keep); returns an unsubscribe function |
 | `destroy()` | removes the iframe |
+
+## npm packages
+
+`scripts/pack-npm.mjs` assembles `dist-npm/` from `dist/`, `public/embed.*` and the
+hand-written files in `packages/`; all three packages carry the app's version, and
+`npm run test:npm` installs them into a fresh Vite project. The release workflow
+publishes them once the repository variable `NPM_PUBLISH` is `true`.
+
+- **`@edentext/app`** is `dist/` without the pages only edentext.app needs (sitemap,
+  robots, preview image, verification file, counter), plus `LICENSE` and `NOTICE.md`
+  inside it so every served copy carries them. Its `edentext-copy` (`copy.mjs`, Node
+  built-ins only) copies the editor to `public/edentext` by default, drops the
+  dictionaries and thesauri of languages `--languages` leaves out (`en`'s thesaurus also
+  serves `en-GB`) and always writes `embed.config.json`, `["self"]` without `--origins`.
+  It replaces only a folder holding `index.html`, `embed.js` and `licenses.txt`. The
+  Vite plugin (`@edentext/app/vite`) serves the same files under `/edentext/` in the dev
+  server, answering a 404 rather than the host's SPA fallback past them, and copies them
+  into the client build's output.
+- **`@edentext/embed`** is `public/embed.js` with `defaultUrl` rewritten to
+  `/edentext/`, so the package entry has no `import.meta.url` (checked with Vite,
+  webpack and esbuild). `element.js` defines `<eden-text>` and `react.js` `<EdenText>`;
+  both load without a DOM, so server-side rendering can import them.
+- **`edentext`** holds the plain name and re-exports `@edentext/embed`.
+
+A copy without a language works: a dictionary or thesaurus answered with a 404 or an
+HTML page counts as not shipped (`NotServed` in `utils/loadFailure.ts`), so the language
+goes unchecked without an alert. Grammar checking is English-only and its wasm stays.
+
+**Same origin.** Under `/edentext/` of the host the editor shares its storage: all its
+`localStorage` keys begin with `edentext-`, and embed mode writes only preferences, no
+IndexedDB. A host service worker scoped to `/` controls the editor's requests and must
+pass them through (measured with a pass-through worker: the editor starts). A
+Content-Security-Policy header the host sends for `/edentext/` applies on top of the
+editor's `<meta>` policy, so it must allow at least `'wasm-unsafe-eval'`, the inline
+script hashes, `style-src 'unsafe-inline'` and `blob:` workers. Same origin also means
+no isolation: a flaw in the editor would reach the host's cookies and storage. For
+strict cases the package README recommends a subdomain of its own with the application
+in `--origins`.
 
 ## Hosting notes
 

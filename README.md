@@ -180,6 +180,16 @@ shows the EdenText logo and a “Powered by EdenText” notice, which the AGPL t
 to stay ([NOTICE.md](NOTICE.md)) and which only a white-label build under the
 [commercial license](LICENSE.commercial.md) leaves out (`VITE_EDENTEXT_ATTRIBUTION=off`).
 
+To run the editor from your own server, install the two npm packages. `@edentext/app`
+holds the built editor and copies it into your static files, with a Vite plugin as an
+alternative; `@edentext/embed` is the helper, along with an `<eden-text>` element and a
+React component.
+
+```sh
+npm install @edentext/app @edentext/embed
+npx edentext-copy public/edentext --languages en,de
+```
+
 ## Architecture
 
 ```mermaid

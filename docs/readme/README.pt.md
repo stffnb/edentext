@@ -182,6 +182,16 @@ mostra o logótipo do EdenText e o aviso «Powered by EdenText», que os termos 
 manter ([NOTICE.md](../../NOTICE.md)) e que só uma compilação de marca branca com a
 [licença comercial](../../LICENSE.commercial.md) omite (`VITE_EDENTEXT_ATTRIBUTION=off`).
 
+Para servir o editor a partir do seu próprio servidor, instale os dois pacotes npm.
+`@edentext/app` contém o editor já compilado e copia-o para os seus ficheiros estáticos (em
+alternativa, há um plugin para o Vite); `@edentext/embed` é o script auxiliar, com um elemento
+`<eden-text>` e um componente React.
+
+```sh
+npm install @edentext/app @edentext/embed
+npx edentext-copy public/edentext --languages en,de
+```
+
 ## Arquitetura
 
 ```mermaid

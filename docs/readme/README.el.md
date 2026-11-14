@@ -189,6 +189,16 @@ ODT, DOCX ή PDF· δείτε το [docs/architecture/embed.md](../../docs/archi
 ([NOTICE.md](../../NOTICE.md)) και τα οποία παραλείπει μόνο μια έκδοση white-label με την
 [εμπορική άδεια](../../LICENSE.commercial.md) (`VITE_EDENTEXT_ATTRIBUTION=off`).
 
+Για να σερβίρετε τον επεξεργαστή από τον δικό σας διακομιστή, εγκαταστήστε τα δύο πακέτα npm.
+Το `@edentext/app` περιέχει τον έτοιμο επεξεργαστή και τον αντιγράφει στα στατικά σας αρχεία
+(εναλλακτικά με ένα plugin για το Vite)· το `@edentext/embed` είναι το βοηθητικό σενάριο, μαζί
+με ένα στοιχείο `<eden-text>` και ένα component για React.
+
+```sh
+npm install @edentext/app @edentext/embed
+npx edentext-copy public/edentext --languages en,de
+```
+
 ## Αρχιτεκτονική
 
 ```mermaid
