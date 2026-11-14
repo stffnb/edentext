@@ -23,6 +23,7 @@
     "test:layout": "node tests/layout/run.mjs",
     "test:monkey": "node tests/monkey/run.mjs",
     "test:tabs": "node tests/tabs/run.mjs",
+    "test:npm": "node tests/npm/run.mjs",
     "test:coverage": "vitest run --coverage",
     "test:parity": "node tests/render-parity/run.mjs",
     "test:parity:fixtures": "node tests/render-parity/make-fixtures.mjs"
