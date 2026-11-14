@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
+  import { focusInPlace } from '../editor/extensions/overlay';
   import { t } from '../i18n/i18n.svelte';
   import { dragWindow } from '../utils/dragWindow';
   import { styleSheet } from '../styles/sheet.svelte';
@@ -89,7 +90,7 @@
     const range = refRange(doc, target, format);
     // No scrolling on focus: the window is modeless so the view can be parked on the
     // target, and restoring focus must not pull it back to the caret on every insert.
-    editor.chain().focus(null, { scrollIntoView: false }).insertCrossRef({
+    editor.chain().insertCrossRef({
       name: target.name,
       from: range.from,
       to: range.to,
@@ -98,6 +99,7 @@
       sep: useSep && fullContext ? sep : null,
       withDirection,
     }).run();
+    focusInPlace(editor.view);
   }
 
   function onKeydown(e: KeyboardEvent) {

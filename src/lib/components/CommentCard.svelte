@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
+  import { focusInPlace } from '../editor/extensions/overlay';
   import type { CommentRange } from '../editor/extensions/comment';
   import { t } from '../i18n/i18n.svelte';
   import { formatMoment } from '../storage/dateFormat.svelte';
@@ -39,13 +40,13 @@
   }
 
   function commit() {
-    editor?.chain().focus(null, { scrollIntoView: false }).updateComment(c.id, { text: draft.trim() }).run();
+    if (editor) { editor.chain().updateComment(c.id, { text: draft.trim() }).run(); focusInPlace(editor.view); }
     editing = false;
   }
 
   function sendReply() {
     if (!reply.trim()) return;
-    editor?.chain().focus(null, { scrollIntoView: false }).replyToComment(c.id, { author, text: reply }).run();
+    if (editor) { editor.chain().replyToComment(c.id, { author, text: reply }).run(); focusInPlace(editor.view); }
     if (aiEnabled() && mentionsAi(reply)) window.dispatchEvent(new CustomEvent(AI_COMMENT_EVENT, { detail: { id: c.id } }));
     reply = '';
     replying = false;
@@ -71,7 +72,7 @@
     aria-label={c.resolved ? t().comments.reopen : t().comments.resolve}
     title={c.resolved ? t().comments.reopen : t().comments.resolve}
     aria-pressed={c.resolved}
-    onclick={() => editor?.chain().focus(null, { scrollIntoView: false }).updateComment(c.id, { resolved: !c.resolved }).run()}
+    onclick={() => { if (editor) { editor.chain().updateComment(c.id, { resolved: !c.resolved }).run(); focusInPlace(editor.view); } }}
   >✓</button>
   <button
     class="tool edit"
@@ -85,7 +86,7 @@
     class="tool remove"
     aria-label={t().common.remove}
     title={t().common.remove}
-    onclick={() => editor?.chain().focus(null, { scrollIntoView: false }).removeComment(c.id).run()}
+    onclick={() => { if (editor) { editor.chain().removeComment(c.id).run(); focusInPlace(editor.view); } }}
   ><Icon name="trash" size={14} /></button>
 </div>
 {#if !folded}
