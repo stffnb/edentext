@@ -5,7 +5,7 @@
 import { builtinTableStyles, tableStyleCss, type TableStyle } from './tableStyles';
 import { outlineCss, type OutlineNumbering } from './outlineNumbering';
 import { builtinListStyles, type ListStyle } from './listStyles';
-import type { CapsMode } from '../editor/extensions/textEffects';
+import { effectCss, type CapsMode, type Relief } from '../editor/extensions/textEffects';
 import { normalizeColor } from '../utils/color';
 import { parseBorderAttr } from '../editor/extensions/tableCellBorders';
 
@@ -59,6 +59,10 @@ export type TextProps = {
   strike?: boolean;
   color?: string;
   caps?: CapsMode; // all caps / small caps (Word w:caps + w:smallCaps, ODF fo:text-transform)
+  // Outline, shadow, relief (textEffects.ts); false/'none' switches a parent style's off.
+  outline?: boolean;
+  shadow?: boolean;
+  relief?: Relief | 'none';
   // Language tags ('en-US'), western and asian. Carried here so a paragraph's languages
   // can be baked onto its runs, which is the only place Word reads one from.
   lang?: string;
@@ -411,6 +415,8 @@ export function textDeclarations(t: TextProps, asBlock = false): string[] {
   const color = normalizeColor(t.color);
   if (color) out.push(`color: ${color}`);
   if (t.caps && CAPS.has(t.caps)) out.push(t.caps === 'smallCaps' ? 'font-variant-caps: small-caps' : `text-transform: ${t.caps}`);
+  const fx = effectCss(t);
+  if (fx) out.push(...fx.split('; '));
   return out;
 }
 

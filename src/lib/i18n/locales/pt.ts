@@ -1315,6 +1315,14 @@ const pt: Messages = {
       disc: 'Disco',
       accent: 'Acento',
     },
+    textEffects: {
+      title: 'Efeitos de texto',
+      none: 'Nenhum',
+      outline: 'Contorno',
+      shadow: 'Sombra',
+      embossed: 'Em relevo',
+      engraved: 'Gravado',
+    },
     lineStyles: {
       solid: 'Simples',
       double: 'Duplo',

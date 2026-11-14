@@ -23,7 +23,7 @@
   import { isInHeaderCell } from '../../../editor/extensions/tableHeaderRow';
   import { cellRegionText } from '../../../editor/extensions/tableStyle';
   import { styleSheet } from '../../../styles/sheet.svelte';
-  import { emphasisCss, type CapsMode, type Emphasis, type LineStyle } from '../../../editor/extensions/textEffects';
+  import { effectCss, emphasisCss, TEXT_EFFECT_ITEMS, type CapsMode, type Emphasis, type LineStyle } from '../../../editor/extensions/textEffects';
   import type { StyleFamily } from '../../../styles/styleSheet';
   import { styleLabel, t } from '../../../i18n/i18n.svelte';
   import { withShortcut } from '../../../i18n/shortcut';
@@ -66,6 +66,8 @@
   let isStrike = $derived(tick >= 0 && !!editor?.isActive('strike'));
   let asianSelection = $derived(tick >= 0 && !!editor && hasAsianLanguage(editor.state));
   let emphasis = $derived(tick >= 0 ? editor?.getAttributes('textStyle').emphasis ?? null : null);
+  let effects = $derived(tick >= 0 ? editor?.getAttributes('textStyle') ?? {} : {});
+  let hasEffect = $derived(TEXT_EFFECT_ITEMS.some((e) => effects[e.name] === e.value));
   let isSuper = $derived(tick >= 0 && !!editor?.isActive('superscript'));
   let isSub = $derived(tick >= 0 && !!editor?.isActive('subscript'));
   let isBulletList = $derived(tick >= 0 && !!editor?.isActive('bulletList'));
@@ -114,6 +116,12 @@
   function setEmphasis(mode: Emphasis | null) {
     closeMenu();
     editor?.chain().focus().setMark('textStyle', { emphasis: mode }).run();
+  }
+
+  function setEffect(name: 'outline' | 'shadow' | 'relief' | null, value: boolean | 'embossed' | 'engraved' | null) {
+    closeMenu();
+    if (name) editor?.chain().focus().setTextEffect(name, value).run();
+    else editor?.chain().focus().unsetTextEffects().run();
   }
 
   function setLineStyle(mark: 'underline' | 'strike', style: LineStyle) {
@@ -242,6 +250,20 @@
           <div class="ribbon-menu" use:anchored role="menu">
             {#each CASES as c}
               <button data-cmd={`case-${c.mode ?? 'none'}`} onclick={() => setCase(c.mode)}>{c.label}</button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+      <div class="rb-menu-wrap" use:clickOutside={'textEffects'}>
+        <RibbonButton cmd="textEffects" content={effectsIcon} title={t().ribbon.textEffects.title} active={hasEffect || isMenuOpen('textEffects')} caret onclick={() => toggleMenu('textEffects')} />
+        {#if isMenuOpen('textEffects')}
+          <div class="ribbon-menu line-menu" use:anchored role="menu">
+            <button onclick={() => setEffect(null, null)}>{t().ribbon.textEffects.none}</button>
+            {#each TEXT_EFFECT_ITEMS as e}
+              {@const on = effects[e.name] === e.value}
+              <button class:selected={on} onclick={() => setEffect(e.name, on ? null : e.value)}>
+                <span class="line-sample" style={effectCss({ [e.name]: e.value })}>{t().ribbon.textEffects[e.key]}</span>
+              </button>
             {/each}
           </div>
         {/if}
@@ -435,6 +457,7 @@
 {#snippet italicIcon()}<span class="glyph" style="font-style: italic; font-family: serif">{t().toolbar.glyphs.italic}</span>{/snippet}
 {#snippet underlineIcon()}<span class="glyph" style="text-decoration: underline">{t().toolbar.glyphs.underline}</span>{/snippet}
 {#snippet emphasisIcon()}<span class="glyph" style="text-emphasis: filled dot; text-emphasis-position: under right">文</span>{/snippet}
+{#snippet effectsIcon()}<span class="glyph" style={effectCss({ outline: true, shadow: true })}>A</span>{/snippet}
 {#snippet strikeIcon()}<span class="glyph" style="text-decoration: line-through">ab</span>{/snippet}
 {#snippet subIcon()}<span class="glyph">X<span class="glyph-script down">2</span></span>{/snippet}
 {#snippet superIcon()}<span class="glyph">X<span class="glyph-script up">2</span></span>{/snippet}

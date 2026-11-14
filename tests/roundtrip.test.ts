@@ -86,6 +86,11 @@ const fixture: N = {
       T('crossed ', { type: 'strike', attrs: { lineStyle: 'double' } }),
       T('waved ', { type: 'strike', attrs: { lineStyle: 'wavy' } }),
       T('stressed ', { type: 'textStyle', attrs: { emphasis: 'dot below' } }),
+      T('outlined ', { type: 'textStyle', attrs: { outline: true } }),
+      T('shadowed ', { type: 'textStyle', attrs: { shadow: true } }),
+      T('both ', { type: 'textStyle', attrs: { outline: true, shadow: true } }),
+      T('embossed ', { type: 'textStyle', attrs: { relief: 'embossed' } }),
+      T('engraved ', { type: 'textStyle', attrs: { relief: 'engraved' } }),
       T('raised', { type: 'textStyle', attrs: { fontSize: '14pt', textPosition: 3 } }),
     ),
     P(null,
@@ -1614,7 +1619,7 @@ describe('Leg 12: named paragraph styles (ODF)', () => {
   const sheet = builtinStyleSheet();
   sheet.paragraph['Merksatz'] = {
     name: 'Merksatz', parent: 'Standard', next: 'Standard',
-    para: { indent: 2, spaceBefore: 6, lineHeight: '1.15' }, text: { bold: true, color: '#0000AA' },
+    para: { indent: 2, spaceBefore: 6, lineHeight: '1.15' }, text: { bold: true, color: '#0000AA', shadow: true },
   };
 
   const doc: N = {
@@ -1625,6 +1630,8 @@ describe('Leg 12: named paragraph styles (ODF)', () => {
       // Hard formatting on top of the style must stay direct formatting.
       P({ styleName: 'Merksatz', spaceAfter: 20 }, T('mit Abstand')),
       P({ styleName: 'Quotations' }, T('zitiert')),
+      // A run switching off an effect its style draws.
+      P({ styleName: 'Merksatz' }, T('flach', { type: 'textStyle', attrs: { shadow: false } })),
     ],
   };
 
@@ -1651,7 +1658,8 @@ describe('Leg 12: named paragraph styles (ODF)', () => {
     const imported = res.styles.paragraph['Merksatz'];
     check('the style itself round-trips', imported?.parent === 'Standard', imported);
     check('with its own properties', imported?.text.bold === true && imported?.text.color === '#0000AA'
-      && imported?.para.indent === 2 && imported?.para.spaceBefore === 6, imported);
+      && imported?.para.indent === 2 && imported?.para.spaceBefore === 6 && imported?.text.shadow === true, imported);
+    check('a run switches off its style\'s effect', blocks[4]?.content?.[0]?.marks?.[0]?.attrs?.shadow === false, blocks[4]?.content);
     // A style's proportional spacing is a bare factor; the file takes a percentage.
     check('style line spacing round-trips', imported?.para.lineHeight === '1.15', imported?.para);
     const docx = await buildDocx(doc, margins, 'portrait', undefined, null, 'A4', sheet);

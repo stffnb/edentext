@@ -14,7 +14,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { colorModeOf, cropOf, fitInlineImage, framePx, stackRank, wrapGap, wrapGapAttr, type Crop } from '../editor/extensions/image';
 import { odfChartDataUrl } from './chart';
 import { formatTabStops, normalizeLeader } from '../editor/extensions/tabStops';
-import { isEmphasis, type CapsMode, type LineStyle } from '../editor/extensions/textEffects';
+import { isEmphasis, type CapsMode, type LineStyle, type Relief } from '../editor/extensions/textEffects';
 import {
   TABLE_REGIONS, builtinTableStyles, parseTableLook, resolveTableCell, tableLookAttr,
   type TableLook, type TableRegion,
@@ -1747,6 +1747,10 @@ type BlockDefaults = {
   underline: string | null;
   strike: string | null;
   caps: CapsMode | null;
+  // The effects the style draws (textEffects.ts).
+  outline: boolean;
+  shadow: boolean;
+  relief: Relief | null;
   // The languages in force for the block's runs — its own, else the document's.
   lang: string | null;
   langAsian: string | null;
@@ -1818,6 +1822,9 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     underline: null,
     strike: null,
     caps: null,
+    outline: false,
+    shadow: false,
+    relief: null,
     lang: doc.west,
     langAsian: doc.asian,
     box: {},
@@ -1847,6 +1854,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     underline: lineSig(text, 'underline'),
     strike: lineSig(text, 'line-through'),
     caps: capsFromOdf(text),
+    ...effectDefaults(text, fallback),
     lang: langs.west ?? doc.west,
     langAsian: langs.asian ?? doc.asian,
     box: paraBoxAttrs(para),
@@ -1923,6 +1931,10 @@ function textPropsFromOdf(props: PropMap, resolver: StyleResolver): TextProps {
   if (color) out.color = color;
   const caps = capsFromOdf(props);
   if (caps) out.caps = caps;
+  const fx = effectsFromOdf(props);
+  if (fx.outline != null) out.outline = fx.outline;
+  if (fx.shadow != null) out.shadow = fx.shadow;
+  if (fx.relief != null) out.relief = fx.relief;
   return out;
 }
 
@@ -2124,6 +2136,7 @@ function charDefaults(ctx: Ctx, base: BlockDefaults, odfName: string): BlockDefa
     underline: props['style:text-underline-style'] ? lineSig(props, 'underline') : base.underline,
     strike: props['style:text-line-through-style'] ? lineSig(props, 'line-through') : base.strike,
     caps: capsFromOdf(props) ?? base.caps,
+    ...effectDefaults(props, base),
   };
 }
 
@@ -3136,6 +3149,26 @@ function capsFromOdf(props: PropMap): CapsMode | null {
   return t === 'uppercase' || t === 'lowercase' || t === 'capitalize' ? t : null;
 }
 
+// Outline, shadow and relief where the props name them, null where they leave them open.
+// Any text shadow but none is LibreOffice's on/off shadow.
+function effectsFromOdf(props: PropMap): { outline: boolean | null; shadow: boolean | null; relief: Relief | 'none' | null } {
+  const o = props['style:text-outline'], sh = props['fo:text-shadow'], r = props['style:font-relief'];
+  return {
+    outline: o === 'true' ? true : o === 'false' ? false : null,
+    shadow: sh ? sh !== 'none' : null,
+    relief: r === 'embossed' || r === 'engraved' || r === 'none' ? r : null,
+  };
+}
+
+function effectDefaults(props: PropMap, base: Pick<BlockDefaults, 'outline' | 'shadow' | 'relief'>): Pick<BlockDefaults, 'outline' | 'shadow' | 'relief'> {
+  const fx = effectsFromOdf(props);
+  return {
+    outline: fx.outline ?? base.outline,
+    shadow: fx.shadow ?? base.shadow,
+    relief: fx.relief == null ? base.relief : fx.relief === 'none' ? null : fx.relief,
+  };
+}
+
 // Hebrew, Arabic, Indic, Thai and CJK: a style carries western, asian and complex-script
 // fonts side by side, and text is set from the set its own script belongs to. A file that
 // leaves them at the defaults sets Hebrew at 12pt Times, not the 16pt the style declares.
@@ -3218,6 +3251,10 @@ function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaul
   if (caps && caps !== defaults.caps) textStyle.caps = caps;
   const em = props['style:text-emphasize'];
   if (isEmphasis(em)) textStyle.emphasis = em;
+  const fx = effectsFromOdf(props);
+  if (fx.outline != null && fx.outline !== defaults.outline) textStyle.outline = fx.outline;
+  if (fx.shadow != null && fx.shadow !== defaults.shadow) textStyle.shadow = fx.shadow;
+  if (fx.relief != null && (fx.relief === 'none' ? null : fx.relief) !== defaults.relief) textStyle.relief = fx.relief;
 
   const langs = langTagsOfProps(props);
   if (langs.west && langs.west !== defaults.lang) textStyle.lang = langs.west;

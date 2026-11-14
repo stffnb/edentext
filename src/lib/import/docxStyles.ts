@@ -1,5 +1,5 @@
 import type { TabAlign, TabStop } from '../editor/extensions/tabStops';
-import { emphasisFromWord, type CapsMode, type Emphasis } from '../editor/extensions/textEffects';
+import { emphasisFromWord, type CapsMode, type Emphasis, type Relief } from '../editor/extensions/textEffects';
 import { lengthToPt } from './styleResolver';
 import { boundedInt } from './importLimits';
 
@@ -46,6 +46,9 @@ export type RunProps = {
   doubleStrike?: boolean;  // w:dstrike
   positionPt?: number;     // w:position: pt above the baseline (negative = below)
   emphasis?: Emphasis | false; // w:em; false = a run switching the style's off
+  outline?: boolean;       // w:outline
+  shadow?: boolean;        // w:shadow
+  relief?: Relief | 'none'; // w:emboss / w:imprint; 'none' = a run switching the style's off
   lang?: string;           // w:lang w:val, the run's western language tag
   langEastAsia?: string;   // w:lang w:eastAsia, its asian one
 };
@@ -138,6 +141,11 @@ export function parseRunProps(rPr: Element | null | undefined): RunProps {
       }
       case 'dstrike': { const on = toggle(child); p.doubleStrike = on; if (on) p.strike = true; break; }
       case 'caps': case 'smallCaps': readCaps(p, child); break;
+      case 'outline': p.outline = toggle(child); break;
+      case 'shadow': p.shadow = toggle(child); break;
+      // Both on is engraved, as LibreOffice reads it; an off toggle switches a style's off.
+      case 'emboss': if (p.relief !== 'engraved') p.relief = toggle(child) ? 'embossed' : 'none'; break;
+      case 'imprint': if (toggle(child)) p.relief = 'engraved'; else if (p.relief !== 'embossed') p.relief = 'none'; break;
       case 'em': p.emphasis = emphasisFromWord(wVal(child)) ?? false; break;
       case 'position': { const pt = signedHalfPointsPt(wVal(child)); if (pt != null) p.positionPt = pt; break; }
       case 'vertAlign': {

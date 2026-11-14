@@ -1317,6 +1317,14 @@ const zhHant: Messages = {
       disc: '實心圓',
       accent: '重音符號',
     },
+    textEffects: {
+      title: '文字效果',
+      none: '無',
+      outline: '外框',
+      shadow: '陰影',
+      embossed: '浮凸',
+      engraved: '雕刻',
+    },
     lineStyles: {
       solid: '單線',
       double: '雙線',

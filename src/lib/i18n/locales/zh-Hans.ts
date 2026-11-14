@@ -1316,6 +1316,14 @@ const zhHans: Messages = {
       disc: '实心圆',
       accent: '重音符号',
     },
+    textEffects: {
+      title: '文字效果',
+      none: '无',
+      outline: '空心',
+      shadow: '阴影',
+      embossed: '阳文',
+      engraved: '阴文',
+    },
     lineStyles: {
       solid: '单线',
       double: '双线',

@@ -164,7 +164,7 @@ export const TOOLS: ToolDef[] = [
         link: str('URL, or none'),
         bookmark: str('Names the text as a bookmark, for <a href="#name">'),
         list: { type: 'string', enum: ['bullet', 'number', 'none', 'deeper', 'shallower'] },
-        css: str('Any other formatting as CSS: text-indent, border, break-before: page, page: x (new section), tab-stops: 8cm center, 16cm right dotted, list-style-type …; paragraph CSS applies to whole paragraphs'),
+        css: str('Any other formatting as CSS: text-indent, border, break-before: page, page: x (new section), tab-stops: 8cm center, 16cm right dotted, list-style-type, font-relief …; paragraph CSS applies to whole paragraphs'),
         clear: { type: 'boolean', description: 'Removes direct formatting first' },
       },
       required: ['from'],

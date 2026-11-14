@@ -28,7 +28,7 @@ import { outlineIsEmpty, type OutlineLevel, type OutlineNumbering } from '../sty
 // Options), collected by exportTable in document order.
 type TableStyleRef = { name: string; look: TableLook };
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
-import { isEmphasis } from '../editor/extensions/textEffects';
+import { effectsToOdf, isEmphasis } from '../editor/extensions/textEffects';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
 import { TEXTBOX_PADDING_CM, boxTextWidthCm, type TextVAlign } from '../editor/extensions/textBox';
@@ -2546,6 +2546,7 @@ function ownStyleAttrs(style: { para: Record<string, unknown>; text: Record<stri
   if (t.color) text['fo:color'] = String(t.color);
   if (t.caps === 'smallCaps') text['fo:font-variant'] = 'small-caps';
   else if (t.caps) text['fo:text-transform'] = String(t.caps);
+  Object.assign(text, effectsToOdf(t));
   return { para, text };
 }
 
@@ -4150,6 +4151,7 @@ export function odfExtraTextProps(marks: TiptapNode['marks'] = [], baseSizePt = 
   }
   const em = marks.find(m => m.type === 'textStyle')?.attrs?.emphasis;
   if (isEmphasis(em)) a.push(`style:text-emphasize="${em}"`);
+  a.push(...Object.entries(effectsToOdf(marks.find(m => m.type === 'textStyle')?.attrs ?? {})).map(([k, v]) => `${k}="${v}"`));
   // ODF places a raised run in percent of its font size, Word and the editor in pt.
   const pos = marks.find(m => m.type === 'textStyle')?.attrs?.textPosition;
   if (typeof pos === 'number' && pos) {
@@ -4224,6 +4226,7 @@ function bakeMarks(marks: TiptapMark[], t: TextProps): TiptapMark[] {
   if (t.fontFamilyAsian) attrs.fontFamilyAsian = t.fontFamilyAsian;
   if (t.fontSizePt != null) attrs.fontSize = `${t.fontSizePt}pt`;
   if (t.color) attrs.color = t.color;
+  for (const key of ['outline', 'shadow', 'relief'] as const) if (t[key] != null) attrs[key] = t[key];
   for (const [key, value] of Object.entries(own)) if (value != null) attrs[key] = value;
   // An explicit weight is the un-bold channel and outranks the style's bold.
   const flags = [[t.bold && own.fontWeight == null, 'bold'], [t.italic, 'italic'],

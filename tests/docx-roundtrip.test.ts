@@ -49,6 +49,11 @@ describe('DOCX export → import round trip', () => {
         text('crossed ', [{ type: 'strike', attrs: { lineStyle: 'double' } }]),
         text('stressed ', [{ type: 'textStyle', attrs: { emphasis: 'dot below' } }]),
         text('ringed ', [{ type: 'textStyle', attrs: { emphasis: 'circle above' } }]),
+        text('outlined ', [{ type: 'textStyle', attrs: { outline: true } }]),
+        text('shadowed ', [{ type: 'textStyle', attrs: { shadow: true } }]),
+        text('both ', [{ type: 'textStyle', attrs: { outline: true, shadow: true } }]),
+        text('embossed ', [{ type: 'textStyle', attrs: { relief: 'embossed' } }]),
+        text('engraved ', [{ type: 'textStyle', attrs: { relief: 'engraved' } }]),
         text('raised', [{ type: 'textStyle', attrs: { fontSize: '14pt', textPosition: 3 } }]),
       ]),
       { type: 'paragraph', attrs: { fontSize: '22pt', textAlign: 'center' } }, // empty sized line
@@ -318,7 +323,7 @@ describe('DOCX export → import round trip', () => {
     expect(mlSub.attrs?.listStyleType ?? null).toBe(null);
   });
 
-  it('round-trips the character effects (case, line shapes, emphasis, raised run)', () => {
+  it('round-trips the character effects (case, line shapes, emphasis, outline, shadow, relief, raised run)', () => {
     const runs = walk(doc, 'text');
     const of = (t: string) => runs.find((r: N) => r.text === t)!.marks!;
     const attrs = (t: string, type: string) => of(t).find((m: N) => m.type === type)!.attrs!;
@@ -330,6 +335,11 @@ describe('DOCX export → import round trip', () => {
     expect(documentXml).toMatch(/<w:em w:val="underDot"\/>/);
     expect(attrs('stressed ', 'textStyle').emphasis).toBe('dot below');
     expect(attrs('ringed ', 'textStyle').emphasis).toBe('circle above');
+    expect(attrs('outlined ', 'textStyle')).toMatchObject({ outline: true });
+    expect(attrs('shadowed ', 'textStyle')).toMatchObject({ shadow: true });
+    expect(attrs('both ', 'textStyle')).toMatchObject({ outline: true, shadow: true });
+    expect(attrs('embossed ', 'textStyle').relief).toBe('embossed');
+    expect(attrs('engraved ', 'textStyle').relief).toBe('engraved');
   });
 
   it("reads Word's emphasis marks as LibreOffice does", async () => {
@@ -1164,7 +1174,7 @@ describe('DOCX named paragraph styles', () => {
   const sheet = builtinStyleSheet();
   sheet.paragraph['Merksatz'] = {
     name: 'Merksatz', parent: 'Quotations', next: 'Standard',
-    para: { spaceBefore: 8 }, text: { bold: true, color: '#0000AA' },
+    para: { spaceBefore: 8 }, text: { bold: true, color: '#0000AA', shadow: true },
   };
 
   const fixture = {
@@ -1174,6 +1184,8 @@ describe('DOCX named paragraph styles', () => {
       { type: 'paragraph', attrs: { styleName: 'Merksatz' }, content: [text('gemerkt')] },
       { type: 'paragraph', attrs: { styleName: 'Merksatz', spaceAfter: 20 }, content: [text('mit Abstand')] },
       { type: 'paragraph', content: [text('normal')] },
+      // A run switching off an effect its style draws.
+      { type: 'paragraph', attrs: { styleName: 'Merksatz' }, content: [text('flach', [{ type: 'textStyle', attrs: { shadow: false } }])] },
     ],
   } as any;
 
@@ -1201,13 +1213,15 @@ describe('DOCX named paragraph styles', () => {
     expect(style.text.bold).toBe(true);
     expect(style.text.color).toBe('#0000AA');
     expect(style.para.spaceBefore).toBe(8);
+    expect(style.text.shadow).toBe(true);
+    expect(blocks[4].content![0].marks).toEqual([{ type: 'textStyle', attrs: expect.objectContaining({ shadow: false }) }]);
   });
 });
 
 describe('DOCX named character styles', () => {
   const sheet = builtinStyleSheet();
   sheet.character['Signal'] = {
-    name: 'Signal', parent: null, next: null, para: {}, text: { bold: true, color: '#CC0000' },
+    name: 'Signal', parent: null, next: null, para: {}, text: { bold: true, color: '#CC0000', caps: 'smallCaps', outline: true },
   };
   const CS = (t: string, name: string, ...extra: any[]) =>
     ({ type: 'text', text: t, marks: [{ type: 'charStyle', attrs: { name } }, ...extra] });
@@ -1234,7 +1248,7 @@ describe('DOCX named character styles', () => {
     expect((runs[1].marks ?? []).every((m: N) => m.type === 'charStyle')).toBe(true);
     const signal = runs.find((r: N) => charOf(r) === 'Signal')!;
     expect((signal.marks ?? []).some((m: N) => m.type === 'italic')).toBe(true);
-    expect(res.styles.character['Signal'].text).toEqual({ bold: true, color: '#CC0000' });
+    expect(res.styles.character['Signal'].text).toEqual({ bold: true, color: '#CC0000', caps: 'smallCaps', outline: true });
   });
 });
 

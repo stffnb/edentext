@@ -1331,6 +1331,14 @@ const en = {
       disc: 'Disc',
       accent: 'Accent',
     },
+    textEffects: {
+      title: 'Text effects',
+      none: 'None',
+      outline: 'Outline',
+      shadow: 'Shadow',
+      embossed: 'Embossed',
+      engraved: 'Engraved',
+    },
     lineStyles: {
       solid: 'Single',
       double: 'Double',

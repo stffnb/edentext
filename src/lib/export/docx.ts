@@ -43,7 +43,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
 import { parseTabStops, type TabAlign } from '../editor/extensions/tabStops';
-import { emphasisToWord, isEmphasis } from '../editor/extensions/textEffects';
+import { emphasisToWord, isEmphasis, type TextEffectAttrs } from '../editor/extensions/textEffects';
 import { firstLineCm, leftCm, rightCm } from '../editor/extensions/indent';
 import { charStyleProps, listMarkerFormat } from '../editor/extensions/listMarker';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, orderedTypeDef, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
@@ -625,6 +625,7 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], force: TextProps = {
   if (typeof pos === 'number' && pos) props.position = String(Math.round(pos * 2)) as `${number}pt`;
   const em = ts?.attrs?.emphasis;
   if (isEmphasis(em)) props.emphasisMark = { type: emphasisToWord(em) as 'dot' };
+  Object.assign(props, libEffects(ts?.attrs ?? {}));
 
   const font = fontPair(ts?.attrs?.fontFamily ?? force.fontFamily, ts?.attrs?.fontFamilyAsian ?? force.fontFamilyAsian, screenToDoc);
   if (font) props.font = font;
@@ -1310,6 +1311,7 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLangs: unknown[] 
   const pos = ts?.attrs?.textPosition;
   if (typeof pos === 'number' && pos) parts.push(`<w:position w:val="${Math.round(pos * 2)}"/>`);
   if (isEmphasis(ts?.attrs?.emphasis)) parts.push(`<w:em w:val="${emphasisToWord(ts.attrs.emphasis)}"/>`);
+  for (const [el, on] of Object.entries(wordEffectToggles(ts?.attrs ?? {}))) parts.push(on ? `<w:${el}/>` : `<w:${el} w:val="0"/>`);
   const col = ts?.attrs?.color;
   if (col) {
     const h = hexColor(String(col));
@@ -2300,8 +2302,46 @@ function orderDocxSettings(bytes: Uint8Array): Uint8Array {
   return zipSync(out);
 }
 
-// Post-pack pass (runs last) over what the library writes: a paragraph's w:pBdr sides
-// as top, bottom, left, right (the schema's sequence is top, left, bottom, right, between,
+// Outline, shadow and relief as Word's four toggles, in CT_RPr order; false switches a
+// style's off (w:val="0"). Only 'none' writes a relief toggle off: LibreOffice reads any
+// off one as no relief, the other one's on beside it included.
+function wordEffectToggles(a: TextEffectAttrs): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  if (a.outline != null) out.outline = !!a.outline;
+  if (a.shadow != null) out.shadow = !!a.shadow;
+  if (a.relief === 'embossed') out.emboss = true;
+  else if (a.relief === 'engraved') out.imprint = true;
+  else if (a.relief === 'none') out.emboss = out.imprint = false;
+  return out;
+}
+
+// The docx package has no outline or shadow option, so the pair rides a marked w:effect
+// that patchPackedXml swaps for the two elements in their schema place.
+const FX_MARK = 'edentextFx-';
+function libEffects(a: TextEffectAttrs): Writable<IRunStylePropertiesOptions> {
+  const t = wordEffectToggles(a);
+  const out: Writable<IRunStylePropertiesOptions> = {};
+  if (t.emboss != null) out.emboss = t.emboss;
+  if (t.imprint != null) out.imprint = t.imprint;
+  const code = (t.outline == null ? '' : t.outline ? 'O' : 'o') + (t.shadow == null ? '' : t.shadow ? 'S' : 's');
+  if (code) out.effect = `${FX_MARK}${code}` as IRunStylePropertiesOptions['effect'];
+  return out;
+}
+
+// The CT_RPr elements after w:shadow that the package may already have written before
+// the marked w:effect; the two toggles go in front of the first.
+const AFTER_SHADOW = /<w:(?:emboss|imprint|noProof|snapToGrid|vanish|webHidden|color|spacing|w|kern|position|sz|szCs|highlight|u)\b/;
+function placeEffectToggles(xml: string): string {
+  if (!xml.includes(FX_MARK)) return xml;
+  return xml.replace(new RegExp(`<w:rPr>((?:(?!<w:rPr>)[\\s\\S])*?)<w:effect w:val="${FX_MARK}([oOsS]+)"/>`, 'g'), (_m, inner: string, code: string) => {
+    const toggles = [...code].map((c) => `<w:${c.toLowerCase() === 'o' ? 'outline' : 'shadow'}${c === c.toUpperCase() ? '' : ' w:val="0"'}/>`).join('');
+    const at = AFTER_SHADOW.exec(inner)?.index ?? inner.length;
+    return `<w:rPr>${inner.slice(0, at)}${toggles}${inner.slice(at)}`;
+  });
+}
+
+// Post-pack pass (runs last) over what the library writes: the effect toggles above,
+// a paragraph's w:pBdr sides in the schema's sequence (top, left, bottom, right, between,
 // bar), and a page field with no cached result (a reader shows what it finds there).
 const PBDR_ORDER = ['w:top', 'w:left', 'w:bottom', 'w:right', 'w:between', 'w:bar'];
 function patchPackedXml(bytes: Uint8Array): Uint8Array {
@@ -2310,7 +2350,7 @@ function patchPackedXml(bytes: Uint8Array): Uint8Array {
   for (const [path, data] of Object.entries(files)) {
     if (!/^word\/.*\.xml$/.test(path)) continue;
     const xml = strFromU8(data);
-    const sorted = xml.replace(/<w:pBdr>([\s\S]*?)<\/w:pBdr>/g, (_m, inner: string) => {
+    const sorted = placeEffectToggles(xml).replace(/<w:pBdr>([\s\S]*?)<\/w:pBdr>/g, (_m, inner: string) => {
       const sides = inner.match(/<w:(?:top|left|bottom|right|between|bar)\b[^>]*\/>/g) ?? [];
       if (sides.join('') !== inner) return _m;
       const rank = (s: string) => PBDR_ORDER.indexOf(/^<(w:\w+)/.exec(s)![1]);
@@ -3477,6 +3517,7 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   if (t.color) run.color = t.color.replace('#', '');
   if (t.caps === 'smallCaps') run.smallCaps = true;
   else if (t.caps === 'uppercase') run.allCaps = true;
+  Object.assign(run, libEffects(t));
   const spacing: Record<string, number> = {};
   if (p.spaceBefore != null) spacing.before = ptToTwip(p.spaceBefore);
   if (p.spaceAfter != null) spacing.after = ptToTwip(p.spaceAfter);
@@ -3526,6 +3567,9 @@ function runPropsOf(t: TextProps): Writable<IRunStylePropertiesOptions> {
   if (t.underline) run.underline = {};
   if (t.strike) run.strike = t.strike;
   if (t.color) run.color = t.color.replace('#', '');
+  if (t.caps === 'smallCaps') run.smallCaps = true;
+  else if (t.caps === 'uppercase') run.allCaps = true;
+  Object.assign(run, libEffects(t));
   return run;
 }
 

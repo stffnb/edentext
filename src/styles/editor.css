@@ -1366,6 +1366,14 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   user-select: none;
 }
 
+/* A highlight repaints its text in its own colour, not in -webkit-text-fill-color, and WebKit
+   without the text's shadows: an outline, shadow or relief (textEffects.ts) lends it both. */
+::highlight(spell-error), ::highlight(grammar-error), ::highlight(search-match), ::highlight(search-match-thumb),
+::highlight(search-match-current), ::highlight(comment-draft) {
+  color: var(--fx-fill, currentcolor);
+  text-shadow: var(--fx-text-shadow, none);
+}
+
 /* Spell-check: red wavy underline under misspelled words (painted by spellCheck.ts).
    skip-ink:none keeps the wave continuous under descenders. */
 .tiptap .pm-spell-error,

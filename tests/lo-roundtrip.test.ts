@@ -69,6 +69,11 @@ const fixture: N = {
       T('twice ', { type: 'underline', attrs: { lineStyle: 'double' } }),
       T('crossed ', { type: 'strike', attrs: { lineStyle: 'double' } }),
       T('stressed ', { type: 'textStyle', attrs: { emphasis: 'dot below' } }),
+      T('outlined ', { type: 'textStyle', attrs: { outline: true } }),
+      T('shadowed ', { type: 'textStyle', attrs: { shadow: true } }),
+      T('both ', { type: 'textStyle', attrs: { outline: true, shadow: true } }),
+      T('embossed ', { type: 'textStyle', attrs: { relief: 'embossed' } }),
+      T('engraved ', { type: 'textStyle', attrs: { relief: 'engraved' } }),
       // 4pt at 16pt is a whole 25%, the unit ODF stores it in — LibreOffice rounds
       // the percentage when it re-saves, so a fractional one comes back a notch off.
       T('raised', { type: 'textStyle', attrs: { fontSize: '16pt', textPosition: 4 } }),

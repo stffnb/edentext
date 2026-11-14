@@ -17,7 +17,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { cropOf, fitInlineImage, framePx, stackRank, wrapGap, wrapGapAttr, type ColorMode, type WrapGap } from '../editor/extensions/image';
 import { TEXTBOX_PADDING_CM, boxTextWidthCm } from '../editor/extensions/textBox';
 import { formatTabStops } from '../editor/extensions/tabStops';
-import type { CapsMode, LineStyle } from '../editor/extensions/textEffects';
+import type { CapsMode, LineStyle, Relief } from '../editor/extensions/textEffects';
 import { builtinTableStyles, parseTableLook, resolveTableCell, tableLookAttr } from '../styles/tableStyles';
 import { formatOrdinal, knownNumFormat, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
@@ -1218,6 +1218,10 @@ type BlockDefaults = {
   underline: string | null;
   strike: string | null;
   caps: CapsMode | null;
+  // The effects the style draws (textEffects.ts).
+  outline: boolean;
+  shadow: boolean;
+  relief: Relief | null;
   // The languages the style chain (docDefaults included) already gives the runs.
   lang: string | null;
   langAsian: string | null;
@@ -1251,6 +1255,9 @@ function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDef
     underline: lineSig(baseRun).underline,
     strike: lineSig(baseRun).strike,
     caps: baseRun.caps || null,
+    outline: !!baseRun.outline,
+    shadow: !!baseRun.shadow,
+    relief: baseRun.relief && baseRun.relief !== 'none' ? baseRun.relief : null,
     lang: baseRun.lang ?? null,
     langAsian: baseRun.langEastAsia ?? null,
   };
@@ -1400,6 +1407,9 @@ function runTextProps(run: RunProps): TextProps {
   const color = hexColor(run.color);
   if (color) out.color = color;
   if (run.caps) out.caps = run.caps;
+  if (run.outline != null) out.outline = run.outline;
+  if (run.shadow != null) out.shadow = run.shadow;
+  if (run.relief) out.relief = run.relief;
   return out;
 }
 
@@ -2052,7 +2062,7 @@ function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunP
 function isStockNoteStyle(ctx: Ctx, styleId: string): boolean {
   const run = ctx.styles.paragraphRun(styleId), base = ctx.styles.paragraphRun(null);
   if (run.sizeHalfPt !== 20) return false;
-  const keys = ['bold', 'italic', 'underline', 'strike', 'color', 'font', 'fontTheme', 'highlightFill', 'caps'] as const;
+  const keys = ['bold', 'italic', 'underline', 'strike', 'color', 'font', 'fontTheme', 'highlightFill', 'caps', 'outline', 'shadow', 'relief'] as const;
   if (!keys.every((k) => (run[k] ?? null) === (base[k] ?? null))) return false;
   if (ctx.styles.paragraphAlign(styleId) !== ctx.styles.paragraphAlign(null)) return false;
   const sp = ctx.styles.paragraphSpacing(styleId);
@@ -2650,6 +2660,11 @@ function marksFor(props: RunProps, defaults: BlockDefaults, inLink: boolean): Ma
   if (props.caps && props.caps !== defaults.caps) textStyle.caps = props.caps;
   if (props.positionPt) textStyle.textPosition = props.positionPt;
   if (props.emphasis) textStyle.emphasis = props.emphasis;
+  // Off is kept only where the style draws the effect; a run without one inherits it.
+  if (!!props.outline !== defaults.outline) textStyle.outline = !!props.outline;
+  if (!!props.shadow !== defaults.shadow) textStyle.shadow = !!props.shadow;
+  const relief = props.relief && props.relief !== 'none' ? props.relief : null;
+  if (relief !== defaults.relief) textStyle.relief = relief ?? 'none';
   if (props.lang && props.lang !== defaults.lang) textStyle.lang = props.lang;
   if (props.langEastAsia && props.langEastAsia !== defaults.langAsian) textStyle.langAsian = props.langEastAsia;
 

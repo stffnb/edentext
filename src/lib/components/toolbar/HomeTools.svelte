@@ -8,7 +8,7 @@
   import { changeIndent } from '../formatCommands';
   import { clipboardCommand, readClipboard } from '../../editor/contextMenuItems';
   import { stepFontSize } from '../../editor/extensions/shortcuts';
-  import { emphasisCss, type CapsMode, type Emphasis } from '../../editor/extensions/textEffects';
+  import { effectCss, emphasisCss, TEXT_EFFECT_ITEMS, type CapsMode, type Emphasis } from '../../editor/extensions/textEffects';
   import { hasAsianLanguage, uniformBlockAttr } from '../../utils/selectionFormat';
   import { t } from '../../i18n/i18n.svelte';
   import { withShortcut } from '../../i18n/shortcut';
@@ -29,6 +29,7 @@
   let isSub = $derived(tick >= 0 && !!editor?.isActive('subscript'));
   let asianSelection = $derived(tick >= 0 && !!editor && hasAsianLanguage(editor.state));
   let emphasis = $derived(tick >= 0 ? editor?.getAttributes('textStyle').emphasis ?? null : null);
+  let effects = $derived(tick >= 0 ? editor?.getAttributes('textStyle') ?? {} : {});
   let paraShade = $derived(tick >= 0 && editor ? (uniformBlockAttr<string | null>(editor.state, 'backgroundColor', null) || null) : null);
   let lineHeight = $derived(tick >= 0 && editor ? uniformBlockAttr(editor.state, 'lineHeight', '1') : '1');
   let spaceBefore = $derived(tick >= 0 && editor ? uniformBlockAttr<number | null>(editor.state, 'spaceBefore', null) : null);
@@ -101,6 +102,16 @@
   <IslandMenu id="case" icon="changeCase" cmd="changeCase" title={t().ribbon.case.title}>
     {#each CASES as c}
       <button data-cmd={`case-${c.mode ?? 'none'}`} onclick={() => setTextStyle({ caps: c.mode })}>{t().ribbon.case[c.key]}</button>
+    {/each}
+  </IslandMenu>
+  <IslandMenu id="textEffects" content={effectsIcon} cmd="textEffects" title={t().ribbon.textEffects.title}
+    active={TEXT_EFFECT_ITEMS.some((e) => effects[e.name] === e.value)}>
+    <button onclick={() => { closeMenu(); editor?.chain().focus().unsetTextEffects().run(); }}>{t().ribbon.textEffects.none}</button>
+    {#each TEXT_EFFECT_ITEMS as e}
+      {@const on = effects[e.name] === e.value}
+      <button class:selected={on} onclick={() => { closeMenu(); editor?.chain().focus().setTextEffect(e.name, on ? null : e.value).run(); }}>
+        <span style={effectCss({ [e.name]: e.value })}>{t().ribbon.textEffects[e.key]}</span>
+      </button>
     {/each}
   </IslandMenu>
   <!-- East Asian typography only (document, UI or selected text language); a mark already in the text keeps the button to clear it. -->
@@ -199,6 +210,7 @@
     <path d="M10.5 12.2c0-.8.7-1.4 1.5-1.4s1.5.6 1.5 1.4c0 1.2-1.6 1.5-3 3.1h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>
 {/snippet}
+{#snippet effectsIcon()}<span style="{effectCss({ outline: true, shadow: true })}; font-size: 15px; font-weight: 600">A</span>{/snippet}
 {#snippet emphasisIcon()}<span style="text-emphasis: filled dot; text-emphasis-position: under right; font-size: 13px">文</span>{/snippet}
 <!-- The ribbon's ↘ group launcher: it opens the dialog with every paragraph setting. -->
 {#snippet launcherIcon()}

@@ -1318,6 +1318,14 @@ const ja: Messages = {
       disc: '黒丸',
       accent: 'ゴマ点',
     },
+    textEffects: {
+      title: '文字効果',
+      none: 'なし',
+      outline: '輪郭',
+      shadow: '影',
+      embossed: '浮き出し',
+      engraved: '浮き彫り',
+    },
     lineStyles: {
       solid: '一重線',
       double: '二重線',

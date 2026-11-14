@@ -1331,6 +1331,14 @@ const ru: Messages = {
       disc: 'Диск',
       accent: 'Акцент',
     },
+    textEffects: {
+      title: 'Текстовые эффекты',
+      none: 'Нет',
+      outline: 'Контур',
+      shadow: 'Тень',
+      embossed: 'Приподнятый',
+      engraved: 'Утопленный',
+    },
     lineStyles: {
       solid: 'Одинарная',
       double: 'Двойная',

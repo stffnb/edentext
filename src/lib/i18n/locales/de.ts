@@ -1322,6 +1322,14 @@ const de: Messages = {
       disc: 'Scheibe',
       accent: 'Akzent',
     },
+    textEffects: {
+      title: 'Texteffekte',
+      none: 'Keine',
+      outline: 'Kontur',
+      shadow: 'Schatten',
+      embossed: 'Erhaben',
+      engraved: 'Vertieft',
+    },
     lineStyles: {
       solid: 'Einfach',
       double: 'Doppelt',

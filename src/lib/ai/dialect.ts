@@ -130,6 +130,18 @@ function paragraph(el: HTMLElement, o: DialectOptions, dropped: string[]): void 
 }
 
 /** A run's background as a highlight, the only run shading the editor has. */
+// Outline, shadow and relief in the CSS a model writes for them; relief has none, so it
+// is read from the ODF property name as written.
+function runEffects(el: HTMLElement): void {
+  const raw = el.getAttribute('style') ?? '';
+  const stroke = el.style.getPropertyValue('-webkit-text-stroke') || el.style.getPropertyValue('-webkit-text-stroke-width');
+  if (parseFloat(stroke) > 0 || /(?:^|;)\s*text-stroke\s*:/i.test(raw)) el.setAttribute('data-outline', 'true');
+  const shadow = el.style.textShadow;
+  if (shadow && shadow !== 'none') el.setAttribute('data-shadow', 'true');
+  const relief = /(?:^|;)\s*font-relief\s*:\s*(embossed|engraved)/i.exec(raw)?.[1].toLowerCase();
+  if (relief) el.setAttribute('data-relief', relief);
+}
+
 function runShading(el: HTMLElement): void {
   const bg = normalizeColor(el.style.backgroundColor || el.style.background);
   if (!bg?.startsWith('#')) return;
@@ -405,7 +417,7 @@ export function normalizeAiHtml(body: HTMLElement, o: DialectOptions = {}): { dr
     if (BLOCKS.has(tag)) paragraph(el, o, dropped);
     else if (tag === 'TABLE') table(el as HTMLTableElement, o, dropped);
     else if (tag === 'IMG') image(el as HTMLImageElement, dropped);
-    else if (tag === 'SPAN') runShading(el);
+    else if (tag === 'SPAN') { runEffects(el); runShading(el); }
     else if (tag === 'HR') {
       const next = el.nextElementSibling;
       if (next) next.setAttribute('data-page-break-before', 'page');

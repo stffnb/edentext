@@ -1332,6 +1332,14 @@ const el: Messages = {
       disc: "Δίσκος",
       accent: "Τόνος",
     },
+    textEffects: {
+      title: "Εφέ κειμένου",
+      none: "Κανένα",
+      outline: "Περίγραμμα",
+      shadow: "Σκιά",
+      embossed: "Ανάγλυφο",
+      engraved: "Χαραγμένο",
+    },
     lineStyles: {
       solid: "Μονή",
       double: "Διπλή",

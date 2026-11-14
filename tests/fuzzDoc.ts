@@ -61,6 +61,13 @@ function marks(r: Rng, heading = false): N[] | undefined {
     if (maybe(r, 0.2)) attrs.caps = pick(r, ['uppercase', 'smallCaps']);
     // sub/superscript and a free raise share ODF's one text-position attribute
     if (!shifted && maybe(r, 0.15)) attrs.textPosition = pick(r, [3, -2]);
+    // Drawn from their own stream, so the seeds keep the documents they had. Relief
+    // excludes outline and shadow, as the editor's command keeps it.
+    if (maybe(fxRng, 0.1)) attrs.relief = pick(fxRng, ['embossed', 'engraved']);
+    else {
+      if (maybe(fxRng, 0.1)) attrs.outline = true;
+      if (maybe(fxRng, 0.1)) attrs.shadow = true;
+    }
     if (Object.keys(attrs).length) out.push({ type: 'textStyle', attrs });
   }
   if (!heading && maybe(r, 0.06)) {
@@ -454,7 +461,10 @@ function table(r: Rng): N {
 const ROMAN = ['i', 'ii', 'iii', 'iv', 'v'] as const;
 
 // `styleNames` are the sheet's user styles; a styled block may name one of them.
+let fxRng: Rng = mulberry32(1);
+
 export function genDoc(r: Rng, styleNames: string[] = []): N {
+  fxRng = mulberry32(7919);
   bmNames = [];
   commentSeq = 0;
   revSeq = 0;

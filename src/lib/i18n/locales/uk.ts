@@ -1331,6 +1331,14 @@ const uk: Messages = {
       disc: 'Диск',
       accent: 'Акцент',
     },
+    textEffects: {
+      title: 'Текстові ефекти',
+      none: 'Немає',
+      outline: 'Контур',
+      shadow: 'Тінь',
+      embossed: 'Опуклий',
+      engraved: 'Втиснений',
+    },
     lineStyles: {
       solid: 'Одинарна',
       double: 'Подвійна',
