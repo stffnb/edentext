@@ -60,7 +60,11 @@ export async function startBridge(api: EmbedApi): Promise<void> {
   addEventListener('message', async (e: MessageEvent) => {
     const msg = e.data as { edentext?: number; type?: string; id?: unknown } | null;
     if (e.source !== window.parent || msg?.edentext !== PROTOCOL) return;
-    if (msg.type === 'init' && (!allowedHosts || allowedHosts.includes(e.origin))) hostOrigin ??= e.origin;
+    if (msg.type === 'init' && hostOrigin === null) {
+      // A turned-away page learns only that, so its developer sees why nothing loads.
+      if (allowedHosts && !allowedHosts.includes(e.origin)) return window.parent.postMessage({ edentext: PROTOCOL, type: 'refused' }, '*');
+      hostOrigin = e.origin;
+    }
     if (e.origin !== hostOrigin) return;
     const reply = (data: Record<string, unknown>, transfer: Transferable[] = []) => notify('response', { id: msg.id, ...data }, transfer);
     try {
@@ -96,5 +100,5 @@ export async function startBridge(api: EmbedApi): Promise<void> {
     }
   });
   // No document data rides on it, so it goes out before the host has introduced itself.
-  window.parent.postMessage({ edentext: PROTOCOL, type: 'ready', version: __APP_VERSION__ }, '*');
+  window.parent.postMessage({ edentext: PROTOCOL, type: 'ready', protocol: PROTOCOL, version: __APP_VERSION__ }, '*');
 }

@@ -4,6 +4,9 @@
 // EdenText instance the iframe shows, e.g. import { EdenTextFrame } from '…/embed.js'.
 const PROTOCOL = 1;
 
+// The instance serving this file; the npm package's copy defaults to /edentext/ instead.
+const defaultUrl = () => new URL('./', import.meta.url);
+
 export class EdenTextFrame {
   #frame;
   #origin;
@@ -18,7 +21,7 @@ export class EdenTextFrame {
    *   `url`: the EdenText instance, by default the one serving this file. Types: embed.d.ts.
    */
   constructor(container, { url, ...settings } = {}) {
-    const src = new URL(url ?? new URL('./', import.meta.url), location.href);
+    const src = new URL(url ?? defaultUrl(), location.href);
     src.searchParams.set('embed', '1');
     this.#origin = src.origin;
     const frame = document.createElement('iframe');
@@ -32,8 +35,14 @@ export class EdenTextFrame {
     this.ready = new Promise((resolve, reject) => {
       const onMessage = (e) => {
         const m = e.data;
-        if (e.source !== frame.contentWindow || e.origin !== this.#origin || m?.edentext !== PROTOCOL) return;
-        if (m.type === 'ready') {
+        if (e.source !== frame.contentWindow || e.origin !== this.#origin || typeof m?.edentext !== 'number') return;
+        if (m.type === 'ready' && (m.protocol ?? m.edentext) !== PROTOCOL) {
+          reject(new Error(`EdenText ${m.version} at ${this.#origin} speaks protocol ${m.protocol ?? m.edentext}; this helper speaks ${PROTOCOL}. Use the helper from the same release.`));
+        } else if (m.edentext !== PROTOCOL) {
+          return;
+        } else if (m.type === 'refused') {
+          reject(new Error(`EdenText at ${this.#origin} does not accept ${location.origin} as its host: add it to the instance's embed.config.json.`));
+        } else if (m.type === 'ready') {
           this.version = m.version;
           this.#send('init', settings).then(() => resolve(this), reject);
         } else if (m.type === 'response') {

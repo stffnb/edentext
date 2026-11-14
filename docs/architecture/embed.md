@@ -73,6 +73,7 @@ A failure is answered with `error: message`.
 | Editor → host | Fields |
 |---|---|
 | `ready` | `protocol`, `version` |
+| `refused` | – (an `init` from a page `embed.config.json` does not name; sent to `*`) |
 | `dirty` | `dirty` |
 | `saveRequest` | – |
 | `warning` | `warnings` |
@@ -117,7 +118,7 @@ An unknown value is ignored, so the setting keeps what it had.
 
 | Method | Does |
 |---|---|
-| `ready` | a promise that resolves once the editor has taken the options; `version` is then set |
+| `ready` | a promise that resolves once the editor has taken the options; `version` is then set. It rejects when the editor turns the page away or speaks another protocol |
 | `configure(options)` | changes any option above at a later time |
 | `load(data, name?)` | opens a `Blob`, `ArrayBuffer` or `Uint8Array`; the name's extension (`.odt`, `.ott`, `.docx`, `.dotx`) picks the reader. Resolves `false` if the reader cancelled a password prompt |
 | `newDocument(name?)` | starts an empty document |

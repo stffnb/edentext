@@ -66,7 +66,7 @@ describe('synonyms', () => {
     const groups = await synonyms('fr', 'maison');
     expect(groups.flat()).toContain('bâtisse');
     expect(groups.flat()).not.toContain('maison');
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/thesaurus/fr/fr.txt');
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe('/thesaurus/fr/fr.txt');
   });
 
   it('loads Portuguese data and preserves accented synonyms', async () => {
@@ -75,6 +75,6 @@ describe('synonyms', () => {
     const groups = await synonyms('pt', 'casa');
     expect(groups.flat()).toContain('habitação');
     expect(groups.flat()).not.toContain('casa');
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/thesaurus/pt/pt.txt');
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe('/thesaurus/pt/pt.txt');
   });
 });

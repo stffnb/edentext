@@ -271,7 +271,7 @@ try {
       window.events = [];
       window.ed = new EdenTextFrame(document.getElementById('c'), { url: 'http://localhost:${PORT}/', user: 'Host', locale: 'en', accent: 'teal', ai: false });
       for (const t of ['dirty', 'saveRequest', 'warning']) ed.on(t, (m) => events.push(m));
-      ed.ready.then(() => { window.isReady = true; });
+      ed.ready.then(() => { window.isReady = true; }, (e) => { window.readyError = e.message; });
     </script>`;
   const hostFiles = {
     '/embed.js': ['text/javascript', () => readFileSync(join(ROOT, 'public/embed.js'))],
@@ -288,8 +288,8 @@ try {
   let origins = ['self'];
   await host.route('**/embed.config.json', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ origins }) }));
   await host.goto(`http://127.0.0.1:${PORT + 1}/`);
-  await host.waitForTimeout(4000);
-  check(!(await host.evaluate(() => window.isReady)), 'embed: a host embed.config.json does not name is ignored');
+  const refused = await host.waitForFunction(() => window.readyError, null, { timeout: 20_000 }).then((h) => h.jsonValue());
+  check(/embed\.config\.json/.test(refused), `embed: a host embed.config.json does not name is turned away (${refused})`);
   origins = ['self', `http://127.0.0.1:${PORT + 1}`];
   await host.reload();
   await host.waitForFunction(() => window.isReady, null, { timeout: 20_000 });
