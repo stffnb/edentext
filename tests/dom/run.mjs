@@ -247,9 +247,9 @@ try {
   check(rebuilt === opened + 1 && await settled(opened) === opened,
     `pagination survives its plugin view being rebuilt mid-pass (${opened} → ${rebuilt})`);
 
-  // The unsaved dot: an edit raises it, an undo back to the saved text clears it
-  // again (it is a checksum, not the document's identity), and so does opening a file.
-  // It follows on the next idle beat, so wait for the state rather than a fixed pause.
+  // The unsaved dot: an edit raises it, opening a file clears it, and so does an undo back
+  // to the opened text (a checksum, not the document's identity; the steps above leave
+  // their own edits). It follows on the next idle beat, so wait for the state.
   const dot = async (want) => {
     await page.waitForFunction((w) => !!document.querySelector('.doc-dirty') === w, want, { timeout: 10_000 })
       .catch(() => {});
@@ -257,15 +257,18 @@ try {
   };
   await caretTo('end');
   await page.keyboard.type('nachtrag');
-  const marked = await dot(true);
-  await page.keyboard.press(`${MOD}+z`);
-  const backToSaved = await dot(false);
+  const raised = await dot(true);
   await page.setInputFiles('input.file-input[accept*=".odt"]', join(ROOT, 'tests/corpus/04-table.odt'));
   await page.waitForFunction(() => document.querySelector('.tiptap table td')?.textContent.trim(),
     null, { timeout: 30_000 });
   const opened2 = await dot(false);
-  check(marked && !backToSaved && !opened2,
-    `the dot follows the text (edit: ${marked}, undone: ${backToSaved}, after open: ${opened2})`);
+  await caretTo('end');
+  await page.keyboard.type('nachtrag');
+  const marked = await dot(true);
+  await page.keyboard.press(`${MOD}+z`);
+  const backToSaved = await dot(false);
+  check(raised && !opened2 && marked && !backToSaved,
+    `the dot follows the text (edit: ${raised}, after open: ${opened2}, edit: ${marked}, undone: ${backToSaved})`);
 
   // The page setup is in the file too, so a margin preset marks it as much as text does.
   await page.locator('.ribbon-tab', { hasText: 'Layout' }).first().click();

@@ -82,3 +82,15 @@ export function scrollPosIntoView(view: EditorView, pos: number): void {
   }
   probe.remove();
 }
+
+// Focuses the view and keeps every scroller around it where it was: WebKit scrolls to the
+// selection ProseMirror writes into a redrawn DOM, even a caret far outside the view.
+export function focusInPlace(view: EditorView): void {
+  const kept: [Element, number, number][] = [];
+  for (let el = view.dom.parentElement; el; el = el.parentElement) kept.push([el, el.scrollTop, el.scrollLeft]);
+  view.focus();
+  for (const [el, top, left] of kept) {
+    if (el.scrollTop !== top) el.scrollTop = top;
+    if (el.scrollLeft !== left) el.scrollLeft = left;
+  }
+}

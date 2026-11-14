@@ -6,6 +6,7 @@
   import { t } from '../i18n/i18n.svelte';
   import type { MenuEntry } from '../editor/contextMenuItems';
   import ContextMenu from './ContextMenu.svelte';
+  import { focusInPlace } from '../editor/extensions/overlay';
 
   let {
     value,
@@ -48,7 +49,9 @@
       // The document's language is the one everything without an opinion follows, so the
       // overrides go with it — LibreOffice's "For all text" clears them too. The caret stays
       // where it was, so the view does too: a caret left above would pull it back up.
-      if (canSet) editor!.chain().focus(null, { scrollIntoView: false }).selectAll().setBlockLanguage(null).setRunLanguage(null).setTextSelection(editor!.state.selection.from).run();
+      if (!canSet) return;
+      editor!.chain().selectAll().setBlockLanguage(null).setRunLanguage(null).setTextSelection(editor!.state.selection.from).run();
+      focusInPlace(editor!.view);
       return;
     }
     const tag = tagForLanguage(code) ?? code;
