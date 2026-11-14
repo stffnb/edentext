@@ -59,6 +59,33 @@ jobs:
             gh release create "$GITHUB_REF_NAME" "edentext-$GITHUB_REF_NAME.zip" --title "$GITHUB_REF_NAME" --generate-notes
           fi
 
+  # @edentext/app, @edentext/embed and edentext on npm, through trusted publishing
+  # (OIDC, no token). Off until the repository variable NPM_PUBLISH is 'true'; a
+  # failing test:npm publishes nothing.
+  npm:
+    if: vars.NPM_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME" || { echo "$GITHUB_REF_NAME does not match package.json"; exit 1; }
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run test:npm
+      # The helper first: edentext depends on it.
+      - run: |
+          for p in embed app edentext; do
+            (cd "dist-npm/$p" && npm publish --provenance --access public)
+          done
+
   # Unsigned desktop installers from the same dist/, one runner per platform,
   # attached to the release the job above created.
   desktop:
