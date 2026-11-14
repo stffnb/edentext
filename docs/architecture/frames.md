@@ -20,7 +20,7 @@ Measured on six such pictures: 3–7mm high before, all within tolerance.
 A table Word takes out of the flow (`w:tblpPr` — every cover-page layout has one) is a **frame
 holding nothing but that table**, as LibreOffice keeps one: the blocks after it start where the
 table does, and text wraps beside it. A table beside a float narrows to the space left
-(`.tableWrapper` is a scroll container), as LibreOffice lays out an ODT table, and starts below the
+(`.tableWrapper` is a clipped `flow-root`, not a scroll container: WebKit pays for every scroller on each scrolled frame), as LibreOffice lays out an ODT table, and starts below the
 frame where less than its floor is left, each column's padding and an em (`--table-floor`, `tableView.ts`): fixed layout gives a table no min-content, so without the floor a full-width frame squeezes it to zero width, a letter per line, which reads as a row taller than a page and lets layouts imply each other in a cycle; LibreOffice starts a DOCX table below
 any frame, but the editor keeps one rule for both formats. Only a box of one table alone is
 such a frame; a table beside text in a box is part of its text (`docs/architecture/tables.md`).

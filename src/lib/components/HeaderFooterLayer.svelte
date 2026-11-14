@@ -220,14 +220,21 @@
     palette = now;
     for (const ed of stored) ed.view.dispatch(ed.state.tr);
   }
+  // One frame for all zones: each bump clones every zone into every page and re-measures.
+  let bumpFrame = 0;
+  const bump = () => {
+    bumpFrame ||= requestAnimationFrame(() => { bumpFrame = 0; sourceVersion++; });
+  };
+  // A zone that never scrolls: where the engine lacks overflow-anchor (WebKit), ProseMirror
+  // otherwise records the scroll position around each update, a forced layout per zone.
+  function scrollFree(node: HTMLElement): HTMLElement {
+    const dom = node.appendChild(document.createElement('div'));
+    dom.style.overflowAnchor = 'none';
+    return dom;
+  }
   function staticZone(node: HTMLElement, [id, doc]: [string, HfDoc]) {
-    const ed = new Editor({ element: node, editable: false, extensions: renderExts, content: doc as Content });
+    const ed = new Editor({ element: { mount: scrollFree(node) }, editable: false, extensions: renderExts, content: doc as Content });
     stored.add(ed);
-    let raf = 0;
-    const bump = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => sourceVersion++);
-    };
     // NodeViews settle after the first render (an image's size, a box's layout).
     const mo = new MutationObserver(bump);
     mo.observe(ed.view.dom, { subtree: true, childList: true, attributes: true, characterData: true });
@@ -238,7 +245,6 @@
         if (next !== doc) ed.commands.setContent((doc = next) as Content, { emitUpdate: false });
       },
       destroy() {
-        cancelAnimationFrame(raf);
         mo.disconnect();
         delete sources[id];
         stored.delete(ed);
@@ -270,10 +276,10 @@
       if (String(past) !== String(untrack(() => zoneIntrusions))) zoneIntrusions = past;
     };
     // A web font arriving late (an embedded one lands after the import) reflows the zone,
-    // so the height is observed rather than read once.
+    // so the height is observed rather than read once. The first report comes after the
+    // frame's own layout: a read here would force one, ~0.4 s on a long document in WebKit.
     const ro = new ResizeObserver(read);
     for (const el of boxes) ro.observe(el);
-    read();
     return () => ro.disconnect();
   });
 

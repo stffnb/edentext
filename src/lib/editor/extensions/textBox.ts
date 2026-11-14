@@ -609,7 +609,9 @@ function boxRanges(doc: PMNode): [number, number][] {
 
 type Size = { w: number; h: number };
 
-const rotorSize = (el: HTMLElement): Size => ({ w: el.offsetWidth, h: el.offsetHeight });
+// A view still being built has no size, and the observer reports it once mounted; WebKit
+// lays out the whole document even to answer 0 for a detached element.
+const rotorSize = (el: HTMLElement): Size => el.isConnected ? { w: el.offsetWidth, h: el.offsetHeight } : { w: 0, h: 0 };
 
 // One observer for every frame in the document: a per-view one is delivered in a
 // callback of its own, so the browser lays the document out again between any two

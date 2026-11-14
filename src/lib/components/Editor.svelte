@@ -470,7 +470,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       styleEl.id = 'document-styles';
       document.head.appendChild(styleEl);
     }
-    styleEl.textContent = css;
+    // An unchanged sheet is not rewritten: any write restyles the whole document.
+    if (styleEl.textContent !== css) styleEl.textContent = css;
     const ed = editor;
     if (!ed) return;
     // Type sizes/margins changed under the layout, so page positions must be re-measured.
