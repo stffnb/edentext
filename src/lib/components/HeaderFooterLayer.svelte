@@ -40,6 +40,7 @@
     hfDistances = DEFAULT_HF_DISTANCES,
     hfEditor = $bindable(),
     hfActive = $bindable(),
+    activePage = $bindable(1),
     hfTick = $bindable(),
     extraHfSections = $bindable([]),
     sectionStartPages = [],
@@ -71,6 +72,8 @@
     hfDistances?: HfDistances;
     hfEditor: Editor | null;
     hfActive: HfZone | null;
+    /** The page whose zone is being edited, which the ruler measures. */
+    activePage?: number;
     hfTick: number;
     extraHfSections?: HfSet[];
     sectionStartPages?: number[];
@@ -450,6 +453,7 @@
   // Set by a double-click (that page); null when editing is triggered externally
   // (Layout-panel buttons), where the current page is used instead.
   let pendingPage: number | null = null;
+  $effect(() => { if (interactive) activePage = editingPage; });
   let liveZone: HfZone | null = null;
   let liveKey = ''; // section:variant the live editor writes to
   let liveId = ''; // hf:section:zoneKey, as the body's history names it

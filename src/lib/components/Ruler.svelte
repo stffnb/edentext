@@ -6,12 +6,14 @@
 
   // Horizontal ruler: the tab stops and indents of the block the cursor is in.
   // Positions are cm from the left text margin, the attr's own origin.
-  let { editor, tick, zoom, width, margins, gutter = 0 }: {
+  // A section on other paper than the widest is centred on the sheet, so `page` places the
+  // measured page on it: unscaled px from the sheet's left edge, its width and own margins.
+  let { editor, tick, zoom, width, page, gutter = 0 }: {
     editor: Editor | null;
     tick: number;
     zoom: number;
-    width: number; // the page's SCALED width in px (.paper-scaler's)
-    margins: PageMargins;
+    width: number; // the sheet's SCALED width in px (.paper-scaler's)
+    page: { left: number; width: number; margins: PageMargins };
     gutter?: number; // the balloon strip .paper-scaler reserves beside the page
   } = $props();
 
@@ -25,14 +27,18 @@
   let strip: HTMLDivElement;
 
   const scale = $derived(zoom / 100);
-  const pageCm = $derived(scale > 0 ? width / scale / PX_PER_CM : 0);
+  const margins = $derived(page.margins);
+  const pageCm = $derived(page.width / PX_PER_CM);
+  const offsetCm = $derived(page.left / PX_PER_CM);
   // The block under the cursor; `tick` re-evaluates it on every transaction.
   const info = $derived(tick >= 0 && editor ? activeTabStops(editor.state) : null);
 
   // cm from the left text margin → px within the strip, and back.
-  const px = (cm: number) => (margins.left + cm) * PX_PER_CM * scale;
+  const px = (cm: number) => (offsetCm + margins.left + cm) * PX_PER_CM * scale;
   const cmAt = (clientX: number) =>
-    Math.round(((clientX - strip.getBoundingClientRect().left) / scale / PX_PER_CM - margins.left) / SNAP_CM) * SNAP_CM;
+    Math.round(((clientX - strip.getBoundingClientRect().left) / scale / PX_PER_CM - offsetCm - margins.left) / SNAP_CM) * SNAP_CM;
+  // Marks stay on the page; the sheet beside a narrower page is shaded as margin.
+  const onPage = (cm: number) => cm >= -margins.left && cm <= pageCm - margins.left;
 
   const textCm = $derived(Math.max(0, pageCm - margins.left - margins.right));
   const ticks = $derived(Array.from({ length: Math.ceil(pageCm) + 1 }, (_, i) => i - Math.floor(margins.left)));
@@ -160,14 +166,14 @@
     <div class="margin" style="left: {px(textCm)}px"></div>
 
     {#each ticks as cm (cm)}
-      {#if px(cm) >= 0 && px(cm) <= width}
+      {#if onPage(cm)}
         <div class="tick" style="left: {px(cm)}px">
           {#if cm > 0 && cm < textCm && cm % labelEvery === 0}<span>{cm}</span>{/if}
         </div>
       {/if}
     {/each}
     {#each subTicks as cm (cm)}
-      {#if px(cm) >= 0 && px(cm) <= width}
+      {#if onPage(cm)}
         <div class="sub" class:half={Math.abs(cm % 1) === 0.5} style="left: {px(cm)}px"></div>
       {/if}
     {/each}

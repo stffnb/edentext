@@ -79,7 +79,7 @@ Horizontally `.tiptap`'s padding draws one pair for every page, so the differenc
 everything that writes a block margin (`editor.css`, `indent.ts`, `styleSheet.ts`,
 `tableView.ts`) and cleared on descendants so a nested indent can't count it twice. The page
 a block lands on is read *after* its own spacer, so a forced break onto the section's second
-page takes the "rest" pair. Not carried: the ruler and a frame's `COLUMN_WIDTH_CSS` stay document-wide.
+page takes the "rest" pair. The ruler measures the caret's page (the edited zone's in a header or footer), its own sheet and margins, and the caret's section's first page once the view scrolls out of that section; `currentPage` is read against `pageBoxes`, since pages differ in height. Not carried: a frame's `COLUMN_WIDTH_CSS` stays document-wide.
 
 **A node decoration does not survive its node being replaced** — a block's type or attrs changing is exactly that step — so the pass marks them (`blockDeco`) and re-cuts the spans `onRemove` reports lost (`repairDecos`). Without it the inset, a page-top margin, a note offset or a column fragment's height was gone until the next pass: a heading in a narrow section sat 164px left, as if the page had turned landscape. A block whose own bounds lie inside a deleted range was **replaced**, not restyled, and is not re-cut: opening a file replaces the whole document, and a column fragment's `height:934px` spread over the blocks now in its old range made the flow split a section into a fragment per page. A **spacer widget** sits on the boundary between two blocks, so replacing either one deletes its position too; `repairDecos` re-seats it (`spacerDeco`) wherever the mapping still puts it before a block. The next pass cannot restore a lost spacer on its own, since it finds the same placements and skips the dispatch: switching the document's language rewrote every block and left a document with only its first page break.
 
@@ -191,7 +191,7 @@ that alone was 55 ms per index on a 460-page file.
 
 **Layout constants** (must stay in sync between `pageBreaks.ts`, `Editor.svelte`, and `editor.css`):
 - `PAGE_HEIGHT = 1123px` (A4 portrait), `PAGE_GAP = 20px`, `CYCLE = PAGE_HEIGHT + PAGE_GAP = 1143px`.
-- Page height/width and margins are read **live** from CSS custom properties (`--user-page-height`, `--user-page-width`, `--user-margin-*`) so orientation/margin changes don't require new constants. `getCycle()` in `Editor.svelte` reads `--user-page-height` at runtime.
+- Page height/width and margins are read **live** from CSS custom properties (`--user-page-height`, `--user-page-width`, `--user-margin-*`) so orientation/margin changes don't require new constants. `Editor.svelte` places a y on a page against its `pageBoxes` (`pageAtY`), which follow each section's paper.
 - A margin/orientation change dispatches an empty `FORCE_PAGE_RECALC` meta-transaction (deferred via `requestAnimationFrame`, outside the Svelte effect flush, to avoid re-entrant binding updates) to trigger a re-paginate. The tab pass (`tabStops.ts`) dispatches its first layout unconditionally, which forces one more pass after a load. Without that pass, WebKit spent ~9s rendering the first spell-check highlights of a long document (probed in `test:dom`; neither a forced reflow nor a frame's delay before the check helped, cause unknown).
 
 ## Multi-column sections (`columns.ts` + `columnsFlow.ts`)

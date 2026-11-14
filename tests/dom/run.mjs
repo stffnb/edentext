@@ -584,6 +584,46 @@ try {
     check(mask.lines === 0 && mask.off <= 1 && mask.outside <= 1 && mask.hidden === 0 && mask.enclosed === 0,
       `with ${label}, a borderless table's page-break mask draws no lines and its gap on the sheets', within its pages, over no text and under no note (${mask.lines} lines, ${mask.off.toFixed(1)}px off, ${mask.outside.toFixed(1)}px outside, ${mask.hidden} lines under it, ${mask.enclosed} notes enclosed or hidden)`);
   }
+
+  // The ruler measures the page holding the caret, body or zone: its text column is that
+  // page's own sheet less its own section's margins, a portrait page's beside a landscape one.
+  await page.evaluate((d) => {
+    localStorage.setItem('edentext-doc', JSON.stringify(d));
+    localStorage.setItem('edentext-hf-sections', JSON.stringify([{ orientation: 'landscape', margins: { top: 2, bottom: 2, left: 3, right: 4 } }]));
+    localStorage.setItem('edentext-page-margins', JSON.stringify({ top: 2, bottom: 2, left: 2, right: 2 }));
+  }, { type: 'doc', content: [block(words('portrait')),
+    { type: 'paragraph', attrs: { breakBefore: 'page', sectionBreak: true }, content: [words('landscape')] }] });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
+  await settle(page, true);
+  const rulerOn = (sel) => page.evaluate((sel) => {
+    const [a, b] = Array.from(document.querySelectorAll('.ruler .margin'), (e) => e.getBoundingClientRect());
+    const el = sel === '.hf-active' ? document.querySelector(sel)
+      : Array.from(document.querySelectorAll('.tiptap-host .tiptap > p')).find((e) => e.textContent === sel);
+    const top = el.getBoundingClientRect().top;
+    const sheet = Array.from(document.querySelectorAll('.page-sheet'), (s) => s.getBoundingClientRect()).find((r) => top >= r.top && top < r.bottom);
+    const cm = (px) => +(px / (96 / 2.54)).toFixed(1);
+    return `${cm(a.right - sheet.left)}|${cm(sheet.right - b.left)}`;
+  }, sel);
+  const caretIn = async (text) => {
+    await page.evaluate((text) => {
+      const ed = document.querySelector('.tiptap').editor;
+      const p = Array.from(document.querySelectorAll('.tiptap-host .tiptap > p')).find((e) => e.textContent === text);
+      ed.commands.focus(ed.view.posAtDOM(p, 0) + 1);
+    }, text);
+    await page.waitForTimeout(600);
+    return rulerOn(text);
+  };
+  const rulers = [await caretIn('landscape'), await caretIn('portrait')];
+  const landHeader = page.locator('.hf-zone.hf-header').nth(1);
+  await landHeader.scrollIntoViewIfNeeded();
+  await landHeader.dblclick({ timeout: 5000 }).catch(() => landHeader.dispatchEvent('dblclick'));
+  await page.waitForSelector('.hf-active .tiptap', { timeout: 5000 });
+  await page.waitForTimeout(400);
+  rulers.push(await rulerOn('.hf-active'));
+  await page.keyboard.press('Escape');
+  check(rulers.join(' ') === '3|4 2|2 3|4',
+    `the ruler takes the caret's page and section margins: landscape, portrait, a landscape page's header (${rulers.join(' ')} cm)`);
   await page.evaluate(() => ['edentext-footer', 'edentext-hf-sections', 'edentext-page-margins'].forEach((k) => localStorage.removeItem(k)));
 
   // A row that may not break and is taller than a page starts on a fresh one.

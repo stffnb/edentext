@@ -41,6 +41,7 @@ import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbe
 import { DEFAULT_LINE_GRID, type LineGrid } from '../storage/lineGrid';
 import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import Ruler from './Ruler.svelte';
+  import { sectionAt } from './sectionSetup';
   import { saveDocument, loadDocument, markDocumentLoaded, withoutDefaults } from '../storage/autosave';
   import { IDB_SRC } from '../storage/imageStore';
   import { applyMarginVars, cmToPx, PX_PER_CM, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
@@ -382,6 +383,23 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     return (page === first ? s?.marginsFirst ?? s?.margins : s?.margins) ?? pageMargins;
   });
 
+  // The page the ruler measures: the edited zone's, else the caret's. Scrolled away from
+  // the caret's section, it measures that section's first page instead of the one in view.
+  let hfEditingPage = $state(1);
+  let rulerPage = $derived.by(() => {
+    if (hfActive) return hfEditingPage;
+    const section = tick >= 0 && editor ? sectionAt(editor.state) : 0;
+    if ((pageBoxes[currentPage - 1]?.section ?? 0) === section) return currentPage;
+    return section > 0 ? sectionStartPages[section - 1] ?? currentPage : 1;
+  });
+  // That page's own paper and margins, an even page of a mirrored setup swapping its sides.
+  let rulerGeometry = $derived.by(() => {
+    const box = pageBoxes[rulerPage - 1];
+    const m = marginsAt(rulerPage);
+    const margins = m.mirrored && leftPageAt(rulerPage) ? { ...m, left: m.right, right: m.left } : m;
+    return { left: box?.left ?? 0, width: box?.width ?? paperWidth, margins };
+  });
+
   $effect(() => {
     const s = document.documentElement.style;
     s.setProperty('--pb-section-numstart', sectionNumStarts);
@@ -599,12 +617,12 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     scaledHeight = Math.round(h * z);
   }
 
-  // Page cycle (page height + 20px gap) in document px. Format/orientation-dependent,
-  // so read live from --user-page-height (set by applyPageSizeVars). Must match
-  // pageBreaks.ts. Fallback = A4 portrait (1123 + 20).
-  function getCycle(): number {
-    const ph = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--user-page-height'));
-    return (Number.isFinite(ph) ? ph : 1123) + 20;
+  // The page a document y falls on (px from the first page's top); a gap counts to the
+  // page above it. Pages differ in height where a section has its own paper.
+  function pageAtY(y: number): number {
+    let p = 1;
+    while (p < pageBoxes.length && pageBoxes[p].top <= y) p++;
+    return Math.max(1, Math.min(numPages, p));
   }
 
   // --- Right-click context menu (text menu, spelling suggestions merged in) ---
@@ -837,16 +855,13 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       try {
         const z = appliedZoom / 100;
         const tiptapRect = tiptap.getBoundingClientRect();
-        const cycle = getCycle();
         const tableTopDoc = (tRect.top - tiptapRect.top) / z;
         const coords = view.coordsAtPos(ed.state.selection.head);
         const cursorDoc = ((coords.top + coords.bottom) / 2 - tiptapRect.top) / z;
-        const tableStartPage = Math.floor(Math.max(0, tableTopDoc) / cycle);
-        const cursorPage = Math.floor(Math.max(0, cursorDoc) / cycle);
+        const tableStartPage = pageAtY(tableTopDoc);
+        const cursorPage = pageAtY(cursorDoc);
         if (cursorPage > tableStartPage) {
-          const marginTopDoc =
-            parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--user-margin-top')) || 96;
-          const pageContentTopDoc = cursorPage * cycle + marginTopDoc;
+          const pageContentTopDoc = (pageBoxes[cursorPage - 1]?.top ?? 0) + cmToPx(marginsAt(cursorPage).top);
           const tiptapTopInContainer = tiptapRect.top - cRect.top + container.scrollTop;
           top = tiptapTopInContainer + pageContentTopDoc * z;
         }
@@ -1151,15 +1166,13 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     // getBoundingClientRect and coordsAtPos return zoomed viewport pixels;
     // divide by zoom factor to convert to document coordinates before comparing with the cycle.
     const zoomFactor = appliedZoom / 100;
-    const cycle = getCycle();
-
     if (editor && view) {
       try {
         const coords = view.coordsAtPos(editor.state.selection.head);
         const cursorMidY = (coords.top + coords.bottom) / 2;
         if (cursorMidY >= editorRect.top && cursorMidY <= editorRect.bottom) {
           const cursorInDoc = (cursorMidY - tiptapRect.top) / zoomFactor;
-          currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / cycle) + 1));
+          currentPage = pageAtY(cursorInDoc);
           return;
         }
       } catch {
@@ -1168,7 +1181,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     }
 
     const visibleTopInDoc = (editorRect.top - tiptapRect.top) / zoomFactor;
-    currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, visibleTopInDoc) / cycle) + 1));
+    currentPage = pageAtY(visibleTopInDoc);
   }
 
   function onPageCount(e: Event) {
@@ -1548,7 +1561,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         (view as unknown as { domObserver: { flush(): void } }).domObserver.flush();
         const coords = caretCoords(view);
         const cursorInDoc = ((coords.top + coords.bottom) / 2 - tiptap.getBoundingClientRect().top) / (appliedZoom / 100);
-        currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / getCycle()) + 1));
+        currentPage = pageAtY(cursorInDoc);
         followCaret(currentPage, onPaper(coords));
       } catch { /* ignore */ }
     }, 0);
@@ -1860,7 +1873,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   <!-- Follows the edited header/footer zone: its stops are what a left/centre/right
        running head rides on, and the zone spans the same text column as the body. -->
   {#if showRuler && scaledWidth}
-    <Ruler editor={hfActive ? hfEditor : editor} tick={hfActive ? hfTick : tick} zoom={appliedZoom} width={scaledWidth} margins={pageMargins} gutter={scaledCanvasWidth - scaledWidth} />
+    <Ruler editor={hfActive ? hfEditor : editor} tick={hfActive ? hfTick : tick} zoom={appliedZoom} width={scaledWidth} page={rulerGeometry} gutter={scaledCanvasWidth - scaledWidth} />
   {/if}
   <!-- Reserves the scaled scroll footprint; the transform on .paper reserves none.
        Before the first measure (size 0) it's left unsized so .paper isn't clipped. -->
@@ -1920,6 +1933,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         {differentOddEven}
         bind:hfEditor
         bind:hfActive
+        bind:activePage={hfEditingPage}
         bind:hfTick
         bodyEditor={editor}
         {numPages}
