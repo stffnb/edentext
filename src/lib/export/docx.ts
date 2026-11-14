@@ -2760,15 +2760,15 @@ function applyParagraphFlagsDocx(bytes: Uint8Array): Uint8Array {
   return zipSync(out);
 }
 
-// Post-pack pass: the docx package ends each section in an empty paragraph of its own,
-// a blank line in Word that LibreOffice folds into the paragraph before, which loses its
-// space below. The section mark goes onto that paragraph instead, where Word writes it;
-// an empty one keeps its marker, which the importers drop as just that.
+// Post-pack pass: a section's mark rides the paragraph ending it, where Word writes it. The
+// docx package puts it there or in an empty paragraph of its own; every mark first goes into
+// one of its own, then onto the paragraph before unless that one is empty (LibreOffice and
+// the importers drop an empty marked paragraph) or ends in a line break (dropped too).
 function applySectionMarksDocx(bytes: Uint8Array): Uint8Array {
   const files = unzipSync(bytes);
   const doc = files['word/document.xml'];
   if (!doc) return bytes;
-  const xml = strFromU8(doc);
+  const xml = ownSectionMarks(strFromU8(doc));
   const marker = /<w:p><w:pPr>(<w:sectPr\b[\s\S]*?<\/w:sectPr>)<\/w:pPr><\/w:p>/g;
   let out = '', last = 0;
   for (let m = marker.exec(xml); m; m = marker.exec(xml)) {
@@ -2791,6 +2791,47 @@ function applySectionMarksDocx(bytes: Uint8Array): Uint8Array {
   const zipped: Record<string, [Uint8Array, { level: 6 }]> = {};
   for (const [path, data] of Object.entries(files)) zipped[path] = [data, { level: 6 }];
   return zipSync(zipped);
+}
+
+// Every mid-body w:sectPr moved out of the paragraph holding it into an empty one after it.
+function ownSectionMarks(xml: string): string {
+  const mark = /<w:sectPr\b[\s\S]*?<\/w:sectPr>/g;
+  let out = '', last = 0;
+  for (let m = mark.exec(xml); m; m = mark.exec(xml)) {
+    const start = openParagraphStart(xml.slice(0, m.index));
+    if (start < 0 || xml.startsWith(`<w:p><w:pPr>${m[0]}</w:pPr></w:p>`, start)) continue;
+    const end = paragraphEnd(xml, m.index + m[0].length);
+    if (end < 0) continue;
+    const para = (xml.slice(start, m.index) + xml.slice(m.index + m[0].length, end)).replace(/^(<w:p\b[^>]*>)<w:pPr><\/w:pPr>/, '$1');
+    out += xml.slice(last, start) + para + `<w:p><w:pPr>${m[0]}</w:pPr></w:p>`;
+    last = end;
+    mark.lastIndex = end;
+  }
+  return last ? out + xml.slice(last) : xml;
+}
+
+// Where the paragraph still open at the end of `xml` starts, -1 for none.
+function openParagraphStart(xml: string): number {
+  const tags = [...xml.matchAll(/<w:p(?=[\s>/])[^>]*?(\/?)>|<\/w:p>/g)];
+  let depth = 0;
+  for (let i = tags.length - 1; i >= 0; i--) {
+    const t = tags[i];
+    if (t[0] === '</w:p>') depth++;
+    else if (!t[1] && depth-- === 0) return t.index!;
+  }
+  return -1;
+}
+
+// Where the paragraph open at `from` ends, past its closing tag; -1 for none.
+function paragraphEnd(xml: string, from: number): number {
+  const tag = /<w:p(?=[\s>/])[^>]*?(\/?)>|<\/w:p>/g;
+  tag.lastIndex = from;
+  let depth = 0;
+  for (let t = tag.exec(xml); t; t = tag.exec(xml)) {
+    if (t[0] === '</w:p>') { if (depth-- === 0) return t.index + t[0].length; }
+    else if (!t[1]) depth++;
+  }
+  return -1;
 }
 
 // Where the top-level paragraph `xml` ends with opens: its own w:p, past any nested in a

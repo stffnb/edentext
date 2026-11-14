@@ -72,7 +72,10 @@ describe('DOCX export → import round trip', () => {
         para([text('bold in box', [{ type: 'bold' }])]),
       ] }]),
       para([{ type: 'textBox', attrs: { width: 192, height: 96, wrap: 'right', wrapOffset: 6, wrapOffsetY: 1.5, shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, content: [para('ellipse text')] }]),
-      { type: 'columns', attrs: { count: 2, gapCm: 0.8 }, content: [para('newspaper one'), para('newspaper two')] },
+      // Each closes a section: a blank line, and one holding only a recorded insertion.
+      { type: 'paragraph' },
+      { type: 'columns', attrs: { count: 2, gapCm: 0.8 }, content: [para('newspaper one'), para('newspaper two'),
+        para([text('inserted', [{ type: 'insertion', attrs: { id: 'rv1', author: 'A', date: '2026-05-06T07:08:09' } }])])] },
       { type: 'table', content: [
         { type: 'tableRow', content: [headerCell('Name', { colwidth: [6] }), headerCell('Qty', { colwidth: [3] })] },
         { type: 'tableRow', attrs: { rowHeight: 40 }, content: [cell('Widget', { backgroundColor: '#FFFF00', rowspan: 2 }), cell('1', { borderTop: 'none', borderRight: '2.25pt solid #FF0000' })] },
@@ -250,10 +253,14 @@ describe('DOCX export → import round trip', () => {
     expect(cols[0].attrs.count).toBe(2);
     expect(cols[0].attrs.gapCm).toBe(0.8);
     const texts = walk(cols[0], 'text').map((t) => t.text);
-    expect(texts).toEqual(['newspaper one', 'newspaper two']);
-    // The empty section-break marker paragraphs must not leak into the document.
+    expect(texts).toEqual(['newspaper one', 'newspaper two', 'inserted']);
+    // The section-break markers are dropped; a block of the document's own that closes a
+    // section is kept, also an empty one, and stays on its side of the boundary.
+    const at = doc.content!.indexOf(cols[0]);
+    expect(doc.content![at - 1]).toMatchObject({ type: 'paragraph' });
+    expect(doc.content![at - 1].content).toBeUndefined();
     const paras = walk(doc, 'paragraph');
-    expect(paras.filter((p) => !p.content && !p.attrs?.fontSize).length).toBe(0);
+    expect(paras.filter((p) => !p.content && !p.attrs?.fontSize).length).toBe(1);
   });
 
   it('round-trips headings + paragraph block attrs', () => {

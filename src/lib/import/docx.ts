@@ -3929,8 +3929,8 @@ function sectionHeightsCm(sect: Element | null): { pageHeightCm: number; textHei
 }
 
 // Split body children into sections: a <w:p> whose pPr carries a sectPr ends the
-// group before it (dropped unless it has run content). The trailing group has
-// sectPr null — the caller pairs it with the body-final <w:sectPr>.
+// group before it (dropped unless it holds a run, also one inside a revision or field).
+// The trailing group has sectPr null — the caller pairs it with the body-final <w:sectPr>.
 function splitBodySections(children: Element[]): {
   groups: { els: Element[]; sectPr: Element | null }[];
   midSectPrs: Element[];
@@ -3942,7 +3942,7 @@ function splitBodySections(children: Element[]): {
     if (el.namespaceURI === W && el.localName === 'sectPr') continue; // body-final
     const sectPr = closingSectPr(el);
     if (sectPr) {
-      if (el.localName !== 'p' || fc(el, 'r') || fc(el, 'hyperlink')) els.push(el);
+      if (el.localName !== 'p' || el.getElementsByTagNameNS(W, 'r').length) els.push(el);
       groups.push({ els, sectPr });
       midSectPrs.push(sectPr);
       els = [];
