@@ -17,6 +17,9 @@ function fail(err: unknown): never {
   throw new DOMException(String(err), /ENOENT/.test(String(err)) ? 'NotFoundError' : 'NotAllowedError');
 }
 
+/** Whether this is the desktop app. */
+export const inDesktopApp = !!bridge;
+
 export function pathHandle(path: string): FileSystemFileHandle {
   const name = path.split(/[\\/]/).pop() ?? path;
   return {

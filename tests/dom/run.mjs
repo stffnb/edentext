@@ -2094,10 +2094,10 @@ try {
         const url = d.querySelector('input[type="url"]');
         return { text: d.textContent, endpoint: url?.value, locked: url?.disabled, key: !!d.querySelector('input[type="password"]') };
       });
-      check(aiRows.text.includes('Set up by this installation') && aiRows.endpoint === '/ai/v1' && aiRows.locked && !aiRows.key,
+      check(aiRows.text.includes('Set up by the administrator') && aiRows.endpoint === '/ai/v1' && aiRows.locked && !aiRows.key,
         `Settings ▸ AI shows the installation's locked provider without a key field (${JSON.stringify({ ...aiRows, text: undefined })})`);
       await hp.locator('dialog[open] .nav-item', { hasText: /^\s*Editing$/ }).click();
-      const stt = await hp.$eval('dialog[open]', (d) => ({ shown: d.textContent.includes('Set up by this installation'), ownField: !!d.querySelector('input[type="url"]') }));
+      const stt = await hp.$eval('dialog[open]', (d) => ({ shown: d.textContent.includes('Set up by the administrator'), ownField: !!d.querySelector('input[type="url"]') }));
       check(stt.shown && !stt.ownField, `Settings ▸ Editing names the installation's locked speech server and offers no field for an own one (${JSON.stringify(stt)})`);
       await hp.keyboard.press('Escape');
 

@@ -10,6 +10,7 @@
   import { autoLanguage, setAutoLanguage } from '../spell/detect.svelte';
   import { numberRecognition, setNumberRecognition } from '../storage/tableOptions.svelte';
   import { dictationHostOff, dictationSettings, setDictation, type DictationService } from '../storage/dictation.svelte';
+  import { inDesktopApp } from '../storage/desktopFiles';
   import { dictationServer, dictationService, dictationServices, dictationSupported } from '../dictation/session.svelte';
   import { checkSpeechServer, SpeechServerError } from '../dictation/speechServer';
   import {
@@ -302,7 +303,7 @@
           {@const locked = !!hostDictation().locked}
           {@const off = !dictationSettings().enabled}
           <div class="row" id="settings-dictation">
-            <div class="info"><div class="name">{t().dictation.enable}</div><div class="desc">{dictationSupported() ? t().dictation.enableHint : t().dictation.unsupported}</div></div>
+            <div class="info"><div class="name">{t().dictation.enable}</div><div class="desc">{dictationSupported() ? t().dictation.enableHint : t().dictation.unsupported(inDesktopApp)}</div></div>
             <Toggle label={t().dictation.enable} checked={dictationSettings().enabled && dictationSupported()} disabled={!dictationSupported()} onchange={(on) => setDictation({ enabled: on })} />
           </div>
           {#if offered.length > 1}
