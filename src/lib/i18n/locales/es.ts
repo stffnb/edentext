@@ -1379,6 +1379,8 @@ const es: Messages = {
       weight: 'Grosor',
       direction: 'Dirección',
       blur: 'Desenfoque',
+      size: 'Tamaño',
+      transparency: 'Transparencia',
       gallery: 'Estilos predefinidos',
       preset: (n: number) => `Estilo ${n}`,
       alsoOdt: 'también en ODT',

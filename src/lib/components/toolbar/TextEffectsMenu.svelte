@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import {
-    effectCss, OUTLINE_WIDTH_PT, presetAttrs, TEXT_EFFECT_PRESETS,
+    effectCss, GLOW_RADIUS_PT, OUTLINE_WIDTH_PT, presetAttrs, TEXT_EFFECT_PRESETS,
     type TextEffectAttrs, type TextGlow, type TextOutline, type TextShadow,
   } from '../../editor/extensions/textEffects';
   import { t } from '../../i18n/i18n.svelte';
@@ -26,9 +26,10 @@
   const DIRECTIONS: [number, number][] = [[-1, -1], [0, -1], [1, -1], [-1, 0], [0, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
   const BLURS = [0, 2, 4, 8];
   const GLOW_SIZES = [5, 8, 11, 18];
-  const GLOW_COLORS = ['#4472C4', '#ED7D31', '#A5A5A5', '#FFC000', '#5B9BD5', '#70AD47'];
+  const GLOW_TRANSPARENCIES = [0, 25, 40, 60, 75];
   const DIST = 3;
   const SHADOW: TextShadow = { color: '#000000', alpha: 0.4, dxPt: 2.12, dyPt: 2.12, blurPt: 4 };
+  const GLOW: TextGlow = { color: '#4472C4', alpha: 0.4, radiusPt: 8 };
 
   let L = $derived(t().ribbon.textEffects);
   const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -49,11 +50,13 @@
   const outline = (o: TextOutline | null) => act((c) => c.setTextOutline(o));
   const shadow = (s: TextShadow | null) => act((c) => c.setTextShadow(s));
   const glow = (g: TextGlow | null) => act((c) => c.setTextGlow(g));
+  // One setting changes, the others stay; without a glow they start from GLOW.
+  const glowWith = (change: Partial<TextGlow>) => glow({ ...GLOW, ...fx.textGlow, ...change });
   const plain = (name: 'outline' | 'shadow' | 'relief', value: boolean | 'embossed' | 'engraved') =>
     act((c) => c.setTextEffect(name, value), name === 'relief');
-  // The width box blurs its input once it commits; the menu takes the focus back.
-  function weigh(widthPt: number) {
-    outline({ color: fx.textOutline?.color ?? '#000000', widthPt });
+  // A size box blurs its input once it commits; the menu takes the focus back.
+  function typed(run: () => void) {
+    run();
     queueMicrotask(() => { if (!root?.contains(document.activeElement)) root?.focus(); });
   }
 
@@ -137,7 +140,7 @@
       <div class="fx-label">{L.weight}</div>
       <div class="fx-weight">
         <BorderWidthBox value={String(fx.textOutline?.widthPt ?? 0.75)} presets={WEIGHTS} none={false} min={OUTLINE_WIDTH_PT.min} max={OUTLINE_WIDTH_PT.max}
-          onChange={(w) => weigh(Number(w))} />
+          onChange={(w) => typed(() => outline({ color: fx.textOutline?.color ?? '#000000', widthPt: Number(w) }))} />
       </div>
       <button class="fx-row" class:selected={fx.outline === true} onclick={() => plain('outline', true)}>
         <span class="fx-mini" style={effectCss({ outline: true })}>A</span>{L.hollow}<span class="menu-sub">{L.alsoOdt}</span>
@@ -165,17 +168,18 @@
       </button>
     {:else if page === 'glow'}
       <button class="fx-row" class:selected={!fx.textGlow} onclick={() => glow(null)}>{L.noGlow}</button>
-      <div class="fx-grid six">
-        {#each GLOW_SIZES as r}
-          <span class="fx-size">{r} pt</span>
-          {#each GLOW_COLORS as c}
-            {@const g = { color: c, alpha: 0.6, radiusPt: r }}
-            <button class="fx-tile" class:selected={same(fx.textGlow, g)} title="{r} pt" onclick={() => glow(g)}>{@render sample({ textGlow: g })}</button>
-          {/each}
-        {/each}
-      </div>
       <div class="fx-label">{L.color}</div>
-      {@render swatches((c) => glow({ alpha: 0.6, radiusPt: 8, ...fx.textGlow, color: c }), fx.textGlow?.color)}
+      {@render swatches((c) => glowWith({ color: c }), fx.textGlow?.color)}
+      <div class="fx-label">{L.size}</div>
+      <div class="fx-weight fx-glow-size">
+        <BorderWidthBox value={String(fx.textGlow?.radiusPt ?? GLOW.radiusPt)} presets={GLOW_SIZES} none={false} min={GLOW_RADIUS_PT.min} max={GLOW_RADIUS_PT.max}
+          title={L.size} lines={false} onChange={(r) => typed(() => glowWith({ radiusPt: Number(r) }))} />
+      </div>
+      <div class="fx-label">{L.transparency}</div>
+      <div class="fx-weight fx-glow-alpha">
+        <BorderWidthBox value={String(Math.round((1 - (fx.textGlow?.alpha ?? GLOW.alpha)) * 100))} presets={GLOW_TRANSPARENCIES} none={false} min={0} max={100}
+          unit="%" title={L.transparency} onChange={(p) => typed(() => glowWith({ alpha: (100 - Number(p)) / 100 }))} />
+      </div>
     {:else}
       {#each [['embossed', L.embossed], ['engraved', L.engraved]] as const as [value, label]}
         <button class="fx-row" class:selected={fx.relief === value} onclick={() => plain('relief', fx.relief === value ? false : value)}>
@@ -203,8 +207,6 @@
   }
   .fx-grid.gallery, .fx-grid.four { grid-template-columns: repeat(4, 1fr); }
   .fx-grid.three { grid-template-columns: repeat(3, 1fr); }
-  .fx-grid.six { grid-template-columns: auto repeat(6, 1fr); align-items: center; }
-  .fx-size { font-size: 11px; color: var(--w-text-dim, var(--color-text-secondary)); white-space: nowrap; }
 
   .fx-menu .fx-tile {
     display: grid;
@@ -221,7 +223,6 @@
   .fx-sample {
     font: 700 26px/1 'Liberation Sans', Arial, sans-serif;
   }
-  .fx-grid.six .fx-sample { font-size: 18px; }
 
   .fx-mini {
     display: inline-block;

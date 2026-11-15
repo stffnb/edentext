@@ -1380,6 +1380,8 @@ const ja: Messages = {
       weight: '太さ',
       direction: '方向',
       blur: 'ぼかし',
+      size: 'サイズ',
+      transparency: '透過性',
       gallery: 'スタイル一覧',
       preset: (n: number) => `スタイル ${n}`,
       alsoOdt: 'ODTでも保持',

@@ -1377,6 +1377,8 @@ const pt: Messages = {
       weight: 'Espessura',
       direction: 'Direção',
       blur: 'Desfocagem',
+      size: 'Tamanho',
+      transparency: 'Transparência',
       gallery: 'Predefinições',
       preset: (n: number) => `Predefinição ${n}`,
       alsoOdt: 'também em ODT',

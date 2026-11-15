@@ -1394,6 +1394,8 @@ const el: Messages = {
       weight: "Πάχος",
       direction: "Κατεύθυνση",
       blur: "Θόλωση",
+      size: "Μέγεθος",
+      transparency: "Διαφάνεια",
       gallery: "Έτοιμα στυλ",
       preset: (n: number) => `Στυλ ${n}`,
       alsoOdt: "και σε ODT",

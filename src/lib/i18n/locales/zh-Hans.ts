@@ -1378,6 +1378,8 @@ const zhHans: Messages = {
       weight: '粗细',
       direction: '方向',
       blur: '模糊',
+      size: '大小',
+      transparency: '透明度',
       gallery: '预设样式',
       preset: (n: number) => `样式 ${n}`,
       alsoOdt: 'ODT 也保留',

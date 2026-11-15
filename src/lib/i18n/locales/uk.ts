@@ -1393,6 +1393,8 @@ const uk: Messages = {
       weight: 'Товщина',
       direction: 'Напрямок',
       blur: 'Розмиття',
+      size: 'Розмір',
+      transparency: 'Прозорість',
       gallery: 'Готові стилі',
       preset: (n: number) => `Стиль ${n}`,
       alsoOdt: 'є і в ODT',

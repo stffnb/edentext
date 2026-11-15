@@ -1379,6 +1379,8 @@ const zhHant: Messages = {
       weight: '粗細',
       direction: '方向',
       blur: '模糊',
+      size: '大小',
+      transparency: '透明度',
       gallery: '預設樣式',
       preset: (n: number) => `樣式 ${n}`,
       alsoOdt: 'ODT 也會保留',

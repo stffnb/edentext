@@ -1393,6 +1393,8 @@ const en = {
       weight: 'Weight',
       direction: 'Direction',
       blur: 'Blur',
+      size: 'Size',
+      transparency: 'Transparency',
       gallery: 'Presets',
       preset: (n: number) => `Preset ${n}`,
       alsoOdt: 'also in ODT',

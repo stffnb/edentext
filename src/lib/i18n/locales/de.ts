@@ -1384,6 +1384,8 @@ const de: Messages = {
       weight: 'Stärke',
       direction: 'Richtung',
       blur: 'Weichzeichnen',
+      size: 'Größe',
+      transparency: 'Transparenz',
       gallery: 'Voreinstellungen',
       preset: (n: number) => `Effekt ${n}`,
       alsoOdt: 'auch in ODT',

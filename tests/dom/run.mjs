@@ -1458,14 +1458,27 @@ try {
   await page.press('.ribbon-menu .fx-weight input', 'Enter');
   const weighed = (await fxOf()).textOutline;
   keptOpen.push(await stays(), await page.evaluate(() => !!document.activeElement?.closest('.ribbon-menu')));
+  // The glow page: a size started from no glow takes the defaults, each later setting keeps the rest.
+  await page.click('.ribbon-menu .fx-back');
+  await page.click('[data-cmd="textEffects-glow"]');
+  const glowBox = async (box, value) => {
+    await page.fill(`.ribbon-menu .${box} input`, value);
+    await page.press(`.ribbon-menu .${box} input`, 'Enter');
+    return (await fxOf()).textGlow;
+  };
+  const glows = [await glowBox('fx-glow-size', '80'), await glowBox('fx-glow-alpha', '33')];
+  await page.locator('.ribbon-menu .fx-swatch[title="#C00000"]').click();
+  glows.push((await fxOf()).textGlow);
+  keptOpen.push(await page.evaluate(() => !!document.querySelector('.ribbon-menu .fx-glow-alpha')));
   await page.click('[data-cmd="textEffects"]');
   await page.click('[data-cmd="textEffects"]');
   await page.click('[data-cmd="textEffects-clear"]');
   const cleared = await fxOf();
   check(!!tiled.textShadow && tiled.color === '#000000' && rimmed.textOutline?.color === '#4472C4' && !!rimmed.textShadow
     && mixed?.color === '#12AB34' && weighed?.widthPt === 20 && weighed?.color === '#12AB34' && keptOpen.every(Boolean)
+    && JSON.stringify(glows) === JSON.stringify([{ color: '#4472C4', alpha: 0.4, radiusPt: 40 }, { color: '#4472C4', alpha: 0.67, radiusPt: 40 }, { color: '#C00000', alpha: 0.67, radiusPt: 40 }])
     && !cleared.textOutline && !cleared.textShadow && !cleared.textGlow && !!rimInk && rimInk.blue > 5 && rimInk.dark > 5,
-    `the text effects menu sets a tile, an outline colour, a custom colour and a typed weight, staying open for them, and clears them, and a misspelled word keeps its outline (${JSON.stringify({ tiled, rimmed, mixed, weighed, keptOpen, cleared, rimInk })})`);
+    `the text effects menu sets a tile, an outline colour, a custom colour, a typed weight and a glow's size, transparency and colour, staying open for them, and clears them, and a misspelled word keeps its outline (${JSON.stringify({ tiled, rimmed, mixed, weighed, glows, keptOpen, cleared, rimInk })})`);
 
   const priorDoc = await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.getJSON());
   // Pagination settles on any document: each layout-dependent feature (an index's and a

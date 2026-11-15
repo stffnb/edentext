@@ -1393,6 +1393,8 @@ const ru: Messages = {
       weight: 'Толщина',
       direction: 'Направление',
       blur: 'Размытие',
+      size: 'Размер',
+      transparency: 'Прозрачность',
       gallery: 'Готовые стили',
       preset: (n: number) => `Стиль ${n}`,
       alsoOdt: 'есть и в ODT',

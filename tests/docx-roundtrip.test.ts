@@ -58,6 +58,8 @@ describe('DOCX export → import round trip', () => {
         text('rimmed ', [{ type: 'textStyle', attrs: { textOutline: { color: '#C00000', widthPt: 1.5 } } }]),
         text('cast ', [{ type: 'textStyle', attrs: { textShadow: { color: '#000000', alpha: 0.4, dxPt: 2.12, dyPt: 2.12, blurPt: 4 } } }]),
         text('glowing ', [{ type: 'textStyle', attrs: { color: '#FFFFFF', textGlow: { color: '#4472C4', alpha: 0.6, radiusPt: 5 }, textOutline: { color: '#2F5597', widthPt: 0.5 } } }]),
+        text('haloed ', [{ type: 'textStyle', attrs: { textGlow: { color: '#ED7D31', alpha: 0.25, radiusPt: 40 } } }]),
+        text('lit ', [{ type: 'textStyle', attrs: { textGlow: { color: '#70AD47', alpha: 1, radiusPt: 1.5 } } }]),
         text('raised', [{ type: 'textStyle', attrs: { fontSize: '14pt', textPosition: 3 } }]),
       ]),
       { type: 'paragraph', attrs: { fontSize: '22pt', textAlign: 'center' } }, // empty sized line
@@ -354,6 +356,11 @@ describe('DOCX export → import round trip', () => {
     expect(attrs('rimmed ', 'textStyle').textOutline).toEqual({ color: '#C00000', widthPt: 1.5 });
     expect(attrs('cast ', 'textStyle').textShadow).toEqual({ color: '#000000', alpha: 0.4, dxPt: 2.12, dyPt: 2.12, blurPt: 4 });
     expect(attrs('glowing ', 'textStyle')).toMatchObject({ textGlow: { color: '#4472C4', alpha: 0.6, radiusPt: 5 }, textOutline: { color: '#2F5597', widthPt: 0.5 } });
+    // Glow transparency is w14:alpha, written only below full opacity.
+    expect(attrs('haloed ', 'textStyle').textGlow).toEqual({ color: '#ED7D31', alpha: 0.25, radiusPt: 40 });
+    expect(attrs('lit ', 'textStyle').textGlow).toEqual({ color: '#70AD47', alpha: 1, radiusPt: 1.5 });
+    expect(documentXml).toMatch(/<w14:glow w14:rad="508000">(?:(?!<\/w14:glow>)[^])*<w14:alpha w14:val="75000"\/>/);
+    expect(documentXml).toMatch(/<w14:glow w14:rad="19050">(?:(?!w14:alpha)[^])*?<\/w14:glow>/);
     // Drawn exactly, so nothing is kept aside; w14 is declared ignorable and closes w:rPr.
     expect(runs.some((r: N) => markAttrs(r, 'textStyle')?.textFxRaw)).toBe(false);
     expect(documentXml).toMatch(/mc:Ignorable="[^"]*\bw14\b/);

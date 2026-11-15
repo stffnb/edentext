@@ -1387,6 +1387,8 @@ const fr: Messages = {
       weight: 'Épaisseur',
       direction: 'Direction',
       blur: 'Flou',
+      size: 'Taille',
+      transparency: 'Transparence',
       gallery: 'Préréglages',
       preset: (n: number) => `Préréglage ${n}`,
       alsoOdt: 'aussi en ODT',
