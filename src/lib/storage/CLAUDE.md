@@ -92,6 +92,7 @@ writes its own marker, so no two tabs race over one key.
 - **Navigator:** `edentext-navigator` — JSON `{open, side, size, width, wrap, tab}` (`navigator.svelte.ts`), app-wide: the pane's view, never the document's.
 - **Reviewing panes:** `edentext-panes` — JSON `{comments, revisions}`, each `{side, size, width}` (`panes.svelte.ts`, whose `validLayout` the navigator's load shares).
 - **AI assistant:** `edentext-ai` — JSON `{enabled, provider, endpoint, apiKey, model}` (`ai.svelte.ts`), app-wide; removed while on and empty, so switching off is stored. `enabled` is the kill switch, on by default so the button is found; nothing goes out before a provider is set; switching off keeps the provider. The key is stored in plain text; in embed mode `setAi` keeps it in memory only. See `docs/architecture/ai.md`.
+- **Dictation:** `edentext-dictation` — JSON `{enabled, consent}` (`dictation.svelte.ts`), app-wide; absent while on and not consented. `consent` is the yes to sending audio to the browser's speech service; in embed mode both last for the page only. See `docs/architecture/dictation.md`.
 - **Notes:** `edentext-notes` — footnote/endnote numbering and the separator (`noteSettings.ts`, reactive singleton in `notes.svelte.ts`); `applyNoteVars` puts the separator on `:root`, where `editor.css` draws it and `pageBreaks.ts` reserves its band.
 
 ## Themes (`theme.ts`, `styles/global.css`)

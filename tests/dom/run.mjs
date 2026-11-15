@@ -1956,6 +1956,59 @@ try {
   await page.waitForFunction((n) => document.querySelectorAll('.revisions-pane li').length < n, lockedRows, { timeout: 3000 }).catch(() => {});
   check(await page.locator('[data-cmd="trackChanges"]').first().isEnabled() && await paneRows() < lockedRows, 'the right password lifts it, and the rejection goes through');
 
+  // Dictation through the button on a stand-in recognizer: words still being heard stay
+  // off the document, a settled phrase lands at the caret, in the body and in a header.
+  const dict = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
+  dict.on('pageerror', (err) => pageErrors.push(String(err)));
+  await dict.addInitScript(() => {
+    class FakeRecognition {
+      constructor() { window.__rec = this; this.running = false; }
+      start() { this.running = true; }
+      stop() { this.running = false; }
+      abort() { this.running = false; }
+      hear(text, isFinal) {
+        const result = Object.assign([{ transcript: text }], { isFinal });
+        this.onresult?.({ resultIndex: 0, results: Object.assign([result], { length: 1 }) });
+      }
+    }
+    window.SpeechRecognition = window.webkitSpeechRecognition = FakeRecognition;
+  });
+  await dict.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
+  await dict.waitForSelector('.tiptap', { timeout: 15_000 });
+  const body = dict.locator('.tiptap-host .tiptap').first();
+  const hear = (text, isFinal) => dict.evaluate(([t, f]) => window.__rec.hear(t, f), [text, isFinal]);
+  const running = () => dict.evaluate(() => !!window.__rec?.running);
+  await body.click();
+  await dict.keyboard.type('Hello');
+  await dict.locator('[data-cmd="dictate"]').first().click();
+  await dict.locator('dialog[open] button.primary').click();
+  await dict.waitForFunction(() => window.__rec?.running, null, { timeout: 3000 }).catch(() => {});
+  await hear('world', false);
+  const interim = await dict.evaluate(() => ({ shown: document.querySelector('.dictation-interim')?.textContent, doc: document.querySelector('.tiptap-host .tiptap').textContent }));
+  check(interim.shown === 'world' && interim.doc === 'Hello', `words still being heard are drawn, not inserted (${JSON.stringify(interim)})`);
+  await hear('world period', true);
+  check(await body.textContent() === 'Hello world.', `a settled phrase lands at the caret (${await body.textContent()})`);
+  await dict.keyboard.press('Escape');
+  check(!(await running()) && !(await dict.locator('[data-cmd="dictate"].active').count()), 'Esc stops dictation');
+
+  const header = dict.locator('.hf-zone.hf-header').first();
+  await header.dblclick({ timeout: 5000 }).catch(() => header.dispatchEvent('dblclick'));
+  await dict.waitForFunction(() => document.activeElement?.closest?.('.hf-active'), null, { timeout: 5000 }).catch(() => {});
+  await dict.keyboard.press('Alt+Backquote');
+  await dict.waitForFunction(() => window.__rec?.running, null, { timeout: 3000 }).catch(() => {});
+  await hear('running head', true);
+  const headText = await dict.evaluate(() => document.querySelector('.hf-active .tiptap')?.textContent);
+  check(headText === 'Running head', `dictation follows the caret into a header (${headText})`);
+  await dict.locator('.hf-bar-done').click();
+
+  await body.click();
+  await dict.keyboard.press('Alt+Backquote');
+  await dict.waitForFunction(() => window.__rec?.running, null, { timeout: 3000 }).catch(() => {});
+  await dict.setInputFiles('input.file-input[accept*=".odt"]', join(ROOT, 'tests/corpus/01-flow.odt'));
+  await dict.waitForFunction(() => !window.__rec?.running, null, { timeout: 15_000 }).catch(() => {});
+  check(!(await running()), 'opening another document stops dictation');
+  await dict.close();
+
 } catch (err) {
   const at = (err.stack ?? '').split('\n').filter((l) => l.includes('dom/run.mjs')).map((l) => l.trim().replace(/^at /, '')).join(' ← ');
   check(false, `dom run threw: ${err.message ?? err}${at ? ` (at ${at})` : ''}`);

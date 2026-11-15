@@ -44,6 +44,7 @@ the tooltips (via `withShortcut`, which localizes Ctrl/Shift/Alt and swaps in ‚å
   collides with zoom; formatting marks use LO's `Ctrl+F10` (Word's `Ctrl+Shift+8` is
   TipTap's bullet list). `Ctrl+N` is unbindable in Chrome and therefore absent.
 - `recordChanges` is LibreOffice's Ctrl+Shift+C; Word's Ctrl+Shift+E is TipTap's centring.
+- `dictate` is Word's Alt+`, matched by `event.code` (`Backquote`): on a Mac Option+` is a dead key.
 - `tests/unit/shortcuts.test.ts` asserts the table has no duplicate combo (the bindings
   are spread over several files, so nothing else can catch a collision) and covers
   `matchesEvent`.

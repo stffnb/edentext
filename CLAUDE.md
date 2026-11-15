@@ -69,7 +69,7 @@ src/
   lib/editor/               - registry and extensions/
   lib/{utils,math}/         - framework-free helpers and formula AST
   lib/{export,import,i18n,spell,storage,styles,crypto,templates,embed}/ - I/O, localization, persistence, styles, protection, templates, embed mode (docs/architecture/embed.md)
-  lib/ai/                   - AI assistant client, document serialization and tools
+  lib/{ai,dictation}/       - AI assistant client, serialization and tools; speech input engines and session
   styles/                   - global and editor CSS
 charts/edentext/            - community-maintained Helm chart; test with bash scripts/test-helm-chart.sh
 desktop/                    - Electron shell around dist/ with its own npm commands; see desktop/CLAUDE.md
@@ -89,7 +89,7 @@ Read directory-level `CLAUDE.md` files when touching that directory; read archit
 | localStorage, margins, themes | `src/lib/storage/CLAUDE.md` |
 | UI languages and catalogs | `src/lib/i18n/CLAUDE.md` |
 | Ribbon, floating island | `docs/architecture/ribbon.md`, `docs/architecture/island.md` |
-| AI assistant, kill switch, tracked tool edits | `docs/architecture/ai.md` |
+| AI assistant, kill switch, tracked tool edits; dictation | `docs/architecture/ai.md`, `docs/architecture/dictation.md` |
 | Pagination, columns | `docs/architecture/pagination.md` |
 | Images, text boxes, wrap | `docs/architecture/frames.md` |
 | Tables and table styles | `docs/architecture/tables.md` |

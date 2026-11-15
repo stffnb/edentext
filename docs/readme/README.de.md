@@ -75,9 +75,12 @@ EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von de
 - **Optionaler KI-Assistent** – mit einem frei wählbaren Anbieter oder einem lokalen Modell;
   beantwortet Fragen zum Dokument und bearbeitet es mit Änderungsverfolgung. Lässt sich
   abschalten; Anfragen gehen direkt an den Anbieter, ohne Umweg über einen EdenText-Server
+- **Diktieren** – Gesprochenes erscheint am Cursor, auf Deutsch und Englisch mit
+  gesprochenen Satzzeichen. Nutzt die Spracherkennung des Browsers (Chrome, Edge, Safari),
+  die den Ton an ihren Sprachdienst schicken kann; EdenText fragt vor dem ersten Mal
 - **Private by Design** – Dokumente verlassen nie den Rechner, alles läuft lokal; als
   installierte App auch offline. Der Editor selbst sendet nichts, außer bei eingeschaltetem
-  KI-Assistenten an den gewählten Anbieter. Dokumente werden automatisch im Browser
+  KI-Assistenten an den gewählten Anbieter. Beim Diktieren kann der Browser den Ton an seinen Sprachdienst schicken. Dokumente werden automatisch im Browser
   gesichert; unter „Zuletzt verwendete Dokumente“ lässt sich einstellen, dass geschlossene
   Dokumente beim nächsten Start gelöscht oder gar nicht erst gespeichert werden. Ein
   privates Fenster hinterlässt nach dem Schließen keine Spuren

@@ -352,7 +352,7 @@ const RIBBON: Record<string, Entry> = {
   'align-left': same('paragraph.textAlign'), 'align-center': same('paragraph.textAlign'), 'align-right': same('paragraph.textAlign'), 'align-justify': same('paragraph.textAlign'),
   paragraphShading: same('paragraph.backgroundColor'), paragraphBorders: same('paragraph.borderTop'),
   find: na('the model reads the whole document'), replace: same('mark:insertion'),
-  aiPane: UI,
+  aiPane: UI, dictate: na('speech typed at the cursor; the model writes text itself'),
   pageBreak: same('paragraph.breakBefore'), table: same('table'), picture: same('image'), textBox: same('textBox'),
   link: same('mark:link.href'), bookmark: same('mark:bookmark'), crossRef: same('crossRef'),
   header: check(['set_header_footer', { zone: 'header', html: '<p>Head</p>' }], () => true),

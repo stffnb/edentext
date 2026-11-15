@@ -74,9 +74,12 @@ EdenText è un elaboratore di testi potente che funziona nel browser, adatto a t
 - **Assistente IA facoltativo**: con il provider che preferisci o con un modello locale;
   risponde a domande sul documento e lo modifica sotto forma di revisioni. Si può
   disattivare; le richieste vanno direttamente al provider, senza passare da un server EdenText
+- **Dettatura**: ciò che dici appare al cursore, con la punteggiatura dettata in inglese
+  e tedesco. Usa il riconoscimento vocale del browser (Chrome, Edge, Safari), che può
+  inviare l’audio al suo servizio vocale; EdenText chiede il consenso la prima volta
 - **Private by design**: i documenti non lasciano mai il computer e tutta
   l'elaborazione avviene in locale; installato come app funziona anche offline.
-  L'editor non invia nulla, a meno che non si attivi l'assistente IA, che invia i dati al provider scelto.
+  L'editor non invia nulla, a meno che non si attivi l'assistente IA, che invia i dati al provider scelto. Per la dettatura il browser può inviare l’audio al suo servizio vocale.
   I documenti vengono salvati automaticamente nel browser; in Documenti recenti si può
   scegliere di eliminare quelli chiusi all'avvio successivo o di non conservarli affatto,
   e una finestra privata non lascia traccia una volta chiusa
