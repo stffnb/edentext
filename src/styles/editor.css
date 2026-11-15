@@ -72,11 +72,12 @@
   --color-field-shade: rgba(255, 255, 255, 0.14);
 }
 
-/* While a freshly opened document is still finding its pagination (Editor.svelte).
-   Hidden, not removed: every pass measures the same boxes either way, and the sheet
-   .paper paints stays up, so the page appears once instead of shuffling into place. */
+/* While an opened document finds its pagination (Editor.svelte), the page appears once
+   instead of shuffling into place. Transparent, not hidden: the boxes stay measured and the
+   editor stays focusable, so a caret placed meanwhile is kept. */
 .paper.settling > * {
-  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .paper .tiptap {

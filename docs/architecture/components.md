@@ -20,7 +20,9 @@ changes: reading coordinates in the transaction handler can force a full layout 
 ## Layout lifecycle
 
 Pagination measures DOM that its prior pass changed. While an opened document converges,
-`.paper.settling` hides content without removing it from layout. Stop when the layout
+`.paper.settling` makes content transparent without removing it from layout; `visibility:
+hidden` would also make the editor unfocusable, dropping its focus and any `focus()` made
+meanwhile (an open, New, a template). Stop when the layout
 signature repeats or the bounded settle time expires. Re-arm on `documentEpoch` when opening a
 document, not on ordinary edits; sample only a bounded number of blocks so measurement does
 not starve the layout it is waiting for.
