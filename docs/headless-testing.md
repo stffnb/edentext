@@ -37,7 +37,7 @@ cached by the document's hash in `node_modules/.cache/layout-pages.json`: a coun
 file's and never our code's, so a run after an editor change has nothing to convert —
 `--no-cache` after installing or removing a font, which does change what it renders.
 The **monkey run** replays `MONKEY_OPS` random keys and commands per seed
-(`MONKEY_SEED`, `MONKEY_RUNS`, `MONKEY_DOC`) on a corpus document — typing, formatting,
+(`MONKEY_SEED`, `MONKEY_RUNS`, `MONKEY_DOC`; the whole run fails past `MONKEY_DEADLINE_MIN`, 45) on a corpus document — typing, formatting,
 lists, tables, notes, frames and columns — and checks after each:
 no uncaught error, a document its own schema accepts; at the end undo back to the opened
 file and redo forward, then Save As both formats, xmllint each against the schemas and read
@@ -84,6 +84,15 @@ compared: direct formatting on a marker makes the file keep the resolved automat
 instead, and `corpus.test.ts` holds the plain round trip. Its marker char goes the same
 way — a list that lost its name carries the char the style drew, so both sides compare the
 drawn one, as the kind already did.
+Text effects come from a stream of their own (`MONKEY_FX`, the share of extra ops, 0.25 by
+default): outline, shadow and glow with random colours and sizes over their whole ranges
+(a file's 150 pt glow included), the plain ones, relief, the gallery, clearing, colour and
+size marks, and a copy or cut pasted elsewhere through ProseMirror's clipboard events. After
+each op every run whose mark holds an effect has to draw it, with no NaN or undefined in the
+style and a `text-shadow` the browser computes; the `.odt` is compared through
+`odtEffectFallback`. Found: a command held a lowercase colour or a value off the 0.01 grid
+that the `.docx` read back normalized, and a pasted span's colour stayed `rgb()`, which the
+`.odt` wrote as an invalid `fo:color`.
 Still open: a run set to the body's own font, in a columns section, kept its family on the
 held side once in four runs of the same seed chain — the flow rewrites such a document
 between frames, which is why that leg leaves the history unchecked too.

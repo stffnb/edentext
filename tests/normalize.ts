@@ -255,3 +255,22 @@ export function odtEffectFallback(node: any, plainShadow = true): any {
   if (!node.marks.length) delete node.marks;
   return node;
 }
+
+// The text each parametrised effect covers, in document order: what a DOCX keeps of the
+// effects the ODT leg compares through odtEffectFallback.
+export function effectRuns(node: any): [string, string][] {
+  const out: [string, string][] = [];
+  const walk = (n: any) => {
+    if (n?.type === 'text') {
+      const a = n.marks?.find((m: any) => m.type === 'textStyle')?.attrs ?? {};
+      const fx = ['textOutline', 'textShadow', 'textGlow', 'textFxRaw'].filter((k) => a[k] != null);
+      const key = fx.length ? JSON.stringify(Object.fromEntries(fx.map((k) => [k, a[k]]))) : '';
+      const last = out[out.length - 1];
+      if (last && last[1] === key) last[0] += n.text;
+      else out.push([n.text, key]);
+    }
+    for (const c of n?.content ?? []) walk(c);
+  };
+  walk(node);
+  return out.filter(([, key]) => key);
+}

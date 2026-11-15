@@ -67,11 +67,13 @@ function marks(r: Rng, heading = false): N[] | undefined {
     else {
       if (maybe(fxRng, 0.1)) attrs.outline = true;
       if (maybe(fxRng, 0.1)) attrs.shadow = true;
-      // The parametrised ones, from a stream of their own, each excluding its plain twin.
-      if (!attrs.outline && maybe(w14Rng, 0.08)) attrs.textOutline = { color: pick(w14Rng, ['#C00000', '#2F5597']), widthPt: pick(w14Rng, [0.5, 1.5]) };
-      if (!attrs.shadow && maybe(w14Rng, 0.08)) attrs.textShadow = pick(w14Rng, [
-        { color: '#000000', alpha: 0.4, dxPt: 2.12, dyPt: 2.12, blurPt: 4 }, { color: '#C00000', alpha: 1, dxPt: 0, dyPt: 3, blurPt: 0 }]);
-      if (maybe(w14Rng, 0.08)) attrs.textGlow = { color: pick(w14Rng, ['#FFC000', '#4472C4']), alpha: pick(w14Rng, [0.6, 1]), radiusPt: pick(w14Rng, [5, 8]) };
+      // The parametrised ones, from a stream of their own, each excluding its plain twin,
+      // over their whole ranges (a file's glow up to 150 pt) in the attrs' 0.01 steps.
+      const w = w14Rng, hex = () => `#${Math.floor(w() * 0x1000000).toString(16).padStart(6, '0').toUpperCase()}`;
+      const step = (lo: number, hi: number) => Math.round((lo + w() * (hi - lo)) * 100) / 100;
+      if (!attrs.outline && maybe(w, 0.08)) attrs.textOutline = { color: hex(), widthPt: step(0.1, 20) };
+      if (!attrs.shadow && maybe(w, 0.08)) attrs.textShadow = { color: hex(), alpha: step(0, 1), dxPt: step(-20, 20), dyPt: step(-20, 20), blurPt: step(0, 40) };
+      if (maybe(w, 0.08)) attrs.textGlow = { color: hex(), alpha: step(0, 1), radiusPt: step(1, 150) };
     }
     if (Object.keys(attrs).length) out.push({ type: 'textStyle', attrs });
   }
