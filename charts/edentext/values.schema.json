@@ -115,6 +115,32 @@
       }
     },
     "frameAncestors": { "type": "string", "pattern": "^[^\"\\\\;{}$\\n]*$" },
+    "ai": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "provider", "endpoint", "model", "contextTokens", "locked", "proxy"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "provider": { "type": "string", "enum": ["openai", "anthropic"] },
+        "endpoint": { "type": "string" },
+        "model": { "type": "string" },
+        "contextTokens": { "type": "integer", "anyOf": [{ "const": 0 }, { "minimum": 2048 }] },
+        "locked": { "type": "boolean" },
+        "proxy": { "$ref": "#/definitions/proxy" }
+      }
+    },
+    "dictation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "server", "model", "locked", "proxy"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "server": { "type": "string" },
+        "model": { "type": "string" },
+        "locked": { "type": "boolean" },
+        "proxy": { "$ref": "#/definitions/proxy" }
+      }
+    },
     "nodeSelector": { "$ref": "#/definitions/stringMap" },
     "tolerations": { "type": "array", "items": { "type": "object" } },
     "affinity": { "type": "object" }
@@ -137,11 +163,31 @@
     "readinessProbe",
     "ingress",
     "frameAncestors",
+    "ai",
+    "dictation",
     "nodeSelector",
     "tolerations",
     "affinity"
   ],
   "definitions": {
+    "proxy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "upstream", "apiKeySecret"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "upstream": { "type": "string", "pattern": "^(|https?://[^\"\\\\;{}$\\s]+)$" },
+        "apiKeySecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "key"],
+          "properties": {
+            "name": { "type": "string", "pattern": "^(|[a-z0-9]([-a-z0-9.]*[a-z0-9])?)$" },
+            "key": { "type": "string", "pattern": "^[-._a-zA-Z0-9]+$" }
+          }
+        }
+      }
+    },
     "stringMap": {
       "type": "object",
       "additionalProperties": { "type": "string" }

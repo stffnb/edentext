@@ -75,6 +75,41 @@ helm template edentext "$chart" --namespace edentext \
   --set-string frameAncestors="'self' https://app.example.com" > "$workdir/frame.yaml"
 assert_contains "$workdir/frame.yaml" "add_header Content-Security-Policy \"frame-ancestors 'self' https://app.example.com\" always;" 'frameAncestors was not rendered'
 
+printf '%s\n' 'Rendering AI and dictation presets'
+for pattern in 'edentext.config.json' 'initContainers:' 'location /ai/' 'location /stt/'; do
+  assert_not_contains "$workdir/default.yaml" "$pattern" "default render has $pattern"
+done
+helm template edentext "$chart" --namespace edentext \
+  --set-string ai.endpoint=https://llm.example.com/v1,ai.model=small-model,dictation.server=https://stt.example.com/v1 \
+  --set ai.contextTokens=16384,dictation.locked=true > "$workdir/presets.yaml"
+assert_contains "$workdir/presets.yaml" '"endpoint": "https://llm.example.com/v1"' 'AI endpoint preset was not rendered'
+assert_contains "$workdir/presets.yaml" '"contextTokens": 16384' 'context size preset was not rendered'
+assert_contains "$workdir/presets.yaml" '"locked": true' 'dictation lock was not rendered'
+assert_contains "$workdir/presets.yaml" 'mountPath: /usr/share/nginx/html/edentext.config.json' 'config file was not mounted'
+assert_contains "$workdir/presets.yaml" 'readOnlyRootFilesystem: true' 'config file made the root filesystem writable'
+assert_not_contains "$workdir/presets.yaml" 'location /ai/' 'addresses alone rendered a proxy'
+
+helm template edentext "$chart" --namespace edentext \
+  --set ai.proxy.enabled=true,dictation.proxy.enabled=true \
+  --set-string ai.provider=anthropic,ai.proxy.upstream=https://api.example.com/,ai.proxy.apiKeySecret.name=ai-key \
+  --set-string dictation.proxy.upstream=http://speech:8000 > "$workdir/proxy.yaml"
+assert_contains "$workdir/proxy.yaml" 'proxy_pass https://api.example.com/;' 'AI proxy upstream was not rendered'
+assert_contains "$workdir/proxy.yaml" 'proxy_set_header x-api-key "\$EDENTEXT_AI_KEY";' 'Anthropic key header was not rendered'
+assert_contains "$workdir/proxy.yaml" 'proxy_pass http://speech:8000/;' 'speech proxy upstream was not rendered'
+assert_contains "$workdir/proxy.yaml" 'proxy_set_header Authorization "";' 'proxy without a key passes the browser header on'
+assert_contains "$workdir/proxy.yaml" '"endpoint": "/ai/v1"' 'proxy did not preset its AI address'
+assert_contains "$workdir/proxy.yaml" '"server": "/stt/v1"' 'proxy did not preset its speech address'
+assert_contains "$workdir/proxy.yaml" 'initContainers:' 'key was not written by an init container'
+assert_contains "$workdir/proxy.yaml" 'name: "ai-key"' 'key Secret was not referenced'
+assert_contains "$workdir/proxy.yaml" 'medium: Memory' 'rendered nginx.conf is not kept in memory'
+assert_not_contains "$workdir/proxy.yaml" 'EDENTEXT_DICTATION_KEY$' 'speech proxy without a Secret asks for a key'
+
+helm template edentext "$chart" --namespace edentext \
+  --set dictation.proxy.enabled=true --set-string dictation.proxy.upstream=http://speech:8000 > "$workdir/proxy-nokey.yaml"
+assert_contains "$workdir/proxy-nokey.yaml" 'location /stt/' 'speech proxy was not rendered'
+assert_not_contains "$workdir/proxy-nokey.yaml" 'initContainers:' 'proxy without a Secret runs an init container'
+assert_not_contains "$workdir/proxy-nokey.yaml" 'location /ai/' 'speech proxy rendered an AI proxy'
+
 printf '%s\n' 'Rejecting invalid values'
 if helm template edentext "$chart" --set replicaCount=0 > /dev/null 2>&1; then
   fail 'replicaCount accepted zero'
@@ -95,6 +130,15 @@ if helm template edentext "$chart" --values "$repo_root/charts/edentext/ci/inval
   fail 'podLabels accepted a reserved selector label'
 fi
 
+if helm template edentext "$chart" --set ai.proxy.enabled=true > /dev/null 2>&1; then
+  fail 'AI proxy accepted no upstream'
+fi
+if helm template edentext "$chart" --set ai.proxy.enabled=true --set-string 'ai.proxy.upstream=https://a.example/; return 200' > /dev/null 2>&1; then
+  fail 'AI proxy upstream accepted an nginx directive'
+fi
+if helm template edentext "$chart" --set ai.contextTokens=100 > /dev/null 2>&1; then
+  fail 'contextTokens accepted a window too small for a request'
+fi
 if helm template edentext "$chart" --set-string 'frameAncestors=https://a.example; add_header X 1' > /dev/null 2>&1; then
   fail 'frameAncestors accepted an nginx directive'
 fi

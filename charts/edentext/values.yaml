@@ -84,6 +84,44 @@ ingress:
 # example "'self' https://app.example.com". Empty sends none, so any page may frame it.
 frameAncestors: ""
 
+# Presets for the AI assistant, served as edentext.config.json, which anyone can read: it
+# holds addresses and models, never a key. Leave everything unset to serve no file.
+ai:
+  enabled: true
+  # openai (any OpenAI-compatible server) or anthropic.
+  provider: openai
+  # The API's base URL. Empty with the proxy on means /ai/v1 on this host.
+  endpoint: ""
+  model: ""
+  # The model's context window in tokens; 0 leaves it to the user.
+  contextTokens: 0
+  # true keeps users from choosing another provider.
+  locked: false
+  # nginx forwards /ai/ to an existing server the operator runs, adding its key.
+  proxy:
+    enabled: false
+    # Root URL of that server, for example https://api.mistral.ai or http://ollama:11434.
+    upstream: ""
+    # Secret holding the key; the browser never sees it. Empty sends none.
+    apiKeySecret:
+      name: ""
+      key: api-key
+
+# Presets for dictation: an OpenAI-compatible speech recognition server.
+dictation:
+  enabled: true
+  # The server's address. Empty with the proxy on means /stt/v1 on this host.
+  server: ""
+  model: ""
+  locked: false
+  # nginx forwards /stt/ to an existing speech server the operator runs.
+  proxy:
+    enabled: false
+    upstream: ""
+    apiKeySecret:
+      name: ""
+      key: api-key
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

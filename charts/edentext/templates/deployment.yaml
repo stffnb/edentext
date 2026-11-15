@@ -3,6 +3,8 @@
 {{- end -}}
 {{- $podAnnotations := deepCopy .Values.podAnnotations -}}
 {{- $_ := set $podAnnotations "checksum/nginx-config" (include (print $.Template.BasePath "/configmap.yaml") . | sha256sum) -}}
+{{- $keys := include "edentext.proxyKeys" . -}}
+{{- $hostConfig := include "edentext.hostConfig" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -38,6 +40,43 @@ spec:
       automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if $keys }}
+      # Writes the proxies' keys from their Secrets into nginx.conf, in memory only.
+      initContainers:
+        - name: proxy-keys
+          image: {{ include "edentext.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              for key in "${EDENTEXT_AI_KEY-}" "${EDENTEXT_DICTATION_KEY-}"; do
+                case "$key" in *[\"\\\$\;{}[:space:]]*) echo 'a proxy key holds a character nginx cannot take' >&2; exit 1;; esac
+              done
+              envsubst '${EDENTEXT_AI_KEY} ${EDENTEXT_DICTATION_KEY}' < /etc/nginx/template/nginx.conf > /etc/nginx/rendered/nginx.conf
+          env:
+            {{- range $name, $proxy := dict "EDENTEXT_AI_KEY" .Values.ai.proxy "EDENTEXT_DICTATION_KEY" .Values.dictation.proxy }}
+            {{- if and $proxy.enabled $proxy.apiKeySecret.name }}
+            - name: {{ $name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $proxy.apiKeySecret.name | quote }}
+                  key: {{ $proxy.apiKeySecret.key | quote }}
+            {{- end }}
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/template/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: nginx-rendered
+              mountPath: /etc/nginx/rendered
+      {{- end }}
       containers:
         - name: edentext
           image: {{ include "edentext.image" . | quote }}
@@ -66,16 +105,27 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
-            - name: nginx-config
+            - name: {{ ternary "nginx-rendered" "nginx-config" (ne $keys "") }}
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
               readOnly: true
+            {{- if $hostConfig }}
+            - name: nginx-config
+              mountPath: /usr/share/nginx/html/edentext.config.json
+              subPath: edentext.config.json
+              readOnly: true
+            {{- end }}
             - name: tmp
               mountPath: /tmp
       volumes:
         - name: nginx-config
           configMap:
             name: {{ include "edentext.fullname" . }}-nginx
+        {{- if $keys }}
+        - name: nginx-rendered
+          emptyDir:
+            medium: Memory
+        {{- end }}
         - name: tmp
           emptyDir: {}
       {{- with .Values.nodeSelector }}
