@@ -263,6 +263,10 @@ const zhHans: Messages = {
     testOk: '已连接。',
     serverConsentTitle: '将听写发送到另一台电脑？',
     serverConsentText: (host: string) => `语音识别服务器 ${host} 不在这台电脑上：你说的话会通过网络发送到那里，再取回文本。EdenText 本身不保存任何内容。`,
+    fromHost: '由此安装配置',
+    fromHostHint: (model: string, locked: boolean) => `${model ? `语音在其服务器上由 ${model} 识别。` : '语音在其服务器上识别。'}${locked ? '只有管理员可以更改。' : '如要使用其他服务器，请填写自己的地址。'}`,
+    installationConsentTitle: '在此安装的服务器上听写？',
+    installationConsentText: '语音在此安装的服务器上识别：你说的话会发送到那里，再取回文本。EdenText 本身不保存任何内容。',
   },
   pane: {
     textSize: '文字大小',

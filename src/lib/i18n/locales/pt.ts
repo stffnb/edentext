@@ -262,6 +262,10 @@ const pt: Messages = {
     testOk: 'Ligado.',
     serverConsentTitle: 'Enviar o ditado para outro computador?',
     serverConsentText: (host: string) => `O servidor de voz ${host} não está neste computador: o que diz segue pela rede até ele e o texto volta. O EdenText não guarda nada.`,
+    fromHost: 'Configurado por esta instalação',
+    fromHostHint: (model: string, locked: boolean) => `${model ? `A voz é reconhecida no servidor dela com ${model}.` : 'A voz é reconhecida no servidor dela.'} ${locked ? 'Só o administrador pode alterar isto.' : 'Para usar outro servidor, indique um endereço seu.'}`,
+    installationConsentTitle: 'Ditar no servidor desta instalação?',
+    installationConsentText: 'A voz é reconhecida no servidor desta instalação: o que diz vai para lá e o texto volta. O EdenText não guarda nada.',
   },
   pane: {
     textSize: 'Tamanho do texto',

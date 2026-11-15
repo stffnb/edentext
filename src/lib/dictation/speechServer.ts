@@ -5,19 +5,21 @@
 import type { DictationEngine, DictationError, EngineEvents } from './engine';
 import { listen, type Microphone } from './microphone';
 
-export type SpeechServer = { address: string; model: string };
+/** `installation`: the server the page's own installation runs, named so in the consent. */
+export type SpeechServer = { address: string; model: string; installation?: boolean };
 
 const RATE = 16000;
 const REQUEST_MS = 30_000;
 
 /** Where phrases are posted: a bare address or one ending in /v1 gets the OpenAI route,
- *  any other path is taken as is (whisper.cpp's /inference takes the same form). */
+ *  any other path is taken as is (whisper.cpp's /inference takes the same form). A path
+ *  alone is on the page's own server, as an installation's proxy is. */
 export function transcriptionUrl(address: string): string | null {
   let s = address.trim();
   if (!s) return null;
-  if (!/^https?:\/\//i.test(s)) s = `http://${s}`;
+  if (!/^https?:\/\//i.test(s) && !s.startsWith('/')) s = `http://${s}`;
   try {
-    const u = new URL(s);
+    const u = new URL(s, location.href);
     const path = u.pathname.replace(/\/+$/, '');
     if (!path) u.pathname = '/v1/audio/transcriptions';
     else if (path.endsWith('/v1')) u.pathname = `${path}/audio/transcriptions`;
@@ -204,6 +206,7 @@ export function speechServerEngine(server: SpeechServer, microphone = listen): D
   return {
     where: remote ? 'cloud' : 'local',
     host: remote ? new URL(url).host : undefined,
+    installation: server.installation,
     live: false,
     ready: async () => !!url,
     start(lang, events) {

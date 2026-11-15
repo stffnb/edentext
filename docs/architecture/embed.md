@@ -37,7 +37,7 @@ name and meaning. A change that breaks this raises the protocol number in `ready
 
 | Host → editor | Fields | Reply (`response`, same `id`) |
 |---|---|---|
-| `init` | `user?`, `locale?`, `theme?`, `chrome?`, `name?`, `accent?`, `ai?` | `ok` |
+| `init` | `user?`, `locale?`, `theme?`, `chrome?`, `name?`, `accent?`, `ai?`, `dictation?` | `ok` |
 | `configure` | the same, at any later time | `ok` |
 | `load` | `bytes` (ArrayBuffer), `name` | `ok: false` if the reader backed out (password) |
 | `new` | `name?` | `ok` |
@@ -61,7 +61,9 @@ A failure is answered with `error: message`.
   surface, the context menu's AI submenu and the Settings ▸ AI section go (`setEmbedHostConfig`, `storage/hostConfig.svelte.ts`). It is
   never stored, so the host sends it with every `init`; `ai: true` hands the choice back.
   An object presets the provider with the fields of `edentext.config.json` (`ai.md`) and
-  overrides that file field by field.
+  overrides that file field by field. **`dictation`** works alike (`false` or `{ server,
+  model, locked }`, `dictation-local.md`); the iframe gets `allow="microphone"` unless the
+  constructor's options say `dictation: false`.
   The assistant is **on by default**, and a reader can enter any provider in the frame,
   which then receives document text: a host that must keep documents in-house sends
   `ai: false`.
@@ -109,6 +111,7 @@ gets them without further setup.
 | `name` | the host's file name, shown in the title field |
 | `accent` | `slate`, `blue`, `teal`, `green`, `violet`, `berry`, `graphite` or a `#rrggbb` colour |
 | `ai` | `false` removes the AI assistant and its settings; `true` leaves it to the reader; `{ provider, endpoint, model, contextTokens, locked }` presets it, never with a key |
+| `dictation` | `false` removes dictation; `{ server, model, locked }` presets its speech server |
 
 An unknown value is ignored, so the setting keeps what it had.
 

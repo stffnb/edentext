@@ -9,7 +9,7 @@
   import { grammarEnabled, setGrammarEnabled } from '../spell/grammar.svelte';
   import { autoLanguage, setAutoLanguage } from '../spell/detect.svelte';
   import { numberRecognition, setNumberRecognition } from '../storage/tableOptions.svelte';
-  import { dictationSettings, setDictation } from '../storage/dictation.svelte';
+  import { dictationHostOff, dictationServer, dictationSettings, setDictation } from '../storage/dictation.svelte';
   import { dictationSupported } from '../dictation/session.svelte';
   import { checkSpeechServer, SpeechServerError } from '../dictation/speechServer';
   import {
@@ -26,7 +26,7 @@
   import Icon from './ribbon/Icon.svelte';
   import Toggle from './Toggle.svelte';
   import { LANGUAGES, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
-  import { hostAi } from '../storage/hostConfig.svelte';
+  import { hostAi, hostDictation } from '../storage/hostConfig.svelte';
   import { aiSettings, setAi, aiConfig, aiHostOff, aiInUse, aiFromHost, plainHttpEndpoint, AI_PRESETS, presetOf, DEFAULT_CONTEXT_TOKENS, type CustomCommand } from '../storage/ai.svelte';
   import { COMMANDS, commandName } from '../ai/commands';
   import { streamChat, aiErrorText } from '../ai/client';
@@ -136,10 +136,11 @@
   // missing CORS header shows here and not at the first dictated phrase.
   let speechTest = $state<{ busy: boolean; ok: boolean; text: string } | null>(null);
   async function testSpeech() {
-    const { server, model } = dictationSettings();
+    const server = dictationServer();
+    if (!server) return;
     speechTest = { busy: true, ok: false, text: t().dictation.testing };
     try {
-      await checkSpeechServer({ address: server, model }, 'en');
+      await checkSpeechServer(server, 'en');
       speechTest = { busy: false, ok: true, text: t().dictation.testOk };
     } catch (e) {
       const code = e instanceof SpeechServerError ? e.code : 'failed';
@@ -294,26 +295,34 @@
             <div class="info"><div class="name">{t().settings.grammar}</div><div class="desc">{t().grammar.hint} {t().grammar.unavailable}</div></div>
             <Toggle label={t().settings.grammar} checked={grammarEnabled()} onchange={setGrammarEnabled} />
           </div>
+          {#if !dictationHostOff()}
+          {@const server = dictationServer()}
+          {@const locked = !!hostDictation().locked}
           <div class="row">
             <div class="info"><div class="name">{t().dictation.enable}</div><div class="desc">{dictationSupported() ? t().dictation.enableHint : t().dictation.unsupported}</div></div>
             <Toggle label={t().dictation.enable} checked={dictationSettings().enabled && dictationSupported()} disabled={!dictationSupported()} onchange={(on) => setDictation({ enabled: on })} />
           </div>
-          {#if dictationSupported() && !dictationSettings().server}
+          {#if dictationSupported() && !server}
             <div class="row sub" class:dim={!dictationSettings().enabled}>
               <div class="info"><div class="name">{t().dictation.consent}</div><div class="desc">{t().dictation.consentHint}</div></div>
               <Toggle label={t().dictation.consent} checked={dictationSettings().consent} disabled={!dictationSettings().enabled} onchange={(on) => setDictation({ consent: on })} />
             </div>
           {/if}
+          {#if server?.installation}
+            <div class="row sub" class:dim={!dictationSettings().enabled}>
+              <div class="info"><div class="name">{t().dictation.fromHost}</div><div class="desc">{t().dictation.fromHostHint(server.model, locked)}</div></div>
+            </div>
+          {/if}
           <div class="row sub" class:dim={!dictationSettings().enabled}>
             <div class="info"><div class="name">{t().dictation.server}</div><div class="desc">{t().dictation.serverHint}</div></div>
-            <input class="field" type="url" spellcheck="false" value={dictationSettings().server} disabled={!dictationSettings().enabled}
-              placeholder="http://localhost:8000" onchange={(e) => { setDictation({ server: e.currentTarget.value.trim() }); speechTest = null; }} />
+            <input class="field" type="url" spellcheck="false" value={locked ? server?.address ?? '' : dictationSettings().server} disabled={!dictationSettings().enabled || locked}
+              placeholder={hostDictation().server || 'http://localhost:8000'} onchange={(e) => { setDictation({ server: e.currentTarget.value.trim() }); speechTest = null; }} />
           </div>
-          {#if dictationSettings().server}
+          {#if server}
             <div class="row sub" class:dim={!dictationSettings().enabled}>
               <div class="info"><div class="name">{t().dictation.serverModel}</div><div class="desc">{t().dictation.serverModelHint}</div></div>
-              <input class="field" type="text" spellcheck="false" value={dictationSettings().model} disabled={!dictationSettings().enabled}
-                onchange={(e) => { setDictation({ model: e.currentTarget.value.trim() }); speechTest = null; }} />
+              <input class="field" type="text" spellcheck="false" value={locked ? server.model : dictationSettings().model} disabled={!dictationSettings().enabled || locked}
+                placeholder={server.installation ? hostDictation().model ?? '' : ''} onchange={(e) => { setDictation({ model: e.currentTarget.value.trim() }); speechTest = null; }} />
             </div>
             <div class="row sub" class:dim={!dictationSettings().enabled}>
               <div class="info">
@@ -321,6 +330,7 @@
               </div>
               <button class="btn" disabled={!dictationSettings().enabled || speechTest?.busy} onclick={testSpeech}>{t().dictation.test}</button>
             </div>
+          {/if}
           {/if}
           <div class="row">
             <div class="info"><div class="name">{t().table.numberRecognition}</div><div class="desc">{t().table.numberRecognitionHint}</div></div>

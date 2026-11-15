@@ -24,6 +24,8 @@ export interface DictationEngine {
   readonly where: 'local' | 'cloud';
   /** The user's speech server on another machine, whose consent is asked for that host. */
   readonly host?: string;
+  /** That server is the installation's own, which the consent says instead. */
+  readonly installation?: boolean;
   /** Whether it reports words while they are spoken (`interim`) or only phrase by phrase (`busy`). */
   readonly live: boolean;
   /** Whether it can recognize `lang` now. */
@@ -44,7 +46,7 @@ let served: { key: string; engine: DictationEngine } | null = null;
  */
 export function dictationEngines(server: SpeechServer | null = null): DictationEngine[] {
   if (server && transcriptionUrl(server.address)) {
-    const key = `${server.address}\n${server.model}`;
+    const key = `${server.address}\n${server.model}\n${!!server.installation}`;
     if (served?.key !== key) served = { key, engine: speechServerEngine(server) };
     return [served.engine];
   }

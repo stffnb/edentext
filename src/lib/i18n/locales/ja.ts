@@ -264,6 +264,10 @@ const ja: Messages = {
     testOk: '接続しました。',
     serverConsentTitle: 'ディクテーションを別のコンピューターに送信しますか?',
     serverConsentText: (host: string) => `音声認識サーバー ${host} はこのコンピューター上にありません。話した内容はネットワーク経由でそこへ送られ、テキストが返ってきます。EdenText 自体は何も保存しません。`,
+    fromHost: 'このインストールで設定済み',
+    fromHostHint: (model: string, locked: boolean) => `${model ? `音声はこのサーバーの ${model} で認識されます。` : '音声はこのサーバーで認識されます。'}${locked ? '変更できるのは管理者だけです。' : '別のサーバーを使うには、自分のアドレスを入力してください。'}`,
+    installationConsentTitle: 'このインストールのサーバーで音声入力しますか？',
+    installationConsentText: '音声はこのインストールのサーバーで認識されます。話した内容はそこへ送られ、テキストが返ってきます。EdenText 自体は何も保存しません。',
   },
   pane: {
     textSize: '文字サイズ',

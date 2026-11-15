@@ -266,6 +266,10 @@ const fr: Messages = {
     testOk: 'Connecté.',
     serverConsentTitle: 'Envoyer la dictée à un autre ordinateur ?',
     serverConsentText: (host: string) => `Le serveur vocal ${host} n’est pas sur cet ordinateur : ce que vous dites lui parvient par le réseau et le texte revient. EdenText lui-même n’enregistre rien.`,
+    fromHost: 'Configuré par cette installation',
+    fromHostHint: (model: string, locked: boolean) => `${model ? `La parole est reconnue sur son serveur avec ${model}.` : 'La parole est reconnue sur son serveur.'} ${locked ? 'Seul son administrateur peut le modifier.' : 'Pour utiliser un autre serveur, saisissez votre propre adresse.'}`,
+    installationConsentTitle: 'Dicter sur le serveur de cette installation ?',
+    installationConsentText: 'La parole est reconnue sur le serveur de cette installation : ce que vous dites y est envoyé et le texte revient. EdenText lui-même n’enregistre rien.',
   },
   pane: {
     textSize: 'Taille du texte',

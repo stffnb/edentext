@@ -1,6 +1,7 @@
 <script lang="ts">
   // Asked once before the first dictation whose audio leaves this machine: to the browser's
-  // speech service, or to the user's speech server on another host. The answer yes is kept.
+  // speech service, or to a speech server on another host (the installation's own says so).
+  // The answer yes is kept.
   import { answerDictationConsent, dictationState } from '../dictation/session.svelte';
   import { t } from '../i18n/i18n.svelte';
 
@@ -21,6 +22,9 @@
       {#if asking === 'browser'}
         <h2 id="dictation-consent-title">{t().dictation.consentTitle}</h2>
         <p>{t().dictation.consentText}</p>
+      {:else if dictationState().installation}
+        <h2 id="dictation-consent-title">{t().dictation.installationConsentTitle}</h2>
+        <p>{t().dictation.installationConsentText}</p>
       {:else}
         <h2 id="dictation-consent-title">{t().dictation.serverConsentTitle}</h2>
         <p>{t().dictation.serverConsentText(asking)}</p>

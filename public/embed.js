@@ -14,7 +14,7 @@ export class EdenTextFrame {
 
   /**
    * @param {HTMLElement} container where the iframe goes
-   * @param {{ url?: string, user?: string, locale?: string, theme?: string, chrome?: string, name?: string, accent?: string, ai?: boolean | object }} [options]
+   * @param {{ url?: string, user?: string, locale?: string, theme?: string, chrome?: string, name?: string, accent?: string, ai?: boolean | object, dictation?: boolean | object }} [options]
    *   `url`: the EdenText instance, by default the one serving this file. Types: embed.d.ts.
    */
   constructor(container, { url, ...settings } = {}) {
@@ -24,7 +24,8 @@ export class EdenTextFrame {
     const frame = document.createElement('iframe');
     frame.src = src.href;
     frame.title = 'EdenText';
-    frame.allow = 'clipboard-read; clipboard-write; local-fonts';
+    // The microphone is for dictation, unless the host switches it off from the start.
+    frame.allow = `clipboard-read; clipboard-write; local-fonts${settings.dictation === false ? '' : '; microphone'}`;
     frame.style.cssText = 'border:0;width:100%;height:100%;display:block';
     this.#frame = frame;
     /** Resolves once the editor is up and has taken `settings`. */
@@ -61,7 +62,7 @@ export class EdenTextFrame {
 
   /**
    * Change user, locale, theme ('light'|'dark'|'allBlack'|'auto'), chrome ('ribbon'|'modern'),
-   * name, accent (a preset name or '#rrggbb') or ai (false hides the assistant, an object presets it).
+   * name, accent (a preset name or '#rrggbb') ai or dictation (false hides it, an object presets its server).
    */
   async configure(settings) {
     await this.#send('configure', settings);

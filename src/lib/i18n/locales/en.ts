@@ -265,6 +265,10 @@ const en = {
     testOk: 'Connected.',
     serverConsentTitle: 'Send your dictation to another computer?',
     serverConsentText: (host: string) => `The speech server ${host} is not on this computer: what you say goes there over the network and the text comes back. EdenText itself stores nothing.`,
+    fromHost: 'Set up by this installation',
+    fromHostHint: (model: string, locked: boolean) => `${model ? `Speech is recognized on its server with ${model}.` : 'Speech is recognized on its server.'} ${locked ? 'Only its administrator can change this.' : 'Enter an address of your own to use another server.'}`,
+    installationConsentTitle: 'Dictate on this installation’s server?',
+    installationConsentText: 'Speech is recognized on the server of this installation: what you say goes there and the text comes back. EdenText itself stores nothing.',
   },
   pane: {
     textSize: 'Text size',

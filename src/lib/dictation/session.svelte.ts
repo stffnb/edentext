@@ -4,13 +4,10 @@
 
 import type { Editor } from '@tiptap/core';
 import { dictationEngines, type DictationEngine, type DictationError } from './engine';
-import { dictationSettings, setDictation } from '../storage/dictation.svelte';
+import { dictationHostOff, dictationServer, dictationSettings, setDictation } from '../storage/dictation.svelte';
 
-// The user's speech server once one is set up, else the browser's recognizers.
-const engines = () => {
-  const { server, model } = dictationSettings();
-  return dictationEngines(server.trim() ? { address: server, model } : null);
-};
+// The installation's or the user's speech server once one is set up, else the browser's recognizers.
+const engines = () => dictationEngines(dictationServer());
 // The engine of the running session.
 let engine: DictationEngine | null = null;
 
@@ -29,15 +26,16 @@ let errorTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** Whether this browser can dictate and the user has not switched it off. */
 export function dictationAvailable(): boolean {
-  return engines().length > 0 && dictationSettings().enabled;
+  return engines().length > 0 && dictationSettings().enabled && !dictationHostOff();
 }
 
 /** Whether this browser or the user's speech server can recognize at all, switched on or not. */
 export const dictationSupported = (): boolean => engines().length > 0;
 
-/** `asking` names the speech server's host when the consent is for it, else 'browser'. */
-export function dictationState(): { listening: boolean; error: DictationError | null; chosen: string | null; lang: string; asking: string | null } {
-  return { listening, error, chosen, lang: active, asking: asking ? asking.engine.host ?? 'browser' : null };
+/** `asking` names the speech server's host when the consent is for it, else 'browser';
+ *  `installation` says that server is the installation's own. */
+export function dictationState(): { listening: boolean; error: DictationError | null; chosen: string | null; lang: string; asking: string | null; installation: boolean } {
+  return { listening, error, chosen, lang: active, asking: asking ? asking.engine.host ?? 'browser' : null, installation: !!asking?.engine.installation };
 }
 
 // A cloud engine needs the yes once: the browser's service as such, a speech server per host.

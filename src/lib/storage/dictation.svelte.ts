@@ -4,6 +4,8 @@
 // mode it lasts for the page only, like the AI's key.
 
 import { embedded } from '../embed/mode';
+import { hostDictation } from './hostConfig.svelte';
+import type { SpeechServer } from '../dictation/speechServer';
 
 export type DictationSettings = { enabled: boolean; consent: boolean; server: string; model: string; serverConsent: string };
 
@@ -26,6 +28,19 @@ function load(): DictationSettings {
 let current = $state(load());
 
 export function dictationSettings(): DictationSettings { return current; }
+
+/** Switched off by the installation or an embedding host, above the user's own switch. */
+export function dictationHostOff(): boolean { return hostDictation().enabled === false; }
+
+/** The speech server in use: the installation's while it locks it or the user has none of
+ *  their own (a model typed over it still counts), else the user's; null for the browser's. */
+export function dictationServer(): SpeechServer | null {
+  const h = hostDictation();
+  if (h.locked || (h.server && !current.server.trim())) {
+    return h.server ? { address: h.server, model: (!h.locked && current.model.trim()) || h.model || '', installation: true } : null;
+  }
+  return current.server.trim() ? { address: current.server, model: current.model } : null;
+}
 
 export function setDictation(patch: Partial<DictationSettings>): void {
   current = { ...current, ...patch };

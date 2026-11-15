@@ -11,6 +11,15 @@ export interface EdenTextAi {
   locked?: boolean;
 }
 
+/** Presets the speech server for dictation; the same fields as `dictation` in edentext.config.json. */
+export interface EdenTextDictation {
+  enabled?: boolean;
+  /** An OpenAI-compatible transcription route, e.g. '/stt/v1' behind the installation's proxy. */
+  server?: string;
+  model?: string;
+  locked?: boolean;
+}
+
 /** Every setting holds for the page it was sent to and is never stored: send them with each `init`. */
 export interface EdenTextSettings {
   /** The name on comments and recorded changes. */
@@ -30,6 +39,11 @@ export interface EdenTextSettings {
    * or an object that presets (and with `locked`, fixes) its own provider.
    */
   ai?: boolean | EdenTextAi;
+  /**
+   * false hides dictation; an object presets its speech server. The frame is allowed the
+   * microphone unless the constructor's options say `dictation: false`.
+   */
+  dictation?: boolean | EdenTextDictation;
 }
 
 export interface EdenTextOptions extends EdenTextSettings {

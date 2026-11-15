@@ -94,6 +94,7 @@ describe('dictation session', () => {
     vi.stubGlobal('SpeechRecognition', FakeRecognition);
     vi.resetModules();
     const session = await import('../../src/lib/dictation/session.svelte');
+    await (await import('../../src/lib/storage/hostConfig.svelte')).loadHostConfig();
     const { extensions: exts } = await import('../../src/lib/editor/extensions');
     const ed = new Editor({ element: document.createElement('div'), extensions: exts, content: '<p lang="de-DE">Hallo</p>' });
     ed.commands.setTextSelection(6);
@@ -155,9 +156,9 @@ describe('speech server dictation', () => {
   const burst = (s: number) => Float32Array.from({ length: s * RATE }, (_, i) => 0.3 * Math.sin(i / 3));
   const pause = (s: number) => new Float32Array(s * RATE);
 
-  async function setup(address: string, reply: (form: FormData, n: number) => Promise<Response>) {
+  async function setup(address: string, reply: (form: FormData, n: number) => Promise<Response>, host?: unknown) {
     localStorage.clear();
-    localStorage.setItem('edentext-dictation', JSON.stringify({ server: address, model: 'whisper-1' }));
+    if (address) localStorage.setItem('edentext-dictation', JSON.stringify({ server: address, model: 'whisper-1' }));
     vi.stubGlobal('SpeechRecognition', FakeRecognition);
     FakeRecognition.last = null;
     feed = null;
@@ -165,18 +166,21 @@ describe('speech server dictation', () => {
     // Only the server's calls are counted; the spell checker's dictionaries are not there.
     const fetch = vi.fn((_url: string, init: RequestInit) => reply(init.body as FormData, n++));
     vi.stubGlobal('fetch', (url: string, init: RequestInit) =>
-      /audio\/transcriptions/.test(url) ? fetch(url, init) : Promise.resolve(new Response('', { status: 404 })));
+      /audio\/transcriptions/.test(String(url)) ? fetch(String(url), init)
+        : Promise.resolve(new Response(JSON.stringify({ dictation: host }), { status: host && /edentext\.config\.json$/.test(String(url)) ? 200 : 404 })));
     vi.resetModules();
     vi.doMock('../../src/lib/dictation/microphone', () => ({
       listen: async (on: (s: Float32Array) => void) => { feed = on; return { rate: RATE, stop: () => {} }; },
     }));
     const session = await import('../../src/lib/dictation/session.svelte');
+    await (await import('../../src/lib/storage/hostConfig.svelte')).loadHostConfig();
     const { extensions: exts } = await import('../../src/lib/editor/extensions');
     const ed = new Editor({ element: document.createElement('div'), extensions: exts, content: '<p lang="de-DE">Hallo</p>' });
     ed.commands.setTextSelection(6);
     const unbind = session.bindDictation(() => ed, () => 'en-US');
     const done = () => { unbind(); ed.destroy(); vi.doUnmock('../../src/lib/dictation/microphone'); vi.unstubAllGlobals(); };
-    return { session, ed, fetch, done };
+    const storage = await import('../../src/lib/storage/dictation.svelte');
+    return { session, storage, ed, fetch, done };
   }
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
@@ -237,5 +241,38 @@ describe('speech server dictation', () => {
     expect(session.dictationState()).toMatchObject({ listening: true, asking: null });
     session.stopDictation();
     done();
+  });
+
+  it('takes the installation’s server under its own name until the user enters one', async () => {
+    const speak = async () => { feed!(pause(0.4)); feed!(burst(0.5)); feed!(pause(0.8)); };
+    const start = async (session: Awaited<ReturnType<typeof setup>>['session']) => {
+      await session.toggleDictation();
+      await vi.waitFor(() => expect(feed).toBeTypeOf('function'));
+      await new Promise((r) => setTimeout(r));
+    };
+    let s = await setup('', () => Promise.resolve(json({ text: '' })), { server: '/stt/v1', model: 'host-model', apiKey: 'no' });
+    await start(s.session);
+    await speak();
+    const [url, init] = s.fetch.mock.calls[0];
+    expect([url, (init.body as FormData).get('model')]).toEqual([`${location.origin}/stt/v1/audio/transcriptions`, 'host-model']);
+    s.session.stopDictation();
+    s.done();
+
+    s = await setup('', () => Promise.resolve(json({ text: '' })), { server: 'https://stt.example.org/v1' });
+    await s.session.toggleDictation();
+    expect(s.session.dictationState()).toMatchObject({ asking: 'stt.example.org', installation: true });
+    s.session.answerDictationConsent(false);
+    s.storage.setDictation({ server: 'http://127.0.0.1:8000' });
+    await start(s.session);
+    await speak();
+    expect(s.fetch.mock.calls[0][0]).toBe('http://127.0.0.1:8000/v1/audio/transcriptions');
+    s.session.stopDictation();
+    s.done();
+
+    for (const host of [{ enabled: false }, { locked: true, server: 'https://stt.example.org/v1' }]) {
+      s = await setup('http://127.0.0.1:8000', () => Promise.resolve(json({ text: '' })), host);
+      expect([s.session.dictationAvailable(), s.storage.dictationServer()?.address ?? null]).toEqual(host.locked ? [true, host.server] : [false, 'http://127.0.0.1:8000']);
+      s.done();
+    }
   });
 });

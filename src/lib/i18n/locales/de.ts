@@ -262,6 +262,10 @@ const de: Messages = {
     testOk: 'Verbunden.',
     serverConsentTitle: 'Diktat an einen anderen Rechner schicken?',
     serverConsentText: (host: string) => `Der Spracherkennungsserver ${host} läuft nicht auf diesem Rechner. Das Gesprochene geht übers Netz dorthin, der Text kommt zurück. EdenText selbst speichert nichts.`,
+    fromHost: 'Von dieser Installation eingerichtet',
+    fromHostHint: (model: string, locked: boolean) => `${model ? `Die Sprache wird auf ihrem Server mit ${model} erkannt.` : 'Die Sprache wird auf ihrem Server erkannt.'} ${locked ? 'Ändern kann das nur ihre Administration.' : 'Wer einen anderen Server nutzen will, trägt eine eigene Adresse ein.'}`,
+    installationConsentTitle: 'Auf dem Server dieser Installation diktieren?',
+    installationConsentText: 'Die Sprache wird auf dem Server dieser Installation erkannt: Das Gesprochene geht dorthin, der Text kommt zurück. EdenText selbst speichert nichts.',
   },
   pane: {
     textSize: 'Schriftgröße',

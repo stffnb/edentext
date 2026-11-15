@@ -262,6 +262,10 @@ const it: Messages = {
     testOk: 'Connesso.',
     serverConsentTitle: 'Inviare la dettatura a un altro computer?',
     serverConsentText: (host: string) => `Il server vocale ${host} non è su questo computer: ciò che dici gli arriva attraverso la rete e il testo torna indietro. EdenText non salva nulla.`,
+    fromHost: 'Configurato da questa installazione',
+    fromHostHint: (model: string, locked: boolean) => `${model ? `La voce viene riconosciuta sul suo server con ${model}.` : 'La voce viene riconosciuta sul suo server.'} ${locked ? 'Solo il suo amministratore può cambiarlo.' : 'Per usare un altro server, inserisci un tuo indirizzo.'}`,
+    installationConsentTitle: 'Dettare sul server di questa installazione?',
+    installationConsentText: 'La voce viene riconosciuta sul server di questa installazione: ciò che dici arriva lì e il testo torna indietro. EdenText non salva nulla.',
   },
   pane: {
     textSize: 'Dimensione testo',

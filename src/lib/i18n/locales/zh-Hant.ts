@@ -264,6 +264,10 @@ const zhHant: Messages = {
     testOk: '已連線。',
     serverConsentTitle: '要將聽寫傳送到另一台電腦嗎？',
     serverConsentText: (host: string) => `語音辨識伺服器 ${host} 不在這台電腦上：你說的話會透過網路傳送到那裡，再取回文字。EdenText 本身不會儲存任何內容。`,
+    fromHost: '由此安裝設定',
+    fromHostHint: (model: string, locked: boolean) => `${model ? `語音在其伺服器上由 ${model} 辨識。` : '語音在其伺服器上辨識。'}${locked ? '只有管理員可以變更。' : '如要使用其他伺服器，請填入自己的位址。'}`,
+    installationConsentTitle: '在此安裝的伺服器上聽寫？',
+    installationConsentText: '語音在此安裝的伺服器上辨識：你說的話會傳送到那裡，再取回文字。EdenText 本身不會儲存任何內容。',
   },
   pane: {
     textSize: '文字大小',
