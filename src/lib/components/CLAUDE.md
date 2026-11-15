@@ -39,6 +39,7 @@ formulas, or notes before changing those areas.
 - `CommentsPane.svelte` and `RevisionsPane.svelte` dock either side and take the navigator's width handle and text sizes (`storage/panes.svelte.ts`); `PaneOptions.svelte` is every pane's options button and its side and size entries. Docked left, a CSS `order` keeps the navigator outermost and the reviewing panes nearest the page, and `ConnectorLayer` draws the leader mirrored.
 - `BookmarkRow.svelte` is one bookmark in the bookmark window's list and the navigator's: jump, rename in place, delete.
 - `BorderWidthBox.svelte` is every line-width field (style manager, border pens, text box): presets in a list or a typed pt value, clamped to 0.05–9 pt; `none` adds "None" where a side can have no line.
+- Every custom colour goes through `CustomColorPanel.svelte`, never the native colour input, which looks and works differently in each browser: `ColorPicker` shows it in its window, the text effects menu as a page, Settings inline under the accents with a live preview.
 - `FontSizeField.svelte` is every font-size field outside the editing toolbars (style manager, find bar): the size box's list and 1–400 pt range, empty clears.
 - `Ruler.svelte` draws quarter-, else half-cm marks and thins its cm numbers to every 2nd/5th only as far as the zoom leaves them room, so nothing on it overlaps.
 - `PageLabelLayer.svelte` puts the sheet number beside each page's bottom right corner, in `.paper-scaler` (`.paper` clips) at an unscaled size, ending where the scroller does so it adds no scrollbar; not in the page grid.

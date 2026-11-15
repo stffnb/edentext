@@ -26,6 +26,7 @@
   import { userName, setUserName } from '../storage/userName.svelte';
   import Icon from './ribbon/Icon.svelte';
   import Toggle from './Toggle.svelte';
+  import CustomColorPanel from './CustomColorPanel.svelte';
   import { LANGUAGES, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
   import { hostAi, hostDictation } from '../storage/hostConfig.svelte';
   import { aiSettings, setAi, aiConfig, aiHostOff, aiInUse, aiFromHost, plainHttpEndpoint, AI_PRESETS, presetOf, DEFAULT_CONTEXT_TOKENS, type CustomCommand } from '../storage/ai.svelte';
@@ -105,8 +106,20 @@
     saveAccent(a);
     applyAccent(a);
   }
-  // The colour input starts from the accent on screen, so a preset can be fine-tuned.
+  // The custom panel starts from the accent on screen, so a preset can be fine-tuned; it
+  // previews live, Cancel restores the accent it opened over.
   const shownAccent = () => parseAccentHex(getComputedStyle(document.documentElement).getPropertyValue('--brand-slate')) ?? '#4c6c8a';
+  let mixingFrom = $state<Accent | null>(null);
+  let customBtn = $state<HTMLButtonElement>();
+  const revealMixer = (node: HTMLElement) => {
+    node.scrollIntoView({ block: 'nearest' });
+    node.querySelector('input')?.focus();
+  };
+  function closeMixer(restore: boolean) {
+    if (restore && mixingFrom) pickAccent(mixingFrom);
+    mixingFrom = null;
+    customBtn?.focus();
+  }
   function typeAccentHex(e: Event & { currentTarget: HTMLInputElement }) {
     const hex = parseAccentHex(e.currentTarget.value);
     if (hex) pickAccent(hex);
@@ -237,11 +250,19 @@
               {#each ACCENTS as a (a)}
                 <button role="radio" aria-checked={accent === a} class:on={accent === a} data-accent={a} title={t().settings.accents[a]} aria-label={t().settings.accents[a]} onclick={() => pickAccent(a)}></button>
               {/each}
-              <input type="color" class="custom" class:on={isCustomAccent(accent)} value={isCustomAccent(accent) ? accent : shownAccent()} title={t().settings.accents.custom} aria-label={t().settings.accents.custom} oninput={(e) => pickAccent(parseAccentHex(e.currentTarget.value) ?? accent)} />
+              <button class="custom" class:on={isCustomAccent(accent)} style:background={isCustomAccent(accent) ? accent : null} bind:this={customBtn} aria-expanded={mixingFrom !== null} title={t().settings.accents.custom} aria-label={t().settings.accents.custom} onclick={() => (mixingFrom === null ? (mixingFrom = accent) : closeMixer(false))}></button>
               {#if isCustomAccent(accent)}
                 <input class="field accent-hex" type="text" maxlength="7" spellcheck="false" value={accent} aria-label={t().settings.accentHex} oninput={typeAccentHex} onblur={(e) => (e.currentTarget.value = accent)} />
               {/if}
             </div>
+            {#if mixingFrom !== null}
+              <div class="accent-mixer" use:revealMixer>
+                <CustomColorPanel color={isCustomAccent(mixingFrom) ? mixingFrom : shownAccent()}
+                  onInput={(hex) => pickAccent(parseAccentHex(hex) ?? accent)}
+                  onConfirm={(hex) => { pickAccent(parseAccentHex(hex) ?? accent); closeMixer(false); }}
+                  onCancel={() => closeMixer(true)} />
+              </div>
+            {/if}
           </div>
           <!-- The modern chrome is still a beta, so only a development build offers the choice. -->
           {#if import.meta.env.DEV}
@@ -645,11 +666,8 @@
   .accents { align-items: center; }
   .accents button.on, .accents .custom.on { outline: 2px solid var(--color-text); }
   .accents .custom { appearance: none; width: 22px; height: 22px; padding: 0; border: 2px solid var(--color-surface); border-radius: 50%; outline: 1px solid var(--w-border-strong); background: conic-gradient(#e0483e, #e0b43e, #4caf50, #3ea6e0, #6a5ae0, #e03ea6, #e0483e); cursor: pointer; }
-  .accents .custom::-webkit-color-swatch-wrapper { padding: 0; }
-  .accents .custom::-webkit-color-swatch { border: none; border-radius: 50%; }
-  .accents .custom::-moz-color-swatch { border: none; border-radius: 50%; }
-  .accents .custom:not(.on)::-webkit-color-swatch { opacity: 0; }
-  .accents .custom:not(.on)::-moz-color-swatch { opacity: 0; }
+  .row:has(> .accent-mixer) { flex-wrap: wrap; }
+  .accent-mixer { display: flex; flex-basis: 100%; justify-content: flex-end; }
   .field.accent-hex { width: 6.5em; font-family: ui-monospace, monospace; }
 
   .choices { display: flex; flex-direction: column; gap: 6px; }

@@ -8,6 +8,7 @@
   import { styleLabel, t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
   import FontSizeField from './FontSizeField.svelte';
+  import ColorPicker from './ColorPicker.svelte';
 
   let { editor, tick, mode, focusNonce, onClose }:
     { editor: Editor | null; tick: number; mode: 'find' | 'replace'; focusNonce: number; onClose: () => void } = $props();
@@ -179,12 +180,15 @@
             style="flex: none; width: 4rem; height: 1.7rem"
             onChange={(pt) => setFormat(find, { sizePt: pt })}
           />
-          <input
-            class="fb-color"
-            type="color"
-            value={spec(find).color ?? '#000000'}
-            aria-label={t().findReplace.color}
-            onchange={(e) => setFormat(find, { color: e.currentTarget.value })}
+          <ColorPicker
+            editor={null}
+            currentColor={spec(find).color ?? null}
+            defaultColor={spec(find).color ?? '#000000'}
+            title={t().findReplace.color}
+            chevronTitle={t().findReplace.color}
+            clearLabel={t().findReplace.noColor}
+            onApply={(c) => setFormat(find, { color: c })}
+            onClear={() => setFormat(find, { color: undefined })}
           />
           {#if spec(find).color}
             <button class="fb-opt" title={t().findReplace.noColor} onclick={() => setFormat(find, { color: undefined })}>×</button>
@@ -255,13 +259,6 @@
   .fb-fmt-underline { text-decoration: underline; }
 
   .fb-font { width: 6rem; }
-  .fb-color {
-    width: 1.9rem;
-    height: 1.7rem;
-    padding: 1px;
-    cursor: pointer;
-  }
-
   .fb-fmt-label {
     min-width: 4.6rem;
     font-size: 0.72rem;
