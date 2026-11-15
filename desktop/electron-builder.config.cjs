@@ -21,7 +21,13 @@ module.exports = {
   icon: '../public/icon-512.png',
   directories: { output: 'release' },
   publish: null,
-  mac: { icon: 'icon.png', target: { target: 'dmg', arch: ['arm64', 'x64'] }, category: 'public.app-category.productivity' },
+  // Dictation's microphone: a hardened runtime without the audio-input entitlement, or a
+  // bundle without the usage text, ends the app at the first access instead of asking.
+  mac: {
+    icon: 'icon.png', target: { target: 'dmg', arch: ['arm64', 'x64'] }, category: 'public.app-category.productivity',
+    entitlements: 'entitlements.mac.plist', entitlementsInherit: 'entitlements.mac.plist',
+    extendInfo: { NSMicrophoneUsageDescription: 'EdenText listens only while you dictate and sends the audio to the speech recognition you set up.' },
+  },
   win: { target: 'nsis' },
   nsis: { artifactName: '${productName}-Setup-${version}.${ext}' },
   // The tar.gz feeds the Flathub manifest, which installs the desktop entry and metainfo from it.

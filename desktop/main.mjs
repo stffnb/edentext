@@ -149,9 +149,15 @@ handle('desktop:print-pdf', async (_e, html) => {
 });
 
 // What the page asks the browser for: saving through the file pickers, installed fonts,
-// the clipboard. Anything else (camera, location, notifications…) is refused.
+// the clipboard, and the microphone for dictation but never the camera. Anything else
+// (location, notifications…) is refused.
 const PERMISSIONS = new Set(['fileSystem', 'local-fonts', 'clipboard-read', 'clipboard-sanitized-write']);
-const allowed = (permission, url) => PERMISSIONS.has(permission) && String(url ?? '').startsWith(ORIGIN);
+const audioOnly = (details) => {
+  const types = details?.mediaTypes ?? (details?.mediaType ? [details.mediaType] : []);
+  return types.length > 0 && types.every((t) => t === 'audio');
+};
+const allowed = (permission, url, details) =>
+  (PERMISSIONS.has(permission) || (permission === 'media' && audioOnly(details))) && String(url ?? '').startsWith(ORIGIN);
 
 // Every window, the app's, one it opens and the hidden print window alike: links go to the
 // system, and a dropped file or a link cannot navigate a window off the app origin.
@@ -224,8 +230,8 @@ app.on('open-file', (e, file) => {
 app.whenReady().then(() => {
   setMenu();
   session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) =>
-    callback(allowed(permission, details.requestingUrl ?? wc?.getURL())));
-  session.defaultSession.setPermissionCheckHandler((_wc, permission, origin) => allowed(permission, origin));
+    callback(allowed(permission, details.requestingUrl ?? wc?.getURL(), details)));
+  session.defaultSession.setPermissionCheckHandler((_wc, permission, origin, details) => allowed(permission, origin, details));
   protocol.handle('app', (req) => {
     const print = /^\/__print\/([\w-]+)$/.exec(new URL(req.url).pathname);
     // The print page is static markup: it runs no script and loads only the app's files.
