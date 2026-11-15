@@ -138,19 +138,35 @@ export const FX_CSS = {
   // w14:algn="ctr": half the line lies outside the letter, the inner half covers the fill.
   outlineOutside: 0.5,
   outlineMinPt: 0.375, // 0.5px, so a hairline still shows
-  ringSteps: 16,
+  // Copies this far apart, along and across the band: a thin stroke or serif shifted further
+  // than its own width shows as a comb. Past the caps the inner rings thin out first.
+  outlineStepPt: 0.35,
+  outlineOuterCopies: 160,
+  outlineMaxCopies: 200,
   shadowBlur: 1, // text-shadow blur per pt of w14:blurRad
   glowLayers: [0.25, 0.5, 1], // stacked blurs per pt of w14:rad: dense near the letter, fading out to it
 };
 
 const rgba = (hex: string, alpha: number) =>
   alpha >= 1 ? hex : `${hex}${Math.round(Math.max(0, alpha) * 255).toString(16).padStart(2, '0')}`;
+// The outline as concentric rings of copies: the outer one dense enough that no serif's
+// tip shows through its gaps, inner ones filling the band as densely as the cap allows.
+function outlineOffsets(r: number): [number, number][] {
+  const ring = (rho: number, n: number, turn: number) => Array.from({ length: n }, (_, i): [number, number] => {
+    const a = ((i + turn) * 2 * Math.PI) / n;
+    return [Math.cos(a) * rho, Math.sin(a) * rho];
+  });
+  const { outlineStepPt: fine, outlineOuterCopies, outlineMaxCopies } = FX_CSS;
+  const outer = ring(r, Math.min(outlineOuterCopies, Math.max(8, Math.ceil((2 * Math.PI * r) / fine))), 0);
+  for (let step = fine; ; step *= 1.1) {
+    const inner: [number, number][] = [];
+    for (let k = 1; r - k * step > step / 2; k++) inner.push(...ring(r - k * step, Math.max(8, Math.ceil((2 * Math.PI * (r - k * step)) / step)), (k % 2) / 2));
+    if (outer.length + inner.length <= outlineMaxCopies) return outer.concat(inner);
+  }
+}
 function outlineRing(o: TextOutline): string {
   const r = Math.max(o.widthPt * FX_CSS.outlineOutside, FX_CSS.outlineMinPt);
-  return Array.from({ length: FX_CSS.ringSteps }, (_, i) => {
-    const a = (i * 2 * Math.PI) / FX_CSS.ringSteps;
-    return `${+(Math.cos(a) * r).toFixed(3)}pt ${+(Math.sin(a) * r).toFixed(3)}pt 0 ${o.color}`;
-  }).join(', ');
+  return outlineOffsets(r).map(([x, y]) => `${+x.toFixed(2)}pt ${+y.toFixed(2)}pt ${o.color}`).join(', ');
 }
 const shadowCss = (s: TextShadow) => `${s.dxPt}pt ${s.dyPt}pt ${+(s.blurPt * FX_CSS.shadowBlur).toFixed(2)}pt ${rgba(s.color, s.alpha)}`;
 const glowCss = (g: TextGlow) => FX_CSS.glowLayers.map((f) => `0 0 ${+(g.radiusPt * f).toFixed(2)}pt ${rgba(g.color, g.alpha)}`).join(', ');
