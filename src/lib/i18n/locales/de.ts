@@ -251,7 +251,7 @@ const de: Messages = {
     enable: 'Diktieren',
     enableHint: 'Mikrofon-Knopf auf der Registerkarte Start. Auf Deutsch und Englisch setzen „Komma“, „Punkt“ und „neuer Absatz“ Satzzeichen und Umbrüche',
     consent: 'Sprachdienst des Browsers verwenden',
-    consentHint: 'Wo der Browser Sprache nicht lokal erkennt, geht der Ton an seinen Sprachdienst. Aus fragt beim nächsten Mal wieder',
+    consentHint: 'Erkennt der Browser Sprache nicht selbst, schickt er den Ton an seinen Sprachdienst. Ist das ausgeschaltet, fragt EdenText vor dem nächsten Diktat wieder nach',
     unsupported: 'Dieser Browser hat keine Spracherkennung. Stattdessen das Diktat des Systems verwenden: Windows-Logo-Taste + H unter Windows, Bearbeiten ▸ Diktat starten unter macOS',
     server: 'Spracherkennungsserver',
     serverHint: 'Ein eigener Server für Spracherkennung mit OpenAI-kompatibler Schnittstelle, z. B. http://localhost:8000. Wer ihn einträgt, diktiert ab dann über ihn',

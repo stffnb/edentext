@@ -251,7 +251,7 @@ const it: Messages = {
     enable: 'Dettatura',
     enableHint: 'Pulsante del microfono nella scheda Home. In inglese e tedesco i comandi vocali inseriscono punteggiatura e paragrafi',
     consent: 'Usa il servizio vocale del browser',
-    consentHint: 'Se il browser non riconosce la voce in locale, l’audio va al suo servizio vocale. Disattivato, lo chiede di nuovo',
+    consentHint: 'Se il browser non riconosce la voce su questo computer, invia l’audio al suo servizio vocale. Se è disattivato, EdenText lo richiede prima della prossima dettatura',
     unsupported: 'Questo browser non ha il riconoscimento vocale. Usa la dettatura del sistema: tasto logo Windows + H su Windows, Composizione ▸ Avvia dettatura su macOS',
     server: 'Server vocale',
     serverHint: 'Il tuo server di riconoscimento vocale con un percorso compatibile con OpenAI, ad es. http://localhost:8000. Se lo inserisci, la dettatura passa a usarlo',

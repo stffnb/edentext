@@ -251,7 +251,7 @@ const pt: Messages = {
     enable: 'Ditado',
     enableHint: 'Botão do microfone no separador Base. Em inglês e alemão, comandos de voz inserem pontuação e parágrafos',
     consent: 'Utilizar o serviço de voz do navegador',
-    consentHint: 'Quando o navegador não reconhece a voz localmente, o áudio vai para o seu serviço de voz. Desativado, volta a perguntar',
+    consentHint: 'Se o navegador não reconhecer a voz neste computador, envia o áudio para o seu serviço de voz. Se estiver desativado, o EdenText volta a perguntar antes do próximo ditado',
     unsupported: 'Este navegador não tem reconhecimento de voz. Utilize o ditado do sistema: tecla do logótipo do Windows + H no Windows, Edição ▸ Iniciar ditado no macOS',
     server: 'Servidor de voz',
     serverHint: 'O seu próprio servidor de reconhecimento de voz com uma rota compatível com OpenAI, p. ex. http://localhost:8000. Ao indicá-lo, o ditado passa a usá-lo',

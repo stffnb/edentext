@@ -254,7 +254,7 @@ const en = {
     enable: 'Dictation',
     enableHint: 'Microphone button on the Home tab. In English and German, say “comma”, “period” or “new paragraph”',
     consent: 'Use the browser’s speech service',
-    consentHint: 'Where the browser cannot recognize speech locally, the audio goes to its speech service. Off asks again next time',
+    consentHint: 'If the browser cannot recognize speech on this computer, it sends the audio to its speech service. When this is off, EdenText asks again before the next dictation',
     unsupported: 'This browser has no speech recognition. Use the system’s dictation instead: Windows logo key + H on Windows, Edit ▸ Start Dictation on macOS',
     server: 'Speech server',
     serverHint: 'Your own speech recognition server with an OpenAI-compatible route, e.g. http://localhost:8000. Entering one makes it the dictation service',

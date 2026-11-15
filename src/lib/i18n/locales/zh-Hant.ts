@@ -253,7 +253,7 @@ const zhHant: Messages = {
     enable: '聽寫',
     enableHint: '「常用」索引標籤上的麥克風按鈕。英文和德文可用語音命令插入標點符號和段落',
     consent: '使用瀏覽器的語音服務',
-    consentHint: '瀏覽器無法在本機辨識語音時，音訊會傳送到其語音服務。關閉後下次會再次詢問',
+    consentHint: '瀏覽器無法在本機辨識語音時，會把音訊傳送到其語音服務。關閉後，EdenText 會在下次聽寫前再次詢問',
     unsupported: '這個瀏覽器不支援語音辨識。請改用系統聽寫：Windows 上按 Windows 標誌鍵 + H，macOS 上選擇「編輯 ▸ 開始聽寫」',
     server: '語音辨識伺服器',
     serverHint: '你自己的語音辨識伺服器，需提供與 OpenAI 相容的介面，例如 http://localhost:8000。填寫後，聽寫將使用這台伺服器',

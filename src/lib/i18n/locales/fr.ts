@@ -255,7 +255,7 @@ const fr: Messages = {
     enable: 'Dictée',
     enableHint: 'Bouton micro dans l’onglet Accueil. En anglais et en allemand, des commandes vocales insèrent ponctuation et paragraphes',
     consent: 'Utiliser le service vocal du navigateur',
-    consentHint: 'Si le navigateur ne reconnaît pas la parole en local, le son part à son service vocal. Désactivé, la question revient',
+    consentHint: 'Si le navigateur ne reconnaît pas la parole sur cet ordinateur, il envoie le son à son service vocal. Si l’option est désactivée, EdenText redemande avant la prochaine dictée',
     unsupported: 'Ce navigateur n’a pas de reconnaissance vocale. Utilisez la dictée du système : touche Windows + H sous Windows, Édition ▸ Commencer la dictée sous macOS',
     server: 'Serveur vocal',
     serverHint: 'Votre propre serveur de reconnaissance vocale avec une route compatible OpenAI, par ex. http://localhost:8000. Une fois saisi, la dictée passe par lui',
