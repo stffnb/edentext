@@ -61,6 +61,9 @@ export type TextOutline = { color: string; widthPt: number };
 export const OUTLINE_WIDTH_PT = { min: 0.1, max: 20 };
 export type TextShadow = { color: string; alpha: number; dxPt: number; dyPt: number; blurPt: number };
 export type TextGlow = { color: string; alpha: number; radiusPt: number };
+// The menu's glow sizes: past 40 pt the blurred copies thin out to a faint cloud. A file's
+// larger glow is kept as it is, up to 150 pt.
+export const GLOW_RADIUS_PT = { min: 1, max: 40 };
 // A w14 element the editor does not draw (reflection, 3D, a gradient fill, a shadow it
 // can only approximate), kept as a tree that the DOCX export serializes again.
 export type W14El = { n: string; a?: Record<string, string>; c?: W14El[] };
@@ -144,7 +147,12 @@ export const FX_CSS = {
   outlineOuterCopies: 160,
   outlineMaxCopies: 200,
   shadowBlur: 1, // text-shadow blur per pt of w14:blurRad
-  glowLayers: [0.25, 0.5, 1], // stacked blurs per pt of w14:rad: dense near the letter, fading out to it
+  // The glow widens the letter by copies on a ring this far out per pt of w14:rad, each
+  // blurred by the rest; a copy's opacity lets about glowOverlap of them add up to w14:alpha.
+  glowReach: 0.5,
+  glowBlur: 0.5,
+  glowCopies: 12,
+  glowOverlap: 2,
 };
 
 const rgba = (hex: string, alpha: number) =>
@@ -169,7 +177,14 @@ function outlineRing(o: TextOutline): string {
   return outlineOffsets(r).map(([x, y]) => `${+x.toFixed(2)}pt ${+y.toFixed(2)}pt ${o.color}`).join(', ');
 }
 const shadowCss = (s: TextShadow) => `${s.dxPt}pt ${s.dyPt}pt ${+(s.blurPt * FX_CSS.shadowBlur).toFixed(2)}pt ${rgba(s.color, s.alpha)}`;
-const glowCss = (g: TextGlow) => FX_CSS.glowLayers.map((f) => `0 0 ${+(g.radiusPt * f).toFixed(2)}pt ${rgba(g.color, g.alpha)}`).join(', ');
+function glowCss(g: TextGlow): string {
+  const { glowReach, glowBlur, glowCopies: n, glowOverlap } = FX_CSS;
+  const color = rgba(g.color, 1 - (1 - g.alpha) ** (1 / glowOverlap)), r = g.radiusPt * glowReach;
+  return Array.from({ length: n }, (_, i) => {
+    const a = (i * 2 * Math.PI) / n;
+    return `${+(Math.cos(a) * r).toFixed(2)}pt ${+(Math.sin(a) * r).toFixed(2)}pt ${+(g.radiusPt * glowBlur).toFixed(2)}pt ${color}`;
+  }).join(', ');
+}
 
 // LibreOffice's colour rules: relief whitens exactly black, a shadow is grey under any dark colour.
 function rgb(color: string | null | undefined): [number, number, number] | null {
