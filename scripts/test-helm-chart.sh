@@ -81,10 +81,11 @@ for pattern in 'edentext.config.json' 'initContainers:' 'location /ai/' 'locatio
 done
 helm template edentext "$chart" --namespace edentext \
   --set-string ai.endpoint=https://llm.example.com/v1,ai.model=small-model,dictation.server=https://stt.example.com/v1 \
-  --set ai.contextTokens=16384,dictation.locked=true > "$workdir/presets.yaml"
+  --set ai.contextTokens=16384,dictation.locked=true,dictation.webSpeech=false > "$workdir/presets.yaml"
 assert_contains "$workdir/presets.yaml" '"endpoint": "https://llm.example.com/v1"' 'AI endpoint preset was not rendered'
 assert_contains "$workdir/presets.yaml" '"contextTokens": 16384' 'context size preset was not rendered'
 assert_contains "$workdir/presets.yaml" '"locked": true' 'dictation lock was not rendered'
+assert_contains "$workdir/presets.yaml" '"webSpeech": false' 'browser recognition switch was not rendered'
 assert_contains "$workdir/presets.yaml" 'mountPath: /usr/share/nginx/html/edentext.config.json' 'config file was not mounted'
 assert_contains "$workdir/presets.yaml" 'readOnlyRootFilesystem: true' 'config file made the root filesystem writable'
 assert_not_contains "$workdir/presets.yaml" 'location /ai/' 'addresses alone rendered a proxy'

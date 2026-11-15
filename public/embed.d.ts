@@ -17,7 +17,10 @@ export interface EdenTextDictation {
   /** An OpenAI-compatible transcription route, e.g. '/stt/v1' behind the installation's proxy. */
   server?: string;
   model?: string;
+  /** true keeps the reader from using a speech server of their own. */
   locked?: boolean;
+  /** false takes the browser's own speech recognition off the list of services. */
+  webSpeech?: boolean;
 }
 
 /** Every setting holds for the page it was sent to and is never stored: send them with each `init`. */

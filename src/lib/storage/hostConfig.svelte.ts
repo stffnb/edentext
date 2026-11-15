@@ -3,7 +3,7 @@
 // stored. The file is public, so it holds addresses and models only; a key stays in a proxy.
 
 export type HostAi = { enabled?: boolean; provider?: 'openai' | 'anthropic'; endpoint?: string; model?: string; contextTokens?: number; locked?: boolean };
-export type HostDictation = { enabled?: boolean; server?: string; model?: string; locked?: boolean };
+export type HostDictation = { enabled?: boolean; server?: string; model?: string; locked?: boolean; webSpeech?: boolean };
 type Sections = { ai: HostAi; dictation: HostDictation };
 
 const isBool = (v: unknown) => typeof v === 'boolean';
@@ -14,7 +14,7 @@ const FIELDS: { [S in keyof Sections]: Record<keyof Sections[S], (v: unknown) =>
     provider: (v) => v === 'openai' || v === 'anthropic',
     contextTokens: (v) => Number.isInteger(v) && (v as number) >= 2048,
   },
-  dictation: { enabled: isBool, locked: isBool, server: isText, model: isText },
+  dictation: { enabled: isBool, locked: isBool, webSpeech: isBool, server: isText, model: isText },
 };
 
 // Strict: unknown keys and wrong types are dropped, the rest holds.

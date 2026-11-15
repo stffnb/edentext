@@ -12,7 +12,7 @@ section and field is optional; without the file nothing is preset.
 ```json
 {
   "ai": { "provider": "openai", "endpoint": "/ai/v1", "model": "qwen3:14b", "contextTokens": 32768, "locked": false },
-  "dictation": { "server": "/stt/v1", "model": "Systran/faster-whisper-small", "locked": false }
+  "dictation": { "server": "/stt/v1", "model": "Systran/faster-whisper-small", "locked": false, "webSpeech": true }
 }
 ```
 
@@ -22,6 +22,10 @@ section and field is optional; without the file nothing is preset.
   what the user entered. A user who enters an address of their own uses it.
 - **`locked: true`** fixes the preset: Settings shows it, but it cannot be changed. Users
   can still switch the feature off for themselves.
+- **Dictation service:** users pick in Settings ▸ Editing between your speech server,
+  their own (not while `locked`) and the browser's recognition, with yours as the default.
+  `webSpeech: false` takes the browser's off the list, which can send the audio to the
+  browser maker's service. Without the file, the browser's stays on offer as before.
 - Unknown keys and values of the wrong type are ignored. The file is never stored in the
   browser; a change holds from the next start. The desktop app does not read it.
 
@@ -46,6 +50,7 @@ The image writes the file and the proxies from environment variables when it sta
 | `EDENTEXT_AI_ENDPOINT`, `EDENTEXT_AI_MODEL`, `EDENTEXT_AI_CONTEXT_TOKENS` | the AI preset |
 | `EDENTEXT_DICTATION_SERVER`, `EDENTEXT_DICTATION_MODEL` | the speech server preset |
 | `EDENTEXT_AI_LOCKED`, `EDENTEXT_DICTATION_LOCKED` | `true` fixes the preset |
+| `EDENTEXT_DICTATION_WEB_SPEECH` | `false` takes the browser's speech recognition off the list |
 | `EDENTEXT_AI_PROXY_UPSTREAM`, `EDENTEXT_DICTATION_PROXY_UPSTREAM` | root URL that `/ai/` or `/stt/` forwards to; the preset address then defaults to `/ai/v1` or `/stt/v1` |
 | `EDENTEXT_AI_PROXY_API_KEY`, `EDENTEXT_DICTATION_PROXY_API_KEY` | key the proxy adds (`Authorization: Bearer`, `x-api-key` for Anthropic) |
 

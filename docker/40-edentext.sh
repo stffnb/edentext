@@ -46,6 +46,7 @@ flag enabled "${EDENTEXT_DICTATION_ENABLED:-}" EDENTEXT_DICTATION_ENABLED
 text server "$stt_server"
 text model "${EDENTEXT_DICTATION_MODEL:-}"
 flag locked "${EDENTEXT_DICTATION_LOCKED:-}" EDENTEXT_DICTATION_LOCKED
+flag webSpeech "${EDENTEXT_DICTATION_WEB_SPEECH:-}" EDENTEXT_DICTATION_WEB_SPEECH
 section dictation
 
 if [ -n "$json" ]; then

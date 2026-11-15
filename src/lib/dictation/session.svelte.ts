@@ -3,11 +3,39 @@
 // moment a phrase settles, so the dictation follows the caret into a header or a note.
 
 import type { Editor } from '@tiptap/core';
-import { dictationEngines, type DictationEngine, type DictationError } from './engine';
-import { dictationHostOff, dictationServer, dictationSettings, setDictation } from '../storage/dictation.svelte';
+import { browserRecognizes, dictationEngines, type DictationEngine, type DictationError } from './engine';
+import type { SpeechServer } from './speechServer';
+import {
+  dictationHostOff, dictationSettings, installationServer, ownServer, setDictation, webSpeechAllowed, type DictationService,
+} from '../storage/dictation.svelte';
 
-// The installation's or the user's speech server once one is set up, else the browser's recognizers.
-const engines = () => dictationEngines(dictationServer());
+/** The services on offer, in the order the default is taken from. */
+export function dictationServices(): DictationService[] {
+  const out: DictationService[] = [];
+  if (installationServer()) out.push('installation');
+  if (ownServer()) out.push('own');
+  if (webSpeechAllowed() && browserRecognizes()) out.push('browser');
+  return out;
+}
+
+/** The service dictation uses: the user's pick while it is on offer, else the first. */
+export function dictationService(): DictationService | null {
+  const offered = dictationServices();
+  const picked = dictationSettings().service;
+  return picked && offered.includes(picked) ? picked : offered[0] ?? null;
+}
+
+/** The speech server of that service; null for the browser's. */
+export function dictationServer(): SpeechServer | null {
+  const s = dictationService();
+  return s === 'installation' ? installationServer() : s === 'own' ? ownServer() : null;
+}
+
+// The picked service's engines only: a failing one ends the session, never hands it on.
+const engines = () => {
+  const s = dictationService();
+  return s ? dictationEngines(s === 'browser' ? null : dictationServer()) : [];
+};
 // The engine of the running session.
 let engine: DictationEngine | null = null;
 
@@ -30,7 +58,7 @@ export function dictationAvailable(): boolean {
 }
 
 /** Whether this browser or the user's speech server can recognize at all, switched on or not. */
-export const dictationSupported = (): boolean => engines().length > 0;
+export const dictationSupported = (): boolean => dictationServices().length > 0;
 
 /** `asking` names the speech server's host when the consent is for it, else 'browser';
  *  `installation` says that server is the installation's own. */

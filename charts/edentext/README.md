@@ -88,7 +88,8 @@ retaining its readable tag.
 | `dictation.enabled` | `false` switches dictation off for every user | `true` |
 | `dictation.server` | Speech server preset; `/stt/v1` when empty and the proxy is on | `""` |
 | `dictation.model` | Speech model preset | `""` |
-| `dictation.locked` | Users cannot pick another speech server | `false` |
+| `dictation.locked` | Users cannot use a speech server of their own | `false` |
+| `dictation.webSpeech` | `false` takes the browser's speech recognition off the list of dictation services | `true` |
 | `dictation.proxy.*` | As `ai.proxy`, for `/stt/` | off |
 | `nodeSelector` | Pod node selector | `{}` |
 | `tolerations` | Pod tolerations | `[]` |
@@ -103,7 +104,9 @@ runs neither: point it at a server you operate or a provider you use. The preset
 served as `/edentext.config.json`, which anyone can read, so a key never goes there.
 Instead, nginx forwards `/ai/` and `/stt/` on the same host to the `upstream` and adds the
 key from a Secret; the browser never sees it. Without `locked`, users may still enter
-their own provider or server.
+their own provider or server. Users pick the dictation service in Settings ▸ Editing:
+your server, their own, or the browser's recognition unless `dictation.webSpeech` is
+`false`.
 
 > **Access.** A proxy serves everyone who can reach the site, with your key. Put
 > authentication in front of the ingress (basic auth, an OAuth2/OIDC proxy) or keep the
@@ -138,7 +141,7 @@ Dictation only, on a server reachable from the users' browsers over HTTPS with C
 
 ```yaml
 ai: { enabled: false }
-dictation: { server: "https://stt.example.com/v1", model: Systran/faster-whisper-base }
+dictation: { server: "https://stt.example.com/v1", model: Systran/faster-whisper-base, webSpeech: false }
 ```
 
 For dictation, a Whisper base model is enough for de, en, es, pt, ru and zh; take a

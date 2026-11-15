@@ -132,12 +132,13 @@
     "dictation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "server", "model", "locked", "proxy"],
+      "required": ["enabled", "server", "model", "locked", "webSpeech", "proxy"],
       "properties": {
         "enabled": { "type": "boolean" },
         "server": { "type": "string" },
         "model": { "type": "string" },
         "locked": { "type": "boolean" },
+        "webSpeech": { "type": "boolean" },
         "proxy": { "$ref": "#/definitions/proxy" }
       }
     },

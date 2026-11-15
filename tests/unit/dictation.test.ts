@@ -243,7 +243,7 @@ describe('speech server dictation', () => {
     done();
   });
 
-  it('takes the installation’s server under its own name until the user enters one', async () => {
+  it('offers the installation’s server first, under its own name, beside the user’s and the browser’s', async () => {
     const speak = async () => { feed!(pause(0.4)); feed!(burst(0.5)); feed!(pause(0.8)); };
     const start = async (session: Awaited<ReturnType<typeof setup>>['session']) => {
       await session.toggleDictation();
@@ -262,16 +262,31 @@ describe('speech server dictation', () => {
     await s.session.toggleDictation();
     expect(s.session.dictationState()).toMatchObject({ asking: 'stt.example.org', installation: true });
     s.session.answerDictationConsent(false);
-    s.storage.setDictation({ server: 'http://127.0.0.1:8000' });
+    s.storage.setDictation({ server: 'http://127.0.0.1:8000', service: 'own' });
     await start(s.session);
     await speak();
     expect(s.fetch.mock.calls[0][0]).toBe('http://127.0.0.1:8000/v1/audio/transcriptions');
     s.session.stopDictation();
     s.done();
 
-    for (const host of [{ enabled: false }, { locked: true, server: 'https://stt.example.org/v1' }]) {
+    // The services offered beside a user's own server, the default first; the browser's
+    // stays on offer unless the installation takes it away.
+    const X = 'https://stt.example.org/v1';
+    for (const [host, offered] of [
+      [{}, ['own', 'browser']],
+      [{ server: X }, ['installation', 'own', 'browser']],
+      [{ server: X, locked: true }, ['installation', 'browser']],
+      [{ server: X, webSpeech: false }, ['installation', 'own']],
+    ] as const) {
       s = await setup('http://127.0.0.1:8000', () => Promise.resolve(json({ text: '' })), host);
-      expect([s.session.dictationAvailable(), s.storage.dictationServer()?.address ?? null]).toEqual(host.locked ? [true, host.server] : [false, 'http://127.0.0.1:8000']);
+      expect([s.session.dictationServices(), s.session.dictationService(), s.session.dictationAvailable()]).toEqual([offered, offered[0], true]);
+      s.storage.setDictation({ service: 'browser' });
+      expect([s.session.dictationService(), s.session.dictationServer()]).toEqual(offered.includes('browser') ? ['browser', null] : [offered[0], expect.anything()]);
+      s.done();
+    }
+    for (const [address, host] of [['http://127.0.0.1:8000', { enabled: false }], ['', { webSpeech: false }]] as const) {
+      s = await setup(address, () => Promise.resolve(json({ text: '' })), host);
+      expect(s.session.dictationAvailable()).toBe(false);
       s.done();
     }
   });

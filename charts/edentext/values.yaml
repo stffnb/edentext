@@ -113,7 +113,10 @@ dictation:
   # The server's address. Empty with the proxy on means /stt/v1 on this host.
   server: ""
   model: ""
+  # true keeps users from choosing their own speech server.
   locked: false
+  # false takes the browser's own speech recognition off the list of dictation services.
+  webSpeech: true
   # nginx forwards /stt/ to an existing speech server the operator runs.
   proxy:
     enabled: false

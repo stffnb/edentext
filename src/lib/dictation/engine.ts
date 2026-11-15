@@ -39,10 +39,13 @@ export interface DictationEngine {
 let web: DictationEngine[] | null = null;
 let served: { key: string; engine: DictationEngine } | null = null;
 
+/** Whether this browser can recognize speech itself (none in Firefox, Brave or the desktop app). */
+export const browserRecognizes = (): boolean => (web ??= webSpeechEngines()).length > 0;
+
 /**
- * The engines in the order they are tried. The user's own speech server, once set up, is
- * the only one, so a session never drifts to another service. Otherwise the browser's own
- * local recognition, then its cloud service, which the session uses only after consent.
+ * The engines of the picked service in the order they are tried. A speech server is the
+ * only one, so a session never drifts to another service. The browser's are its own local
+ * recognition, then its cloud service, which the session uses only after consent.
  */
 export function dictationEngines(server: SpeechServer | null = null): DictationEngine[] {
   if (server && transcriptionUrl(server.address)) {

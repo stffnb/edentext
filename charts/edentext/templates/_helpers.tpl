@@ -77,6 +77,7 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- with (.server | default (ternary "/stt/v1" "" .proxy.enabled)) }}{{ $_ := set $dictation "server" . }}{{ end }}
 {{- with .model }}{{ $_ := set $dictation "model" . }}{{ end }}
 {{- if .locked }}{{ $_ := set $dictation "locked" true }}{{ end }}
+{{- if not .webSpeech }}{{ $_ := set $dictation "webSpeech" false }}{{ end }}
 {{- end }}
 {{- if $dictation }}{{ $_ := set $cfg "dictation" $dictation }}{{ end }}
 {{- if $cfg }}{{ toPrettyJson $cfg }}{{ end }}

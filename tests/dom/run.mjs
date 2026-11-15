@@ -2097,8 +2097,8 @@ try {
       check(aiRows.text.includes('Set up by this installation') && aiRows.endpoint === '/ai/v1' && aiRows.locked && !aiRows.key,
         `Settings ▸ AI shows the installation's locked provider without a key field (${JSON.stringify({ ...aiRows, text: undefined })})`);
       await hp.locator('dialog[open] .nav-item', { hasText: /^\s*Editing$/ }).click();
-      const sttField = await hp.$eval('dialog[open] input[type="url"]', (e) => ({ value: e.value, locked: e.disabled }));
-      check(sttField.value === '/stt/v1' && sttField.locked, `Settings ▸ Editing shows the installation's locked speech server (${JSON.stringify(sttField)})`);
+      const stt = await hp.$eval('dialog[open]', (d) => ({ shown: d.textContent.includes('Set up by this installation'), ownField: !!d.querySelector('input[type="url"]') }));
+      check(stt.shown && !stt.ownField, `Settings ▸ Editing names the installation's locked speech server and offers no field for an own one (${JSON.stringify(stt)})`);
       await hp.keyboard.press('Escape');
 
       await hp.click('[data-cmd="aiPane"]');

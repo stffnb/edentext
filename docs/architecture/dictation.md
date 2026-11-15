@@ -11,9 +11,10 @@ types into the editor like a keyboard.
 ## Where the audio goes: local first
 
 `dictationEngines()` lists the engines in the order a session tries them, and the first
-whose `ready(lang)` says yes takes it. A speech server set up in Settings ▸ Editing
-(`dictation-local.md`) is the only engine then, so a failing server ends the session with its error instead of drifting
-to another service. Without one:
+whose `ready(lang)` says yes takes it. The dictation service picked in Settings ▸ Editing
+(`dictationService()`, `dictation-local.md`) decides which: a speech server is then the only
+engine, so a failing server ends the session with its error instead of drifting to
+another service. With the browser picked:
 
 1. the browser's own recognition on this machine (`processLocally`, where
    `SpeechRecognition.available({ langs, processLocally: true })` answers `'available'`);

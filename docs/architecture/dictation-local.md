@@ -33,14 +33,17 @@ which posts half a second of silence through the whole route.
   audio on this machine and needs none. Any other host asks once (`serverConsent` keeps
   the host agreed to; another address asks again).
 
-**The installation's server**: `dictation: { enabled, server, model, locked }` in
-`edentext.config.json` or the embed option (`ai.md` has the file's rules) presets it.
-`dictationServer()` takes it while it is locked or the user has no address of their own; a
-model typed over it still counts, and `enabled: false` hides dictation. A path alone
-(`/stt/v1`, the Helm chart's and Docker image's proxy) is on the page's own server. Off
-loopback the consent names the installation's server instead of "another computer", once
-per host. It brings dictation to Firefox and Brave, and its failure ends the session at
-the button like the user's own; nothing falls back to Web Speech.
+**The installation's server**: `dictation: { enabled, server, model, locked, webSpeech }`
+in `edentext.config.json` or the embed option (`ai.md` has the file's rules) presets it.
+**Dictation service** (Settings ▸ Editing, `service` in the key) picks among what is on
+offer, `dictationServices()` in this order, the first being the default: the
+installation's server, the user's own (not while `locked`), the browser's (unless
+`webSpeech: false`, and only where it recognizes at all). Entering an own server picks
+it. Without a preset file only the last two exist, as on the public site. `enabled: false`
+hides dictation. A path alone (`/stt/v1`, the chart's and image's proxy) is on the page's
+own server. Off loopback the consent names the installation's server instead of "another
+computer", once per host. A failing service ends the session at the button; nothing
+switches to another.
 
 **Setting one up** (both measured or read from their sources, 2026-11-15):
 

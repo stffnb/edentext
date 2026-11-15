@@ -9,8 +9,8 @@
   import { grammarEnabled, setGrammarEnabled } from '../spell/grammar.svelte';
   import { autoLanguage, setAutoLanguage } from '../spell/detect.svelte';
   import { numberRecognition, setNumberRecognition } from '../storage/tableOptions.svelte';
-  import { dictationHostOff, dictationServer, dictationSettings, setDictation } from '../storage/dictation.svelte';
-  import { dictationSupported } from '../dictation/session.svelte';
+  import { dictationHostOff, dictationSettings, setDictation, type DictationService } from '../storage/dictation.svelte';
+  import { dictationServer, dictationService, dictationServices, dictationSupported } from '../dictation/session.svelte';
   import { checkSpeechServer, SpeechServerError } from '../dictation/speechServer';
   import {
     showComments, setShowComments, showChanges, setShowChanges,
@@ -296,39 +296,54 @@
             <Toggle label={t().settings.grammar} checked={grammarEnabled()} onchange={setGrammarEnabled} />
           </div>
           {#if !dictationHostOff()}
+          {@const service = dictationService()}
+          {@const offered = dictationServices()}
           {@const server = dictationServer()}
           {@const locked = !!hostDictation().locked}
+          {@const off = !dictationSettings().enabled}
           <div class="row">
             <div class="info"><div class="name">{t().dictation.enable}</div><div class="desc">{dictationSupported() ? t().dictation.enableHint : t().dictation.unsupported}</div></div>
             <Toggle label={t().dictation.enable} checked={dictationSettings().enabled && dictationSupported()} disabled={!dictationSupported()} onchange={(on) => setDictation({ enabled: on })} />
           </div>
-          {#if dictationSupported() && !server}
-            <div class="row sub" class:dim={!dictationSettings().enabled}>
-              <div class="info"><div class="name">{t().dictation.consent}</div><div class="desc">{t().dictation.consentHint}</div></div>
-              <Toggle label={t().dictation.consent} checked={dictationSettings().consent} disabled={!dictationSettings().enabled} onchange={(on) => setDictation({ consent: on })} />
+          {#if offered.length > 1}
+            <div class="row sub" class:dim={off}>
+              <div class="info"><div class="name">{t().dictation.service}</div><div class="desc">{t().dictation.serviceHint}</div></div>
+              <select value={service} disabled={off} onchange={(e) => { setDictation({ service: e.currentTarget.value as DictationService }); speechTest = null; }}>
+                {#each offered as s (s)}<option value={s}>{t().dictation.services[s]}</option>{/each}
+              </select>
             </div>
           {/if}
-          {#if server?.installation}
-            <div class="row sub" class:dim={!dictationSettings().enabled}>
+          {#if service === 'browser'}
+            <div class="row sub" class:dim={off}>
+              <div class="info"><div class="name">{t().dictation.consent}</div><div class="desc">{t().dictation.consentHint}</div></div>
+              <Toggle label={t().dictation.consent} checked={dictationSettings().consent} disabled={off} onchange={(on) => setDictation({ consent: on })} />
+            </div>
+          {/if}
+          {#if service === 'installation' && server}
+            <div class="row sub" class:dim={off}>
               <div class="info"><div class="name">{t().dictation.fromHost}</div><div class="desc">{t().dictation.fromHostHint(server.model, locked)}</div></div>
             </div>
           {/if}
-          <div class="row sub" class:dim={!dictationSettings().enabled}>
-            <div class="info"><div class="name">{t().dictation.server}</div><div class="desc">{t().dictation.serverHint}</div></div>
-            <input class="field" type="url" spellcheck="false" value={locked ? server?.address ?? '' : dictationSettings().server} disabled={!dictationSettings().enabled || locked}
-              placeholder={hostDictation().server || 'http://localhost:8000'} onchange={(e) => { setDictation({ server: e.currentTarget.value.trim() }); speechTest = null; }} />
-          </div>
-          {#if server}
-            <div class="row sub" class:dim={!dictationSettings().enabled}>
-              <div class="info"><div class="name">{t().dictation.serverModel}</div><div class="desc">{t().dictation.serverModelHint}</div></div>
-              <input class="field" type="text" spellcheck="false" value={locked ? server.model : dictationSettings().model} disabled={!dictationSettings().enabled || locked}
-                placeholder={server.installation ? hostDictation().model ?? '' : ''} onchange={(e) => { setDictation({ model: e.currentTarget.value.trim() }); speechTest = null; }} />
+          {#if !locked}
+            <div class="row sub" class:dim={off}>
+              <div class="info"><div class="name">{t().dictation.server}</div><div class="desc">{t().dictation.serverHint}</div></div>
+              <input class="field" type="url" spellcheck="false" value={dictationSettings().server} disabled={off} placeholder="http://localhost:8000"
+                onchange={(e) => { const v = e.currentTarget.value.trim(); setDictation({ server: v, service: v ? 'own' : '' }); speechTest = null; }} />
             </div>
-            <div class="row sub" class:dim={!dictationSettings().enabled}>
+          {/if}
+          {#if service === 'own'}
+            <div class="row sub" class:dim={off}>
+              <div class="info"><div class="name">{t().dictation.serverModel}</div><div class="desc">{t().dictation.serverModelHint}</div></div>
+              <input class="field" type="text" spellcheck="false" value={dictationSettings().model} disabled={off}
+                onchange={(e) => { setDictation({ model: e.currentTarget.value.trim() }); speechTest = null; }} />
+            </div>
+          {/if}
+          {#if server}
+            <div class="row sub" class:dim={off}>
               <div class="info">
                 <div class="desc" class:ok={speechTest?.ok} role="status">{speechTest?.text ?? ''}</div>
               </div>
-              <button class="btn" disabled={!dictationSettings().enabled || speechTest?.busy} onclick={testSpeech}>{t().dictation.test}</button>
+              <button class="btn" disabled={off || speechTest?.busy} onclick={testSpeech}>{t().dictation.test}</button>
             </div>
           {/if}
           {/if}
