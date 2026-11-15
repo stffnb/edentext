@@ -137,6 +137,7 @@ export const STROKED = {
   zoomReset: ['M7.25 12.5a5.25 5.25 0 1 0 0-10.5 5.25 5.25 0 0 0 0 10.5z', 'M11.2 11.2 14 14'],
   find: ['M7.25 12.5a5.25 5.25 0 1 0 0-10.5 5.25 5.25 0 0 0 0 10.5z', 'M11.2 11.2 14 14'],
   replace: ['M2 4.5h6.5M2 4.5 4 2.5M2 4.5l2 2', 'M14 11.5H7.5M14 11.5l-2-2M14 11.5l-2 2'],
+  mic: ['M8 1.75a2.25 2.25 0 0 0-2.25 2.25v3.75a2.25 2.25 0 0 0 4.5 0V4A2.25 2.25 0 0 0 8 1.75z', 'M3.75 7.5a4.25 4.25 0 0 0 8.5 0', 'M8 11.75v2.5', 'M5.75 14.25h4.5'],
   margins: ['M1.75 1.75h12.5v12.5H1.75z', 'M4.5 1.75v12.5M11.5 1.75v12.5', 'M1.75 4.5h12.5M1.75 11.5h12.5'],
   // One page turned: the same 6.5 × 9.2 sheet upright behind and on its side in
   // front, overlapping so both stay full size. The upright one is traced only where

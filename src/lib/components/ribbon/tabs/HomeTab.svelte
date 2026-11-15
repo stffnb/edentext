@@ -2,6 +2,7 @@
   import type { Editor } from '@tiptap/core';
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
+  import DictationButton from '../../DictationButton.svelte';
   import Icon from '../Icon.svelte';
   import FontFamilyBox from '../controls/FontFamilyBox.svelte';
   import FontSizeBox from '../controls/FontSizeBox.svelte';
@@ -451,6 +452,7 @@
     <RibbonButton variant="small" icon="find" cmd="find" label={t().ribbon.find} title={`${t().ribbon.find} (${shortcutHint('find')})`} onclick={() => onFind?.('find')} />
     <RibbonButton variant="small" icon="replace" cmd="replace" label={t().ribbon.replace} title={`${t().ribbon.replace} (${shortcutHint('replace')})`} onclick={() => onFind?.('replace')} />
   </div>
+  <DictationButton variant="ribbon" cmd="dictate" disabled={!editor} />
 </RibbonGroup>
 
 {#snippet boldIcon()}<span class="glyph" style="font-weight: 800">{t().toolbar.glyphs.bold}</span>{/snippet}

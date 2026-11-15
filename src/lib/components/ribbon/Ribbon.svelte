@@ -40,6 +40,7 @@
   import { EMPTY_PAGE_DECOR, type PageDecor } from '../../storage/pageDecor';
   import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../../storage/lineNumbering';
   import { aiEnabled } from '../../storage/ai.svelte';
+  import { dictationAvailable } from '../../dictation/session.svelte';
   import { volatile } from '../../storage/docScope';
   import { embedded, whiteLabel } from '../../embed/mode';
 
@@ -199,7 +200,7 @@
   let searchable = $derived(searchableCommands([
     ...RIBBON_COMMANDS,
     ...styleCommands(visibleStyles(styleSheet(), showAllStyles()).map((s) => s.name)),
-  ], shown, { ai: aiEnabled(), volatile, embedded }));
+  ], shown, { ai: aiEnabled(), volatile, embedded, dictation: dictationAvailable() }));
 
   const act = (id: string) => actOnCommand(document.querySelector(`.ribbon [data-cmd="${CSS.escape(id)}"]`));
 

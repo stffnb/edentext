@@ -9,6 +9,8 @@
   import { grammarEnabled, setGrammarEnabled } from '../spell/grammar.svelte';
   import { autoLanguage, setAutoLanguage } from '../spell/detect.svelte';
   import { numberRecognition, setNumberRecognition } from '../storage/tableOptions.svelte';
+  import { dictationSettings, setDictation } from '../storage/dictation.svelte';
+  import { dictationSupported } from '../dictation/session.svelte';
   import {
     showComments, setShowComments, showChanges, setShowChanges,
     commentPlace, setCommentPlace, changePlace, setChangePlace, MARKUP_PLACES, type MarkupPlace,
@@ -269,6 +271,16 @@
             <div class="info"><div class="name">{t().settings.grammar}</div><div class="desc">{t().grammar.hint} {t().grammar.unavailable}</div></div>
             <Toggle label={t().settings.grammar} checked={grammarEnabled()} onchange={setGrammarEnabled} />
           </div>
+          <div class="row">
+            <div class="info"><div class="name">{t().dictation.enable}</div><div class="desc">{dictationSupported() ? t().dictation.enableHint : t().dictation.unsupported}</div></div>
+            <Toggle label={t().dictation.enable} checked={dictationSettings().enabled && dictationSupported()} disabled={!dictationSupported()} onchange={(on) => setDictation({ enabled: on })} />
+          </div>
+          {#if dictationSupported()}
+            <div class="row sub" class:dim={!dictationSettings().enabled}>
+              <div class="info"><div class="name">{t().dictation.consent}</div><div class="desc">{t().dictation.consentHint}</div></div>
+              <Toggle label={t().dictation.consent} checked={dictationSettings().consent} disabled={!dictationSettings().enabled} onchange={(on) => setDictation({ consent: on })} />
+            </div>
+          {/if}
           <div class="row">
             <div class="info"><div class="name">{t().table.numberRecognition}</div><div class="desc">{t().table.numberRecognitionHint}</div></div>
             <Toggle label={t().table.numberRecognition} checked={numberRecognition()} onchange={setNumberRecognition} />

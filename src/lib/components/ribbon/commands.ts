@@ -69,6 +69,7 @@ export const RIBBON_COMMANDS: RibbonCommand[] = [
   c('home', 'paragraphBorders', (m) => m.toolbarExpanded.paragraphBorders),
   c('home', 'find', (m) => m.ribbon.find),
   c('home', 'replace', (m) => m.ribbon.replace),
+  c('home', 'dictate', (m) => m.dictation.dictate),
   c('home', 'aiPane', (m) => m.ai.name),
 
   c('insert', 'pageBreak', (m) => m.ribbon.pageBreak),
@@ -201,11 +202,12 @@ export function tabOf(cmd: RibbonCommand, shown: readonly Tab[]): Tab | null | u
 const HOST_FILE_COMMANDS = new Set(['newDocument', 'newFromTemplate', 'open', 'browserDocuments', 'saveAsOdt', 'saveAsDocx', 'saveTemplate']);
 
 /** What the search offers: commands on a shown tab or in the File menu, the assistant
- *  only while it is on, the kept-documents list only when documents are kept, and no
- *  file command the host application has taken over. */
-export function searchableCommands(cmds: RibbonCommand[], shown: readonly Tab[], opts: { ai: boolean; volatile: boolean; embedded?: boolean }): RibbonCommand[] {
+ *  only while it is on, dictation only where it works, the kept-documents list only when
+ *  documents are kept, and no file command the host application has taken over. */
+export function searchableCommands(cmds: RibbonCommand[], shown: readonly Tab[], opts: { ai: boolean; volatile: boolean; embedded?: boolean; dictation?: boolean }): RibbonCommand[] {
   return cmds.filter((c) => tabOf(c, shown) !== undefined
     && (opts.ai || !c.id.startsWith('ai'))
+    && (opts.dictation || c.id !== 'dictate')
     && !(opts.volatile && c.id === 'browserDocuments')
     && !(opts.embedded && HOST_FILE_COMMANDS.has(c.id)));
 }

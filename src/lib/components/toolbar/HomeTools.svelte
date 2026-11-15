@@ -2,6 +2,7 @@
   import type { Editor } from '@tiptap/core';
   import IslandButton from './IslandButton.svelte';
   import IslandMenu from './IslandMenu.svelte';
+  import DictationButton from '../DictationButton.svelte';
   import ColorPicker from '../ColorPicker.svelte';
   import ParagraphBorderPicker from '../ParagraphBorderPicker.svelte';
   import { closeMenu } from '../ribbon/menu.svelte';
@@ -184,6 +185,7 @@
 <div class="toolbar-group">
   <IslandButton icon="find" cmd="find" title={`${t().ribbon.find} (${shortcutHint('find')})`} onclick={() => onFind?.('find')} />
   <IslandButton icon="replace" cmd="replace" title={`${t().ribbon.replace} (${shortcutHint('replace')})`} onclick={() => onFind?.('replace')} />
+  <DictationButton variant="island" cmd="dictate" disabled={!editor} />
 </div>
 
 {#snippet growIcon()}

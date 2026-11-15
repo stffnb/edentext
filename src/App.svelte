@@ -94,6 +94,8 @@
   import { aiConfig, aiAnswering, aiEnabled, setAiHostOff, AI_COMMENT_EVENT, OPEN_AI_CHAT_EVENT } from './lib/storage/ai.svelte';
   import { navigatorSettings, setNavigator } from './lib/storage/navigator.svelte';
   import { aiErrorText, isAbort } from './lib/ai/client';
+  import { bindDictation, dictationAvailable, stopDictation, toggleDictation } from './lib/dictation/session.svelte';
+  import DictationConsent from './lib/components/DictationConsent.svelte';
   import { abortAll as abortAiRequests, answerComment, startRequest, endRequest, type AiHost } from './lib/ai/tools';
   import { commentDraft, OPEN_COMMENT_EVENT } from './lib/editor/extensions/comment';
   import AutoCorrectDialog from './lib/components/AutoCorrectDialog.svelte';
@@ -408,6 +410,9 @@
   $effect(() => { if (!aiEnabled()) abortAiRequests(); });
   // Not on mount: the chat kept with this document survives a reload.
   $effect(() => { if (documentEpoch) { abortAiRequests(); resetAiChat(); } });
+  // Dictation writes into the editor with the focus; another document or switching it off ends it.
+  onMount(() => bindDictation(() => activeEditor, () => tagForLanguage(documentLanguage)));
+  $effect(() => { if (documentEpoch || !dictationAvailable()) untrack(() => stopDictation(true)); });
   function openAiChat(prefill: string, send = false) {
     aiOpen = true;
     askAi(prefill, send);
@@ -608,7 +613,7 @@
   let islandCommands = $derived(searchableCommands([
     ...RIBBON_COMMANDS,
     ...styleCommands(visibleStyles(styleSheet(), showAllStyles()).map((s) => s.name)),
-  ], islandShown, { ai: aiEnabled(), volatile, embedded }).filter((c) => !RIBBON_ONLY.has(c.id)));
+  ], islandShown, { ai: aiEnabled(), volatile, embedded, dictation: dictationAvailable() }).filter((c) => !RIBBON_ONLY.has(c.id)));
 
   // Where the island keeps a command: its own place if it moved one, the ribbon's tab otherwise.
   function islandPlace(c: RibbonCommand): { category: Category | null; via?: string } {
@@ -1760,6 +1765,11 @@
       // match, which is what the extension leaves unhandled.
       if (e.defaultPrevented) return;
       // Drafting needs the body editor; without the assistant the key is the browser's.
+      if (dictationAvailable() && matchesEvent(e, DEFAULT_SHORTCUTS.dictate)) {
+        e.preventDefault();
+        void toggleDictation();
+        return;
+      }
       if (aiEnabled() && !hfActive && matchesEvent(e, DEFAULT_SHORTCUTS.aiDraft)) {
         e.preventDefault();
         openAiChat('/draft ');
@@ -2375,6 +2385,7 @@
   <AboutDialog bind:open={aboutOpen} />
   <TemplateGalleryDialog bind:open={templateGalleryOpen} onPick={applyTemplate} />
   <AutoCorrectDialog bind:open={autoCorrectOpen} />
+  <DictationConsent />
   <AutoTextDialog bind:open={autoTextOpen} editor={activeEditor} />
   <ThesaurusDialog bind:open={thesaurusOpen} editor={activeEditor} />
   <BrowserDocumentsDialog bind:open={browserDocsOpen} />
