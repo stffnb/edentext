@@ -67,8 +67,9 @@ export function dictationState(): { listening: boolean; error: DictationError | 
 }
 
 // A cloud engine needs the yes once: the browser's service as such, a speech server per host.
+const consentedHosts = () => dictationSettings().serverConsent.split(' ').filter(Boolean);
 const consented = (e: DictationEngine) =>
-  e.host ? dictationSettings().serverConsent === e.host : e.where !== 'cloud' || dictationSettings().consent;
+  e.host ? consentedHosts().includes(e.host) : e.where !== 'cloud' || dictationSettings().consent;
 
 /** The recognition language for later sessions; null takes the one at the caret again. */
 export function chooseDictationLanguage(tag: string | null): void {
@@ -91,11 +92,11 @@ function showInterim(text: string): void {
   shown = ed;
 }
 
-function insert(text: string, lang: string): void {
+function insert(text: string, lang: string, breaksOnly: boolean): void {
   const ed = target();
   if (!ed || ed.isDestroyed) return;
   if (!ed.isEditable) return stopDictation(true);
-  ed.commands.insertDictation(text, lang);
+  ed.commands.insertDictation(text, lang, breaksOnly);
 }
 
 function fail(code: DictationError): void {
@@ -113,7 +114,7 @@ function begin(next: DictationEngine, lang: string): void {
   engine = next;
   listening = true;
   active = lang;
-  next.start(lang, { interim: showInterim, busy: (on) => showInterim(on ? WAITING : ''), final: (text) => insert(text, lang), error: fail });
+  next.start(lang, { interim: showInterim, busy: (on) => showInterim(on ? WAITING : ''), final: (text) => insert(text, lang, next.punctuates), error: fail });
 }
 
 /** Starts listening, or stops: the first engine that can take the language, a cloud one
@@ -138,13 +139,14 @@ export function answerDictationConsent(yes: boolean): void {
   const ask = asking;
   asking = null;
   if (!yes || !ask) return;
-  setDictation(ask.engine.host ? { serverConsent: ask.engine.host } : { consent: true });
+  setDictation(ask.engine.host ? { serverConsent: [...consentedHosts(), ask.engine.host].join(' ') } : { consent: true });
   begin(ask.engine, ask.lang);
 }
 
-/** Ends the session; `discard` drops the words still being heard instead of inserting them. */
+/** Ends the session; `discard` drops the words still being heard instead of inserting
+ *  them, also those a session stopped before still has out. */
 export function stopDictation(discard = false): void {
-  if (!listening) return;
+  if (!listening && !discard) return;
   listening = false;
   engine?.stop(discard);
   showInterim('');

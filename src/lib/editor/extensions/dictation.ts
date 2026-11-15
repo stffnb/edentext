@@ -1,6 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { closeHistory } from '@tiptap/pm/history';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, Selection } from '@tiptap/pm/state';
 import { LINE, PARAGRAPH, compose } from '../../dictation/commands';
 import { matchRunFont, placeAt } from './overlay';
 
@@ -13,8 +13,9 @@ declare module '@tiptap/core' {
     dictation: {
       /** Shows the words still being heard at the selection; '' hides them. */
       setDictationInterim: (text: string) => ReturnType;
-      /** Inserts a settled phrase over the selection, spaced, capitalized and with its spoken commands applied. */
-      insertDictation: (text: string, lang: string) => ReturnType;
+      /** Inserts a settled phrase over the selection, spaced, capitalized and with its spoken
+       *  commands applied; `breaksOnly` takes only the spoken breaks for commands. */
+      insertDictation: (text: string, lang: string, breaksOnly?: boolean) => ReturnType;
     };
   }
 }
@@ -33,12 +34,14 @@ export const Dictation = Extension.create({
         if (dispatch) tr.setMeta(key, text).setMeta('addToHistory', false);
         return true;
       },
-      insertDictation: (text, lang) => ({ tr, dispatch, commands }) => {
+      insertDictation: (text, lang, breaksOnly = false) => ({ tr, dispatch, commands }) => {
+        // A selected image or frame is kept: the phrase goes to the text after it.
+        if (!tr.selection.$from.parent.inlineContent) tr.setSelection(Selection.near(tr.selection.$to, 1));
         const { $from, $to } = tr.selection;
         if (!$from.parent.inlineContent) return false;
         const before = $from.parent.textBetween(0, $from.parentOffset, undefined, '\uFFFC');
         const after = $to.parent.textBetween($to.parentOffset, $to.parent.content.size, undefined, '\uFFFC');
-        const out = compose(before, text, lang, after);
+        const out = compose(before, text, lang, after, breaksOnly);
         if (!out) return false;
         if (!dispatch) return true;
         // Its own undo step, however soon the next phrase follows.

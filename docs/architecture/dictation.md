@@ -54,24 +54,26 @@ A language pack that is only `'downloadable'` is not installed by the app.
 - **Language**: the one picked in the button's menu for this session, else the run's or
   paragraph's at the cursor when the session starts, else the document's.
 - **Stops** on the button, `Esc`, Alt+` (Word's key), the tab going to the background,
-  another document (the words in flight are dropped), switching it off, focus moving into
+  another document (the words in flight are dropped, also those of a session stopped just before), switching it off, focus moving into
   a field or a dialog outside the editors, a document that cannot be edited, and an engine
   error, which the button shows for a few seconds.
 
 ## Composing (`compose`)
 
-Every rule only adds what is missing, so text from a recognizer that punctuates and
-capitalizes itself passes unchanged, and one that writes out the words gets them replaced:
+Text the recognizer wrote keeps its marks and capitals (an abbreviation's stop starts no
+sentence); only what a command set is ours to finish:
 
 - Spoken commands per recognition language (`COMMANDS`, one row per primary subtag; German
   and English so far): new paragraph, new line, comma, period/full stop, question and
   exclamation mark, colon, semicolon. They are matched as whole words, so "Punkt" inside
-  a sentence becomes a full stop, as in other dictation software.
+  a sentence becomes a full stop, as in other dictation software. A command takes the comma
+  before it and the marks after it along, which a punctuating recognizer adds ("New
+  paragraph."). An engine that `punctuates` (the speech server) gets the two breaks only.
 - One space to a word on either side; no space before punctuation, except before `; : ! ?`
   in French, which keeps the recognizer's own; no spaces at all in Japanese and Chinese.
-- A capital at a paragraph start, after a sentence end in the text before, and after each
-  sentence end or break inside the phrase. Lowercase is never forced, since a recognizer's
-  capital may be a noun.
+- A capital at a paragraph start, after a sentence end in the text before (not after a
+  single letter's stop, as in "e.g."), and inside the phrase after a sentence mark or
+  paragraph a command set. Lowercase is never forced, since a recognizer's capital may be a noun.
 
 ## Measured: Web Speech (Phase 0, 2026-11-15, headless)
 

@@ -22,6 +22,10 @@ describe('insertDictation', () => {
     ['<p></p>', null, ['hallo Komma Welt Punkt neue Zeile weiter'], 'de-DE', ['Hallo, Welt.\nWeiter']],
     // A recognizer that punctuates and capitalizes itself passes unchanged.
     ['<p></p>', null, ['Hello, world.', ' How are you?'], 'en-US', ['Hello, world. How are you?']],
+    ['<p></p>', null, ['Das kostet ca. zehn Euro, z. B. im Laden.'], 'de-DE', ['Das kostet ca. zehn Euro, z. B. im Laden.']],
+    ['<p>See e.g.</p>', null, ['the first chapter'], 'en-US', ['See e.g. the first chapter']],
+    // It writes a spoken command as a sentence of its own.
+    ['<p></p>', null, ['Hallo, Punkt. Neuer Absatz. Jetzt weiter.'], 'de-DE', ['Hallo.', 'Jetzt weiter.']],
     ['<p>Quoi</p>', null, ['?'], 'fr-FR', ['Quoi ?']],
     ['<p>abcd</p>', 3, ['x'], 'en-US', ['ab x cd']],
     ['<p>你好</p>', null, ['世界'], 'zh-CN', ['你好世界']],
@@ -187,7 +191,7 @@ describe('speech server dictation', () => {
   it('sends each phrase at its pause and inserts the answers in order', async () => {
     // The first answer comes last; it is still inserted first.
     const { session, ed, fetch, done } = await setup('localhost:8000', (_f, n) =>
-      new Promise((r) => setTimeout(() => r(json({ text: n === 0 ? ' Welt Komma' : 'wie geht es dir Fragezeichen' })), n === 0 ? 60 : 0)));
+      new Promise((r) => setTimeout(() => r(json({ text: n === 0 ? ' Welt,' : 'der Punkt ist klar. Neuer Absatz. Gut.' })), n === 0 ? 60 : 0)));
     await session.toggleDictation();
     expect(session.dictationState()).toMatchObject({ listening: true, asking: null });
     await vi.waitFor(() => expect(feed).toBeTypeOf('function'));
@@ -206,9 +210,26 @@ describe('speech server dictation', () => {
     expect([url, form.get('model'), form.get('language'), form.get('response_format'), file.type])
       .toEqual(['http://localhost:8000/v1/audio/transcriptions', 'whisper-1', 'de', 'json', 'audio/wav']);
     expect(new DataView(await file.arrayBuffer()).getUint32(24, true)).toBe(RATE);
-    await vi.waitFor(() => expect(texts(ed)).toEqual(['Hallo Welt, wie geht es dir?']));
+    // The server punctuates itself, so only the spoken breaks are commands.
+    await vi.waitFor(() => expect(texts(ed)).toEqual(['Hallo Welt, der Punkt ist klar.', 'Gut.']));
     expect(FakeRecognition.last).toBeNull();
     session.stopDictation();
+    done();
+  });
+
+  it('drops an answer still out when the document changes after the stop', async () => {
+    const { session, ed, fetch, done } = await setup('localhost:8000', () => new Promise((r) => setTimeout(() => r(json({ text: 'zu spät' })), 40)));
+    await session.toggleDictation();
+    await vi.waitFor(() => expect(feed).toBeTypeOf('function'));
+    await new Promise((r) => setTimeout(r));
+    feed!(pause(0.4));
+    feed!(burst(0.5));
+    feed!(pause(0.8));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    session.stopDictation();
+    session.stopDictation(true);
+    await new Promise((r) => setTimeout(r, 80));
+    expect(texts(ed)).toEqual(['Hallo']);
     done();
   });
 

@@ -28,6 +28,8 @@ export interface DictationEngine {
   readonly installation?: boolean;
   /** Whether it reports words while they are spoken (`interim`) or only phrase by phrase (`busy`). */
   readonly live: boolean;
+  /** Whether it writes the punctuation itself; then only the spoken breaks are commands. */
+  readonly punctuates: boolean;
   /** Whether it can recognize `lang` now. */
   ready(lang: string): Promise<boolean>;
   /** Runs until stop() or an error, across the pauses after which a recognizer ends. */

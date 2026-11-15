@@ -1,5 +1,5 @@
 // Dictation's settings: the switch, the service picked, the consent to send audio to the
-// browser's speech service, and the user's own speech server with the host it was given for.
+// browser's speech service, and the user's own speech server with the hosts it was given for.
 // App-wide, one JSON key that exists only once a field differs from the default; in embed
 // mode it lasts for the page only, like the AI's key.
 
@@ -12,7 +12,7 @@ export const OPEN_DICTATION_SETTINGS_EVENT = 'edentext-dictation-settings';
 
 /** Where speech is recognized: the installation's server, the user's own, or the browser. */
 export type DictationService = 'installation' | 'own' | 'browser';
-/** `service`: the user's pick, '' for the first one offered. */
+/** `service`: the user's pick, '' for the first one offered; `serverConsent`: hosts, space-separated. */
 export type DictationSettings = { enabled: boolean; service: DictationService | ''; consent: boolean; server: string; model: string; serverConsent: string };
 
 const KEY = 'edentext-dictation';

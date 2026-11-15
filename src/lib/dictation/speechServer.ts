@@ -202,12 +202,16 @@ function micError(e: unknown): DictationError {
 export function speechServerEngine(server: SpeechServer, microphone = listen): DictationEngine {
   const url = transcriptionUrl(server.address) ?? '';
   const remote = !!url && !loopback(url);
-  let session: { stop(discard: boolean): void } | null = null;
+  type Session = { stop(discard: boolean): void };
+  let session: Session | null = null;
+  // The session stopped last, whose phrases may still be out.
+  let ended: Session | null = null;
   return {
     where: remote ? 'cloud' : 'local',
     host: remote ? new URL(url).host : undefined,
     installation: server.installation,
     live: false,
+    punctuates: true,
     ready: async () => !!url,
     start(lang, events) {
       session?.stop(true);
@@ -215,6 +219,8 @@ export function speechServerEngine(server: SpeechServer, microphone = listen): D
     },
     stop(discard = false) {
       session?.stop(discard);
+      if (discard) ended?.stop(true);
+      ended = discard ? null : session ?? ended;
       session = null;
     },
   };

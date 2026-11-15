@@ -70,6 +70,7 @@ function recognizer(SR: RecognitionClass, where: 'local' | 'cloud', ready: (lang
   return {
     where,
     live: true,
+    punctuates: false,
     ready,
 
     start(lang, events: EngineEvents) {
@@ -100,7 +101,8 @@ function recognizer(SR: RecognitionClass, where: 'local' | 'cloud', ready: (lang
             if (text.trim()) events.final(text);
           } else interim += text;
         }
-        events.interim(interim);
+        // After stop() only the settled words still count.
+        events.interim(stopped ? '' : interim);
       };
       r.onerror = (e) => { if (!BENIGN.has(e.error)) fail(ERRORS[e.error] ?? 'failed'); };
       const begin = () => {
