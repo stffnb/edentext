@@ -11,6 +11,7 @@
   import { numberRecognition, setNumberRecognition } from '../storage/tableOptions.svelte';
   import { dictationSettings, setDictation } from '../storage/dictation.svelte';
   import { dictationSupported } from '../dictation/session.svelte';
+  import { checkSpeechServer, SpeechServerError } from '../dictation/speechServer';
   import {
     showComments, setShowComments, showChanges, setShowChanges,
     commentPlace, setCommentPlace, changePlace, setChangePlace, MARKUP_PLACES, type MarkupPlace,
@@ -123,6 +124,22 @@
       aiTest = { busy: false, ok: true, text: t().ai.testOk };
     } catch (e) {
       aiTest = { busy: false, ok: false, text: aiErrorText(e, t().ai.errors, cfg.endpoint) };
+    }
+  }
+
+  // The speech server gets half a second of silence, so a wrong address, model or a
+  // missing CORS header shows here and not at the first dictated phrase.
+  let speechTest = $state<{ busy: boolean; ok: boolean; text: string } | null>(null);
+  async function testSpeech() {
+    const { server, model } = dictationSettings();
+    speechTest = { busy: true, ok: false, text: t().dictation.testing };
+    try {
+      await checkSpeechServer({ address: server, model }, 'en');
+      speechTest = { busy: false, ok: true, text: t().dictation.testOk };
+    } catch (e) {
+      const code = e instanceof SpeechServerError ? e.code : 'failed';
+      const said = e instanceof Error && e.message ? ` (${e.message})` : '';
+      speechTest = { busy: false, ok: false, text: t().dictation.errors[code] + said };
     }
   }
 
@@ -275,10 +292,28 @@
             <div class="info"><div class="name">{t().dictation.enable}</div><div class="desc">{dictationSupported() ? t().dictation.enableHint : t().dictation.unsupported}</div></div>
             <Toggle label={t().dictation.enable} checked={dictationSettings().enabled && dictationSupported()} disabled={!dictationSupported()} onchange={(on) => setDictation({ enabled: on })} />
           </div>
-          {#if dictationSupported()}
+          {#if dictationSupported() && !dictationSettings().server}
             <div class="row sub" class:dim={!dictationSettings().enabled}>
               <div class="info"><div class="name">{t().dictation.consent}</div><div class="desc">{t().dictation.consentHint}</div></div>
               <Toggle label={t().dictation.consent} checked={dictationSettings().consent} disabled={!dictationSettings().enabled} onchange={(on) => setDictation({ consent: on })} />
+            </div>
+          {/if}
+          <div class="row sub" class:dim={!dictationSettings().enabled}>
+            <div class="info"><div class="name">{t().dictation.server}</div><div class="desc">{t().dictation.serverHint}</div></div>
+            <input class="field" type="url" spellcheck="false" value={dictationSettings().server} disabled={!dictationSettings().enabled}
+              placeholder="http://localhost:8000" onchange={(e) => { setDictation({ server: e.currentTarget.value.trim() }); speechTest = null; }} />
+          </div>
+          {#if dictationSettings().server}
+            <div class="row sub" class:dim={!dictationSettings().enabled}>
+              <div class="info"><div class="name">{t().dictation.serverModel}</div><div class="desc">{t().dictation.serverModelHint}</div></div>
+              <input class="field" type="text" spellcheck="false" value={dictationSettings().model} disabled={!dictationSettings().enabled}
+                onchange={(e) => { setDictation({ model: e.currentTarget.value.trim() }); speechTest = null; }} />
+            </div>
+            <div class="row sub" class:dim={!dictationSettings().enabled}>
+              <div class="info">
+                <div class="desc" class:ok={speechTest?.ok} role="status">{speechTest?.text ?? ''}</div>
+              </div>
+              <button class="btn" disabled={!dictationSettings().enabled || speechTest?.busy} onclick={testSpeech}>{t().dictation.test}</button>
             </div>
           {/if}
           <div class="row">

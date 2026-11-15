@@ -6,7 +6,11 @@ import type { Editor } from '@tiptap/core';
 import { dictationEngines, type DictationEngine, type DictationError } from './engine';
 import { dictationSettings, setDictation } from '../storage/dictation.svelte';
 
-const engines = dictationEngines();
+// The user's speech server once one is set up, else the browser's recognizers.
+const engines = () => {
+  const { server, model } = dictationSettings();
+  return dictationEngines(server.trim() ? { address: server, model } : null);
+};
 // The engine of the running session.
 let engine: DictationEngine | null = null;
 
@@ -15,7 +19,7 @@ let error = $state<DictationError | null>(null);
 // The language picked at the button for this session, over the one at the caret.
 let chosen = $state<string | null>(null);
 let active = $state('');
-// The cloud engine and language waiting for the first consent to send audio away.
+// The engine sending audio away and the language, waiting for the first consent.
 let asking = $state<{ engine: DictationEngine; lang: string } | null>(null);
 
 let target: () => Editor | null = () => null;
@@ -25,15 +29,20 @@ let errorTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** Whether this browser can dictate and the user has not switched it off. */
 export function dictationAvailable(): boolean {
-  return engines.length > 0 && dictationSettings().enabled;
+  return engines().length > 0 && dictationSettings().enabled;
 }
 
-/** Whether this browser has a recognizer at all, switched on or not. */
-export const dictationSupported = (): boolean => engines.length > 0;
+/** Whether this browser or the user's speech server can recognize at all, switched on or not. */
+export const dictationSupported = (): boolean => engines().length > 0;
 
-export function dictationState(): { listening: boolean; error: DictationError | null; chosen: string | null; lang: string; asking: boolean } {
-  return { listening, error, chosen, lang: active, asking: asking !== null };
+/** `asking` names the speech server's host when the consent is for it, else 'browser'. */
+export function dictationState(): { listening: boolean; error: DictationError | null; chosen: string | null; lang: string; asking: string | null } {
+  return { listening, error, chosen, lang: active, asking: asking ? asking.engine.host ?? 'browser' : null };
 }
+
+// A cloud engine needs the yes once: the browser's service as such, a speech server per host.
+const consented = (e: DictationEngine) =>
+  e.host ? dictationSettings().serverConsent === e.host : e.where !== 'cloud' || dictationSettings().consent;
 
 /** The recognition language for later sessions; null takes the one at the caret again. */
 export function chooseDictationLanguage(tag: string | null): void {
@@ -89,9 +98,9 @@ export async function toggleDictation(): Promise<void> {
   if (!dictationAvailable() || !ed?.isEditable) return;
   const lang = chosen ?? caretLang(ed) ?? docLang() ?? navigator.language;
   error = null;
-  for (const next of engines) {
+  for (const next of engines()) {
     if (!(await next.ready(lang))) continue;
-    if (next.where === 'cloud' && !dictationSettings().consent) asking = { engine: next, lang };
+    if (!consented(next)) asking = { engine: next, lang };
     else begin(next, lang);
     return;
   }
@@ -103,7 +112,7 @@ export function answerDictationConsent(yes: boolean): void {
   const ask = asking;
   asking = null;
   if (!yes || !ask) return;
-  setDictation({ consent: true });
+  setDictation(ask.engine.host ? { serverConsent: ask.engine.host } : { consent: true });
   begin(ask.engine, ask.lang);
 }
 

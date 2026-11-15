@@ -1,6 +1,6 @@
 <script lang="ts">
-  // Asked once before the first dictation that the browser cannot recognize on this
-  // machine: the audio then goes to its speech service. The answer yes is kept.
+  // Asked once before the first dictation whose audio leaves this machine: to the browser's
+  // speech service, or to the user's speech server on another host. The answer yes is kept.
   import { answerDictationConsent, dictationState } from '../dictation/session.svelte';
   import { t } from '../i18n/i18n.svelte';
 
@@ -18,8 +18,13 @@
 <dialog bind:this={dialogEl} class="dictation-consent" onclose={() => asking && answerDictationConsent(false)} aria-labelledby="dictation-consent-title">
   {#if asking}
     <div class="body">
-      <h2 id="dictation-consent-title">{t().dictation.consentTitle}</h2>
-      <p>{t().dictation.consentText}</p>
+      {#if asking === 'browser'}
+        <h2 id="dictation-consent-title">{t().dictation.consentTitle}</h2>
+        <p>{t().dictation.consentText}</p>
+      {:else}
+        <h2 id="dictation-consent-title">{t().dictation.serverConsentTitle}</h2>
+        <p>{t().dictation.serverConsentText(asking)}</p>
+      {/if}
       <div class="actions">
         <button onclick={() => answerDictationConsent(false)}>{t().common.cancel}</button>
         <button class="primary" onclick={() => answerDictationConsent(true)}>{t().dictation.agree}</button>

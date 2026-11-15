@@ -100,7 +100,7 @@ describe('dictation session', () => {
     const unbind = session.bindDictation(() => ed, () => 'en-US');
 
     await session.toggleDictation();
-    expect(session.dictationState().asking).toBe(true);
+    expect(session.dictationState().asking).toBe('browser');
     session.answerDictationConsent(true);
     const rec = FakeRecognition.last!;
     expect([rec.running, rec.lang, session.dictationState().listening]).toEqual([true, 'de-DE', true]);
@@ -119,7 +119,7 @@ describe('dictation session', () => {
 
     // Consent is kept; an error ends the session and says why.
     await session.toggleDictation();
-    expect(session.dictationState().asking).toBe(false);
+    expect(session.dictationState().asking).toBeNull();
     FakeRecognition.last!.onerror?.({ error: 'not-allowed' });
     expect(session.dictationState()).toMatchObject({ listening: false, error: 'denied' });
 
@@ -140,9 +140,102 @@ describe('dictation session', () => {
     const ed = new Editor({ element: document.createElement('div'), extensions: exts, content: '<p></p>' });
     const unbind = session.bindDictation(() => ed, () => 'en-US');
     await session.toggleDictation();
-    expect([session.dictationState().asking, FakeRecognition.last!.processLocally, FakeRecognition.last!.running]).toEqual([false, true, true]);
+    expect([session.dictationState().asking, FakeRecognition.last!.processLocally, FakeRecognition.last!.running]).toEqual([null, true, true]);
     unbind();
     ed.destroy();
     vi.unstubAllGlobals();
+  });
+});
+
+// The user's speech server: a stand-in microphone fed with bursts and pauses, and fetch
+// answering for the server. Each pause sends a phrase; texts land in the order spoken.
+describe('speech server dictation', () => {
+  const RATE = 16000;
+  let feed: ((s: Float32Array) => void) | null = null;
+  const burst = (s: number) => Float32Array.from({ length: s * RATE }, (_, i) => 0.3 * Math.sin(i / 3));
+  const pause = (s: number) => new Float32Array(s * RATE);
+
+  async function setup(address: string, reply: (form: FormData, n: number) => Promise<Response>) {
+    localStorage.clear();
+    localStorage.setItem('edentext-dictation', JSON.stringify({ server: address, model: 'whisper-1' }));
+    vi.stubGlobal('SpeechRecognition', FakeRecognition);
+    FakeRecognition.last = null;
+    feed = null;
+    let n = 0;
+    // Only the server's calls are counted; the spell checker's dictionaries are not there.
+    const fetch = vi.fn((_url: string, init: RequestInit) => reply(init.body as FormData, n++));
+    vi.stubGlobal('fetch', (url: string, init: RequestInit) =>
+      /audio\/transcriptions/.test(url) ? fetch(url, init) : Promise.resolve(new Response('', { status: 404 })));
+    vi.resetModules();
+    vi.doMock('../../src/lib/dictation/microphone', () => ({
+      listen: async (on: (s: Float32Array) => void) => { feed = on; return { rate: RATE, stop: () => {} }; },
+    }));
+    const session = await import('../../src/lib/dictation/session.svelte');
+    const { extensions: exts } = await import('../../src/lib/editor/extensions');
+    const ed = new Editor({ element: document.createElement('div'), extensions: exts, content: '<p lang="de-DE">Hallo</p>' });
+    ed.commands.setTextSelection(6);
+    const unbind = session.bindDictation(() => ed, () => 'en-US');
+    const done = () => { unbind(); ed.destroy(); vi.doUnmock('../../src/lib/dictation/microphone'); vi.unstubAllGlobals(); };
+    return { session, ed, fetch, done };
+  }
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+
+  it('sends each phrase at its pause and inserts the answers in order', async () => {
+    // The first answer comes last; it is still inserted first.
+    const { session, ed, fetch, done } = await setup('localhost:8000', (_f, n) =>
+      new Promise((r) => setTimeout(() => r(json({ text: n === 0 ? ' Welt Komma' : 'wie geht es dir Fragezeichen' })), n === 0 ? 60 : 0)));
+    await session.toggleDictation();
+    expect(session.dictationState()).toMatchObject({ listening: true, asking: null });
+    await vi.waitFor(() => expect(feed).toBeTypeOf('function'));
+    await new Promise((r) => setTimeout(r));
+    feed!(pause(0.4));
+    feed!(burst(0.5));
+    expect(fetch).not.toHaveBeenCalled();
+    feed!(pause(0.8));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    feed!(burst(0.7));
+    feed!(pause(0.8));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const [url, init] = fetch.mock.calls[0];
+    const form = init.body as FormData;
+    const file = form.get('file') as Blob;
+    expect([url, form.get('model'), form.get('language'), form.get('response_format'), file.type])
+      .toEqual(['http://localhost:8000/v1/audio/transcriptions', 'whisper-1', 'de', 'json', 'audio/wav']);
+    expect(new DataView(await file.arrayBuffer()).getUint32(24, true)).toBe(RATE);
+    await vi.waitFor(() => expect(texts(ed)).toEqual(['Hallo Welt, wie geht es dir?']));
+    expect(FakeRecognition.last).toBeNull();
+    session.stopDictation();
+    done();
+  });
+
+  it('ends with a visible error and no other engine when the server fails', async () => {
+    for (const [reply, code] of [
+      [() => Promise.reject(new TypeError('Failed to fetch')), 'network'],
+      [() => Promise.resolve(json({ detail: 'Model not found' }, 404)), 'server'],
+    ] as const) {
+      const { session, ed, done } = await setup('http://127.0.0.1:8000', reply);
+      await session.toggleDictation();
+      await vi.waitFor(() => expect(feed).toBeTypeOf('function'));
+      await new Promise((r) => setTimeout(r));
+      feed!(pause(0.4));
+      feed!(burst(0.5));
+      feed!(pause(0.8));
+      await vi.waitFor(() => expect(session.dictationState()).toMatchObject({ listening: false, error: code }));
+      expect([texts(ed), FakeRecognition.last]).toEqual([['Hallo'], null]);
+      done();
+    }
+  });
+
+  it('asks once per host before audio leaves this machine', async () => {
+    const { session, done } = await setup('http://192.168.1.20:8000', () => Promise.resolve(json({ text: '' })));
+    await session.toggleDictation();
+    expect(session.dictationState()).toMatchObject({ listening: false, asking: '192.168.1.20:8000' });
+    session.answerDictationConsent(true);
+    expect(session.dictationState().listening).toBe(true);
+    session.stopDictation();
+    await session.toggleDictation();
+    expect(session.dictationState()).toMatchObject({ listening: true, asking: null });
+    session.stopDictation();
+    done();
   });
 });
