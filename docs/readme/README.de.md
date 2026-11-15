@@ -77,7 +77,8 @@ EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von de
   abschalten; Anfragen gehen direkt an den Anbieter, ohne Umweg über einen EdenText-Server
 - **Diktieren** – Gesprochenes erscheint am Cursor, auf Deutsch und Englisch mit
   gesprochenen Satzzeichen. Nutzt die Spracherkennung des Browsers (Chrome, Edge, Safari),
-  die den Ton an ihren Sprachdienst schicken kann; EdenText fragt vor dem ersten Mal
+  die den Ton an ihren Sprachdienst schicken kann; EdenText fragt vor dem ersten Mal; oder einen
+  eigenen Spracherkennungsserver, etwa Whisper auf dem eigenen Rechner, in jedem Browser und in der Desktop-App
 - **Private by Design** – Dokumente verlassen nie den Rechner, alles läuft lokal; als
   installierte App auch offline. Der Editor selbst sendet nichts, außer bei eingeschaltetem
   KI-Assistenten an den gewählten Anbieter. Beim Diktieren kann der Browser den Ton an seinen Sprachdienst schicken. Dokumente werden automatisch im Browser

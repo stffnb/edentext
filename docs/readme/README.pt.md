@@ -77,7 +77,8 @@ O EdenText é um processador de texto poderoso que funciona no navegador, das no
   os pedidos vão diretamente para o fornecedor, sem passar por um servidor do EdenText
 - **Ditado** — o que diz aparece no cursor, com pontuação ditada em inglês e alemão.
   Usa o reconhecimento de voz do navegador (Chrome, Edge, Safari), que pode enviar o áudio
-  para o seu serviço de voz; o EdenText pergunta antes da primeira vez
+  para o seu serviço de voz; o EdenText pergunta antes da primeira vez; ou o seu próprio
+  servidor de voz, p. ex. Whisper no seu computador, em qualquer navegador e na aplicação de ambiente de trabalho
 - **Private by Design** — os documentos nunca saem do computador e tudo é
   processado localmente; instalado como aplicação, funciona offline. O editor em si não envia nada, a não ser para o fornecedor escolhido quando o assistente de IA está ligado. Ao ditar, o navegador pode enviar o áudio para o seu serviço de voz.
   Os documentos são guardados automaticamente no navegador; em «Documentos recentes» pode
