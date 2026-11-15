@@ -38,16 +38,24 @@
     return { ...base, dxPt: Math.round(x * d * 100) / 100, dyPt: Math.round(y * d * 100) / 100, blurPt: x || y ? base.blurPt : Math.max(base.blurPt, 4) };
   };
 
-  function act(run: (e: Editor) => void) {
+  // A page's settings apply to the kept selection and leave the menu open, focus in it;
+  // a gallery tile, a relief or clearing closes it and returns to the text.
+  type Chain = ReturnType<Editor['chain']>;
+  function act(run: (c: Chain) => Chain, close = false) {
     if (!editor) return;
-    onDone();
-    run(editor);
+    if (close) onDone();
+    run(close ? editor.chain().focus() : editor.chain()).run();
   }
-  const outline = (o: TextOutline | null) => act((e) => e.chain().focus().setTextOutline(o).run());
-  const shadow = (s: TextShadow | null) => act((e) => e.chain().focus().setTextShadow(s).run());
-  const glow = (g: TextGlow | null) => act((e) => e.chain().focus().setTextGlow(g).run());
+  const outline = (o: TextOutline | null) => act((c) => c.setTextOutline(o));
+  const shadow = (s: TextShadow | null) => act((c) => c.setTextShadow(s));
+  const glow = (g: TextGlow | null) => act((c) => c.setTextGlow(g));
   const plain = (name: 'outline' | 'shadow' | 'relief', value: boolean | 'embossed' | 'engraved') =>
-    act((e) => e.chain().focus().setTextEffect(name, value).run());
+    act((c) => c.setTextEffect(name, value), name === 'relief');
+  // The width box blurs its input once it commits; the menu takes the focus back.
+  function weigh(widthPt: number) {
+    outline({ color: fx.textOutline?.color ?? '#000000', widthPt });
+    queueMicrotask(() => { if (!root?.contains(document.activeElement)) root?.focus(); });
+  }
 
   function open(to: Page) {
     page = to;
@@ -64,7 +72,7 @@
     queueMicrotask(() => root?.querySelector<HTMLButtonElement>(`[data-page="${from}"]`)?.focus());
   }
   function moreColors(pick: (color: string) => void, current: string | null | undefined) {
-    mix = { from: page, color: current ?? '#000000', pick };
+    mix = { from: page, color: current ?? '#000000', pick: (c) => { pick(c); back(); } };
     open('color');
   }
 
@@ -84,7 +92,7 @@
 {#snippet swatches(pick: (color: string) => void, current: string | null | undefined)}
   <div class="fx-swatches">
     {#each SWATCHES as c}
-      <button class="fx-swatch" class:selected={current === c} style:background={c} title={c} aria-label={c} onclick={() => pick(c)}></button>
+      <button class="fx-swatch" class:selected={current === c} aria-pressed={current === c} style:background={c} title={c} aria-label={c} onclick={() => pick(c)}></button>
     {/each}
   </div>
   <button class="fx-row fx-more" onclick={() => moreColors(pick, current)}>
@@ -97,14 +105,14 @@
 {/snippet}
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="fx-menu" bind:this={root} onkeydown={onKeydown}>
+<div class="fx-menu" bind:this={root} tabindex="-1" onkeydown={onKeydown}>
   {#if page === 'main'}
     <div class="fx-grid gallery" role="group" aria-label={L.gallery}>
       {#each TEXT_EFFECT_PRESETS as p, i}
         {@const attrs = presetAttrs(p)}
         <button class="fx-tile" class:selected={same(fx.textOutline, attrs.textOutline) && same(fx.textShadow, attrs.textShadow) && same(fx.textGlow, attrs.textGlow) && fx.color === p.color}
           title={L.preset(i + 1)} aria-label={L.preset(i + 1)}
-          onclick={() => act((e) => e.chain().focus().applyTextEffectPreset(p).run())}>{@render sample(attrs)}</button>
+          onclick={() => act((c) => c.applyTextEffectPreset(p), true)}>{@render sample(attrs)}</button>
       {/each}
     </div>
     {#each [['outline', L.outline, !!(fx.textOutline || fx.outline)], ['shadow', L.shadow, !!(fx.textShadow || fx.shadow)], ['glow', L.glow, !!fx.textGlow], ['relief', L.relief, fx.relief === 'embossed' || fx.relief === 'engraved']] as const as [key, label, on]}
@@ -112,7 +120,7 @@
         {label}<span class="menu-sub"><svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M2.5 1l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span>
       </button>
     {/each}
-    <button class="fx-row" data-cmd="textEffects-clear" onclick={() => act((e) => e.chain().focus().unsetTextEffects().run())}>{L.clear}</button>
+    <button class="fx-row" data-cmd="textEffects-clear" onclick={() => act((c) => c.unsetTextEffects(), true)}>{L.clear}</button>
   {:else}
     <button class="fx-row fx-back" onclick={back}>
       <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M5.5 1l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
@@ -129,7 +137,7 @@
       <div class="fx-label">{L.weight}</div>
       <div class="fx-weight">
         <BorderWidthBox value={String(fx.textOutline?.widthPt ?? 0.75)} presets={WEIGHTS} none={false} min={OUTLINE_WIDTH_PT.min} max={OUTLINE_WIDTH_PT.max}
-          onChange={(w) => outline({ color: fx.textOutline?.color ?? '#000000', widthPt: Number(w) })} />
+          onChange={(w) => weigh(Number(w))} />
       </div>
       <button class="fx-row" class:selected={fx.outline === true} onclick={() => plain('outline', true)}>
         <span class="fx-mini" style={effectCss({ outline: true })}>A</span>{L.hollow}<span class="menu-sub">{L.alsoOdt}</span>
@@ -180,6 +188,7 @@
 
 <style>
   .fx-menu {
+    outline: none;
     display: flex;
     flex-direction: column;
     gap: 1px;

@@ -1414,6 +1414,10 @@ try {
   await page.click('[data-cmd="textEffects-outline"]');
   await page.locator('.ribbon-menu .fx-swatch[title="#4472C4"]').click();
   const rimmed = await fxOf();
+  // A page's setting leaves the menu open on that page, the swatch marked.
+  const stays = () => page.evaluate(() => !!document.querySelector('.ribbon-menu .fx-weight'));
+  const keptOpen = [await stays(), await page.evaluate(() => document.querySelector('.ribbon-menu .fx-swatch.selected')?.title === '#4472C4')];
+  await page.click('[data-cmd="textEffects"]');
   await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.setTextSelection(1));
   const rimInk = await page.waitForFunction(() => [...CSS.highlights.get('spell-error') ?? []].length > 0
     || document.querySelector('.pm-highlight-cover[data-highlight="spell-error"]'), null, { timeout: 30_000 }).then(async () => {
@@ -1449,18 +1453,19 @@ try {
   await page.fill('.ribbon-menu .custom-color-hex', '#12ab34');
   await page.press('.ribbon-menu .custom-color-hex', 'Enter');
   const mixed = (await fxOf()).textOutline;
-  await page.click('[data-cmd="textEffects"]');
-  await page.click('[data-cmd="textEffects-outline"]');
+  keptOpen.push(await stays());
   await page.fill('.ribbon-menu .fx-weight input', '25');
   await page.press('.ribbon-menu .fx-weight input', 'Enter');
   const weighed = (await fxOf()).textOutline;
+  keptOpen.push(await stays(), await page.evaluate(() => !!document.activeElement?.closest('.ribbon-menu')));
+  await page.click('[data-cmd="textEffects"]');
   await page.click('[data-cmd="textEffects"]');
   await page.click('[data-cmd="textEffects-clear"]');
   const cleared = await fxOf();
   check(!!tiled.textShadow && tiled.color === '#000000' && rimmed.textOutline?.color === '#4472C4' && !!rimmed.textShadow
-    && mixed?.color === '#12AB34' && weighed?.widthPt === 20 && weighed?.color === '#12AB34'
+    && mixed?.color === '#12AB34' && weighed?.widthPt === 20 && weighed?.color === '#12AB34' && keptOpen.every(Boolean)
     && !cleared.textOutline && !cleared.textShadow && !cleared.textGlow && !!rimInk && rimInk.blue > 5 && rimInk.dark > 5,
-    `the text effects menu sets a tile, an outline colour, a custom colour and a typed weight, and clears them, and a misspelled word keeps its outline (${JSON.stringify({ tiled, rimmed, mixed, weighed, cleared, rimInk })})`);
+    `the text effects menu sets a tile, an outline colour, a custom colour and a typed weight, staying open for them, and clears them, and a misspelled word keeps its outline (${JSON.stringify({ tiled, rimmed, mixed, weighed, keptOpen, cleared, rimInk })})`);
 
   const priorDoc = await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.getJSON());
   // Pagination settles on any document: each layout-dependent feature (an index's and a
