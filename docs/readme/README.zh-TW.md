@@ -138,6 +138,7 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 任何網頁伺服器都可以代管這個資料夾。
 也可以用 `docker build -t edentext .` 在本機建置容器映像檔。
 適用於 Kubernetes 的社群維護 Helm chart 位於 [`charts/edentext`](../../charts/edentext)。
+如何為所有使用者預先設定 AI 助理和聽寫，請參閱 [`docs/self-hosting.md`](../self-hosting.md)（英文）。
 
 更新時，請將新檔案覆蓋到舊檔案上，不要先清空資料夾。
 更新前開啟的分頁在重新載入之前，會繼續載入其所屬版本的檔案。

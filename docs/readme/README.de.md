@@ -153,6 +153,7 @@ Alternativ enthält jedes Release die Datei `edentext-<tag>.zip` mit der fertige
 Webserver bereitstellen. Das Container-Image kann auch lokal mit
 `docker build -t edentext .` gebaut werden.
 Für Kubernetes gibt es in [`charts/edentext`](../../charts/edentext) ein von der Community gepflegtes Helm-Chart.
+Wie man den KI-Assistenten und das Diktat für alle Nutzer vorab einrichtet, steht in [`docs/self-hosting.md`](../self-hosting.md) (englisch).
 
 Für ein Update empfiehlt es sich, die neuen Dateien über die alten zu kopieren, statt den
 Ordner vorher zu leeren. Tabs, die vor dem Update geöffnet wurden, laden bis zum Neuladen

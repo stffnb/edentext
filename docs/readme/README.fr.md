@@ -159,6 +159,7 @@ compilée ; `npm run build` produit les mêmes fichiers dans `dist/`. N’import
 héberger ce dossier. L’image de conteneur peut aussi être construite localement avec
 `docker build -t edentext .`.
 Pour Kubernetes, un chart Helm maintenu par la communauté se trouve dans [`charts/edentext`](../../charts/edentext).
+Pour configurer l’assistant IA et la dictée pour tous les utilisateurs, voir [`docs/self-hosting.md`](../self-hosting.md) (en anglais).
 
 Pour une mise à jour, copiez les nouveaux fichiers par-dessus les anciens au lieu de vider
 d’abord le dossier. Les onglets ouverts avant la mise à jour continuent de charger les

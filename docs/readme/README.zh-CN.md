@@ -137,6 +137,7 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 任何 Web 服务器都可以托管这个目录。
 也可以用 `docker build -t edentext .` 在本地构建容器镜像。
 适用于 Kubernetes 的社区维护 Helm chart 位于 [`charts/edentext`](../../charts/edentext)。
+如何为所有用户预先配置 AI 助手和听写，请参阅 [`docs/self-hosting.md`](../self-hosting.md)（英文）。
 
 更新时，请将新文件覆盖到旧文件上，不要先清空目录。
 更新前打开的标签页在重新加载之前，会继续加载其所属版本的文件。

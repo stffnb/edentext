@@ -151,6 +151,7 @@ Alternatively, each release includes `edentext-<tag>.zip` with the built app, an
 `npm run build` creates the same files in `dist/`. Any web server can host this folder.
 The container image can also be built locally with `docker build -t edentext .`.
 A community-maintained Helm chart for Kubernetes is in [`charts/edentext`](charts/edentext).
+How to set up the AI assistant and dictation for all users is in [`docs/self-hosting.md`](docs/self-hosting.md).
 
 For an update, copy the new files over the old ones instead of emptying the folder first.
 Tabs opened before the update keep loading the files of their own version until they are
