@@ -17,8 +17,9 @@ if (!embedded) {
 
 dragDialogs();
 
-// The installation's AI and dictation presets; the user's own settings hold until they arrive.
-void loadHostConfig();
+// The installation's AI and dictation presets, fetched while the rest starts; the app
+// mounts once they are in, so a lock or a switched-off feature holds from the first frame.
+const presets = loadHostConfig();
 
 // Apply saved theme before mount to prevent flash of wrong theme
 applyTheme(loadTheme());
@@ -40,9 +41,8 @@ if (import.meta.env.PROD && !embedded && 'serviceWorker' in navigator) {
     });
 }
 
-// Drop the static crawler copy (index.html) — mount() appends instead of replacing
-document.getElementById('static-intro')?.remove();
-
-const app = mount(App, { target: document.getElementById('app')! });
-
-export default app;
+void presets.then(() => {
+    // Drop the static crawler copy (index.html) — mount() appends instead of replacing
+    document.getElementById('static-intro')?.remove();
+    mount(App, { target: document.getElementById('app')! });
+});

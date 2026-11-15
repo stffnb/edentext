@@ -1,6 +1,7 @@
 #!/bin/sh
 # Writes edentext.config.json and the /ai/ and /stt/ proxies from EDENTEXT_* variables at
-# container start (docs/self-hosting.md); without them neither exists. Keys reach nginx only.
+# container start (docs/self-hosting.md); without them the file presets nothing and no proxy
+# exists. Keys reach nginx only.
 set -eu
 
 html=${EDENTEXT_HTML_DIR:-/usr/share/nginx/html}
@@ -52,7 +53,8 @@ section dictation
 if [ -n "$json" ]; then
   printf '{ %s }\n' "$json" > "$html/edentext.config.json"
 else
-  rm -f "$html/edentext.config.json"
+  # The image's empty file again; a read-only root still holds it.
+  printf '{}\n' > "$html/edentext.config.json" 2>/dev/null || true
 fi
 
 # A same-origin proxy: nginx sets the key (or clears the browser's headers) and drops

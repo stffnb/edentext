@@ -7,7 +7,7 @@ ships none. You point it at a server you operate or a provider you use.
 ## The preset file
 
 `edentext.config.json` next to `index.html` is read once when the editor starts. Every
-section and field is optional; without the file nothing is preset.
+section and field is optional; the file EdenText ships is empty and presets nothing.
 
 ```json
 {

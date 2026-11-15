@@ -1,6 +1,6 @@
 // What a self-hoster presets for every user (docs/architecture/ai.md, dictation-local.md):
-// edentext.config.json next to index.html, below an embedding host's options. Neither is
-// stored. The file is public, so it holds addresses and models only; a key stays in a proxy.
+// edentext.config.json next to index.html (shipped empty), below an embedding host's options.
+// Neither is stored. The file is public: addresses and models only; a key stays in a proxy.
 
 export type HostAi = { enabled?: boolean; provider?: 'openai' | 'anthropic'; endpoint?: string; model?: string; contextTokens?: number; locked?: boolean };
 export type HostDictation = { enabled?: boolean; server?: string; model?: string; locked?: boolean; webSpeech?: boolean };
