@@ -5,7 +5,7 @@
 import { builtinTableStyles, tableStyleCss, type TableStyle } from './tableStyles';
 import { outlineCss, type OutlineNumbering } from './outlineNumbering';
 import { builtinListStyles, type ListStyle } from './listStyles';
-import { effectCss, type CapsMode, type Relief } from '../editor/extensions/textEffects';
+import { effectCss, type CapsMode, type Relief, type TextGlow, type TextOutline, type TextShadow, type W14El } from '../editor/extensions/textEffects';
 import { normalizeColor } from '../utils/color';
 import { parseBorderAttr } from '../editor/extensions/tableCellBorders';
 
@@ -63,6 +63,11 @@ export type TextProps = {
   outline?: boolean;
   shadow?: boolean;
   relief?: Relief | 'none';
+  // Coloured outline, shadow and glow (DOCX w14), and the w14 elements kept undrawn.
+  textOutline?: TextOutline;
+  textShadow?: TextShadow;
+  textGlow?: TextGlow;
+  textFxRaw?: W14El[];
   // Language tags ('en-US'), western and asian. Carried here so a paragraph's languages
   // can be baked onto its runs, which is the only place Word reads one from.
   lang?: string;
