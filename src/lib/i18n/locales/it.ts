@@ -236,6 +236,7 @@ const it: Messages = {
     title: 'Detta: scrivi con la voce al cursore',
     listening: 'In ascolto: fai clic o premi Esc per fermare',
     language: 'Lingua della dettatura',
+    spokenLanguage: 'Lingua parlata',
     caretLanguage: 'Lingua al cursore',
     consentTitle: 'Dettare con il servizio vocale del browser?',
     consentText: 'Questo browser non riesce a riconoscere la voce su questo computer. Invia ciò che dici al suo servizio vocale (Google per Chrome ed Edge, Apple per Safari) e ne riceve il testo. EdenText non salva né invia nulla.',

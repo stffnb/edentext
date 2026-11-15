@@ -24,6 +24,7 @@
 </script>
 
 {#snippet languages()}
+  <div class="rb-menu-label">{t().dictation.spokenLanguage}</div>
   <button class:selected={s.chosen === null} onclick={() => choose(null)}>{t().dictation.caretLanguage}</button>
   {#each choices as c (c.tag)}
     <button class:selected={s.chosen === c.tag} onclick={() => choose(c.tag)}>{c.label}</button>

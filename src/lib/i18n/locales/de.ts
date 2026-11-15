@@ -236,6 +236,7 @@ const de: Messages = {
     title: 'Diktieren: mit der Stimme am Cursor schreiben',
     listening: 'Hört zu – Klick oder Esc beendet',
     language: 'Sprache fürs Diktat',
+    spokenLanguage: 'Gesprochene Sprache',
     caretLanguage: 'Sprache am Cursor',
     consentTitle: 'Mit dem Sprachdienst des Browsers diktieren?',
     consentText: 'Dieser Browser kann Sprache nicht auf diesem Rechner erkennen. Er schickt das Gesprochene an seinen Sprachdienst (bei Chrome und Edge Google, bei Safari Apple) und bekommt den Text zurück. EdenText selbst speichert und sendet nichts.',

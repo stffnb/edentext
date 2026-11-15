@@ -239,6 +239,7 @@ const en = {
     title: 'Dictate: type with your voice at the cursor',
     listening: 'Listening – click or press Esc to stop',
     language: 'Dictation language',
+    spokenLanguage: 'Spoken language',
     caretLanguage: 'Language at the cursor',
     consentTitle: 'Dictate with the browser’s speech service?',
     consentText: 'This browser cannot recognize speech on this computer. It sends what you say to its speech service (Google for Chrome and Edge, Apple for Safari) and gets the text back. EdenText itself stores and sends nothing.',

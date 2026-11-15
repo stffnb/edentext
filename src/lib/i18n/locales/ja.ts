@@ -238,6 +238,7 @@ const ja: Messages = {
     title: 'ディクテーション: カーソル位置に音声で入力',
     listening: '聞き取り中 – クリックするか Esc キーで停止',
     language: 'ディクテーションの言語',
+    spokenLanguage: '話す言語',
     caretLanguage: 'カーソル位置の言語',
     consentTitle: 'ブラウザーの音声サービスでディクテーションしますか?',
     consentText: 'このブラウザーはこのコンピューター上で音声を認識できません。話した内容をブラウザーの音声サービス (Chrome と Edge では Google、Safari では Apple) に送り、テキストを受け取ります。EdenText 自体は何も保存も送信もしません。',

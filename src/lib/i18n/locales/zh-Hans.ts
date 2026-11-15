@@ -237,6 +237,7 @@ const zhHans: Messages = {
     title: '听写：在光标处用语音输入',
     listening: '正在聆听 – 单击或按 Esc 停止',
     language: '听写语言',
+    spokenLanguage: '口述语言',
     caretLanguage: '光标处的语言',
     consentTitle: '使用浏览器的语音服务进行听写？',
     consentText: '此浏览器无法在这台电脑上识别语音。它会把你说的话发送到自己的语音服务（Chrome 和 Edge 为 Google，Safari 为 Apple），再取回文本。EdenText 本身不保存也不发送任何内容。',
