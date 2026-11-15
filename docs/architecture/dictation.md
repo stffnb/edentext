@@ -111,6 +111,69 @@ per language, case and punctuation ignored.
   none of their own and point to the OpenAI models. To be settled before shipping one.
 - Probe scripts and raw results stay outside the repo (no dependency was added).
 
+## Measured: local engines across the twelve languages (Phase 0.6, 2026-11-15)
+
+Same setup as above (headless Chromium 156, Apple M1, WebGPU adapter `apple`/`metal-3`
+with `shader-f16`), now five sentences (about 40 words) per UI language, each spoken by a
+native macOS voice: Anna, Daniel, Mónica, Thomas, Alice, Luciana (pt-BR), Milena, Lesya,
+Melina, Kyoko, Tingting (zh-Hans) and Meijia (Taiwanese Mandarin, zh-Hant). Every language
+has one. Synthetic speech in silence flatters every engine alike, so the rates rank the
+engines; a real speaker will score worse on all of them.
+
+- **Whisper** (Transformers.js): one call per finished sentence, as a pause detector would
+  cut it; "lag" is that call's mean time, after one warm-up call. A real pause detector
+  adds the silence it waits for (about 0.3–0.5 s) on top. Download counts every file.
+- **Vosk** (`vosk-browser` 0.0.8, Kaldi in a worker, small models): the sentences streamed
+  in 100 ms chunks at real-time pace with 1.5 s pauses. "Word" is how long after a word
+  ends in the audio it first shows in the partial text; "final" is how long after the last
+  word the settled result arrives, which includes Vosk's own end-of-speech wait.
+- **Error rate**: WER, case and punctuation ignored; CER for ja and zh. For zh it is
+  against the script asked for, with the rate after an OpenCC conversion in brackets.
+
+| Language | Whisper base, WebGPU fp16/fp16 (146 MB) lag · error | Whisper base, WASM q8 (77 MB) lag · error | Whisper small, WebGPU fp16 (485 MB) lag · error | Vosk small: size · word / final · error |
+|---|---|---|---|---|
+| de | 0.5 s · 2 % | 1.1 s · 0 % | 1.3 s · 0 % | 47 MB · 0.29 / 1.27 s · 5 % |
+| en | 0.5 s · 0 % | 1.1 s · 0 % | 1.2 s · 0 % | 41 MB · 0.34 / 1.05 s · 2 % |
+| es | 0.5 s · 2 % | 1.1 s · 2 % | 1.4 s · 0 % | 40 MB · 0.29 / 1.22 s · 7 % |
+| fr | 0.5 s · 10 % | 1.1 s · 12 % | 1.5 s · 8 % | 42 MB · 0.30 / 1.26 s · 0 % |
+| it | 0.5 s · 13 % | 1.4 s · 10 % | 1.4 s · 8 % | 50 MB · 0.25 / 1.10 s · 0 % |
+| pt | 0.5 s · 5 % | 1.1 s · 5 % | 1.3 s · 5 % | 32 MB · 0.49 / 1.48 s · 7 % |
+| ru | 0.6 s · 6 % | 1.2 s · 18 % | 1.4 s · 9 % | 46 MB · 0.23 / 1.10 s · 9 % |
+| uk | 0.7 s · 27 % | 1.2 s · 33 % | 1.6 s · 9 % | 78 MB (v3-nano) · 0.74 / 1.60 s · 30 % |
+| el | 0.8 s · 33 % | 1.5 s · 37 % | 1.9 s · 19 % | no small model (only a 1.1 GB narrowband one) |
+| ja | 0.6 s · 12 % | 1.1 s · 12 % | 1.6 s · 5 % | 50 MB · 0.41 / 0.84 s · 4 % |
+| zh-Hans | 0.5 s · 28 % (0 %) | 1.2 s · 17 % (0 %) | 1.4 s · 30 % (3 %) | 44 MB · 0.32 / 1.10 s · 3 % |
+| zh-Hant | 0.5 s · 3 % (3 %) | 1.1 s · 3 % (3 %) | 1.5 s · 32 % (5 %) | same model · 0.31 / 1.06 s · 47 % (3 %) |
+
+- **Decoder precision**: fp16 on WebGPU kept the q8 accuracy (German 2 % against 19 % with
+  `q4`) and is the fastest pair; a `q8` decoder on WebGPU took 0.8–2.0 s, as its integer
+  operators run outside the GPU, and was not more accurate.
+- **Weaker machine**: Chromium's CPU throttling ×4 (`Emulation.setCPUThrottlingRate`) put
+  Whisper base on WASM at 3.6–4.5 s per sentence. It does not reach Vosk's worker, so for
+  Vosk the compute alone was timed: 0.20–0.34 s per second of audio on the M1 (ja and zh
+  the most), which leaves a machine four times slower at or past real time.
+- **Chinese script**: Whisper writes Traditional for the Taiwanese voice but switches between
+  Traditional and Simplified sentence by sentence for the mainland one; Vosk and the other
+  streaming candidate write Simplified only. Either way the text needs an OpenCC conversion
+  to the asked-for script, after which both are at 0–5 %.
+- **Vosk output** has no punctuation and no capitals (German nouns come lowercase), writes
+  ja and zh as space-separated words, and `vosk-browser` has had no release since 2022.
+  All models above are Apache-2.0; the Ukrainian one is the v3 nano model.
+- **Streaming alternative**: sherpa-ncnn's streaming Zipformer (k2-fsa's WASM build,
+  Apache-2.0, 141 MB, bilingual Chinese and English only) showed text 0.25–0.4 s after the
+  end of speech, at 2 % WER in English (uppercase, unpunctuated, the first two words of
+  the stream lost) and 2 % CER in Chinese (Simplified); compute 0.23–0.28 s per audio
+  second, 0.8–0.9 with ×4 throttling. No such build exists for the other ten languages.
+
+**Conclusion.** Whisper base on WebGPU with an fp16 encoder and decoder meets the
+1–1.5 s bound with room to spare (0.5–0.8 s plus the pause detector) and is accurate
+enough for de, en, es, pt and ru, with fr and it close behind; zh needs the script
+conversion, ja is borderline. It is not for uk and el, where only Whisper small comes near
+(9 % and 19 %, 1.6–1.9 s, 485 MB). Without WebGPU the WASM fallback is fluid only on a
+fast machine. Vosk is the only option with live words (0.2–0.5 s) and is small and
+accurate for the Romance languages, ja and zh, but lacks punctuation and capitals and
+Greek, and an unmaintained runtime.
+
 ## Check by hand
 
 Real recognition needs a microphone, a person and the browser's service:
