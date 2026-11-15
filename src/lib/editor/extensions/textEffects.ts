@@ -302,7 +302,7 @@ export const TEXT_EFFECT_PRESETS: TextEffectPreset[] = [
 ];
 export const presetAttrs = (p: TextEffectPreset): TextEffectAttrs & { color: string } => ({
   color: p.color, outline: null, shadow: null, relief: null, textFxRaw: null,
-  textOutline: p.textOutline ?? null, textShadow: p.textShadow ?? null, textGlow: p.textGlow ?? null,
+  textOutline: normalizeTextOutline(p.textOutline), textShadow: normalizeTextShadow(p.textShadow), textGlow: normalizeTextGlow(p.textGlow),
 });
 
 declare module '@tiptap/core' {
@@ -354,9 +354,10 @@ export const TextEffects = Extension.create({
       chain().command(updateEffects(change)).removeEmptyTextStyle().run();
     return {
       setTextEffect: (name, value) => run({ [name]: value || null }),
-      setTextOutline: (value) => run({ textOutline: value }),
-      setTextShadow: (value) => run({ textShadow: value }),
-      setTextGlow: (value) => run({ textGlow: value }),
+      // Normalized as every reader normalizes, so a saved file reads back the value held.
+      setTextOutline: (value) => run({ textOutline: normalizeTextOutline(value) }),
+      setTextShadow: (value) => run({ textShadow: normalizeTextShadow(value) }),
+      setTextGlow: (value) => run({ textGlow: normalizeTextGlow(value) }),
       applyTextEffectPreset: (preset) => run(presetAttrs(preset)),
       unsetTextEffects: () => run({ outline: null, shadow: null, relief: null, textOutline: null, textShadow: null, textGlow: null, textFxRaw: null }),
     };

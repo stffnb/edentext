@@ -7,6 +7,8 @@ import { importOdt } from '../src/lib/import/odt';
 import { builtinStyleSheet } from '../src/lib/styles/styleSheet';
 import { HEADER_SHADE } from '../src/lib/editor/extensions/tableHeaderRow';
 import { effectUpdate } from '../src/lib/editor/extensions/textEffects';
+import { Editor } from '@tiptap/core';
+import { extensions } from '../src/lib/editor/extensions';
 
 type N = { type: string; attrs?: any; content?: N[]; marks?: any[]; text?: string };
 
@@ -393,6 +395,25 @@ describe('DOCX export → import round trip', () => {
     for (const e of a.textFxRaw ?? []) expect(again).toContain(`<w14:${e.n} `);
     const changed = effectUpdate(a, { textShadow: null, textGlow: null });
     expect((changed.textFxRaw ?? []).some((e: any) => e.n === 'shadow' || e.n === 'glow')).toBe(false);
+  });
+
+  // What the commands put on a run is what a saved file reads back, whatever was passed in.
+  it('holds the effects a command sets as a saved DOCX reads them back', async () => {
+    const el = document.createElement('div');
+    const editor = new Editor({ element: el, extensions, content: { type: 'doc', content: [para('abcdef')] } });
+    try {
+      const at = (from: number, to: number) => editor.chain().setTextSelection({ from, to });
+      at(1, 3).setTextOutline({ color: '#c00000', widthPt: 33.333 }).run();
+      at(2, 5).setTextShadow({ color: '#abc', alpha: 0.6666, dxPt: -1.005, dyPt: 2.12345, blurPt: 3.3333 }).run();
+      at(4, 7).setTextGlow({ color: '#2f5597', alpha: 0.333, radiusPt: 151 }).run();
+      const fx = (doc: N) => walk(doc, 'text').map((r: N) => {
+        const a = markAttrs(r, 'textStyle') ?? {};
+        return [r.text, a.textOutline ?? null, a.textShadow ?? null, a.textGlow ?? null];
+      });
+      const held = editor.getJSON() as N;
+      expect(fx(held).filter(([, ...e]) => e.some(Boolean))).toHaveLength(5);
+      expect(fx(importDocx(await buildDocx(held as never)).content as N)).toEqual(fx(held));
+    } finally { editor.destroy(); }
   });
 
   it("reads Word's emphasis marks as LibreOffice does", async () => {
