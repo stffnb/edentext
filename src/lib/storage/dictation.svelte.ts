@@ -7,6 +7,9 @@ import { embedded } from '../embed/mode';
 import { hostDictation } from './hostConfig.svelte';
 import type { SpeechServer } from '../dictation/speechServer';
 
+/** Opens Settings at the dictation rows, e.g. from the microphone button's menu. */
+export const OPEN_DICTATION_SETTINGS_EVENT = 'edentext-dictation-settings';
+
 /** Where speech is recognized: the installation's server, the user's own, or the browser. */
 export type DictationService = 'installation' | 'own' | 'browser';
 /** `service`: the user's pick, '' for the first one offered. */

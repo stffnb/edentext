@@ -241,6 +241,7 @@ const fr: Messages = {
     listening: 'Écoute en cours – cliquez ou appuyez sur Échap pour arrêter',
     language: 'Langue de la dictée',
     spokenLanguage: 'Langue parlée',
+    settingsLink: 'Paramètres de dictée…',
     caretLanguage: 'Langue au curseur',
     consentTitle: 'Dicter avec le service vocal du navigateur ?',
     consentText: 'Ce navigateur ne sait pas reconnaître la parole sur cet ordinateur. Il envoie ce que vous dites à son service vocal (Google pour Chrome et Edge, Apple pour Safari) et reçoit le texte en retour. EdenText lui-même n’enregistre ni n’envoie rien.',

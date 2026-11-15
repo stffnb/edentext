@@ -301,7 +301,7 @@
           {@const server = dictationServer()}
           {@const locked = !!hostDictation().locked}
           {@const off = !dictationSettings().enabled}
-          <div class="row">
+          <div class="row" id="settings-dictation">
             <div class="info"><div class="name">{t().dictation.enable}</div><div class="desc">{dictationSupported() ? t().dictation.enableHint : t().dictation.unsupported}</div></div>
             <Toggle label={t().dictation.enable} checked={dictationSettings().enabled && dictationSupported()} disabled={!dictationSupported()} onchange={(on) => setDictation({ enabled: on })} />
           </div>

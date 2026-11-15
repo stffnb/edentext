@@ -239,6 +239,7 @@ const zhHant: Messages = {
     listening: '正在聆聽 – 按一下或按 Esc 停止',
     language: '聽寫語言',
     spokenLanguage: '口述語言',
+    settingsLink: '聽寫設定…',
     caretLanguage: '游標處的語言',
     consentTitle: '要使用瀏覽器的語音服務聽寫嗎？',
     consentText: '這個瀏覽器無法在這台電腦上辨識語音。它會把你說的話傳送到自己的語音服務（Chrome 和 Edge 為 Google，Safari 為 Apple），再取回文字。EdenText 本身不會儲存或傳送任何內容。',

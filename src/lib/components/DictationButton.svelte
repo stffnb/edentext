@@ -8,6 +8,7 @@
   import { LANGUAGES, tagForLanguage } from '../storage/documentLanguage';
   import { shortcutHint } from '../editor/shortcuts';
   import { t } from '../i18n/i18n.svelte';
+  import { OPEN_DICTATION_SETTINGS_EVENT } from '../storage/dictation.svelte';
 
   // `cmd` is the id the command search clicks (ribbon/commands.ts).
   let { variant, cmd, disabled = false }: { variant: 'ribbon' | 'island'; cmd: string; disabled?: boolean } = $props();
@@ -29,6 +30,7 @@
   {#each choices as c (c.tag)}
     <button class:selected={s.chosen === c.tag} onclick={() => choose(c.tag)}>{c.label}</button>
   {/each}
+  <button class="more" onclick={() => { closeMenu(); window.dispatchEvent(new Event(OPEN_DICTATION_SETTINGS_EVENT)); }}>{t().dictation.settingsLink}</button>
 {/snippet}
 
 {#if dictationAvailable()}
@@ -49,6 +51,8 @@
 {/if}
 
 <style>
+  .more { border-top: 1px solid var(--color-border); }
+
   .dictation { position: relative; display: inline-flex; align-items: stretch; }
 
   /* A calm pulse while listening; still for readers who asked for less motion. */

@@ -237,6 +237,7 @@ const es: Messages = {
     listening: 'Escuchando: haga clic o pulse Esc para detener',
     language: 'Idioma del dictado',
     spokenLanguage: 'Idioma hablado',
+    settingsLink: 'Ajustes de dictado…',
     caretLanguage: 'Idioma en el cursor',
     consentTitle: '¿Dictar con el servicio de voz del navegador?',
     consentText: 'Este navegador no puede reconocer la voz en este equipo. Envía lo que diga a su servicio de voz (Google en Chrome y Edge, Apple en Safari) y recibe el texto. EdenText no guarda ni envía nada.',

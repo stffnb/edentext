@@ -237,6 +237,7 @@ const pt: Messages = {
     listening: 'A ouvir – clique ou prima Esc para parar',
     language: 'Idioma do ditado',
     spokenLanguage: 'Idioma falado',
+    settingsLink: 'Definições de ditado…',
     caretLanguage: 'Idioma no cursor',
     consentTitle: 'Ditar com o serviço de voz do navegador?',
     consentText: 'Este navegador não consegue reconhecer a voz neste computador. Envia o que diz ao seu serviço de voz (Google no Chrome e no Edge, Apple no Safari) e recebe o texto. O EdenText não guarda nem envia nada.',

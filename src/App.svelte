@@ -103,6 +103,7 @@
   import AutoTextDialog from './lib/components/AutoTextDialog.svelte';
   import ThesaurusDialog from './lib/components/ThesaurusDialog.svelte';
   import { OPEN_THESAURUS_EVENT } from './lib/spell/thesaurus';
+  import { OPEN_DICTATION_SETTINGS_EVENT } from './lib/storage/dictation.svelte';
   import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
   import NoteOptionsDialog from './lib/components/NoteOptionsDialog.svelte';
   import SaveFormatDialog from './lib/components/SaveFormatDialog.svelte';
@@ -1344,6 +1345,18 @@
     const open = () => (thesaurusOpen = true);
     window.addEventListener(OPEN_THESAURUS_EVENT, open);
     return () => window.removeEventListener(OPEN_THESAURUS_EVENT, open);
+  });
+
+  // The microphone menu's link opens Settings ▸ Editing scrolled to the dictation rows.
+  $effect(() => {
+    const open = async () => {
+      settingsSection = 'editing';
+      settingsOpen = true;
+      await domUpdated();
+      document.getElementById('settings-dictation')?.scrollIntoView({ block: 'start' });
+    };
+    window.addEventListener(OPEN_DICTATION_SETTINGS_EVENT, open);
+    return () => window.removeEventListener(OPEN_DICTATION_SETTINGS_EVENT, open);
   });
 
   // A document double-clicked in the OS reaches the installed app through launchQueue
