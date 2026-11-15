@@ -1,5 +1,16 @@
 // Types for embed.js, the EdenText embed helper; see docs/architecture/embed.md.
 
+/** Presets the AI provider; the same fields as `ai` in edentext.config.json. Never a key:
+ *  point `endpoint` at a proxy that adds it. `locked` keeps the reader from changing it. */
+export interface EdenTextAi {
+  enabled?: boolean;
+  provider?: 'openai' | 'anthropic';
+  endpoint?: string;
+  model?: string;
+  contextTokens?: number;
+  locked?: boolean;
+}
+
 /** Every setting holds for the page it was sent to and is never stored: send them with each `init`. */
 export interface EdenTextSettings {
   /** The name on comments and recorded changes. */
@@ -15,9 +26,10 @@ export interface EdenTextSettings {
   /**
    * false hides the AI assistant and its settings; true leaves the choice to the user.
    * The assistant is on by default and sends document text to a provider the user enters,
-   * so a host that must keep documents in-house sends `ai: false` with every `init`.
+   * so a host that must keep documents in-house sends `ai: false` with every `init`,
+   * or an object that presets (and with `locked`, fixes) its own provider.
    */
-  ai?: boolean;
+  ai?: boolean | EdenTextAi;
 }
 
 export interface EdenTextOptions extends EdenTextSettings {

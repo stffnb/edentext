@@ -78,5 +78,7 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
   if (new URL(request.url).origin !== self.location.origin) return;
+  // The installation's presets are never kept: a changed file holds from the next start.
+  if (new URL(request.url).pathname.endsWith('/edentext.config.json')) return;
   event.respondWith(request.mode === 'navigate' && isShell(request.url) ? documentFrom(request) : assetFrom(event));
 });

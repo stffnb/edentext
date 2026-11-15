@@ -91,7 +91,8 @@
   import NavigatorPane from './lib/components/NavigatorPane.svelte';
   import type { PageBox } from './lib/utils/pageStrip';
   import AiPane, { askAi, resetAiChat } from './lib/components/AiPane.svelte';
-  import { aiConfig, aiAnswering, aiEnabled, setAiHostOff, AI_COMMENT_EVENT, OPEN_AI_CHAT_EVENT } from './lib/storage/ai.svelte';
+  import { setEmbedHostConfig } from './lib/storage/hostConfig.svelte';
+  import { aiConfig, aiAnswering, aiEnabled, AI_COMMENT_EVENT, OPEN_AI_CHAT_EVENT } from './lib/storage/ai.svelte';
   import { navigatorSettings, setNavigator } from './lib/storage/navigator.svelte';
   import { aiErrorText, isAbort } from './lib/ai/client';
   import { bindDictation, dictationAvailable, stopDictation, toggleDictation } from './lib/dictation/session.svelte';
@@ -1584,7 +1585,8 @@
       const accent: Accent | null = (ACCENTS as readonly string[]).includes(s.accent) ? (s.accent as Accent) : parseAccentHex(s.accent);
       if (accent) applyAccent(accent);
     }
-    if (typeof s.ai === 'boolean') setAiHostOff(!s.ai);
+    if (s.ai !== undefined) setEmbedHostConfig('ai', s.ai);
+    if (s.dictation !== undefined) setEmbedHostConfig('dictation', s.dictation);
     if (typeof s.name === 'string') {
       // The file's name as the host keeps it, which is no edit of the document.
       const clean = !dirty;

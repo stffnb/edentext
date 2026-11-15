@@ -58,8 +58,10 @@ A failure is answered with `error: message`.
   `storage/theme.ts`) or a `#rrggbb` colour. Like `user`, `locale`, `theme` and `chrome`
   it holds for the page and is not stored, so the host sends it with every `init`.
 - **`ai: false`** switches the assistant off above the user's own setting: every AI
-  surface, the context menu's AI submenu and the Settings ▸ AI section go (`setAiHostOff`, `storage/ai.svelte.ts`). It is
+  surface, the context menu's AI submenu and the Settings ▸ AI section go (`setEmbedHostConfig`, `storage/hostConfig.svelte.ts`). It is
   never stored, so the host sends it with every `init`; `ai: true` hands the choice back.
+  An object presets the provider with the fields of `edentext.config.json` (`ai.md`) and
+  overrides that file field by field.
   The assistant is **on by default**, and a reader can enter any provider in the frame,
   which then receives document text: a host that must keep documents in-house sends
   `ai: false`.
@@ -106,7 +108,7 @@ gets them without further setup.
 | `chrome` | `ribbon` or `modern` (the floating toolbar) |
 | `name` | the host's file name, shown in the title field |
 | `accent` | `slate`, `blue`, `teal`, `green`, `violet`, `berry`, `graphite` or a `#rrggbb` colour |
-| `ai` | `false` removes the AI assistant and its settings; `true` leaves it to the reader |
+| `ai` | `false` removes the AI assistant and its settings; `true` leaves it to the reader; `{ provider, endpoint, model, contextTokens, locked }` presets it, never with a key |
 
 An unknown value is ignored, so the setting keeps what it had.
 

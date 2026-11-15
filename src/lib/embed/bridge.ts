@@ -1,5 +1,7 @@
 // The postMessage protocol between an embedded editor and its host page; the host side
 // is public/embed.js, the messages are listed in docs/architecture/embed.md.
+import type { HostAi, HostDictation } from '../storage/hostConfig.svelte';
+
 export const PROTOCOL = 1;
 
 export type ExportFormat = 'odt' | 'docx' | 'pdf';
@@ -11,7 +13,8 @@ export interface EmbedSettings {
   chrome?: string;
   name?: string;
   accent?: string;
-  ai?: boolean;
+  ai?: boolean | HostAi;
+  dictation?: boolean | HostDictation;
 }
 
 export interface EmbedApi {

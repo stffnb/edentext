@@ -26,7 +26,8 @@
   import Icon from './ribbon/Icon.svelte';
   import Toggle from './Toggle.svelte';
   import { LANGUAGES, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
-  import { aiSettings, setAi, aiConfig, aiHostOff, plainHttpEndpoint, AI_PRESETS, presetOf, DEFAULT_CONTEXT_TOKENS, type CustomCommand } from '../storage/ai.svelte';
+  import { hostAi } from '../storage/hostConfig.svelte';
+  import { aiSettings, setAi, aiConfig, aiHostOff, aiInUse, aiFromHost, plainHttpEndpoint, AI_PRESETS, presetOf, DEFAULT_CONTEXT_TOKENS, type CustomCommand } from '../storage/ai.svelte';
   import { COMMANDS, commandName } from '../ai/commands';
   import { streamChat, aiErrorText } from '../ai/client';
 
@@ -111,6 +112,10 @@
   }
   let wc = $derived(wordCompletion());
   let ai = $derived(aiSettings());
+  // The installation's provider shows in the fields it fills; locked, they cannot be edited.
+  let aiUse = $derived(aiInUse());
+  let aiHost = $derived(aiFromHost());
+  let aiLocked = $derived(!!hostAi().locked);
 
   // One short request, so a wrong address, key or a CORS refusal shows here and not
   // in the middle of a chat.
@@ -147,7 +152,8 @@
 
   function pickPreset(id: string) {
     const p = AI_PRESETS.find((x) => x.id === id);
-    if (p) setAi({ provider: p.provider, endpoint: p.endpoint });
+    if (id === 'host') setAi({ endpoint: '', model: '' });
+    else if (p) setAi({ provider: p.provider, endpoint: p.endpoint });
     else setAi({ provider: 'openai' });
     aiTest = null;
   }
@@ -376,33 +382,41 @@
               <option value="left">{t().ai.sideLeft}</option>
             </select>
           </div>
+          {#if aiHost}
+            <div class="row sub" class:dim={!ai.enabled}>
+              <div class="info"><div class="name">{t().ai.fromHost}</div><div class="desc">{t().ai.fromHostHint(aiUse.model, aiUse.endpoint, aiLocked)}</div></div>
+            </div>
+          {/if}
           <div class="row sub" class:dim={!ai.enabled}>
             <div class="info"><div class="name">{t().ai.provider}</div><div class="desc">{t().ai.providerHint}</div></div>
-            <select value={presetOf(ai)} disabled={!ai.enabled} onchange={(e) => pickPreset(e.currentTarget.value)}>
+            <select value={aiHost ? 'host' : presetOf(ai)} disabled={!ai.enabled || aiLocked} onchange={(e) => pickPreset(e.currentTarget.value)}>
+              {#if hostAi().endpoint || aiLocked}<option value="host">{t().ai.hostPreset}</option>{/if}
               {#each AI_PRESETS as p (p.id)}<option value={p.id}>{p.label}</option>{/each}
               <option value="custom">{t().ai.custom}</option>
             </select>
           </div>
           <div class="row sub" class:dim={!ai.enabled}>
-            <div class="info"><div class="name">{t().ai.endpoint}</div><div class="desc">{plainHttpEndpoint(ai.endpoint) ? t().ai.endpointPlain : t().ai.endpointHint}</div></div>
-            <input class="field" type="url" spellcheck="false" value={ai.endpoint} disabled={!ai.enabled}
-              placeholder="https://…/v1" onchange={(e) => { setAi({ endpoint: e.currentTarget.value.trim() }); aiTest = null; }} />
+            <div class="info"><div class="name">{t().ai.endpoint}</div><div class="desc">{plainHttpEndpoint(aiUse.endpoint) ? t().ai.endpointPlain : t().ai.endpointHint}</div></div>
+            <input class="field" type="url" spellcheck="false" value={aiLocked ? aiUse.endpoint : ai.endpoint} disabled={!ai.enabled || aiLocked}
+              placeholder={hostAi().endpoint || 'https://…/v1'} onchange={(e) => { setAi({ endpoint: e.currentTarget.value.trim() }); aiTest = null; }} />
           </div>
           <div class="row sub" class:dim={!ai.enabled}>
             <div class="info"><div class="name">{t().ai.model}</div><div class="desc">{t().ai.modelHint}</div></div>
-            <input class="field" type="text" spellcheck="false" value={ai.model} disabled={!ai.enabled}
-              onchange={(e) => { setAi({ model: e.currentTarget.value.trim() }); aiTest = null; }} />
+            <input class="field" type="text" spellcheck="false" value={aiLocked ? aiUse.model : ai.model} disabled={!ai.enabled || aiLocked}
+              placeholder={aiHost ? hostAi().model ?? '' : ''} onchange={(e) => { setAi({ model: e.currentTarget.value.trim() }); aiTest = null; }} />
           </div>
           <div class="row sub" class:dim={!ai.enabled}>
             <div class="info"><div class="name">{t().ai.contextSize}</div><div class="desc">{t().ai.contextSizeHint}</div></div>
-            <input class="field short" type="number" min="2048" step="1024" value={ai.contextTokens} disabled={!ai.enabled}
+            <input class="field short" type="number" min="2048" step="1024" value={aiUse.contextTokens} disabled={!ai.enabled || aiLocked}
               onchange={(e) => { const n = Math.round(Number(e.currentTarget.value)); setAi({ contextTokens: n >= 2048 ? n : DEFAULT_CONTEXT_TOKENS }); }} />
           </div>
-          <div class="row sub" class:dim={!ai.enabled}>
-            <div class="info"><div class="name">{t().ai.apiKey}</div><div class="desc">{t().ai.apiKeyHint}</div></div>
-            <input class="field" type="password" autocomplete="off" spellcheck="false" value={ai.apiKey} disabled={!ai.enabled}
-              onchange={(e) => { setAi({ apiKey: e.currentTarget.value.trim() }); aiTest = null; }} />
-          </div>
+          {#if !aiHost}
+            <div class="row sub" class:dim={!ai.enabled}>
+              <div class="info"><div class="name">{t().ai.apiKey}</div><div class="desc">{t().ai.apiKeyHint}</div></div>
+              <input class="field" type="password" autocomplete="off" spellcheck="false" value={ai.apiKey} disabled={!ai.enabled}
+                onchange={(e) => { setAi({ apiKey: e.currentTarget.value.trim() }); aiTest = null; }} />
+            </div>
+          {/if}
           <div class="row sub" class:dim={!ai.enabled}>
             <div class="info">
               <div class="desc" class:ok={aiTest?.ok} role="status">{aiTest?.text ?? ''}</div>

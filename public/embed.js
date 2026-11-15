@@ -14,7 +14,7 @@ export class EdenTextFrame {
 
   /**
    * @param {HTMLElement} container where the iframe goes
-   * @param {{ url?: string, user?: string, locale?: string, theme?: string, chrome?: string, name?: string, accent?: string, ai?: boolean }} [options]
+   * @param {{ url?: string, user?: string, locale?: string, theme?: string, chrome?: string, name?: string, accent?: string, ai?: boolean | object }} [options]
    *   `url`: the EdenText instance, by default the one serving this file. Types: embed.d.ts.
    */
   constructor(container, { url, ...settings } = {}) {
@@ -61,7 +61,7 @@ export class EdenTextFrame {
 
   /**
    * Change user, locale, theme ('light'|'dark'|'allBlack'|'auto'), chrome ('ribbon'|'modern'),
-   * name, accent (a preset name or '#rrggbb') or ai (false hides the assistant).
+   * name, accent (a preset name or '#rrggbb') or ai (false hides the assistant, an object presets it).
    */
   async configure(settings) {
     await this.#send('configure', settings);
