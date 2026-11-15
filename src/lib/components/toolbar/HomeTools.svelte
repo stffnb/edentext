@@ -9,8 +9,9 @@
   import { changeIndent } from '../formatCommands';
   import { clipboardCommand, readClipboard } from '../../editor/contextMenuItems';
   import { stepFontSize } from '../../editor/extensions/shortcuts';
-  import { effectCss, emphasisCss, hasTextEffect, type CapsMode, type Emphasis } from '../../editor/extensions/textEffects';
+  import { emphasisCss, hasTextEffect, type CapsMode, type Emphasis } from '../../editor/extensions/textEffects';
   import TextEffectsMenu from './TextEffectsMenu.svelte';
+  import TextEffectsIcon from './TextEffectsIcon.svelte';
   import { hasAsianLanguage, uniformBlockAttr } from '../../utils/selectionFormat';
   import { t } from '../../i18n/i18n.svelte';
   import { withShortcut } from '../../i18n/shortcut';
@@ -207,7 +208,7 @@
     <path d="M10.5 12.2c0-.8.7-1.4 1.5-1.4s1.5.6 1.5 1.4c0 1.2-1.6 1.5-3 3.1h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>
 {/snippet}
-{#snippet effectsIcon()}<span style="{effectCss({ outline: true, shadow: true })}; font-size: 15px; font-weight: 600">A</span>{/snippet}
+{#snippet effectsIcon()}<TextEffectsIcon />{/snippet}
 {#snippet emphasisIcon()}<span style="text-emphasis: filled dot; text-emphasis-position: under right; font-size: 13px">文</span>{/snippet}
 <!-- The ribbon's ↘ group launcher: it opens the dialog with every paragraph setting. -->
 {#snippet launcherIcon()}

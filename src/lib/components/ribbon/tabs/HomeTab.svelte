@@ -24,8 +24,9 @@
   import { isInHeaderCell } from '../../../editor/extensions/tableHeaderRow';
   import { cellRegionText } from '../../../editor/extensions/tableStyle';
   import { styleSheet } from '../../../styles/sheet.svelte';
-  import { effectCss, emphasisCss, hasTextEffect, type CapsMode, type Emphasis, type LineStyle } from '../../../editor/extensions/textEffects';
+  import { emphasisCss, hasTextEffect, type CapsMode, type Emphasis, type LineStyle } from '../../../editor/extensions/textEffects';
   import TextEffectsMenu from '../../toolbar/TextEffectsMenu.svelte';
+  import TextEffectsIcon from '../../toolbar/TextEffectsIcon.svelte';
   import type { StyleFamily } from '../../../styles/styleSheet';
   import { styleLabel, t } from '../../../i18n/i18n.svelte';
   import { withShortcut } from '../../../i18n/shortcut';
@@ -447,7 +448,7 @@
 {#snippet italicIcon()}<span class="glyph" style="font-style: italic; font-family: serif">{t().toolbar.glyphs.italic}</span>{/snippet}
 {#snippet underlineIcon()}<span class="glyph" style="text-decoration: underline">{t().toolbar.glyphs.underline}</span>{/snippet}
 {#snippet emphasisIcon()}<span class="glyph" style="text-emphasis: filled dot; text-emphasis-position: under right">文</span>{/snippet}
-{#snippet effectsIcon()}<span class="glyph" style={effectCss({ outline: true, shadow: true })}>A</span>{/snippet}
+{#snippet effectsIcon()}<TextEffectsIcon />{/snippet}
 {#snippet strikeIcon()}<span class="glyph" style="text-decoration: line-through">ab</span>{/snippet}
 {#snippet subIcon()}<span class="glyph">X<span class="glyph-script down">2</span></span>{/snippet}
 {#snippet superIcon()}<span class="glyph">X<span class="glyph-script up">2</span></span>{/snippet}
