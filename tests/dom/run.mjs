@@ -1418,9 +1418,11 @@ try {
   const rimInk = await page.waitForFunction(() => [...CSS.highlights.get('spell-error') ?? []].length > 0
     || document.querySelector('.pm-highlight-cover[data-highlight="spell-error"]'), null, { timeout: 30_000 }).then(async () => {
     const box = await page.evaluate(() => {
-      const hit = [...CSS.highlights.get('spell-error') ?? []][0];
+      const host = document.querySelector('.tiptap-host .tiptap');
+      const hit = [...CSS.highlights.get('spell-error') ?? []].find((r) => host.contains(r.startContainer));
       const range = document.createRange();
       if (hit) { range.setStart(hit.startContainer, hit.startOffset); range.setEnd(hit.endContainer, hit.endOffset); }
+      hit?.startContainer.parentElement.scrollIntoView({ block: 'center' });
       const r = range.getBoundingClientRect();
       return { x: r.x, y: r.y, width: r.width, height: r.height };
     });
