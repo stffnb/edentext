@@ -9,6 +9,8 @@
   import ToolbarExpanded from './lib/components/ToolbarExpanded.svelte';
   import Ribbon from './lib/components/ribbon/Ribbon.svelte';
   import EventDialogs from './lib/components/EventDialogs.svelte';
+  import SaveNotice from './lib/components/SaveNotice.svelte';
+  import { formatLosses } from './lib/export/formatLosses';
   import CommandSearch from './lib/components/ribbon/CommandSearch.svelte';
   import Icon from './lib/components/ribbon/Icon.svelte';
   import { RIBBON_COMMANDS, TABS, actOnCommand, searchableCommands, styleCommands, tabOf, type RibbonCommand, type Tab } from './lib/components/ribbon/commands';
@@ -944,6 +946,7 @@
     documentHasFile = false;
     docPassword = null;
     passwordLost = false;
+    lossNoticed = false;
     // Styles and note settings live in the document, so a new one starts from the built-ins
     setStyleSheet(builtinStyleSheet());
     setNoteSettings(DEFAULT_NOTE_SETTINGS);
@@ -1456,6 +1459,7 @@
       await bindFile();
       documentHasFile = true;
       markSaved();
+      noticeLosses(documentFormat, json);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       // A stored handle may have lost its permission or its file: prompt for a new one,
@@ -1465,6 +1469,19 @@
       console.error('[save] Failed to save file:', err);
       reportLoadFailure(t().dialogs.couldNotSave, err);
     }
+  }
+
+  // What the saved format leaves out is said once per document, after the save; the
+  // document itself keeps everything (formatLosses.ts).
+  let lossNotice = $state<string | null>(null);
+  let lossNoticed = false;
+  function noticeLosses(format: string, json: TiptapNode) {
+    if (lossNoticed) return;
+    const losses = formatLosses(json as never, format, styleSheet());
+    if (!losses.length) return;
+    lossNoticed = true;
+    const text = { textEffects: t().ribbon.textEffects.odtLoss };
+    lossNotice = losses.map((k) => text[k]).join(' ');
   }
 
   // Save As is one entry per format: the format has to be settled before the bytes are
@@ -1486,6 +1503,7 @@
       await bindFile();
       documentHasFile = true;
       markSaved();
+      noticeLosses(kind, json);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[save] Failed to save file:', err);
@@ -1505,6 +1523,7 @@
       const kind = documentFormat === 'docx' ? 'dotx' : 'ott';
       const bytes = kind === 'dotx' ? docxToDotx(await buildBytes('docx', json)) : odtToOtt(await buildBytes('odt', json));
       await saveDocument(bytes, `${stripOdtExtension(suggestedFilename(json))}.${kind}`, kind, null, docPassword);
+      noticeLosses(kind, json);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[save] Failed to save template:', err);
@@ -2254,6 +2273,7 @@
   </div>
   {/if}
   <EventDialogs editor={activeEditor} tick={activeTick} bind:tabIntervalCm />
+  {#if lossNotice}<SaveNotice message={lossNotice} onClose={() => (lossNotice = null)} />{/if}
   <!-- Outside the chrome fork: `handleOpen` clicks it wherever the File System
        Access API is missing, and both chromes reach that path. -->
   <input

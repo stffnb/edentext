@@ -43,3 +43,4 @@ formulas, or notes before changing those areas.
 - `Ruler.svelte` draws quarter-, else half-cm marks and thins its cm numbers to every 2nd/5th only as far as the zoom leaves them room, so nothing on it overlaps.
 - `PageLabelLayer.svelte` puts the sheet number beside each page's bottom right corner, in `.paper-scaler` (`.paper` clips) at an unscaled size, ending where the scroller does so it adds no scrollbar; not in the page grid.
 - `PoweredBy.svelte` is the embed mode's status-bar attribution (`docs/architecture/embed.md`); its fixed English wording is a licence notice, not catalog text.
+- `SaveNotice.svelte` is the non-blocking word after a save naming what the format drops (`export/formatLosses.ts`), once per document; `toolbar/TextEffectsMenu.svelte` is the text effects panel both chromes mount (`docs/architecture/formatting.md`).
