@@ -2063,6 +2063,59 @@ try {
       check(posted.length === 3 && posted.every((p) => p.path === '/v1/audio/transcriptions' && p.wav && p.language === 'en'),
         `phrases go to the OpenAI route as WAV with the language (${JSON.stringify(posted)})`);
       await sp.keyboard.press('Escape');
+
+      // An installation's presets on the page's own origin: edentext.config.json, a
+      // streaming AI proxy and a speech proxy, while the user has entered nothing.
+      const hp = await mic.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
+      hp.on('pageerror', (err) => pageErrors.push(String(err)));
+      const hosted = { ai: [], stt: [] };
+      await hp.route('**/edentext.config.json', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        ai: { endpoint: '/ai/v1', model: 'host-model', locked: true },
+        dictation: { server: '/stt/v1', model: 'host-stt', locked: true },
+      }) }));
+      await hp.route('**/ai/v1/chat/completions', (route) => {
+        const { authorization, 'x-api-key': key } = route.request().headers();
+        hosted.ai.push({ model: JSON.parse(route.request().postData() ?? '{}').model, authorization, key });
+        const sse = ['Hello from ', 'the host.'].map((t) => `data: ${JSON.stringify({ choices: [{ delta: { content: t } }] })}\n\n`).join('') + 'data: [DONE]\n\n';
+        return route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body: sse });
+      });
+      await hp.route('**/stt/v1/audio/transcriptions', (route) => {
+        hosted.stt.push(/name="model"\r\n\r\n([\w-]+)/.exec(route.request().postDataBuffer()?.toString('latin1') ?? '')?.[1]);
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ text: `Hosted ${hosted.stt.length}.` }) });
+      });
+      await hp.addInitScript(() => { delete window.SpeechRecognition; delete window.webkitSpeechRecognition; });
+      await hp.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
+      await hp.waitForSelector('.tiptap', { timeout: 15_000 });
+      await hp.waitForTimeout(500);
+      await hp.click('.qa-btn[aria-label="Settings"]');
+      await hp.locator('dialog[open] .nav-item', { hasText: /^\s*AI$/ }).click();
+      const aiRows = await hp.evaluate(() => {
+        const d = document.querySelector('dialog[open]');
+        const url = d.querySelector('input[type="url"]');
+        return { text: d.textContent, endpoint: url?.value, locked: url?.disabled, key: !!d.querySelector('input[type="password"]') };
+      });
+      check(aiRows.text.includes('Set up by this installation') && aiRows.endpoint === '/ai/v1' && aiRows.locked && !aiRows.key,
+        `Settings ▸ AI shows the installation's locked provider without a key field (${JSON.stringify({ ...aiRows, text: undefined })})`);
+      await hp.locator('dialog[open] .nav-item', { hasText: /^\s*Editing$/ }).click();
+      const sttField = await hp.$eval('dialog[open] input[type="url"]', (e) => ({ value: e.value, locked: e.disabled }));
+      check(sttField.value === '/stt/v1' && sttField.locked, `Settings ▸ Editing shows the installation's locked speech server (${JSON.stringify(sttField)})`);
+      await hp.keyboard.press('Escape');
+
+      await hp.click('[data-cmd="aiPane"]');
+      await hp.fill('.ai-pane textarea', 'Hi');
+      await hp.keyboard.press('Enter');
+      await hp.waitForFunction(() => /Hello from the host\./.test(document.querySelector('.ai-pane .msg.assistant')?.textContent ?? ''), null, { timeout: 15_000 }).catch(() => {});
+      const reply = await hp.evaluate(() => document.querySelector('.ai-pane .msg.assistant')?.textContent?.trim());
+      check(/Hello from the host\./.test(reply ?? '') && hosted.ai.length > 0 && hosted.ai.every((r) => r.model === 'host-model' && !r.authorization && !r.key),
+        `an AI reply streams in from the installation's proxy, sent without a key (${reply}; ${JSON.stringify(hosted.ai)})`);
+
+      await hp.locator('.tiptap-host .tiptap').first().click();
+      await hp.locator('[data-cmd="dictate"]').first().click();
+      await hp.waitForFunction(() => /Hosted 3\./.test(document.querySelector('.tiptap-host .tiptap')?.textContent ?? ''), null, { timeout: 20_000 }).catch(() => {});
+      const dictated = await hp.evaluate(() => document.querySelector('.tiptap-host .tiptap').textContent);
+      check(/Hosted 1\. Hosted 2\. Hosted 3\./.test(dictated) && hosted.stt.every((m) => m === 'host-stt'),
+        `dictation goes to the installation's speech server with its model (${dictated}; ${JSON.stringify(hosted.stt)})`);
+      await hp.keyboard.press('Escape');
     } finally {
       await mic.close();
       speech.close();
