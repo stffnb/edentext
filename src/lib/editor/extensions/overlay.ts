@@ -13,6 +13,20 @@ export function placeAt(view: EditorView, el: HTMLElement, pos: number, side = -
   return true;
 }
 
+/** Gives `el` the font and colour (`--offer-color`) of the run before `pos`, flipped for RTL. */
+export function matchRunFont(view: EditorView, el: HTMLElement, pos: number): void {
+  const { node, offset } = view.domAtPos(pos, -1);
+  const last = node.nodeType === 1 ? node.childNodes[offset - 1] ?? node : node;
+  const run = last.nodeType === 1 ? last as Element : last.parentElement;
+  if (!run) return;
+  const cs = getComputedStyle(run);
+  for (const p of ['font-family', 'font-size', 'font-weight', 'font-style', 'font-stretch', 'font-variant', 'letter-spacing', 'word-spacing']) {
+    el.style.setProperty(p, cs.getPropertyValue(p));
+  }
+  el.style.setProperty('--offer-color', cs.color);
+  el.style.translate = cs.direction === 'rtl' ? '-100%' : '';
+}
+
 /** Places `el` over a client rect (its width only when given); false when it cannot. */
 export function placeOver(view: EditorView, el: HTMLElement, at: { left: number; top: number; bottom: number; right?: number }): boolean {
   const host = view.dom.parentElement;

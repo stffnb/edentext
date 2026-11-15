@@ -5,7 +5,7 @@ import { isWordChar, suggestCompletion, wordBefore } from '../../utils/wordCompl
 import { rememberWord, wordCompletion } from '../../storage/wordCompletion.svelte';
 import { volatile } from '../../storage/docScope';
 import { typedText } from './trackChanges';
-import { placeAt } from './overlay';
+import { matchRunFont, placeAt } from './overlay';
 
 // LibreOffice's Word Completion: the words this document has used are offered back
 // while typing, Enter takes the offer. It is drawn as grey text after the caret
@@ -46,17 +46,7 @@ function offered(view: EditorView): Suggestion {
 // continues: anything inside the line would move its breaks. Placed again on every view
 // update, so it follows a line pagination shifts.
 function drawOffer(view: EditorView, offer: HTMLElement, s: { pos: number; text: string }): void {
-  const { node, offset } = view.domAtPos(s.pos, -1);
-  const last = node.nodeType === 1 ? node.childNodes[offset - 1] ?? node : node;
-  const run = last.nodeType === 1 ? last as Element : last.parentElement;
-  if (run) {
-    const cs = getComputedStyle(run);
-    for (const p of ['font-family', 'font-size', 'font-weight', 'font-style', 'font-stretch', 'font-variant', 'letter-spacing', 'word-spacing']) {
-      offer.style.setProperty(p, cs.getPropertyValue(p));
-    }
-    offer.style.setProperty('--offer-color', cs.color);
-    offer.style.translate = cs.direction === 'rtl' ? '-100%' : '';
-  }
+  matchRunFont(view, offer, s.pos);
   if (offer.textContent !== s.text) offer.textContent = s.text;
 }
 

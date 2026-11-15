@@ -277,6 +277,18 @@
   user-select: none;
 }
 
+/* The words still being heard (dictation.ts): at the selection, over whatever follows,
+   in the run's font — not in the document until the phrase settles. */
+.paper .dictation-interim {
+  white-space: pre;
+  color: color-mix(in srgb, var(--offer-color, currentColor) 55%, transparent);
+  background: var(--color-page-bg);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--offer-color, currentColor) 40%, transparent);
+  pointer-events: none;
+  user-select: none;
+  z-index: 2;
+}
+
 /* Generated table of contents (tableOfContents.ts). A non-editable block listing
    headings with dot leaders to their live page number; entries are clickable. */
 .paper .tiptap .toc {

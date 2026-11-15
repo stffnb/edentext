@@ -83,6 +83,7 @@ import { Shortcuts } from './extensions/shortcuts';
 import { PageNumber, PageCount, ChapterField } from './extensions/pageField';
 import { AutoCorrect } from './extensions/autoCorrect';
 import { WordCompletion } from './extensions/wordCompletion';
+import { Dictation } from './extensions/dictation';
 import { AutoText } from './extensions/autoText';
 import { HEADING_LEVELS, MAX_HEADING_LEVEL } from '../styles/headings';
 import { setOutline, styleSheet } from '../styles/sheet.svelte';
@@ -340,6 +341,8 @@ export const extensions = [
   WordCompletion,
   // Named blocks of text kept beside the documents; F3 expands a typed shortcut.
   AutoText,
+  // Spoken words at the caret, from the dictation session (docs/architecture/dictation.md).
+  Dictation,
   SearchReplace.configure({ sheet: styleSheet }),
   // Word/LibreOffice key bindings that aren't TipTap defaults.
   Shortcuts,
