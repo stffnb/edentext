@@ -58,6 +58,7 @@ export type Relief = 'embossed' | 'engraved';
 // The parametrised effects (DOCX w14): a coloured outline around the filled letter, a
 // shadow with offset, blur and opacity, and a glow. alpha is opacity, 0–1.
 export type TextOutline = { color: string; widthPt: number };
+export const OUTLINE_WIDTH_PT = { min: 0.1, max: 20 };
 export type TextShadow = { color: string; alpha: number; dxPt: number; dyPt: number; blurPt: number };
 export type TextGlow = { color: string; alpha: number; radiusPt: number };
 // A w14 element the editor does not draw (reflection, 3D, a gradient fill, a shadow it
@@ -89,7 +90,7 @@ const obj = (v: unknown): Record<string, unknown> | null => {
 
 export function normalizeTextOutline(v: unknown): TextOutline | null {
   const o = obj(v); if (!o) return null;
-  const color = hex6(o.color), widthPt = num(o.widthPt, 0.1, 20);
+  const color = hex6(o.color), widthPt = num(o.widthPt, OUTLINE_WIDTH_PT.min, OUTLINE_WIDTH_PT.max);
   return color && widthPt != null ? { color, widthPt } : null;
 }
 export function normalizeTextShadow(v: unknown): TextShadow | null {

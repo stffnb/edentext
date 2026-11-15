@@ -1,11 +1,12 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import {
-    effectCss, presetAttrs, TEXT_EFFECT_PRESETS,
+    effectCss, OUTLINE_WIDTH_PT, presetAttrs, TEXT_EFFECT_PRESETS,
     type TextEffectAttrs, type TextGlow, type TextOutline, type TextShadow,
   } from '../../editor/extensions/textEffects';
   import { t } from '../../i18n/i18n.svelte';
   import CustomColorPanel from '../CustomColorPanel.svelte';
+  import BorderWidthBox from '../BorderWidthBox.svelte';
 
   // The text effects panel of both chromes: a gallery of combinations, then one page each
   // for outline, shadow, glow and relief, opened in place (→ or a click) and left with ←.
@@ -126,11 +127,10 @@
       <div class="fx-label">{L.color}</div>
       {@render swatches((c) => outline({ color: c, widthPt: fx.textOutline?.widthPt ?? 0.75 }), fx.textOutline?.color)}
       <div class="fx-label">{L.weight}</div>
-      {#each WEIGHTS as w}
-        <button class="fx-row" class:selected={fx.textOutline?.widthPt === w} onclick={() => outline({ color: fx.textOutline?.color ?? '#000000', widthPt: w })}>
-          <span class="fx-line" style:border-top-width="{w}pt"></span>{w.toLocaleString()} pt
-        </button>
-      {/each}
+      <div class="fx-weight">
+        <BorderWidthBox value={String(fx.textOutline?.widthPt ?? 0.75)} presets={WEIGHTS} none={false} min={OUTLINE_WIDTH_PT.min} max={OUTLINE_WIDTH_PT.max}
+          onChange={(w) => outline({ color: fx.textOutline?.color ?? '#000000', widthPt: Number(w) })} />
+      </div>
       <button class="fx-row" class:selected={fx.outline === true} onclick={() => plain('outline', true)}>
         <span class="fx-mini" style={effectCss({ outline: true })}>A</span>{L.hollow}<span class="menu-sub">{L.alsoOdt}</span>
       </button>
@@ -252,11 +252,7 @@
   }
   .fx-custom { padding: 4px 8px 8px; }
 
-  .fx-line {
-    display: inline-block;
-    width: 48px;
-    border-top: solid currentColor;
-  }
+  .fx-weight { display: flex; height: 26px; padding: 0 8px; }
 
   .fx-back { font-weight: 600; }
 </style>

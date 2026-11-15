@@ -5,11 +5,11 @@
   // A line width in pt as the font size box offers one: the presets in a list, or a
   // typed value. With `none`, 'none' (an empty field or 0) draws no line; without it a
   // width is always kept. `style` sizes the box for its toolbar.
-  let { value, onChange, presets = [0.5, 0.75, 1, 1.5, 2.25], none = true, style = '' }: {
-    value: string; onChange: (width: string) => void; presets?: number[]; none?: boolean; style?: string;
+  // A typed width is clamped to min..max, by default the hairline to the 9pt LibreOffice's
+  // border dialog allows, in 0.05pt steps.
+  let { value, onChange, presets = [0.5, 0.75, 1, 1.5, 2.25], none = true, style = '', min = 0.05, max = 9 }: {
+    value: string; onChange: (width: string) => void; presets?: number[]; none?: boolean; style?: string; min?: number; max?: number;
   } = $props();
-  // Within the hairline and the 9pt LibreOffice's border dialog allows, in 0.05pt steps.
-  const MAX_PT = 9;
 
   let open = $state(false);
   let focused = $state(false);
@@ -33,7 +33,7 @@
     const pt = s === '' ? 0 : parseFloat(s);
     if (!Number.isFinite(pt)) return shown;
     if (pt <= 0) return none ? 'none' : shown;
-    return String(Math.round(Math.min(MAX_PT, Math.max(0.05, pt)) * 20) / 20);
+    return String(Math.round(Math.min(max, Math.max(min, pt)) * 20) / 20);
   }
 
   function commit(w: string) {

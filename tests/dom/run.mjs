@@ -1442,12 +1442,25 @@ try {
     }, png);
   }, () => null);
   await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.selectAll());
+  // A custom colour from the panel's own page, and a typed weight clamped to the model's limit.
+  await page.click('[data-cmd="textEffects"]');
+  await page.click('[data-cmd="textEffects-outline"]');
+  await page.click('.ribbon-menu .fx-more');
+  await page.fill('.ribbon-menu .custom-color-hex', '#12ab34');
+  await page.press('.ribbon-menu .custom-color-hex', 'Enter');
+  const mixed = (await fxOf()).textOutline;
+  await page.click('[data-cmd="textEffects"]');
+  await page.click('[data-cmd="textEffects-outline"]');
+  await page.fill('.ribbon-menu .fx-weight input', '25');
+  await page.press('.ribbon-menu .fx-weight input', 'Enter');
+  const weighed = (await fxOf()).textOutline;
   await page.click('[data-cmd="textEffects"]');
   await page.click('[data-cmd="textEffects-clear"]');
   const cleared = await fxOf();
   check(!!tiled.textShadow && tiled.color === '#000000' && rimmed.textOutline?.color === '#4472C4' && !!rimmed.textShadow
+    && mixed?.color === '#12AB34' && weighed?.widthPt === 20 && weighed?.color === '#12AB34'
     && !cleared.textOutline && !cleared.textShadow && !cleared.textGlow && !!rimInk && rimInk.blue > 5 && rimInk.dark > 5,
-    `the text effects menu sets a tile and an outline colour and clears them, and a misspelled word keeps its outline (${JSON.stringify({ tiled, rimmed, cleared, rimInk })})`);
+    `the text effects menu sets a tile, an outline colour, a custom colour and a typed weight, and clears them, and a misspelled word keeps its outline (${JSON.stringify({ tiled, rimmed, mixed, weighed, cleared, rimInk })})`);
 
   const priorDoc = await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.getJSON());
   // Pagination settles on any document: each layout-dependent feature (an index's and a
