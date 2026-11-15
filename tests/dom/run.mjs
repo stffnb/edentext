@@ -1957,7 +1957,8 @@ try {
   check(await page.locator('[data-cmd="trackChanges"]').first().isEnabled() && await paneRows() < lockedRows, 'the right password lifts it, and the rejection goes through');
 
 } catch (err) {
-  check(false, `dom run threw: ${err.message ?? err}`);
+  const at = (err.stack ?? '').split('\n').filter((l) => l.includes('dom/run.mjs')).map((l) => l.trim().replace(/^at /, '')).join(' ← ');
+  check(false, `dom run threw: ${err.message ?? err}${at ? ` (at ${at})` : ''}`);
 } finally {
   check(pageErrors.length === 0, pageErrors.length ? `no uncaught page errors — got: ${pageErrors.join(' | ')}` : 'no uncaught page errors');
   await browser.close();
