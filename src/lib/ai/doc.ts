@@ -161,6 +161,9 @@ function runLabels(child: PMNode, base: ResolvedStyle): string[] {
       if (m.attrs.outline != null) out.push(m.attrs.outline ? 'outline' : 'no outline');
       if (m.attrs.shadow != null) out.push(m.attrs.shadow ? 'shadow' : 'no shadow');
       if (m.attrs.relief) out.push(m.attrs.relief === 'none' ? 'no relief' : m.attrs.relief);
+      if (m.attrs.textOutline) out.push(`outline ${m.attrs.textOutline.color} ${m.attrs.textOutline.widthPt}pt`);
+      if (m.attrs.textShadow) out.push(`shadow ${m.attrs.textShadow.color}`);
+      if (m.attrs.textGlow) out.push(`glow ${m.attrs.textGlow.color} ${m.attrs.textGlow.radiusPt}pt`);
     }
   }
   return out;

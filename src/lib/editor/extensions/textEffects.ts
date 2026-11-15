@@ -247,14 +247,6 @@ export function effectUpdate(cur: TextEffectAttrs, change: TextEffectAttrs): Tex
   return next;
 }
 
-/** The menu's entries (both chromes); `key` names the label in `ribbon.textEffects`. */
-export const TEXT_EFFECT_ITEMS = [
-  { key: 'outline', name: 'outline', value: true },
-  { key: 'shadow', name: 'shadow', value: true },
-  { key: 'embossed', name: 'relief', value: 'embossed' },
-  { key: 'engraved', name: 'relief', value: 'engraved' },
-] as const;
-
 /** Whether a run draws any effect: the menu button's active state in both chromes. */
 export const hasTextEffect = (a: TextEffectAttrs) => !!(a.outline || a.shadow || a.relief === 'embossed' || a.relief === 'engraved'
   || a.textOutline || a.textShadow || a.textGlow);

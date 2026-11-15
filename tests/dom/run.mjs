@@ -1395,6 +1395,56 @@ try {
   check(!!lined && (restyles ? lined.inLine === 0 && lined.covers >= 2 && lined.ranges >= 1 : lined.inLine === 2 && lined.covers === 0),
     `a squiggle on struck or underlined text keeps the text's own line (${JSON.stringify(lined)})`);
 
+  // Text effects from the ribbon's menu: a gallery tile, then an outline colour, then all
+  // cleared; a misspelled word keeps its outline under the squiggle.
+  await page.evaluate(() => {
+    const ed = document.querySelector('.tiptap-host .tiptap').editor;
+    ed.commands.setContent('<p lang="en-US">Some mispeled words.</p>');
+    ed.commands.selectAll();
+  });
+  const fxOf = () => page.evaluate(() => {
+    const a = document.querySelector('.tiptap-host .tiptap').editor.getAttributes('textStyle');
+    return { color: a.color ?? null, textOutline: a.textOutline ?? null, textShadow: a.textShadow ?? null, textGlow: a.textGlow ?? null };
+  });
+  await page.locator('.ribbon-tab', { hasText: 'Home' }).first().click();
+  await page.click('[data-cmd="textEffects"]');
+  await page.locator('.ribbon-menu .fx-tile').first().click();
+  const tiled = await fxOf();
+  await page.click('[data-cmd="textEffects"]');
+  await page.click('[data-cmd="textEffects-outline"]');
+  await page.locator('.ribbon-menu .fx-swatch[title="#4472C4"]').click();
+  const rimmed = await fxOf();
+  await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.setTextSelection(1));
+  const rimInk = await page.waitForFunction(() => [...CSS.highlights.get('spell-error') ?? []].length > 0
+    || document.querySelector('.pm-highlight-cover[data-highlight="spell-error"]'), null, { timeout: 30_000 }).then(async () => {
+    const box = await page.evaluate(() => {
+      const range = [...CSS.highlights.get('spell-error') ?? []][0];
+      const r = (range ?? document.createRange()).getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    });
+    if (!box.width) return null;
+    const png = (await page.screenshot({ clip: box })).toString('base64');
+    return page.evaluate(async (png) => {
+      const img = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+      const ctx = Object.assign(document.createElement('canvas'), { width: img.width, height: img.height }).getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const d = ctx.getImageData(0, 0, img.width, img.height).data;
+      let blue = 0, dark = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 2] > 150 && d[i] < 120 && d[i + 1] < 160) blue++;
+        if (d[i] < 60 && d[i + 1] < 60 && d[i + 2] < 60) dark++;
+      }
+      return { blue, dark };
+    }, png);
+  }, () => null);
+  await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.selectAll());
+  await page.click('[data-cmd="textEffects"]');
+  await page.click('[data-cmd="textEffects-clear"]');
+  const cleared = await fxOf();
+  check(!!tiled.textShadow && tiled.color === '#000000' && rimmed.textOutline?.color === '#4472C4' && !!rimmed.textShadow
+    && !cleared.textOutline && !cleared.textShadow && !cleared.textGlow && !!rimInk && rimInk.blue > 5 && rimInk.dark > 5,
+    `the text effects menu sets a tile and an outline colour and clears them, and a misspelled word keeps its outline (${JSON.stringify({ tiled, rimmed, cleared, rimInk })})`);
+
   const priorDoc = await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.getJSON());
   // Pagination settles on any document: each layout-dependent feature (an index's and a
   // reference's page numbers, notes, frames beside a table, kept and cantSplit blocks,
@@ -1693,8 +1743,9 @@ try {
       return true;
     };
     const out = [];
-    // The column previews' page frame is a hairline on purpose, in every theme.
-    for (const el of document.querySelectorAll('body *:not(.paper *, .col-preview > rect:first-child)')) {
+    // The column previews' page frame is a hairline on purpose, in every theme, and a text
+    // effect's sample letter is in the colours the effect gives the document's text.
+    for (const el of document.querySelectorAll('body *:not(.paper *, .col-preview > rect:first-child, .fx-sample)')) {
       if (!shown(el)) continue;
       let fg;
       if (el instanceof SVGGeometryElement) {

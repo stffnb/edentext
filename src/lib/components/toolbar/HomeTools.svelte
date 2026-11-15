@@ -9,7 +9,8 @@
   import { changeIndent } from '../formatCommands';
   import { clipboardCommand, readClipboard } from '../../editor/contextMenuItems';
   import { stepFontSize } from '../../editor/extensions/shortcuts';
-  import { effectCss, emphasisCss, TEXT_EFFECT_ITEMS, type CapsMode, type Emphasis } from '../../editor/extensions/textEffects';
+  import { effectCss, emphasisCss, hasTextEffect, type CapsMode, type Emphasis } from '../../editor/extensions/textEffects';
+  import TextEffectsMenu from './TextEffectsMenu.svelte';
   import { hasAsianLanguage, uniformBlockAttr } from '../../utils/selectionFormat';
   import { t } from '../../i18n/i18n.svelte';
   import { withShortcut } from '../../i18n/shortcut';
@@ -30,7 +31,7 @@
   let isSub = $derived(tick >= 0 && !!editor?.isActive('subscript'));
   let asianSelection = $derived(tick >= 0 && !!editor && hasAsianLanguage(editor.state));
   let emphasis = $derived(tick >= 0 ? editor?.getAttributes('textStyle').emphasis ?? null : null);
-  let effects = $derived(tick >= 0 ? editor?.getAttributes('textStyle') ?? {} : {});
+  let hasEffect = $derived(tick >= 0 && !!editor && hasTextEffect(editor.getAttributes('textStyle')));
   let paraShade = $derived(tick >= 0 && editor ? (uniformBlockAttr<string | null>(editor.state, 'backgroundColor', null) || null) : null);
   let lineHeight = $derived(tick >= 0 && editor ? uniformBlockAttr(editor.state, 'lineHeight', '1') : '1');
   let spaceBefore = $derived(tick >= 0 && editor ? uniformBlockAttr<number | null>(editor.state, 'spaceBefore', null) : null);
@@ -106,14 +107,8 @@
     {/each}
   </IslandMenu>
   <IslandMenu id="textEffects" content={effectsIcon} cmd="textEffects" title={t().ribbon.textEffects.title}
-    active={TEXT_EFFECT_ITEMS.some((e) => effects[e.name] === e.value)}>
-    <button onclick={() => { closeMenu(); editor?.chain().focus().unsetTextEffects().run(); }}>{t().ribbon.textEffects.none}</button>
-    {#each TEXT_EFFECT_ITEMS as e}
-      {@const on = effects[e.name] === e.value}
-      <button class:selected={on} onclick={() => { closeMenu(); editor?.chain().focus().setTextEffect(e.name, on ? null : e.value).run(); }}>
-        <span style={effectCss({ [e.name]: e.value })}>{t().ribbon.textEffects[e.key]}</span>
-      </button>
-    {/each}
+    active={hasEffect}>
+    <TextEffectsMenu {editor} {tick} onDone={closeMenu} />
   </IslandMenu>
   <!-- East Asian typography only (document, UI or selected text language); a mark already in the text keeps the button to clear it. -->
   {#if asianDocument || asianSelection || emphasis}

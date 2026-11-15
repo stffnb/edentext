@@ -47,6 +47,7 @@ export const RIBBON_COMMANDS: RibbonCommand[] = [
   c('home', 'fontSize', (m) => m.toolbarExpanded.fontSize),
   c('home', 'changeCase', (m) => m.ribbon.case.title),
   c('home', 'textEffects', (m) => m.ribbon.textEffects.title),
+  ...(['outline', 'shadow', 'glow', 'relief', 'clear'] as const).map((k) => c('home', `textEffects-${k}`, (m) => m.ribbon.textEffects[k], 'textEffects')),
   ...CASES.map((k) => c('home', `case-${CASE_MODE[k]}`, (m) => m.ribbon.case[k], 'changeCase')),
   c('home', 'bold', (m) => m.toolbar.bold),
   c('home', 'italic', (m) => m.toolbar.italic),
