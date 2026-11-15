@@ -6,6 +6,7 @@ import { buildOdt } from '../src/lib/export/odt';
 import { importOdt } from '../src/lib/import/odt';
 import { builtinStyleSheet } from '../src/lib/styles/styleSheet';
 import { HEADER_SHADE } from '../src/lib/editor/extensions/tableHeaderRow';
+import { effectUpdate } from '../src/lib/editor/extensions/textEffects';
 
 type N = { type: string; attrs?: any; content?: N[]; marks?: any[]; text?: string };
 
@@ -54,6 +55,9 @@ describe('DOCX export → import round trip', () => {
         text('both ', [{ type: 'textStyle', attrs: { outline: true, shadow: true } }]),
         text('embossed ', [{ type: 'textStyle', attrs: { relief: 'embossed' } }]),
         text('engraved ', [{ type: 'textStyle', attrs: { relief: 'engraved' } }]),
+        text('rimmed ', [{ type: 'textStyle', attrs: { textOutline: { color: '#C00000', widthPt: 1.5 } } }]),
+        text('cast ', [{ type: 'textStyle', attrs: { textShadow: { color: '#000000', alpha: 0.4, dxPt: 2.12, dyPt: 2.12, blurPt: 4 } } }]),
+        text('glowing ', [{ type: 'textStyle', attrs: { color: '#FFFFFF', textGlow: { color: '#4472C4', alpha: 0.6, radiusPt: 5 }, textOutline: { color: '#2F5597', widthPt: 0.5 } } }]),
         text('raised', [{ type: 'textStyle', attrs: { fontSize: '14pt', textPosition: 3 } }]),
       ]),
       { type: 'paragraph', attrs: { fontSize: '22pt', textAlign: 'center' } }, // empty sized line
@@ -347,6 +351,41 @@ describe('DOCX export → import round trip', () => {
     expect(attrs('both ', 'textStyle')).toMatchObject({ outline: true, shadow: true });
     expect(attrs('embossed ', 'textStyle').relief).toBe('embossed');
     expect(attrs('engraved ', 'textStyle').relief).toBe('engraved');
+    expect(attrs('rimmed ', 'textStyle').textOutline).toEqual({ color: '#C00000', widthPt: 1.5 });
+    expect(attrs('cast ', 'textStyle').textShadow).toEqual({ color: '#000000', alpha: 0.4, dxPt: 2.12, dyPt: 2.12, blurPt: 4 });
+    expect(attrs('glowing ', 'textStyle')).toMatchObject({ textGlow: { color: '#4472C4', alpha: 0.6, radiusPt: 5 }, textOutline: { color: '#2F5597', widthPt: 0.5 } });
+    // Drawn exactly, so nothing is kept aside; w14 is declared ignorable and closes w:rPr.
+    expect(runs.some((r: N) => markAttrs(r, 'textStyle')?.textFxRaw)).toBe(false);
+    expect(documentXml).toMatch(/mc:Ignorable="[^"]*\bw14\b/);
+    expect(documentXml).toMatch(/<w14:glow [^]*?<\/w14:glow><w14:textOutline [^]*?<\/w14:textOutline><\/w:rPr>/);
+  });
+
+  // Word's own markup, as [MS-DOCX] defines it, put into one run each.
+  const W14_RUNS: [string, string, (a: any) => void][] = [
+    ['a theme colour becomes a fixed one',
+      '<w14:glow w14:rad="63500"><w14:schemeClr w14:val="accent1"><w14:lumMod w14:val="50000"/><w14:alpha w14:val="60000"/></w14:schemeClr></w14:glow>',
+      (a) => { expect(a.textGlow).toEqual({ color: '#223962', alpha: 0.4, radiusPt: 5 }); expect(a.textFxRaw ?? null).toBe(null); }],
+    ['reflection and 3D are kept as they came',
+      '<w14:reflection w14:blurRad="6350" w14:stA="55000" w14:stPos="0" w14:endA="300" w14:endPos="45500" w14:dist="0" w14:dir="5400000" w14:fadeDir="5400000" w14:sx="100000" w14:sy="-100000" w14:kx="0" w14:ky="0" w14:algn="bl"/><w14:props3d w14:extrusionH="57150" w14:contourW="0" w14:prstMaterial="warmMatte"/>',
+      (a) => expect(a.textFxRaw.map((e: any) => e.n)).toEqual(['reflection', 'props3d'])],
+    ['a skewed shadow is drawn plain and kept as it came',
+      '<w14:shadow w14:blurRad="50800" w14:dist="38100" w14:dir="5400000" w14:sx="100000" w14:sy="30000" w14:kx="-800400" w14:ky="0" w14:algn="bl"><w14:srgbClr w14:val="000000"/></w14:shadow>',
+      (a) => { expect(a.textShadow).toMatchObject({ dxPt: 0, dyPt: 3, blurPt: 4 }); expect(a.textFxRaw[0]).toMatchObject({ n: 'shadow', a: { sy: '30000' } }); }],
+  ];
+  it.each(W14_RUNS)("reads Word's text effects: %s", async (_label, w14, check) => {
+    const files = unzipSync(await buildDocx({ type: 'doc', content: [para('a')] }));
+    files['word/theme/theme1.xml'] ??= strToU8('<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:themeElements><a:clrScheme name="x"><a:accent1><a:srgbClr val="4472C4"/></a:accent1></a:clrScheme></a:themeElements></a:theme>');
+    let xml = strFromU8(files['word/document.xml']).replace(/<w:r>/, `<w:r><w:rPr>${w14}</w:rPr>`);
+    if (!xml.includes('xmlns:w14=')) xml = xml.replace('<w:document ', '<w:document xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" ');
+    files['word/document.xml'] = strToU8(xml);
+    const imported = importDocx(zipSync(files)).content as N;
+    const a = markAttrs(walk(imported, 'text')[0], 'textStyle');
+    check(a);
+    // Whatever was kept goes back unchanged; an effect changed in the editor drops its rest.
+    const again = strFromU8(unzipSync(await buildDocx(imported as never))['word/document.xml']);
+    for (const e of a.textFxRaw ?? []) expect(again).toContain(`<w14:${e.n} `);
+    const changed = effectUpdate(a, { textShadow: null, textGlow: null });
+    expect((changed.textFxRaw ?? []).some((e: any) => e.n === 'shadow' || e.n === 'glow')).toBe(false);
   });
 
   it("reads Word's emphasis marks as LibreOffice does", async () => {
@@ -1181,7 +1220,7 @@ describe('DOCX named paragraph styles', () => {
   const sheet = builtinStyleSheet();
   sheet.paragraph['Merksatz'] = {
     name: 'Merksatz', parent: 'Quotations', next: 'Standard',
-    para: { spaceBefore: 8 }, text: { bold: true, color: '#0000AA', shadow: true },
+    para: { spaceBefore: 8 }, text: { bold: true, color: '#0000AA', shadow: true, textGlow: { color: '#FFC000', alpha: 0.6, radiusPt: 8 } },
   };
 
   const fixture = {
@@ -1193,6 +1232,8 @@ describe('DOCX named paragraph styles', () => {
       { type: 'paragraph', content: [text('normal')] },
       // A run switching off an effect its style draws.
       { type: 'paragraph', attrs: { styleName: 'Merksatz' }, content: [text('flach', [{ type: 'textStyle', attrs: { shadow: false } }])] },
+      // A run with a glow of its own over its style's.
+      { type: 'paragraph', attrs: { styleName: 'Merksatz' }, content: [text('grün', [{ type: 'textStyle', attrs: { textGlow: { color: '#70AD47', alpha: 1, radiusPt: 5 } } }])] },
     ],
   } as any;
 
@@ -1222,6 +1263,8 @@ describe('DOCX named paragraph styles', () => {
     expect(style.para.spaceBefore).toBe(8);
     expect(style.text.shadow).toBe(true);
     expect(blocks[4].content![0].marks).toEqual([{ type: 'textStyle', attrs: expect.objectContaining({ shadow: false }) }]);
+    expect(style.text.textGlow).toEqual({ color: '#FFC000', alpha: 0.6, radiusPt: 8 });
+    expect(blocks[5].content![0].marks).toEqual([{ type: 'textStyle', attrs: expect.objectContaining({ textGlow: { color: '#70AD47', alpha: 1, radiusPt: 5 } }) }]);
   });
 });
 

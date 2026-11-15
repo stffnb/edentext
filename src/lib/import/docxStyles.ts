@@ -1,5 +1,6 @@
 import type { TabAlign, TabStop } from '../editor/extensions/tabStops';
-import { emphasisFromWord, type CapsMode, type Emphasis, type Relief } from '../editor/extensions/textEffects';
+import { emphasisFromWord, RAW_OF, type CapsMode, type Emphasis, type Relief, type TextGlow, type TextOutline, type TextShadow, type W14El } from '../editor/extensions/textEffects';
+import { readW14Effects, W14 } from '../utils/w14Effects';
 import { lengthToPt } from './styleResolver';
 import { boundedInt } from './importLimits';
 
@@ -49,6 +50,10 @@ export type RunProps = {
   outline?: boolean;       // w:outline
   shadow?: boolean;        // w:shadow
   relief?: Relief | 'none'; // w:emboss / w:imprint; 'none' = a run switching the style's off
+  textOutline?: TextOutline; // w14:textOutline
+  textShadow?: TextShadow;   // w14:shadow
+  textGlow?: TextGlow;       // w14:glow
+  textFxRaw?: W14El[];       // the w14 elements the editor does not draw, one per name
   lang?: string;           // w:lang w:val, the run's western language tag
   langEastAsia?: string;   // w:lang w:eastAsia, its asian one
 };
@@ -121,10 +126,12 @@ const HIGHLIGHT_HEX: Record<string, string> = {
   red: 'FF0000', white: 'FFFFFF', yellow: 'FFFF00', none: 'auto',
 };
 
-// w:rPr element → RunProps (later layers override earlier; absent keys inherit).
-export function parseRunProps(rPr: Element | null | undefined): RunProps {
+// w:rPr element → RunProps (later layers override earlier; absent keys inherit). `colorOf`
+// resolves a w14 effect's colour; without it only effects in plain sRGB are drawn.
+export function parseRunProps(rPr: Element | null | undefined, colorOf?: (holder: Element) => string | undefined): RunProps {
   const p: RunProps = {};
   if (!rPr) return p;
+  Object.assign(p, readW14Effects(rPr, colorOf ?? srgbOnly));
   for (const child of Array.from(rPr.children)) {
     if (child.namespaceURI !== W) continue;
     switch (child.localName) {
@@ -190,7 +197,21 @@ export function mergeRunProps(base: RunProps, over: RunProps): RunProps {
     if (!('font' in over)) delete out.font;
     if (!('fontTheme' in over)) delete out.fontTheme;
   }
+  // w14 elements override one by one; a drawn effect replaces the kept tree of its kind.
+  if (base.textFxRaw && (over.textFxRaw || over.textOutline || over.textShadow || over.textGlow)) {
+    const replaced = new Set([...(over.textFxRaw ?? []).map((e) => e.n),
+      ...(['textOutline', 'textShadow', 'textGlow'] as const).filter((k) => over[k]).map((k) => RAW_OF[k])]);
+    const raw = [...base.textFxRaw.filter((e) => !replaced.has(e.n)), ...(over.textFxRaw ?? [])];
+    if (raw.length) out.textFxRaw = raw; else delete out.textFxRaw;
+  }
   return out;
+}
+
+// A w14 colour without the theme: only a plain sRGB value.
+function srgbOnly(holder: Element): string | undefined {
+  const c = Array.from(holder.children).find((k) => k.namespaceURI === W14 && k.localName === 'srgbClr');
+  const v = c?.getAttributeNS(W14, 'val');
+  return v && /^[0-9a-f]{6}$/i.test(v) ? `#${v.toUpperCase()}` : undefined;
 }
 
 export class DocxStyles {
@@ -236,7 +257,11 @@ export class DocxStyles {
   private minorFont?: string; // theme1.xml body font (e.g. Calibri)
   private majorFont?: string; // theme1.xml heading font (e.g. Calibri Light)
 
-  constructor(stylesDoc: Document | null, numberingDoc: Document | null, themeDoc: Document | null = null) {
+  // Resolves a w14 effect's colour against the theme (parseRunProps).
+  readonly colorOf?: (holder: Element) => string | undefined;
+
+  constructor(stylesDoc: Document | null, numberingDoc: Document | null, themeDoc: Document | null = null, colorOf?: (holder: Element) => string | undefined) {
+    this.colorOf = colorOf;
     if (stylesDoc) this.parseStyles(stylesDoc);
     if (numberingDoc) this.parseNumbering(numberingDoc);
     if (themeDoc) this.parseTheme(themeDoc);
@@ -260,7 +285,7 @@ export class DocxStyles {
     const defs = doc.getElementsByTagNameNS(W, 'docDefaults')[0];
     if (defs) {
       const rPr = defs.getElementsByTagNameNS(W, 'rPrDefault')[0]?.getElementsByTagNameNS(W, 'rPr')[0];
-      this.defaultsRun = { sizeHalfPt: 20, ...parseRunProps(rPr) };
+      this.defaultsRun = { sizeHalfPt: 20, ...parseRunProps(rPr, this.colorOf) };
       const pPr = defs.getElementsByTagNameNS(W, 'pPrDefault')[0]?.getElementsByTagNameNS(W, 'pPr')[0];
       const ddJc = pPr ? firstChild(pPr, 'jc') : null;
       if (ddJc) this.defaultsAlign = wVal(ddJc);
@@ -274,7 +299,7 @@ export class DocxStyles {
       if (!id) continue;
       this.basedOn.set(id, firstChild(style, 'basedOn') ? wVal(firstChild(style, 'basedOn')!) : null);
       this.next.set(id, firstChild(style, 'next') ? wVal(firstChild(style, 'next')!) : null);
-      this.ownRun.set(id, parseRunProps(firstChild(style, 'rPr')));
+      this.ownRun.set(id, parseRunProps(firstChild(style, 'rPr'), this.colorOf));
       if (style.getAttributeNS(W, 'type') === 'paragraph' && (style.getAttributeNS(W, 'default') === '1' || style.getAttributeNS(W, 'default') === 'true')) {
         this.defaultParaStyle = id;
       }

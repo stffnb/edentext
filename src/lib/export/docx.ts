@@ -44,6 +44,7 @@ import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCell
 import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
 import { parseTabStops, type TabAlign } from '../editor/extensions/tabStops';
 import { emphasisToWord, isEmphasis, type TextEffectAttrs } from '../editor/extensions/textEffects';
+import { w14EffectsXml } from '../utils/w14Effects';
 import { firstLineCm, leftCm, rightCm } from '../editor/extensions/indent';
 import { charStyleProps, listMarkerFormat } from '../editor/extensions/listMarker';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, orderedTypeDef, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
@@ -1312,6 +1313,7 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLangs: unknown[] 
   if (typeof pos === 'number' && pos) parts.push(`<w:position w:val="${Math.round(pos * 2)}"/>`);
   if (isEmphasis(ts?.attrs?.emphasis)) parts.push(`<w:em w:val="${emphasisToWord(ts.attrs.emphasis)}"/>`);
   for (const [el, on] of Object.entries(wordEffectToggles(ts?.attrs ?? {}))) parts.push(on ? `<w:${el}/>` : `<w:${el} w:val="0"/>`);
+  const w14 = w14EffectsXml(ts?.attrs ?? {});
   const col = ts?.attrs?.color;
   if (col) {
     const h = hexColor(String(col));
@@ -1339,6 +1341,7 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLangs: unknown[] 
   // Last in CT_RPr's order, and the only place Word reads a run's language from.
   const lang = langXml(...blockLangs, ts?.attrs?.lang, ts?.attrs?.langAsian);
   if (lang) parts.push(lang);
+  if (w14) parts.push(w14);
   const change = marks.find((m) => m.type === 'formatChange')?.attrs;
   if (change) parts.push(`<w:rPrChange ${txbxRevAttrs(change)}>${txbxRunPropsXml((change.old ?? []) as TiptapNode['marks'], blockLangs, block) || '<w:rPr/>'}</w:rPrChange>`);
   return parts.length ? `<w:rPr>${parts.join('')}</w:rPr>` : '';
@@ -2315,15 +2318,18 @@ function wordEffectToggles(a: TextEffectAttrs): Record<string, boolean> {
   return out;
 }
 
-// The docx package has no outline or shadow option, so the pair rides a marked w:effect
-// that patchPackedXml swaps for the two elements in their schema place.
+// The docx package has no outline, shadow or w14 option, so they ride a marked w:effect
+// (the toggles as letters, the w14 markup URI-encoded after a colon) that patchPackedXml
+// swaps for the elements in their schema place.
 const FX_MARK = 'edentextFx-';
 function libEffects(a: TextEffectAttrs): Writable<IRunStylePropertiesOptions> {
   const t = wordEffectToggles(a);
   const out: Writable<IRunStylePropertiesOptions> = {};
   if (t.emboss != null) out.emboss = t.emboss;
   if (t.imprint != null) out.imprint = t.imprint;
-  const code = (t.outline == null ? '' : t.outline ? 'O' : 'o') + (t.shadow == null ? '' : t.shadow ? 'S' : 's');
+  const w14 = w14EffectsXml(a);
+  const code = (t.outline == null ? '' : t.outline ? 'O' : 'o') + (t.shadow == null ? '' : t.shadow ? 'S' : 's')
+    + (w14 ? `:${encodeURIComponent(w14)}` : '');
   if (code) out.effect = `${FX_MARK}${code}` as IRunStylePropertiesOptions['effect'];
   return out;
 }
@@ -2331,12 +2337,30 @@ function libEffects(a: TextEffectAttrs): Writable<IRunStylePropertiesOptions> {
 // The CT_RPr elements after w:shadow that the package may already have written before
 // the marked w:effect; the two toggles go in front of the first.
 const AFTER_SHADOW = /<w:(?:emboss|imprint|noProof|snapToGrid|vanish|webHidden|color|spacing|w|kern|position|sz|szCs|highlight|u)\b/;
+const W14_AT = '<!--edentextW14:';
 function placeEffectToggles(xml: string): string {
   if (!xml.includes(FX_MARK)) return xml;
-  return xml.replace(new RegExp(`<w:rPr>((?:(?!<w:rPr>)[\\s\\S])*?)<w:effect w:val="${FX_MARK}([oOsS]+)"/>`, 'g'), (_m, inner: string, code: string) => {
+  const placed = xml.replace(new RegExp(`<w:rPr>((?:(?!<w:rPr>)[\\s\\S])*?)<w:effect w:val="${FX_MARK}([oOsS]*)(?::([^"]*))?"/>`, 'g'), (_m, inner: string, code: string, w14?: string) => {
     const toggles = [...code].map((c) => `<w:${c.toLowerCase() === 'o' ? 'outline' : 'shadow'}${c === c.toUpperCase() ? '' : ' w:val="0"'}/>`).join('');
     const at = AFTER_SHADOW.exec(inner)?.index ?? inner.length;
-    return `<w:rPr>${inner.slice(0, at)}${toggles}${inner.slice(at)}`;
+    return `<w:rPr>${inner.slice(0, at)}${toggles}${inner.slice(at)}${w14 ? `${W14_AT}${w14}-->` : ''}`;
+  });
+  // The w14 elements close the run properties, ahead of a recorded format change.
+  return placed.replace(/<!--edentextW14:([^>]*)-->((?:(?!<\/w:rPr>|<w:rPrChange\b)[\s\S])*?)(<\/w:rPr>|<w:rPrChange\b)/g,
+    (_m, w14: string, rest: string, end: string) => `${rest}${decodeURIComponent(w14)}${end}`);
+}
+
+// A part holding w14 markup declares the namespace ignorable, or a reader without it
+// rejects the part.
+const W14_ROOT = /<w:(?:document|styles|hdr|ftr|footnotes|endnotes|comments|numbering)\b[^>]*>/;
+function declareW14(xml: string): string {
+  if (!xml.includes('<w14:')) return xml;
+  return xml.replace(W14_ROOT, (tag) => {
+    let t = tag;
+    if (!/\sxmlns:w14=/.test(t)) t = t.replace(/^(<w:\w+)/, `$1 xmlns:w14="${W14_NS}"`);
+    if (!/\sxmlns:mc=/.test(t)) t = t.replace(/^(<w:\w+)/, '$1 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"');
+    if (!/\smc:Ignorable="/.test(t)) return t.replace(/^(<w:\w+)/, '$1 mc:Ignorable="w14"');
+    return t.replace(/(\smc:Ignorable=")([^"]*)"/, (m, pre: string, list: string) => list.split(/\s+/).includes('w14') ? m : `${pre}w14 ${list}"`.replace(' "', '"'));
   });
 }
 
@@ -2350,7 +2374,7 @@ function patchPackedXml(bytes: Uint8Array): Uint8Array {
   for (const [path, data] of Object.entries(files)) {
     if (!/^word\/.*\.xml$/.test(path)) continue;
     const xml = strFromU8(data);
-    const sorted = placeEffectToggles(xml).replace(/<w:pBdr>([\s\S]*?)<\/w:pBdr>/g, (_m, inner: string) => {
+    const sorted = declareW14(placeEffectToggles(xml)).replace(/<w:pBdr>([\s\S]*?)<\/w:pBdr>/g, (_m, inner: string) => {
       const sides = inner.match(/<w:(?:top|left|bottom|right|between|bar)\b[^>]*\/>/g) ?? [];
       if (sides.join('') !== inner) return _m;
       const rank = (s: string) => PBDR_ORDER.indexOf(/^<(w:\w+)/.exec(s)![1]);

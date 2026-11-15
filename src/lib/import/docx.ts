@@ -3,6 +3,7 @@ import { strFromU8 } from 'fflate';
 import en from '../i18n/locales/en';
 import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readSpacing, readTabStops, toggle as onOff, wVal, W, R, WP, A, B, WPS, WPG, MC, VML, O, W10, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
 import { mostlyAsian } from '../utils/script';
+import { W14 } from '../utils/w14Effects';
 import { lengthToPt, WATERMARK_NAME } from './styleResolver';
 import { normalizeColor, labelledItems } from '../export/odt';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL } from '../styles/headings';
@@ -305,7 +306,8 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const stylesDoc = files['word/styles.xml'] ? parseXml(strFromU8(files['word/styles.xml'])) : null;
   const numberingDoc = files['word/numbering.xml'] ? parseXml(strFromU8(files['word/numbering.xml'])) : null;
   const themeDoc = files['word/theme/theme1.xml'] ? parseXml(strFromU8(files['word/theme/theme1.xml'])) : null;
-  const styles = new DocxStyles(stylesDoc, numberingDoc, themeDoc);
+  const theme = themeColors(themeDoc);
+  const styles = new DocxStyles(stylesDoc, numberingDoc, themeDoc, (holder) => drawingColor(holder, { themeColors: theme }, W14));
   const warnings = new Set<string>();
 
   const styleNames = new Map<string, string>();
@@ -321,7 +323,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
   const rightMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'right') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, listCounters: new Map(), headingNumPr: new Map(), bodyNumLevels: new Set(), usedListStyles: new Map(), contentWidthCm, leftMarginCm, rightMarginCm, ...sectionHeightsCm(sectPr), pageRtl: sectPrRtl(sectPr), mainLang: docLangs.main, hyphenate: docSetting(files, 'autoHyphenation'), mathJc: docMathJc(files), cellSpacing: {}, compatMode: wordCompatMode(files), accents: themeAccents(themeDoc), themeColors: themeColors(themeDoc), themeLineWidths: Array.from(themeDoc?.getElementsByTagNameNS(A, 'lnStyleLst')[0]?.children ?? [], (ln) => (Number(ln.getAttribute('w')) || 12700) / 12700), openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentDefs: docxComments(files), moveNames: moveNames(body), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, listCounters: new Map(), headingNumPr: new Map(), bodyNumLevels: new Set(), usedListStyles: new Map(), contentWidthCm, leftMarginCm, rightMarginCm, ...sectionHeightsCm(sectPr), pageRtl: sectPrRtl(sectPr), mainLang: docLangs.main, hyphenate: docSetting(files, 'autoHyphenation'), mathJc: docMathJc(files), cellSpacing: {}, compatMode: wordCompatMode(files), accents: themeAccents(themeDoc), themeColors: theme, themeLineWidths: Array.from(themeDoc?.getElementsByTagNameNS(A, 'lnStyleLst')[0]?.children ?? [], (ln) => (Number(ln.getAttribute('w')) || 12700) / 12700), openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentDefs: docxComments(files), moveNames: moveNames(body), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
     footnote: noteParts(files, 'footnotes', 'footnote'),
     endnote: noteParts(files, 'endnotes', 'endnote'),
   }, noteBookmarks: new Map() };
@@ -1222,6 +1224,7 @@ type BlockDefaults = {
   outline: boolean;
   shadow: boolean;
   relief: Relief | null;
+  w14: Pick<RunProps, W14Key>;
   // The languages the style chain (docDefaults included) already gives the runs.
   lang: string | null;
   langAsian: string | null;
@@ -1258,6 +1261,7 @@ function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDef
     outline: !!baseRun.outline,
     shadow: !!baseRun.shadow,
     relief: baseRun.relief && baseRun.relief !== 'none' ? baseRun.relief : null,
+    w14: Object.fromEntries(W14_KEYS.filter((k) => baseRun[k]).map((k) => [k, baseRun[k]])),
     lang: baseRun.lang ?? null,
     langAsian: baseRun.langEastAsia ?? null,
   };
@@ -1410,8 +1414,13 @@ function runTextProps(run: RunProps): TextProps {
   if (run.outline != null) out.outline = run.outline;
   if (run.shadow != null) out.shadow = run.shadow;
   if (run.relief) out.relief = run.relief;
+  for (const k of W14_KEYS) if (run[k]) (out as Record<string, unknown>)[k] = run[k];
   return out;
 }
+
+// The w14 effects (utils/w14Effects.ts); a run has no way to switch a style's off.
+type W14Key = 'textOutline' | 'textShadow' | 'textGlow' | 'textFxRaw';
+const W14_KEYS: W14Key[] = ['textOutline', 'textShadow', 'textGlow', 'textFxRaw'];
 
 // The document's style registry: the built-ins with the file's own definitions merged
 // over them — only the styles blocks reference, plus their parent chains.
@@ -1799,7 +1808,7 @@ function uniformRunSize(content: Node[]): string | null | undefined {
 function paragraphMarkFontSize(ppr: Element | null, ctx: Ctx, baseRun: RunProps, defaultPt: number): string | null {
   const rPr = fc(ppr, 'rPr');
   const rStyle = fc(rPr, 'rStyle');
-  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
+  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr, ctx.styles.colorOf));
   if (props.sizeHalfPt == null) return null;
   const sizePt = props.sizeHalfPt / 2;
   return Math.abs(sizePt - defaultPt) > 0.05 ? `${Math.round(sizePt * 10) / 10}pt` : null;
@@ -1810,7 +1819,7 @@ function paragraphMarkFontSize(ppr: Element | null, ctx: Ctx, baseRun: RunProps,
 function paragraphMarkLanguage(ppr: Element | null, ctx: Ctx, baseRun: RunProps): { lang?: string; langEastAsia?: string } {
   const rPr = fc(ppr, 'rPr');
   const rStyle = fc(rPr, 'rStyle');
-  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
+  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr, ctx.styles.colorOf));
   return { lang: props.lang, langEastAsia: props.langEastAsia };
 }
 
@@ -1819,7 +1828,7 @@ function paragraphMarkLanguage(ppr: Element | null, ctx: Ctx, baseRun: RunProps)
 function paragraphMarkFont(ppr: Element | null, ctx: Ctx, baseRun: RunProps, defaults: BlockDefaults): { west: string | null; asian: string | null } {
   const rPr = fc(ppr, 'rPr');
   const rStyle = fc(rPr, 'rStyle');
-  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
+  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr, ctx.styles.colorOf));
   const font = props.font ?? ctx.styles.themeFont(props.fontTheme ?? 'minor');
   const asian = props.fontEastAsia;
   return {
@@ -2062,7 +2071,7 @@ function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunP
 function isStockNoteStyle(ctx: Ctx, styleId: string): boolean {
   const run = ctx.styles.paragraphRun(styleId), base = ctx.styles.paragraphRun(null);
   if (run.sizeHalfPt !== 20) return false;
-  const keys = ['bold', 'italic', 'underline', 'strike', 'color', 'font', 'fontTheme', 'highlightFill', 'caps', 'outline', 'shadow', 'relief'] as const;
+  const keys = ['bold', 'italic', 'underline', 'strike', 'color', 'font', 'fontTheme', 'highlightFill', 'caps', 'outline', 'shadow', 'relief', 'textOutline', 'textShadow', 'textGlow'] as const;
   if (!keys.every((k) => (run[k] ?? null) === (base[k] ?? null))) return false;
   if (ctx.styles.paragraphAlign(styleId) !== ctx.styles.paragraphAlign(null)) return false;
   const sp = ctx.styles.paragraphSpacing(styleId);
@@ -2112,7 +2121,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     // A named character style: its formatting belongs to the style, so it joins the
     // yardstick and the run only keeps what goes beyond it.
     const styleRun = ctx.styles.styleOwn(charId);
-    const own = parseRunProps(rPr);
+    const own = parseRunProps(rPr, ctx.styles.colorOf);
     // The block's language survives the character style's yardstick — only a style that
     // names one of its own replaces it.
     const runDefaults = charName
@@ -2665,6 +2674,7 @@ function marksFor(props: RunProps, defaults: BlockDefaults, inLink: boolean): Ma
   if (!!props.shadow !== defaults.shadow) textStyle.shadow = !!props.shadow;
   const relief = props.relief && props.relief !== 'none' ? props.relief : null;
   if (relief !== defaults.relief) textStyle.relief = relief ?? 'none';
+  for (const k of W14_KEYS) if (props[k] && JSON.stringify(props[k]) !== JSON.stringify(defaults.w14[k])) textStyle[k] = props[k];
   if (props.lang && props.lang !== defaults.lang) textStyle.lang = props.lang;
   if (props.langEastAsia && props.langEastAsia !== defaults.langAsian) textStyle.langAsian = props.langEastAsia;
 
@@ -2924,22 +2934,25 @@ function themeColors(theme: Document | null): Map<string, string> {
 
 // A DrawingML colour holder (<a:solidFill>, <a:ln>'s fill): its sRGB value, or the theme
 // slot it names, shifted by the modifiers Word writes for "accent1, lighter 40%".
-function drawingColor(holder: Element | null, ctx: Ctx): string | undefined {
-  const srgb = nsChild(holder, A, 'srgbClr');
-  const scheme = nsChild(holder, A, 'schemeClr');
+// The same in w14's namespace, whose attributes are qualified (w14:val).
+function drawingColor(holder: Element | null, ctx: Pick<Ctx, 'themeColors'>, ns = A): string | undefined {
+  const srgb = nsChild(holder, ns, 'srgbClr');
+  const scheme = nsChild(holder, ns, 'schemeClr');
   const el = srgb ?? scheme;
   if (!el) return undefined;
-  const base = srgb ? hexColor(srgb.getAttribute('val'))
-    : ctx.themeColors.get(scheme!.getAttribute('val') ?? '');
-  return base ? shiftColor(base, el) : undefined;
+  const base = srgb ? hexColor(nsVal(srgb, ns))
+    : ctx.themeColors.get(nsVal(scheme!, ns) ?? '');
+  return base ? shiftColor(base, el, ns) : undefined;
 }
+const nsVal = (el: Element, ns: string) => el.getAttribute('val') ?? el.getAttributeNS(ns, 'val');
 
 // The <a:lumMod>/<a:lumOff>/<a:tint>/<a:shade> children, applied per channel (they are
 // defined on luminance; the channel-wise reading is within a shade of it and needs no
 // colour space). Values are thousandths of a percent.
-function shiftColor(hex: string, el: Element): string {
+function shiftColor(hex: string, el: Element, ns = A): string {
   const pct = (name: string) => {
-    const v = nsChild(el, A, name)?.getAttribute('val');
+    const c = nsChild(el, ns, name);
+    const v = c ? nsVal(c, ns) : null;
     const n = v != null ? Number(v) / 100000 : NaN;
     return Number.isFinite(n) ? n : null;
   };
@@ -4295,7 +4308,6 @@ function docSetting(files: Record<string, Uint8Array>, name: string): boolean {
   }
 }
 
-const W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
 const W15 = 'http://schemas.microsoft.com/office/word/2012/wordml';
 
 // word/commentsExtended.xml → per w14:paraId whether the comment is handled (w15:done)

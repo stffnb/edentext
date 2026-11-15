@@ -297,6 +297,32 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
     check('LO tab: stops + leaders survive', stops === '6l.;12r_', stops);
   });
 
+  // LibreOffice draws none of the w14 effects but keeps them on a DOCX re-save, in runs
+  // and in styles alike (probed with 26.2).
+  it('keeps the w14 text effects through a `soffice` DOCX re-save', { timeout: 180000 }, async () => {
+    const { buildDocx } = await import('../src/lib/export/docx');
+    const { importDocx } = await import('../src/lib/import/docx');
+    const fx = {
+      textOutline: { color: '#C00000', widthPt: 1.5 },
+      textShadow: { color: '#000000', alpha: 0.4, dxPt: 2.12, dyPt: 2.12, blurPt: 4 },
+      textGlow: { color: '#4472C4', alpha: 0.6, radiusPt: 5 },
+      textFxRaw: [{ n: 'props3d', a: { extrusionH: '57150', contourW: '0', prstMaterial: 'warmMatte' } }],
+    };
+    const sheet = builtinStyleSheet();
+    sheet.paragraph['Glow'] = { name: 'Glow', parent: 'Standard', next: 'Standard', para: {}, text: { textGlow: fx.textGlow } };
+    const fxDoc: N = { type: 'doc', content: [
+      P(null, T('effects', { type: 'textStyle', attrs: fx })),
+      P({ styleName: 'Glow' }, T('styled')),
+    ] };
+    mkdirSync('/tmp/lo-rt', { recursive: true });
+    writeFileSync('/tmp/lo-rt/fx.docx', await buildDocx(fxDoc, undefined, undefined, undefined, undefined, undefined, sheet));
+    execSync('soffice --headless --convert-to docx --outdir /tmp/lo-rt/fxout /tmp/lo-rt/fx.docx', { stdio: 'pipe', timeout: 120000 });
+    const res = importDocx(new Uint8Array(readFileSync('/tmp/lo-rt/fxout/fx.docx')));
+    const attrs = res.content.content?.[0]?.content?.[0]?.marks?.find((m: N) => m.type === 'textStyle')?.attrs ?? {};
+    for (const k of Object.keys(fx) as (keyof typeof fx)[]) check(`LO docx: ${k} survives`, JSON.stringify(attrs[k]) === JSON.stringify(fx[k]), attrs[k]);
+    check('LO docx: a style keeps its glow', JSON.stringify(res.styles.paragraph['Glow']?.text.textGlow) === JSON.stringify(fx.textGlow), res.styles.paragraph['Glow']);
+  });
+
   // Each half of the western/asian pair keeps its own slot through LibreOffice, in both
   // formats; a run naming only its western font gains no asian one on the way.
   it('survives a `soffice` re-save of the western/asian font pair', { timeout: 180000 }, async () => {
