@@ -3,7 +3,10 @@
 // the page count is what every layer on the page is measured against. Fails on any
 // uncaught page error.
 import { join } from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { createServer } from 'node:http';
+import { chromium } from 'playwright-core';
 import { zipSync, strToU8 } from 'fflate';
 import { ROOT, MOD, checker, previewServer, openApp, settle } from '../browser.mjs';
 
@@ -2008,6 +2011,63 @@ try {
   await dict.waitForFunction(() => !window.__rec?.running, null, { timeout: 15_000 }).catch(() => {});
   check(!(await running()), 'opening another document stops dictation');
   await dict.close();
+
+  // Dictation through a speech server, in Chromium only (its fake microphone plays a WAV):
+  // a browser without Web Speech still gets the button, every burst of sound is posted to
+  // the server at its pause, and the answers land in the order spoken.
+  if ((process.env.BROWSER ?? 'chromium') === 'chromium') {
+    const posted = [];
+    const speech = createServer((req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      if (req.method !== 'POST') return res.end();
+      const parts = [];
+      req.on('data', (c) => parts.push(c));
+      req.on('end', () => {
+        const body = Buffer.concat(parts).toString('latin1');
+        posted.push({ path: req.url, wav: body.includes('RIFF') && body.includes('WAVE'), language: /name="language"\r\n\r\n(\w+)/.exec(body)?.[1] });
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ text: `Word ${posted.length}.` }));
+      });
+    });
+    await new Promise((r) => speech.listen(0, '127.0.0.1', r));
+    // 48 kHz mono: half a second of quiet, then three voiced bursts with a second's pause after each.
+    const RATE = 48000, plan = [[0.5, 0], [0.8, 1], [1, 0], [0.6, 1], [1, 0], [0.9, 1], [1.2, 0]];
+    const samples = plan.flatMap(([sec, on]) => Array.from({ length: sec * RATE }, (_, i) =>
+      on ? 0.4 * Math.sin(2 * Math.PI * 4 * i / RATE) ** 2 * (Math.sin(2 * Math.PI * 180 * i / RATE) + 0.5 * Math.sin(2 * Math.PI * 540 * i / RATE)) : 0));
+    const wav = Buffer.alloc(44 + samples.length * 2);
+    wav.write('RIFF', 0); wav.writeUInt32LE(36 + samples.length * 2, 4); wav.write('WAVEfmt ', 8);
+    wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(RATE, 24);
+    wav.writeUInt32LE(RATE * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(samples.length * 2, 40);
+    samples.forEach((v, i) => wav.writeInt16LE(Math.round(v * 0x7fff), 44 + i * 2));
+    const wavFile = join(await mkdtemp(join(tmpdir(), 'edentext-dictation-')), 'speech.wav');
+    await writeFile(wavFile, wav);
+    const mic = await chromium.launch({ executablePath: chromium.executablePath(), args: ['--no-sandbox',
+      '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', `--use-file-for-fake-audio-capture=${wavFile}%noloop`] });
+    try {
+      const sp = await mic.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
+      sp.on('pageerror', (err) => pageErrors.push(String(err)));
+      await sp.addInitScript((address) => {
+        delete window.SpeechRecognition;
+        delete window.webkitSpeechRecognition;
+        localStorage.setItem('edentext-dictation', JSON.stringify({ server: address }));
+      }, `http://localhost:${speech.address().port}`);
+      await sp.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
+      await sp.waitForSelector('.tiptap', { timeout: 15_000 });
+      await sp.locator('.tiptap-host .tiptap').first().click();
+      const button = sp.locator('[data-cmd="dictate"]').first();
+      check(await button.isVisible(), 'a speech server shows the dictation button without Web Speech');
+      await button.click();
+      await sp.waitForFunction(() => /Word 3\./.test(document.querySelector('.tiptap-host .tiptap')?.textContent ?? ''), null, { timeout: 20_000 }).catch(() => {});
+      const said = await sp.evaluate(() => document.querySelector('.tiptap-host .tiptap').textContent);
+      check(said === 'Word 1. Word 2. Word 3.', `each pause sends a phrase, inserted in order (${said})`);
+      check(posted.length === 3 && posted.every((p) => p.path === '/v1/audio/transcriptions' && p.wav && p.language === 'en'),
+        `phrases go to the OpenAI route as WAV with the language (${JSON.stringify(posted)})`);
+      await sp.keyboard.press('Escape');
+    } finally {
+      await mic.close();
+      speech.close();
+    }
+  }
 
 } catch (err) {
   const at = (err.stack ?? '').split('\n').filter((l) => l.includes('dom/run.mjs')).map((l) => l.trim().replace(/^at /, '')).join(' ← ');
