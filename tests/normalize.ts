@@ -230,3 +230,28 @@ export function stripFontHoist(node: any): any {
   for (const c of node.content ?? []) stripFontHoist(c);
   return node;
 }
+
+// ODF has no coloured outline, shadow or glow: the export falls back to the plain shadow
+// and drops the rest (textEffects.ts effectsToOdf). ODT legs compare through the fallback;
+// LibreOffice writes a DOCX's w14 effects into no ODT at all (plainShadow false).
+export function odtEffectFallback(node: any, plainShadow = true): any {
+  for (const c of node?.content ?? []) odtEffectFallback(c, plainShadow);
+  // Runs left alike by it read back as one.
+  if (node?.content) {
+    node.content = node.content.reduce((out: any[], c: any) => {
+      const prev = out[out.length - 1];
+      if (prev?.type === 'text' && c.type === 'text' && JSON.stringify(prev.marks ?? []) === JSON.stringify(c.marks ?? [])) prev.text += c.text;
+      else out.push(c);
+      return out;
+    }, []);
+  }
+  if (!node?.marks) return node;
+  for (const m of node.marks) {
+    if (m.type !== 'textStyle' || !m.attrs) continue;
+    if (m.attrs.textShadow && plainShadow) m.attrs.shadow = true;
+    for (const k of ['textShadow', 'textOutline', 'textGlow', 'textFxRaw']) delete m.attrs[k];
+  }
+  node.marks = node.marks.filter((m: any) => m.type !== 'textStyle' || Object.values(m.attrs ?? {}).some((v) => v != null));
+  if (!node.marks.length) delete node.marks;
+  return node;
+}

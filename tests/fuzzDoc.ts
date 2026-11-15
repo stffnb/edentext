@@ -67,6 +67,11 @@ function marks(r: Rng, heading = false): N[] | undefined {
     else {
       if (maybe(fxRng, 0.1)) attrs.outline = true;
       if (maybe(fxRng, 0.1)) attrs.shadow = true;
+      // The parametrised ones, from a stream of their own, each excluding its plain twin.
+      if (!attrs.outline && maybe(w14Rng, 0.08)) attrs.textOutline = { color: pick(w14Rng, ['#C00000', '#2F5597']), widthPt: pick(w14Rng, [0.5, 1.5]) };
+      if (!attrs.shadow && maybe(w14Rng, 0.08)) attrs.textShadow = pick(w14Rng, [
+        { color: '#000000', alpha: 0.4, dxPt: 2.12, dyPt: 2.12, blurPt: 4 }, { color: '#C00000', alpha: 1, dxPt: 0, dyPt: 3, blurPt: 0 }]);
+      if (maybe(w14Rng, 0.08)) attrs.textGlow = { color: pick(w14Rng, ['#FFC000', '#4472C4']), alpha: pick(w14Rng, [0.6, 1]), radiusPt: pick(w14Rng, [5, 8]) };
     }
     if (Object.keys(attrs).length) out.push({ type: 'textStyle', attrs });
   }
@@ -462,9 +467,11 @@ const ROMAN = ['i', 'ii', 'iii', 'iv', 'v'] as const;
 
 // `styleNames` are the sheet's user styles; a styled block may name one of them.
 let fxRng: Rng = mulberry32(1);
+let w14Rng: Rng = mulberry32(1);
 
 export function genDoc(r: Rng, styleNames: string[] = []): N {
   fxRng = mulberry32(7919);
+  w14Rng = mulberry32(104729);
   bmNames = [];
   commentSeq = 0;
   revSeq = 0;

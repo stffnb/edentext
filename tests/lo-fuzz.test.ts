@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { buildOdt } from '../src/lib/export/odt';
 import { buildDocx } from '../src/lib/export/docx';
 import { importOdt } from '../src/lib/import/odt';
-import { normalize, stripFontHoist, unhoist } from './normalize';
+import { normalize, stripFontHoist, unhoist, odtEffectFallback } from './normalize';
 import { mulberry32 } from './fuzzDoc';
 import { genCase, exportArgs, expectedOptions, importedOptions, diffLoose, omit, DOCX_LOSSY, docWideOddEven, type FuzzOptions } from './fuzzOptions';
 
@@ -287,7 +287,7 @@ describe.skipIf(!SOFFICE)('fuzz through LibreOffice (needs soffice on PATH)', ()
         if (!existsSync(f)) { expect.soft(f, `seed ${c.seed}: LibreOffice wrote no file`).toBe(''); continue; }
         const res = importOdt(new Uint8Array(readFileSync(f)));
         const marked = markedTables(c.doc);
-        const [want, got] = [loContent(c.doc, fmt, marked), loContent(res.content, fmt, marked)];
+        const want = loContent(odtEffectFallback(structuredClone(c.doc), fmt === 'odt'), fmt, marked), got = loContent(res.content, fmt, marked);
         const skipContent = fmt === 'docx' && hardForDocx(c.doc);
         // Loose on numbers: a size or padding comes back a thousandth off through cm.
         const diff = skipContent ? null : diffLoose(want, got);

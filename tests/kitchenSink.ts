@@ -72,6 +72,7 @@ export function kitchenSinkDoc(): N {
       t('gehoben', { type: 'textStyle', attrs: { textPosition: 3 } }), t(' '),
       t('Kontur', { type: 'textStyle', attrs: { outline: true, shadow: true } }), t(' '),
       t('erhaben', { type: 'textStyle', attrs: { relief: 'embossed' } }), t(' '),
+      t('leuchtend', { type: 'textStyle', attrs: { textGlow: { color: '#FFC000', alpha: 0.6, radiusPt: 5 }, textOutline: { color: '#C00000', widthPt: 0.75 } } }), t(' '),
       t('betont', { type: 'charStyle', attrs: { name: 'Emphasis' } }), t(' '),
       t('Quelltext', { type: 'charStyle', attrs: { name: 'Source Text' } }), t(' '),
       t('Link', { type: 'link', attrs: { href: 'https://example.com/x?a=1&b=2' } }),

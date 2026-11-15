@@ -8,7 +8,7 @@ import { Node as PMNode } from '@tiptap/pm/model';
 import { buildOdt } from '../src/lib/export/odt';
 import { MAX_HEADING_LEVEL } from '../src/lib/styles/headings';
 import { importOdt } from '../src/lib/import/odt';
-import { normalize, firstDiff, unhoist, stripFontHoist } from './normalize';
+import { normalize, firstDiff, unhoist, stripFontHoist, odtEffectFallback } from './normalize';
 import { zoneExtensions } from '../src/lib/editor/extensions';
 import { HEADER_SHADE } from '../src/lib/editor/extensions/tableHeaderRow';
 import { builtinStyleSheet } from '../src/lib/styles/styleSheet';
@@ -280,6 +280,26 @@ describe('Leg 1: editor → buildOdt → importOdt', () => {
     const fracOut = cwOut.flat().map((w, _, all) => w / all.reduce((a, b) => a + b, 0));
     check('column ratios round-trip', fracIn.length === fracOut.length &&
       fracIn.every((f, i) => Math.abs(f - fracOut[i]) < 0.02), { fracIn, fracOut });
+  });
+});
+
+describe('Leg 1b: text effects ODF has no place for', () => {
+  it('falls back to the plain shadow, drops outline and glow, and leaves the document alone', async () => {
+    const fx = (attrs: N) => ({ type: 'textStyle', attrs });
+    const SHADOW = { color: '#000000', alpha: 0.4, dxPt: 2.12, dyPt: 2.12, blurPt: 4 };
+    const doc: N = { type: 'doc', content: [P(null,
+      T('cast ', fx({ textShadow: SHADOW })),
+      T('rimmed ', fx({ color: '#C00000', textOutline: { color: '#000000', widthPt: 1 } })),
+      T('glowing', fx({ textGlow: { color: '#FFC000', alpha: 0.6, radiusPt: 8 }, textFxRaw: [{ n: 'props3d', a: { extrusionH: '57150' } }] })),
+    )] };
+    const before = JSON.stringify(doc);
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    check('the editor keeps its effects', JSON.stringify(doc) === before);
+    const res = importOdt(bytes);
+    check('no warnings', res.warnings.length === 0, res.warnings);
+    const diff = firstDiff(odtEffectFallback(normalize(doc)), normalize(res.content));
+    check('ODT carries the fallback', diff === null, diff);
+    check('content.xml stays free of w14', !strFromU8(unzipSync(bytes)['content.xml']).includes('w14'));
   });
 });
 

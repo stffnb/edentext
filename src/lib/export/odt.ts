@@ -4226,7 +4226,7 @@ function bakeMarks(marks: TiptapMark[], t: TextProps): TiptapMark[] {
   if (t.fontFamilyAsian) attrs.fontFamilyAsian = t.fontFamilyAsian;
   if (t.fontSizePt != null) attrs.fontSize = `${t.fontSizePt}pt`;
   if (t.color) attrs.color = t.color;
-  for (const key of ['outline', 'shadow', 'relief'] as const) if (t[key] != null) attrs[key] = t[key];
+  for (const key of ['outline', 'shadow', 'relief', 'textOutline', 'textShadow', 'textGlow', 'textFxRaw'] as const) if (t[key] != null) attrs[key] = t[key];
   for (const [key, value] of Object.entries(own)) if (value != null) attrs[key] = value;
   // An explicit weight is the un-bold channel and outranks the style's bold.
   const flags = [[t.bold && own.fontWeight == null, 'bold'], [t.italic, 'italic'],
