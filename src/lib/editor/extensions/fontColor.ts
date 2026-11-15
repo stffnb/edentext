@@ -27,7 +27,8 @@ export const FontColor = Extension.create({
         attributes: {
           color: {
             default: null,
-            parseHTML: element => element.style.color || null,
+            // A browser hands a pasted span's colour back as rgb(), which ODF does not accept.
+            parseHTML: element => normalizeColor(element.style.color) ?? null,
             renderHTML: attributes => {
               const color = normalizeColor(attributes.color);
               if (!color) return {};
@@ -47,7 +48,7 @@ export const FontColor = Extension.create({
       setColor:
         (color: string) =>
         ({ chain }) =>
-          chain().setMark('textStyle', { color }).run(),
+          chain().setMark('textStyle', { color: normalizeColor(color) ?? null }).run(),
 
       unsetColor:
         () =>

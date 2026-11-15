@@ -397,8 +397,8 @@ describe('DOCX export → import round trip', () => {
     expect((changed.textFxRaw ?? []).some((e: any) => e.n === 'shadow' || e.n === 'glow')).toBe(false);
   });
 
-  // What the commands put on a run is what a saved file reads back, whatever was passed in.
-  it('holds the effects a command sets as a saved DOCX reads them back', async () => {
+  // What the commands or a paste put on a run is what a saved file reads back, whatever came in.
+  it('holds the colour and effects a command or a paste sets as a saved file reads them back', async () => {
     const el = document.createElement('div');
     const editor = new Editor({ element: el, extensions, content: { type: 'doc', content: [para('abcdef')] } });
     try {
@@ -406,13 +406,17 @@ describe('DOCX export → import round trip', () => {
       at(1, 3).setTextOutline({ color: '#c00000', widthPt: 33.333 }).run();
       at(2, 5).setTextShadow({ color: '#abc', alpha: 0.6666, dxPt: -1.005, dyPt: 2.12345, blurPt: 3.3333 }).run();
       at(4, 7).setTextGlow({ color: '#2f5597', alpha: 0.333, radiusPt: 151 }).run();
+      // A browser serializes a copied span's colour as rgb().
+      editor.chain().setTextSelection(7).insertContent('<span style="color: rgb(192, 0, 0)" data-text-glow=\'{"color":"#ffc000","alpha":0.5,"radiusPt":8}\'>pasted</span>').run();
       const fx = (doc: N) => walk(doc, 'text').map((r: N) => {
         const a = markAttrs(r, 'textStyle') ?? {};
-        return [r.text, a.textOutline ?? null, a.textShadow ?? null, a.textGlow ?? null];
+        return [r.text, a.color ?? null, a.textOutline ?? null, a.textShadow ?? null, a.textGlow ?? null];
       });
       const held = editor.getJSON() as N;
-      expect(fx(held).filter(([, ...e]) => e.some(Boolean))).toHaveLength(5);
+      expect(fx(held).filter(([, ...e]) => e.some(Boolean))).toHaveLength(6);
       expect(fx(importDocx(await buildDocx(held as never)).content as N)).toEqual(fx(held));
+      const colors = (doc: N) => fx(doc).flatMap(([t, c]) => [...(t as string)].map(() => c));
+      expect(colors(importOdt(await buildOdt(held as never)).content as N)).toEqual(colors(held));
     } finally { editor.destroy(); }
   });
 
