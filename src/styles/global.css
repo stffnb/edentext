@@ -860,6 +860,8 @@
   --color-toolbar-bg: #ffffff;
   --color-btn-hover: #cbd5e1;
   --color-page-bg: #ffffff;
+  /* A sheet no page decor reaches (an inserted blank page): the theme's, not the file's. */
+  --color-page-plain: #ffffff;
   /* The sheet is the document, so its text is the black LibreOffice and Word draw —
      the app's own slate would differ from a run the file colours #000000. */
   --color-page-text: #000000;
@@ -877,6 +879,7 @@
     --color-toolbar-bg: #161b22;
     --color-btn-hover: #3b4350;
     --color-page-bg: #ffffff;
+    --color-page-plain: #ffffff;
     --color-page-text: #000000;
     --color-page-border: #e2e8f0;
     /* Primary (active-button color) so the toolbar scrollbar stands out on dark. */
@@ -894,6 +897,7 @@
   --color-toolbar-bg: #161b22;
   --color-btn-hover: #3b4350;
   --color-page-bg: #161b22;
+  --color-page-plain: #161b22;
   --color-page-text: #e6edf3;
   --color-page-border: #30363d;
   --scrollbar-thumb: var(--color-primary);

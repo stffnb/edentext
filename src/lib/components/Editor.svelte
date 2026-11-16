@@ -1926,8 +1926,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
           {/each}
         </div>
       {/if}
-      <PageSheetLayer {pageBoxes} />
-      <PageDecorLayer decor={pageDecor} {pageBoxes} {marginsAt} hfInsets={decorHfInsets} isLeft={leftPageAt} />
+      <PageSheetLayer {pageBoxes} {blankPages} />
+      <PageDecorLayer decor={pageDecor} {pageBoxes} {marginsAt} hfInsets={decorHfInsets} isLeft={leftPageAt} {blankPages} />
       {#if foldMarks}
         <FoldMarkLayer {pageBoxes} />
       {/if}
