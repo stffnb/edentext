@@ -146,7 +146,12 @@ function corpus(args) {
 
 // The last run's issue count per file, so a re-run prints what a change moved instead
 // of leaving the arithmetic to whoever reads two reports side by side.
-const BASELINE = join(CACHE, 'baseline.json');
+// It lives in the checkout's own git directory, so parallel worktrees sharing one
+// node_modules never overwrite each other's counts.
+const gitDir = () => {
+  try { return resolve(ROOT, execFileSync('git', ['rev-parse', '--git-dir'], { cwd: ROOT, encoding: 'utf8' }).trim()); } catch { return CACHE; }
+};
+const BASELINE = process.env.PARITY_BASELINE ?? join(gitDir(), 'render-parity-baseline.json');
 const readBaseline = () => {
   try { return JSON.parse(readFileSync(BASELINE, 'utf8')); } catch { return {}; }
 };
@@ -247,7 +252,7 @@ if (baseline) {
     const s = r.summary;
     baseline[r.file] = { causes: s.causes, issues: s.raw, kinds: s.kinds, keys: s.keys, refPages: r.refPages };
   }
-  mkdirSync(CACHE, { recursive: true });
+  mkdirSync(dirname(BASELINE), { recursive: true });
   writeFileSync(BASELINE, JSON.stringify(baseline));
 }
 

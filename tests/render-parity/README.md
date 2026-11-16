@@ -17,7 +17,9 @@ Exit code 1 when any document differs. `--json` also dumps both sides' lines
 (`y`, `x`, `x2` in mm, per page) and each document's `summary` — diagnose from that dump.
 
 Every run prints each document's **cause** count against the previous run's (see *Causes,
-not symptoms* below) and updates `node_modules/.cache/render-parity/baseline.json`, so an
+not symptoms* below) and updates `render-parity-baseline.json` in the checkout's git
+directory (`git rev-parse --git-dir`, so each worktree keeps its own even where they share
+one `node_modules`; `PARITY_BASELINE` names another file), so an
 A/B measurement reads `218 (was 220, −2)` without comparing two reports by hand, followed
 by the causes that are `new:` and `gone:` since then. The run ends with the totals, the
 causes per kind and the documents with the most causes, each with its causes per ten
@@ -32,7 +34,8 @@ in one call, so the console reads in completion order while `--json` keeps the c
 Measured on 15 fixtures, 1:15 serial against 0:27. A run of a few long documents gains
 little, since the longest document sets its time.
 
-**The LibreOffice side is cached** in the same directory, keyed by the file's hash and
+**The LibreOffice side is cached** in `node_modules/.cache/render-parity` (`PARITY_CACHE`),
+which parallel worktrees may share, keyed by the file's hash and
 the export arguments: the reference never depends on our code, so only the first run of
 a document converts it — the whole corpus measured **9:00 cold against 5:41 cached**,
 and one fixture 15s against 10s. `--no-cache` after installing or removing a font,
