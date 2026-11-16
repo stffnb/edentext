@@ -1729,8 +1729,9 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
 }
 
 function tableKeepsNext(rows: Node[]): boolean {
-  const blocks = rows.flatMap((r) => r.content ?? []).flatMap((c) => c.content ?? [])
-    .filter((b) => b.type === 'paragraph' || b.type === 'heading');
+  const flat = (b: Node): Node[] => (b.type === 'paragraph' || b.type === 'heading' ? [b]
+    : b.type === 'table' ? [] : (b.content ?? []).flatMap(flat));
+  const blocks = rows.flatMap((r) => r.content ?? []).flatMap((c) => c.content ?? []).flatMap(flat);
   return blocks.length > 0 && blocks.every((b) => b.attrs?.keepNext === true || (b.type === 'heading' && b.attrs?.keepNext !== false));
 }
 

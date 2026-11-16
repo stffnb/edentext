@@ -1349,6 +1349,10 @@ export const PageBreaks = Extension.create({
               });
               return;
             }
+            // A kept table taller than a page starts on a fresh one and then breaks between
+            // rows — in a Word document only (probed: LibreOffice's TableRowKeep; ODF splits it).
+            const freshPage = keepNext && !inTableCell
+              && dom.closest('.paper')?.getAttribute('data-spacing-model') === 'max';
             const colgroup = tableEl?.querySelector('colgroup');
             const columns = colgroup?.children.length || realRows[0].children.length || 1;
             const leaderIdx = rowSpanGroups(realRows.map((r) => ({
@@ -1389,6 +1393,7 @@ export const PageBreaks = Extension.create({
                   naturalTop: naturalTopOf(tr),
                   naturalHeight: rowHeight,
                   tableRow: { columns, wrapperEl, isFirstRow: !seenRealRow },
+                  forceBreakBefore: freshPage && !seenRealRow,
                 };
                 leaves.push(rowLeaf);
                 if (leader === tr) openGroup = rowLeaf;
@@ -1401,7 +1406,7 @@ export const PageBreaks = Extension.create({
                 );
                 // A row that may not break starts on a fresh page before it breaks there
                 // anyway (LibreOffice): a zero-height leaf forcing the row's own spacer.
-                if (tr.dataset.cantSplit === 'true') {
+                if (tr.dataset.cantSplit === 'true' || (freshPage && !seenRealRow)) {
                   leaves.push({
                     el: tr,
                     kind: 'atomic',

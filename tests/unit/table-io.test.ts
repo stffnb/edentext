@@ -57,7 +57,9 @@ describe('table keep-rows', () => {
 
   // fo:keep-with-next on the table; Word spells it as every paragraph in it kept.
   it('keeps a table with the next block through both formats', async () => {
-    const doc = { type: 'doc', content: [{ type: 'table', attrs: { keepNext: true }, content: [0, 1].map((r) => ({ type: 'tableRow', content: [cell(`a${r}`), cell(`b${r}`)] })) }] } as N;
+    // One cell holds a list: its items keep with the next as well, or Word's reading drops the keep.
+    const list = { ...cell('l'), content: [{ type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'i' }] }] }] }] };
+    const doc = { type: 'doc', content: [{ type: 'table', attrs: { keepNext: true }, content: [0, 1].map((r) => ({ type: 'tableRow', content: [cell(`a${r}`), r ? list : cell(`b${r}`)] })) }] } as N;
     const odt = await buildOdt(doc);
     expect(strFromU8(unzipSync(odt)['content.xml'])).toContain('fo:keep-with-next="always"');
     const keeps = (d: N) => d.content?.[0]?.attrs?.keepNext ?? null;

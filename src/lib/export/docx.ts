@@ -3140,12 +3140,18 @@ function formulaCellContent(cell: TiptapNode): TiptapNode[] | null {
   return [{ ...first, content: [field] }, ...(cell.content ?? []).slice(1)];
 }
 
-// A table kept with the next block is Word's every paragraph in it kept with the next.
+// A table kept with the next block is Word's every paragraph in it kept with the next,
+// list items included; a nested table keeps its own.
+function keptBlock(block: TiptapNode): TiptapNode {
+  if (block.type === 'paragraph' || block.type === 'heading') return { ...block, attrs: { ...block.attrs, keepNext: true } };
+  if (block.type === 'table' || !block.content) return block;
+  return { ...block, content: block.content.map(keptBlock) };
+}
+
 function cellBlocksToDocx(content: TiptapNode[] = [], force: TextProps, num: Numbering, contentWidthCm: number, keepNext = false): (Paragraph | Table)[] {
   const out: (Paragraph | Table)[] = [];
   for (const block of content) {
-    const child = keepNext && (block.type === 'paragraph' || block.type === 'heading')
-      ? { ...block, attrs: { ...block.attrs, keepNext: true } } : block;
+    const child = keepNext ? keptBlock(block) : block;
     if (child.type === 'bulletList' || child.type === 'orderedList') {
       listEntryToDocx(child, num, out);
     } else if (child.type === 'table') {
