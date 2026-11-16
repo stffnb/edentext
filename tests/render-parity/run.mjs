@@ -118,6 +118,11 @@ async function editorRender(browser, file) {
   await page.waitForSelector('.tiptap');
   await page.setInputFiles('input.file-input[accept*=".odt"]', file);
   await settle(page);
+  // The header/footer layer draws a window of pages; a printout opens it to all of them.
+  await page.evaluate(() => new Promise((done) => {
+    window.dispatchEvent(new Event('beforeprint'));
+    requestAnimationFrame(() => requestAnimationFrame(done));
+  }));
   const result = await page.evaluate(extractLayout);
   await page.close();
   return result;
