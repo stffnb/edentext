@@ -689,7 +689,11 @@ try {
       if (broken) break;
 
       for (const ext of ['odt', 'docx']) {
-        const bytes = await saveAs(ext);
+        // A save that fails keeps the document it failed on, for the repro.
+        const bytes = await saveAs(ext).catch(async (err) => {
+          await writeFile(join(tmpdir(), `monkey-${seed}-${ext}-unsaved.json`), await docJson());
+          throw err;
+        });
         const schema = hasXmllint ? (ext === 'odt' ? validateOdt : validateDocx)(unzipSync(bytes)) : [];
         const rt = await roundTrip(bytes, ext).catch((err) => ({ diff: null, warnings: [], threw: String(err.message ?? err).split('\n')[0] }));
         const bad = rt.threw ? `import threw: ${rt.threw}` : schema.length ? `schema: ${schema[0].slice(0, 300)}`
