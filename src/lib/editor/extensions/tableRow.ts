@@ -48,6 +48,8 @@ const exactKey = new PluginKey<DecorationSet>('exactRowClip');
 
 function measureExact(view: EditorView): DecorationSet {
   const decos: Decoration[] = [];
+  // The zoom, from the editor's own box: a cell's whole-pixel offsetHeight skews it.
+  const scale = view.dom.offsetWidth / (view.dom.getBoundingClientRect().width || 1) || 1;
   for (const tr of view.dom.querySelectorAll<HTMLElement>('tr[data-fixed-height]')) {
     const h = parseFloat(/([\d.]+)px/.exec(tr.style.height)?.[1] ?? '');
     if (!Number.isFinite(h)) continue;
@@ -56,11 +58,13 @@ function measureExact(view: EditorView): DecorationSet {
       const last = td.lastElementChild as HTMLElement | null;
       if (!first || !last) continue;
       const cs = getComputedStyle(td);
-      const scale = td.offsetHeight / (td.getBoundingClientRect().height || 1);
       const top = first.getBoundingClientRect().top - (parseFloat(getComputedStyle(first).marginTop) || 0) / scale;
       const bottom = last.getBoundingClientRect().bottom + (parseFloat(getComputedStyle(last).marginBottom) || 0) / scale;
       const avail = h + (parseFloat(cs.paddingBottom) || 0) - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
-      const over = Math.round(((bottom - top) * scale - avail) * 10) / 10;
+      // The row's height holds the cell's borders too (probed: 0.5pt lines, 255tw rows
+      // 4.5mm apart), and the ::after's own pull (less the excess it already takes) counts.
+      const pull = (parseFloat(getComputedStyle(td, '::after').marginTop) || 0) + (parseFloat(td.style.getPropertyValue('--exact-over')) || 0);
+      const over = Math.round(((bottom - top) * scale - avail + td.offsetHeight - td.clientHeight + pull) * 10) / 10;
       if (over <= 0.5) continue;
       const $pos = view.state.doc.resolve(view.posAtDOM(td, 0));
       for (let d = $pos.depth; d > 0; d--) {

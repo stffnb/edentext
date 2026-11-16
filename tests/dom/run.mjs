@@ -1104,6 +1104,23 @@ try {
   });
   check(headRow.header === 1 && headRow.body === 1 && headRow.copies === 0,
     `a repeated header row goes down with the row after it (pages ${headRow.header + 1}/${headRow.body + 1}, ${headRow.copies} copies)`);
+  // An exact row keeps its height, borders included, whatever its cells hold, and an
+  // overflowing cell shows its first line where a top-aligned one does (tableRow.ts).
+  const exactCell = (valign, text) => ({ type: 'tableCell', attrs: { verticalAlign: valign, borderTop: '0.5pt solid #000000', borderBottom: '0.5pt solid #000000' },
+    content: [{ type: 'paragraph', attrs: { spaceAfter: 10 }, content: [words(text)] }] });
+  await page.evaluate((d) => document.querySelector('.tiptap').editor.commands.setContent(d), { type: 'doc', content: [
+    { type: 'table', content: [17, 30].flatMap((h) => [0, 1].map((i) => ({ type: 'tableRow', attrs: { rowHeight: h, fixedHeight: true },
+      content: [exactCell('top', `top ${h} ${i}`), exactCell('bottom', `bottom ${'word '.repeat(i * 12)}`), exactCell('middle', 'middle')] }))) },
+  ] });
+  await settle(page, true);
+  await page.waitForTimeout(300);
+  const exact = await page.evaluate(() => Array.from(document.querySelectorAll('.tiptap table tr'), (tr) => {
+    const [a, b] = Array.from(tr.querySelectorAll('p'), (p) => p.getBoundingClientRect().top);
+    return { h: tr.getBoundingClientRect().height, firstLines: Math.abs(a - b) };
+  }));
+  const wantH = [17, 17, 30, 30];
+  check(exact.length === 4 && exact.every((r, i) => Math.abs(r.h - wantH[i]) < 0.5) && exact.every((r) => r.firstLines < 0.5 || r.h > 20),
+    `an exact row keeps its height and clips what does not fit (${exact.map((r) => `${r.h.toFixed(2)}/${r.firstLines.toFixed(1)}`).join(', ')})`);
   // Behind the text: the frame leaves the flow (so the paragraph loses its height again)
   // and is then moved by its own offsets, since there is no text position to re-anchor to.
   await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
