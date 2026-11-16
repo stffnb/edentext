@@ -247,7 +247,7 @@ export const Indent = Extension.create({
 
     // Rewrite one indent attr on every paragraph/heading in the selection; 0 clears it.
     // `next` gets the block's own value, so a relative step keeps each block's offset in
-    // a mixed selection. List-item paragraphs are skipped (lists indent by nesting).
+    // a mixed selection. List-item paragraphs take only a right indent (lists indent by nesting).
     // `clear` names an attr the written one excludes, dropped from every block written;
     // a step from a character indent starts from its size in cm.
     type IndentAttr = 'indent' | 'indentChars' | 'indentRight' | 'indentRightChars' | 'indentFirst' | 'indentFirstChars';
@@ -257,7 +257,7 @@ export const Indent = Extension.create({
         let changed = false;
         state.doc.nodesBetween(from, to, (node: PMNode, pos: number, parent: PMNode | null) => {
           if (!types.includes(node.type.name)) return;
-          if (parent?.type.name === 'listItem') return;
+          if (parent?.type.name === 'listItem' && attr !== 'indentRight' && attr !== 'indentRightChars') return;
           const current = attr === 'indent' ? leftCm(node.attrs, parseFloat(blockFontSize(node)))
             : typeof node.attrs[attr] === 'number' ? node.attrs[attr] : 0;
           const value = next(current) || null;
@@ -351,11 +351,11 @@ export const Indent = Extension.create({
     };
   },
 
-  // A list indents by nesting, so an item's paragraph carries no indent of its own —
-  // the commands above refuse to set one, and neither file can express it. Wrapping an
-  // indented paragraph into a list (or pasting one in) is the door this closes.
+  // A list indents by nesting, so an item's paragraph carries no left or first-line
+  // indent of its own (wrapping or pasting one in is the door this closes). The right
+  // indent is the paragraph's in both formats and LibreOffice applies it in a list.
   addProseMirrorPlugins() {
-    const attrs = ['indent', 'indentChars', 'indentRight', 'indentRightChars', 'indentFirst', 'indentFirstChars'] as const;
+    const attrs = ['indent', 'indentChars', 'indentFirst', 'indentFirstChars'] as const;
     return [new Plugin({
       appendTransaction: (trs, _old, state) => {
         if (!trs.some((t) => t.docChanged)) return null;
@@ -365,7 +365,7 @@ export const Indent = Extension.create({
           // frame — a list inside a text box is a list all the same.
           if (node.isInline && node.isAtom) return false;
           if (parent?.type.name !== 'listItem' || attrs.every((a) => node.attrs[a] == null)) return;
-          tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: null, indentChars: null, indentRight: null, indentRightChars: null, indentFirst: null, indentFirstChars: null });
+          tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: null, indentChars: null, indentFirst: null, indentFirstChars: null });
         });
         return tr.steps.length ? tr : null;
       },

@@ -231,4 +231,17 @@ describe('indenting a list item', () => {
   it.each([[8, 0, true], [9, 0, false], [7, 1, true], [8, 1, false]])('%i levels, %i below the item: %s', (n, extra, ok) => {
     expect(sinks(n, extra)).toBe(ok);
   });
+  // Nesting indents a list, so an item's paragraph loses a left indent; its right indent
+  // is its own, in both formats.
+  it('keeps an item paragraph its right indent, not its left one', () => {
+    const editor = new Editor({ element: document.createElement('div'), extensions: fullExtensions, content: { type: 'doc', content: [chain(1)] } });
+    editor.commands.command(({ tr }) => {
+      editor.state.doc.descendants((node, pos) => { if (node.type.name === 'paragraph') tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: 1, indentRight: -0.33 }); });
+      return true;
+    });
+    const attrs: Record<string, unknown>[] = [];
+    editor.state.doc.descendants((node) => { if (node.type.name === 'paragraph') attrs.push(node.attrs); });
+    editor.destroy();
+    expect(attrs.map((a) => [a.indent, a.indentRight])).toEqual([[null, -0.33], [null, -0.33]]);
+  });
 });

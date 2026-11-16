@@ -82,10 +82,10 @@ fragment as a whole, so nothing there honours one — and only DOCX could write 
 no run is raised and lowered at once, and a file keeps only whichever it writes last; a
 `noteRef` takes no marks at all, since ODF's `text:note-citation` holds bare text (no span, no
 style name) and the anchor wears its note class's look anyway. A **list item's paragraph** keeps
-no indent of its own — the indent commands already refuse to set one, a list indents by nesting,
-and neither importer reads one there — so `indent.ts` clears every indent attr whenever a
-transaction leaves one inside a `listItem` (wrapping an indented paragraph into a list is the
-usual cause). A table's **first row** is all header cells or none: both formats spell a
+no left or first-line indent of its own — the indent commands refuse to set one, a list indents
+by nesting — so `indent.ts` clears them whenever a transaction leaves one inside a `listItem`
+(wrapping an indented paragraph into a list is the usual cause). Its right indent stays: both
+formats store it on the paragraph and LibreOffice applies it in a list (a negative one too). A table's **first row** is all header cells or none: both formats spell a
 repeating header as the whole row, and typing over a selection spanning two of them left
 one behind (`tableHeaderRow.ts`) — the promotion carries the cell's own attrs, since
 `setNodeMarkup` given a type and no attrs takes the type's defaults. A replace reaching
