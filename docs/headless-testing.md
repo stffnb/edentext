@@ -94,6 +94,7 @@ style and a `text-shadow` the browser computes; the `.odt` is compared through
 that the `.docx` read back normalized, and a pasted span's colour stayed `rgb()`, which the
 `.odt` wrote as an invalid `fo:color`.
 A list nested past the ninth level wrote a `w:ilvl` the schema refuses, and the `.odt` read every level past the sixth as the top list's kind, its list styles having six; the editor now indents to the ninth and both files clamp a deeper one.
+A table the columns flow cut at a page kept its second part's `joinPrev` after an edit gave that fragment another gap, so the editor held one table where both files wrote two; such a part is now a table of its own.
 Recording: a paragraph that Delete pulled into a list joined the list after it too, whose own `start` and continued numbering rejecting never gave back.
 Still open: a run set to the body's own font, in a columns section, kept its family on the
 held side once in four runs of the same seed chain — the flow rewrites such a document
