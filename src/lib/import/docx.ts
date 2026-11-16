@@ -1412,7 +1412,7 @@ function runTextProps(run: RunProps): TextProps {
   if (run.strike != null) out.strike = run.strike;
   const color = hexColor(run.color);
   if (color) out.color = color;
-  if (run.caps) out.caps = run.caps;
+  if (run.caps != null) out.caps = run.caps;
   if (run.outline != null) out.outline = run.outline;
   if (run.shadow != null) out.shadow = run.shadow;
   if (run.relief) out.relief = run.relief;

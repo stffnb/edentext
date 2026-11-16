@@ -4,7 +4,7 @@ import { buildDocx } from '../src/lib/export/docx';
 import { importDocx } from '../src/lib/import/docx';
 import { buildOdt } from '../src/lib/export/odt';
 import { importOdt } from '../src/lib/import/odt';
-import { builtinStyleSheet } from '../src/lib/styles/styleSheet';
+import { builtinStyleSheet, resolveStyle } from '../src/lib/styles/styleSheet';
 import { HEADER_SHADE } from '../src/lib/editor/extensions/tableHeaderRow';
 import { effectUpdate } from '../src/lib/editor/extensions/textEffects';
 import { Editor } from '@tiptap/core';
@@ -1341,6 +1341,22 @@ describe('DOCX named character styles', () => {
     const signal = runs.find((r: N) => charOf(r) === 'Signal')!;
     expect((signal.marks ?? []).some((m: N) => m.type === 'italic')).toBe(true);
     expect(res.styles.character['Signal'].text).toEqual({ bold: true, color: '#CC0000', caps: 'smallCaps', outline: true });
+  });
+});
+
+// A style switching its parent's all-caps off keeps it off through either format.
+describe('a derived style turns its parent\'s caps off', () => {
+  const sheet = builtinStyleSheet();
+  sheet.paragraph['Loud'] = { name: 'Loud', parent: 'Standard', next: null, para: {}, text: { caps: 'uppercase' } };
+  sheet.paragraph['Calm'] = { name: 'Calm', parent: 'Loud', next: null, para: {}, text: { caps: false } };
+  const doc = { type: 'doc', content: ['Loud', 'Calm'].map((name) => ({ type: 'paragraph', attrs: { styleName: name }, content: [text(name)] })) } as any;
+  it.each([
+    ['docx', async () => importDocx(await buildDocx(doc, undefined, undefined, undefined, undefined, undefined, sheet))],
+    ['odt', async () => importOdt(await buildOdt(doc, undefined as any, 'portrait', undefined, undefined, undefined, sheet))],
+  ])('%s', async (_, read) => {
+    const back: any = await read();
+    expect(resolveStyle(back.styles, 'Loud').text.caps).toBe('uppercase');
+    expect(resolveStyle(back.styles, 'Calm').text.caps || null).toBeNull();
   });
 });
 

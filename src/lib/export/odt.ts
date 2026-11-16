@@ -2550,6 +2550,7 @@ function ownStyleAttrs(style: { para: Record<string, unknown>; text: Record<stri
   if (t.color) text['fo:color'] = String(t.color);
   if (t.caps === 'smallCaps') text['fo:font-variant'] = 'small-caps';
   else if (t.caps) text['fo:text-transform'] = String(t.caps);
+  else if (t.caps === false) Object.assign(text, { 'fo:text-transform': 'none', 'fo:font-variant': 'normal' });
   Object.assign(text, effectsToOdf(t));
   return { para, text };
 }

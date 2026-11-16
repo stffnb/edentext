@@ -1854,7 +1854,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     italic: fontStyle === 'italic' || fontStyle === 'oblique',
     underline: lineSig(text, 'underline'),
     strike: lineSig(text, 'line-through'),
-    caps: capsFromOdf(text),
+    caps: capsFromOdf(text) || null,
     ...effectDefaults(text, fallback),
     lang: langs.west ?? doc.west,
     langAsian: langs.asian ?? doc.asian,
@@ -1931,7 +1931,7 @@ function textPropsFromOdf(props: PropMap, resolver: StyleResolver): TextProps {
   const color = props['fo:color'] ? normalizeColor(props['fo:color']) : undefined;
   if (color) out.color = color;
   const caps = capsFromOdf(props);
-  if (caps) out.caps = caps;
+  if (caps != null) out.caps = caps;
   const fx = effectsFromOdf(props);
   if (fx.outline != null) out.outline = fx.outline;
   if (fx.shadow != null) out.shadow = fx.shadow;
@@ -2136,7 +2136,7 @@ function charDefaults(ctx: Ctx, base: BlockDefaults, odfName: string): BlockDefa
     italic: fontStyle ? fontStyle === 'italic' || fontStyle === 'oblique' : base.italic,
     underline: props['style:text-underline-style'] ? lineSig(props, 'underline') : base.underline,
     strike: props['style:text-line-through-style'] ? lineSig(props, 'line-through') : base.strike,
-    caps: capsFromOdf(props) ?? base.caps,
+    caps: (capsFromOdf(props) ?? base.caps) || null,
     ...effectDefaults(props, base),
   };
 }
@@ -3150,9 +3150,10 @@ function lineSig(props: PropMap, kind: 'underline' | 'line-through'): string | n
   return JSON.stringify(lineAttrs(style, props[`style:text-${kind}-type`], color) ?? {});
 }
 
-function capsFromOdf(props: PropMap): CapsMode | null {
+function capsFromOdf(props: PropMap): CapsMode | false | null {
   if (props['fo:font-variant'] === 'small-caps') return 'smallCaps';
   const t = props['fo:text-transform'];
+  if (t === 'none') return props['fo:font-variant'] === 'small-caps' ? 'smallCaps' : false;
   return t === 'uppercase' || t === 'lowercase' || t === 'capitalize' ? t : null;
 }
 

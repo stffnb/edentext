@@ -3583,6 +3583,7 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   if (t.color) run.color = t.color.replace('#', '');
   if (t.caps === 'smallCaps') run.smallCaps = true;
   else if (t.caps === 'uppercase') run.allCaps = true;
+  else if (t.caps === false) { run.allCaps = false; run.smallCaps = false; }
   Object.assign(run, libEffects(t));
   const spacing: Record<string, number> = {};
   if (p.spaceBefore != null) spacing.before = ptToTwip(p.spaceBefore);

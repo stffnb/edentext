@@ -114,7 +114,8 @@ function readCaps(p: RunProps, child: Element): void {
   const on = toggle(child);
   if (child.localName === 'smallCaps') p.caps = on ? 'smallCaps' : false;
   else if (on) { if (p.caps !== 'smallCaps') p.caps = 'uppercase'; }
-  else if (p.caps === 'uppercase') p.caps = false;
+  // An explicit off switches an inherited all-caps off too, not only this layer's.
+  else if (p.caps !== 'smallCaps') p.caps = false;
 }
 
 // The highlighter pen's fixed palette (w:highlight names a colour where w:shd gives a

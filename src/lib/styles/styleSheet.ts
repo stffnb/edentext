@@ -58,7 +58,7 @@ export type TextProps = {
   underline?: boolean;
   strike?: boolean;
   color?: string;
-  caps?: CapsMode; // all caps / small caps (Word w:caps + w:smallCaps, ODF fo:text-transform)
+  caps?: CapsMode | false; // false: explicitly off over a parent's; all caps / small caps (Word w:caps + w:smallCaps, ODF fo:text-transform)
   // Outline, shadow, relief (textEffects.ts); false/'none' switches a parent style's off.
   outline?: boolean;
   shadow?: boolean;
@@ -438,6 +438,7 @@ export function textDeclarations(t: TextProps, asBlock = false): string[] {
   const color = normalizeColor(t.color);
   if (color) out.push(`color: ${color}`);
   if (t.caps && CAPS.has(t.caps)) out.push(t.caps === 'smallCaps' ? 'font-variant-caps: small-caps' : `text-transform: ${t.caps}`);
+  else if (t.caps === false) out.push('text-transform: none', 'font-variant-caps: normal');
   const fx = effectCss(t);
   if (fx) out.push(...fx.split('; '));
   return out;
