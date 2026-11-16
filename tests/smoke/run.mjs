@@ -262,7 +262,7 @@ try {
   // Embed mode: a host page on another origin drives the editor through public/embed.js.
   const host = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
   host.on('pageerror', (err) => pageErrors.push(`[embed] ${err}`));
-  host.on('dialog', (d) => d.accept());
+  host.on('dialog', (d) => d.accept().catch(() => {}));
   // A real server on another site (127.0.0.1 vs localhost): a routed page counts as a
   // public one, which Chromium may not let frame a loopback address.
   const hostPage = `<!doctype html><div id="c" style="height:950px"></div>
