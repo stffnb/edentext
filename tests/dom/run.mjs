@@ -645,6 +645,35 @@ try {
   });
   check(keptPage === 2, `a row that may not break, taller than a page, starts on the next one (page ${keptPage})`);
 
+  // A paragraph split while its lines broke elsewhere (a font arriving late) is split again
+  // where its lines break now: the old spacer would hold a word or two alone above it.
+  const longPara = Array.from({ length: 60 }, (_, i) => `word${i} alpha beta gamma`).join(' ');
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
+    ...Array.from({ length: 38 }, (_, i) => block(words(`line ${i + 1}`))), block(words(longPara))] });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
+  await settle(page, true);
+  const splitAt = () => page.evaluate(() => {
+    const sp = document.querySelector('.tiptap-host .tiptap p [data-page-break-spacer]');
+    const r = document.createRange();
+    if (sp) { r.setStart(sp.closest('p'), 0); r.setEndBefore(sp); }
+    return sp ? r.toString().trim().split(' ').pop() : null;
+  });
+  const freshSplit = await splitAt();
+  const reflow = (css) => page.evaluate((c) => {
+    document.getElementById('dom-reflow')?.remove();
+    if (c) document.head.append(Object.assign(document.createElement('style'), { id: 'dom-reflow', textContent: c }));
+    document.fonts.dispatchEvent(new Event('loadingdone'));
+  }, css);
+  await reflow('.tiptap p { letter-spacing: 0.3px }');
+  await settle(page, true);
+  const wideSplit = await splitAt();
+  await reflow(null);
+  await settle(page, true);
+  const againSplit = await splitAt();
+  check(freshSplit && wideSplit !== freshSplit && againSplit === freshSplit,
+    `a paragraph split before its lines re-broke is split where they break now (${freshSplit} / ${wideSplit} / ${againSplit})`);
+
   // In the larger-of spacing model a block's space above is a margin, outside the box the
   // page break moves: a manual break must clear it too, less the space below the block before.
   await page.evaluate((d) => {

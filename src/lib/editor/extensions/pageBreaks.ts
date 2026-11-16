@@ -556,6 +556,47 @@ function floatContext(el: HTMLElement): HTMLElement | null {
   return null;
 }
 
+// A spacer splitting a paragraph ends its line by force, so once the lines re-break (a
+// font arriving after the pass that placed it) it can sit mid-line and hold a word or two
+// alone above it — a layout every later pass measures as consistent. One whose line and
+// the next word would fit together is hidden while the pass measures the natural lines.
+export function hideStaleLineSpacers(root: HTMLElement): () => void {
+  const stale: HTMLElement[] = [];
+  for (const sp of Array.from(root.querySelectorAll<HTMLElement>('[data-page-break-spacer]'))) {
+    const block = sp.parentElement?.closest<HTMLElement>('p, h1, h2, h3, h4, h5, h6');
+    if (!block || !root.contains(block)) continue;
+    const cs = getComputedStyle(block);
+    if (cs.direction === 'rtl') continue;
+    const before = document.createRange();
+    before.setStart(block, 0);
+    before.setEndBefore(sp);
+    const line = Array.from(before.getClientRects()).filter((r) => r.width > 0).pop();
+    const word = firstWordAfter(block, sp);
+    if (!line || !word) continue;
+    const right = block.getBoundingClientRect().right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth);
+    if (line.right + 0.3 * parseFloat(cs.fontSize) + word.width <= right + 0.5) stale.push(sp);
+  }
+  for (const sp of stale) sp.style.display = 'none';
+  return () => { for (const sp of stale) sp.style.display = ''; };
+}
+
+// The first word's box after a node, up to the next space, within its block.
+function firstWordAfter(block: HTMLElement, node: Node): DOMRect | null {
+  const walk = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  walk.currentNode = node;
+  for (let t = walk.nextNode() as Text | null; t; t = walk.nextNode() as Text | null) {
+    const at = t.data.search(/\S/);
+    if (at < 0) continue;
+    const end = t.data.slice(at).search(/\s/);
+    const r = document.createRange();
+    r.setStart(t, at);
+    r.setEnd(t, end < 0 ? t.data.length : at + end);
+    const box = r.getClientRects()[0];
+    return box ?? null;
+  }
+  return null;
+}
+
 // Pagination moves the page grid under those frames, so every pass re-places them.
 export function placePageFrames(view: EditorView, grid: PageGrid): void {
   for (const el of Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>('[data-sink-gap]'))) {
@@ -1709,7 +1750,8 @@ export const PageBreaks = Extension.create({
         // A pass that throws must not leave the layout marked running: no later pass
         // would start, and the status would show the document loading for good.
         function calculate() {
-          try { layoutPass(); } catch (err) { isUpdating = false; throw err; }
+          const restore = hideStaleLineSpacers(editorView.dom as HTMLElement);
+          try { layoutPass(); } catch (err) { isUpdating = false; throw err; } finally { restore(); }
         }
 
         function layoutPass() {
