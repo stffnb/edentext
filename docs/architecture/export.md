@@ -71,7 +71,10 @@ ODF sections write their own page layout and master-page variants. Header/footer
 part of page geometry, not body margins. Each master writes an explicit zone, including blank
 ones where needed, so a section cannot inherit an unintended prior zone. Mirrored margins,
 right-to-left pages, running fields, and page-number formats travel with their applicable page
-layout or master.
+layout or master. A first page with its own margins, distances or area frames gets a one-page
+master on its own layout, handing over by `style:next-style-name` (LibreOffice's title page;
+section 1 splits Standard). DOCX has no first-page margins: `w:titlePg` switches zones only, and
+LibreOffice splits such a page into a section of its own, which needs the layout's page end.
 
 ## DOCX post-pack
 

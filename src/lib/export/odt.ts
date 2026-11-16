@@ -6192,7 +6192,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   zoneXml = cut.xml;
   const docZoneXml = Object.fromEntries(HF_ZONE_KEYS.map((key) =>
     [key, docZones[key] ? zoneXmlOf(hf?.[key], key.startsWith('header') ? 'header' : 'footer') : null])) as Record<HfZoneKey, string | null>;
-  const withHf = applyHfPostProcess(cut.bytes, margins, docZoneXml, headerDist, footerDist, hf?.sections?.[0]?.frames ?? null);
+  const withHf = applyHfPostProcess(cut.bytes, margins, docZoneXml, headerDist, footerDist, hf?.sections?.[0]?.frames ?? null, hf?.sections?.[0]?.framesFirst ?? null);
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it. The page decor goes
   // into every master's header after that, so the section pages show it too.
@@ -6339,7 +6339,7 @@ function hfBandProps(kind: 'header' | 'footer', minH: number, frame: HfFrame | n
     const pad = (side: keyof HfFrame['padding']) => ` fo:padding-${side}="${Math.round(p[side] * 1000) / 1000}cm"`;
     return `<style:header-footer-properties fo:min-height="${minH}cm" fo:margin-${kind === 'header' ? 'bottom' : 'top'}="${Math.round(frame.gap * 1000) / 1000}cm"` +
       border('top') + border('right') + border('bottom') + border('left') +
-      pad('top') + pad('right') + pad('bottom') + pad('left') + ' style:dynamic-spacing="false"/>';
+      pad('top') + pad('right') + pad('bottom') + pad('left') + ` style:dynamic-spacing="${!!frame.dynamic}"/>`;
   }
   return kind === 'header'
     ? `<style:header-footer-properties fo:min-height="${minH}cm" fo:margin-bottom="0cm" style:dynamic-spacing="false"/>`
@@ -6349,7 +6349,7 @@ function hfBandProps(kind: 'header' | 'footer', minH: number, frame: HfFrame | n
 // Header/footer post-processing on styles.xml: section 1's zones replace the sentinel
 // paragraphs odf-kit wrote (variants go in beside them), and the geometry is rewritten
 // to ODF's own mapping (page margin = HF distance, min-height fills up to the body margin).
-function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, zones: Record<HfZoneKey, string | null>, headerDist: number, footerDist: number, frames: HfFrames | null = null): Uint8Array {
+function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, zones: Record<HfZoneKey, string | null>, headerDist: number, footerDist: number, frames: HfFrames | null = null, framesFirst: HfFrames | null = null): Uint8Array {
   if (!Object.values(zones).some((z) => z != null)) return odtBytes;
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
@@ -6386,9 +6386,39 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, zones: R
   injectVariant('header', 'left', zones.headerEven);
   injectVariant('footer', 'first', zones.footerFirst);
   injectVariant('footer', 'left', zones.footerEven);
+  if (framesFirst) styles = splitFirstPageMaster(styles, framesFirst);
 
   files['styles.xml'] = strToU8(styles);
   return rezipOdt(files);
+}
+
+// Page one framed otherwise than the rest: the Standard master governs it alone, on a layout
+// of its own, and hands over to a copy for the rest (LibreOffice's title-page idiom). Page
+// one is a right page, so it shows its first-page zones, else the running ones.
+function splitFirstPageMaster(styles: string, framesFirst: HfFrames): string {
+  const master = /<style:master-page style:name="Standard"[^>]*?(?:\/>|>[\s\S]*?<\/style:master-page>)/.exec(styles)?.[0];
+  const layout = master && /style:page-layout-name="([^"]*)"/.exec(master)?.[1];
+  const layoutXml = layout && new RegExp(`<style:page-layout\\b[^>]*style:name="${layout}"[\\s\\S]*?</style:page-layout>`).exec(styles)?.[0];
+  if (!master || !layoutXml) return styles;
+  const variant = (xml: string, kind: string, suffix: string) =>
+    new RegExp(`<style:${kind}-${suffix}>[\\s\\S]*?</style:${kind}-${suffix}>`).exec(xml)?.[0] ?? null;
+  const drop = (xml: string, suffix: string) => xml.replace(new RegExp(`<style:(header|footer)-${suffix}>[\\s\\S]*?</style:\\1-${suffix}>`, 'g'), '');
+  const rest = drop(master, 'first').replace('style:name="Standard"', 'style:name="Standard_20_Rest" style:display-name="Standard Rest"');
+  let first = drop(master, 'left');
+  const own = { header: variant(first, 'header', 'first'), footer: variant(first, 'footer', 'first') };
+  first = drop(first, 'first');
+  for (const kind of ['header', 'footer'] as const) {
+    const zone = own[kind];
+    if (zone) first = first.replace(new RegExp(`<style:${kind}>[\\s\\S]*?</style:${kind}>`), () => zone.replace(/-first>/g, '>'));
+  }
+  first = first.replace(`style:page-layout-name="${layout}"`, `style:page-layout-name="${layout}First" style:next-style-name="Standard_20_Rest"`);
+  const firstLayout = layoutXml.replace(`style:name="${layout}"`, `style:name="${layout}First"`).replace(
+    /<style:(header|footer)-style>\s*<style:header-footer-properties\b([^>]*?)\/>\s*<\/style:\1-style>/g,
+    (m, kind: 'header' | 'footer', attrs: string) => {
+      const minH = Number(/fo:min-height="([\d.]+)cm"/.exec(attrs)?.[1] ?? NaN);
+      return Number.isFinite(minH) ? `<style:${kind}-style>${hfBandProps(kind, minH, framesFirst[kind] ?? null)}</style:${kind}-style>` : m;
+    });
+  return styles.replace(layoutXml, () => layoutXml + firstLayout).replace(master, () => first + rest);
 }
 
 // styles.xml needs draw/svg/xlink namespaces for an image frame; odf-kit may not declare
@@ -6471,8 +6501,9 @@ function cutZones(odtBytes: Uint8Array, count: number): { bytes: Uint8Array; xml
 
 // A section's own master page: the Standard one cloned under its own name, carrying that
 // section's zones. ODF has no per-section header/footer other than this.
-// `part`: the whole section, the one right/left page it opens on, or the pages after it.
-function masterPageXml(name: string, layoutName: string, set: HfSet, zoneXmlOf: (doc: HfDoc, kind: 'header' | 'footer') => string, part: 'all' | 'right' | 'left' | 'rest' = 'all', next?: string): string {
+// `part`: the whole section, the one right/left page it opens on, its first page of either
+// side (a first-page layout of its own), or the pages after it.
+function masterPageXml(name: string, layoutName: string, set: HfSet, zoneXmlOf: (doc: HfDoc, kind: 'header' | 'footer') => string, part: 'all' | 'right' | 'left' | 'first' | 'rest' = 'all', next?: string): string {
   // A variant and its running zone travel as a pair: ODF allows a first/left zone only
   // under a running one, and an absent left zone repeats the running one. Where either
   // is set both are written, the blank one as an empty paragraph, which blanks its side.
@@ -6490,7 +6521,7 @@ function masterPageXml(name: string, layoutName: string, set: HfSet, zoneXmlOf: 
     footer: !!(set.footer || set.footerFirst || set.footerEven),
   };
   let body: string;
-  if (part === 'right' || part === 'left') {
+  if (part === 'right' || part === 'left' || (part === 'first' && set.differentFirstPage)) {
     // The one page this master governs shows the first-page variant, else the running
     // zone — the left one on a left page.
     const one = (running: HfDoc, first: HfDoc, left: HfDoc): HfDoc =>
@@ -6582,28 +6613,31 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], zoneXmlOf:
   const layoutXml = new RegExp(`<style:page-layout\\b[^>]*style:name="${layout}"[\\s\\S]*?</style:page-layout>`).exec(styles)?.[0] ?? null;
   const layouts: string[] = [];
   const round3 = (v: number) => Math.round(v * 1000) / 1000;
-  const layoutFor = (index: number, set: HfSet, side: 'right' | 'left' | null): string => {
-    const m = set.margins;
+  // `first`: the layout of the section's first page, where that page has a setup of its own.
+  const layoutFor = (index: number, set: HfSet, side: 'right' | 'left' | null, first = false): string => {
+    const m = first ? set.marginsFirst ?? set.margins : set.margins;
+    const distances = first ? set.distancesFirst ?? set.distances : set.distances;
+    const frames = first ? set.framesFirst ?? set.frames : set.frames;
     const paper = set.format || set.orientation ? pageDimsCm(set.format ?? format, set.orientation ?? orientation) : null;
     const numFormat = set.pageNumberFormat ?? null;
     const has = { header: !!(set.header || set.headerFirst || set.headerEven), footer: !!(set.footer || set.footerFirst || set.footerEven) };
-    const sameZones = has.header === docZones.header && has.footer === docZones.footer && !set.distances
-      && JSON.stringify(set.frames ?? null) === JSON.stringify(sets[0]?.frames ?? null);
-    if ((!m && !paper && !numFormat && sameZones && !side) || !layoutXml) return layout;
+    const sameZones = has.header === docZones.header && has.footer === docZones.footer && !distances
+      && JSON.stringify(frames ?? null) === JSON.stringify(sets[0]?.frames ?? null);
+    if ((!m && !paper && !numFormat && sameZones && !side && !first) || !layoutXml) return layout;
     const body = m ?? margins;
     const band = (kind: 'header' | 'footer', edge: 'top' | 'bottom'): { margin: number; minH: number | null } => {
       if (!has[kind]) return { margin: body[edge], minH: null };
       // A section's own distance is written as it is: past the body margin, the body
       // starts below the band there, as the editor lays it out.
-      const dist = set.distances?.[kind] ?? dists[kind];
+      const dist = distances?.[kind] ?? dists[kind];
       return { margin: dist, minH: Math.max(0.2, body[edge] - dist) };
     };
     const top = band('header', 'top');
     const bottom = band('footer', 'bottom');
     const bandXml = (kind: 'header' | 'footer', minH: number | null) => (minH == null
       ? `<style:${kind}-style/>`
-      : `<style:${kind}-style>${hfBandProps(kind, round3(minH), set.frames?.[kind] ?? null)}</style:${kind}-style>`);
-    const name = `${layout}Sec${index + 1}${side ? side[0] : ''}`;
+      : `<style:${kind}-style>${hfBandProps(kind, round3(minH), frames?.[kind] ?? null)}</style:${kind}-style>`);
+    const name = `${layout}Sec${index + 1}${side ? side[0] : ''}${first ? 'f' : ''}`;
     // The usage is the section's own: mirrored or not, whatever the document's layout says.
     const usage = side ?? (body.mirrored ? 'mirrored' : null);
     let xml = layoutXml.replace(/\s*style:page-usage="[^"]*"/, '')
@@ -6645,8 +6679,10 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], zoneXmlOf:
     // for that page alone, handing over to one for the rest — every page of a right-only
     // master is a right page in LibreOffice, with a blank one between any two.
     const side = index > 0 && set.startsOn ? (set.startsOn === 'odd' ? 'right' : 'left') : null;
-    if (side) {
-      pages.push(masterPageXml(name, layoutFor(index, set, side), set, zoneXmlOf, side, `${name}c`));
+    // A first page with a setup of its own is a master of its own too (LibreOffice's title page).
+    const first = !!(set.marginsFirst || set.distancesFirst || set.framesFirst);
+    if (side || first) {
+      pages.push(masterPageXml(name, layoutFor(index, set, side, first), set, zoneXmlOf, side ?? 'first', `${name}c`));
       pages.push(masterPageXml(`${name}c`, layoutFor(index, set, null), set, zoneXmlOf, 'rest'));
     } else {
       pages.push(masterPageXml(name, layoutFor(index, set, null), set, zoneXmlOf));

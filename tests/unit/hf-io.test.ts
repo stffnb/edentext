@@ -155,13 +155,40 @@ describe('per-section header/footer', () => {
   // export), and keep the zone's paragraphs free of their space.
   it('carries a zone’s area frame through ODF, per section', async () => {
     const frame = { border: { top: '0.5pt solid #FF0000', right: null, bottom: null, left: null }, padding: { top: 0.1, right: 0, bottom: 0, left: 0.2 }, gap: 0.5 };
-    const own = { ...hf, sections: [{ ...sections[0], frames: { footer: frame } }, { ...sections[1], frames: { header: frame } }] };
+    const dynamic = { ...frame, dynamic: true };
+    const own = { ...hf, sections: [{ ...sections[0], frames: { footer: dynamic } }, { ...sections[1], frames: { header: frame } }] };
     const back = importOdt(await buildOdt(doc, MARGINS, 'portrait', own));
-    expect(back.hfSections[0].frames?.footer).toEqual(frame);
+    expect(back.hfSections[0].frames?.footer).toEqual(dynamic);
     expect(back.hfSections[0].frames?.header ?? null).toBe(null);
     expect(back.hfSections[1].frames?.header).toEqual(frame);
     expect(back.hfSections[1].header?.content?.[0]?.attrs?.spaceAfter ?? 0).toBe(0);
     expect(back.hfSections[0].footer?.content?.[0]?.attrs?.spaceBefore ?? 0).toBe(0);
+  });
+  // A first page with its own setup is a master of its own handing over to the section's
+  // (LibreOffice's title page); DOCX has no first-page margins or distances to carry.
+  it('carries a section’s first-page layout through ODF', async () => {
+    const frame = { border: { top: '0.5pt solid #FF0000', right: null, bottom: null, left: null }, padding: { top: 0.1, right: 0, bottom: 0, left: 0 }, gap: 0.3 };
+    const second = { ...sections[1], margins: { ...MARGINS, top: 3 }, marginsFirst: { ...MARGINS, top: 5, left: 4 },
+      distances: { header: 1, footer: 1 }, distancesFirst: { header: 2, footer: 1.5 }, framesFirst: { header: frame } };
+    const back = importOdt(await buildOdt(doc, MARGINS, 'portrait', { ...hf, sections: [sections[0], second] }));
+    const s = back.hfSections[1];
+    expect(s.margins).toMatchObject(second.margins);
+    expect(s.marginsFirst).toMatchObject(second.marginsFirst);
+    expect(s.distancesFirst?.header).toBeCloseTo(2, 2);
+    expect(s.distancesFirst?.footer).toBeCloseTo(1.5, 2);
+    expect(s.framesFirst?.header).toEqual(frame);
+    expect(s.frames ?? null).toBe(null);
+    expect(zoneText(s.header)).toBe('Second header');
+    expect(s.differentFirstPage).toBe(false);
+    const titled = { ...second, headerFirst: zone(p(t('Title header'))), differentFirstPage: true };
+    const again = importOdt(await buildOdt(doc, MARGINS, 'portrait', { ...hf, sections: [sections[0], titled] })).hfSections[1];
+    expect([zoneText(again.headerFirst), zoneText(again.header), again.marginsFirst?.top]).toEqual(['Title header', 'Second header', 5]);
+    // The document's own first section: only its frames can differ on page one.
+    const lead = { ...sections[0], headerFirst: zone(p(t('Lead title'))), differentFirstPage: true, framesFirst: { header: frame } };
+    const led = importOdt(await buildOdt(doc, MARGINS, 'portrait', { ...hf, headerFirst: lead.headerFirst, differentFirstPage: true, sections: [lead, sections[1]] }));
+    expect([led.hfSections[0].framesFirst?.header, led.hfSections[0].frames ?? null, zoneText(led.headerFirst), zoneText(led.header)])
+      .toEqual([frame, null, 'Lead title', 'First header']);
+    expect(led.hfSections.length).toBe(2);
   });
   // A section with zones after one without: the distance it shares with the first page
   // layout is the document's, not the default the first section's missing zones leave.
