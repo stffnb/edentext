@@ -2387,7 +2387,7 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefau
   const mr = lengthToCm(paraProps['fo:margin-right']);
   const rightChars = ic(paraProps['loext:margin-right']);
   if (rightChars > 0) attrs.indentRightChars = rightChars;
-  else if (mr != null && (mr > 0.02 || (kind !== 'cell' && mr < -0.02))) attrs.indentRight = Math.round(mr * 100) / 100;
+  else if (mr != null && Math.abs(mr) > 0.02) attrs.indentRight = Math.round(mr * 100) / 100;
 
   // Manual page break (fo:break-before); the editor has no column breaks, so only
   // "page". A cell block can't carry one — LibreOffice ignores it inside a table.

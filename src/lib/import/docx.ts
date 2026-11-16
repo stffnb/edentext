@@ -1908,17 +1908,17 @@ function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number |
   const right = ind ? intAttr(ind, W, 'right') ?? intAttr(ind, W, 'end') : null;
   const rightChars = ind ? intAttr(ind, W, 'rightChars') ?? intAttr(ind, W, 'endChars') : null;
   if (rightChars) attrs.indentRightChars = rightChars / 100;
-  else if (right != null) { const cm = round2(twipToCm(right)); if (cm > LIST_INDENT_EPS_CM || (kind !== 'cell' && cm < -LIST_INDENT_EPS_CM)) attrs.indentRight = cm; }
+  else if (right != null) { const cm = round2(twipToCm(right)); if (cm > LIST_INDENT_EPS_CM || cm < -LIST_INDENT_EPS_CM) attrs.indentRight = cm; }
   if (kind !== 'list') {
     // The *Chars attributes (hundredths of a character) win over the twips when nonzero.
     // A hanging count adds to the left one, where LibreOffice puts the text (probed).
     const hangingChars = ind ? intAttr(ind, W, 'hangingChars') : null;
     const leftChars = ind ? intAttr(ind, W, 'leftChars') ?? intAttr(ind, W, 'startChars') : null;
     const left = ind ? intAttr(ind, W, 'left') ?? intAttr(ind, W, 'start') : null;
-    // Out into the margin, as a page-wide picture's paragraph is set; a cell keeps its
-    // text inside its padding (probed: LibreOffice wraps such a line at the cell's width).
+    // Out into the margin, as a page-wide picture's paragraph is set, or past a cell's
+    // edge, where LibreOffice widens the line by it too (probed).
     if (leftChars || hangingChars) attrs.indentChars = ((leftChars ?? 0) + (hangingChars ?? 0)) / 100;
-    else if (left != null) { const cm = round2(twipToCm(left)); if (cm > LIST_INDENT_EPS_CM || (kind !== 'cell' && cm < -LIST_INDENT_EPS_CM)) attrs.indent = cm; }
+    else if (left != null) { const cm = round2(twipToCm(left)); if (cm > LIST_INDENT_EPS_CM || cm < -LIST_INDENT_EPS_CM) attrs.indent = cm; }
     // w:hanging outdents the first line, w:firstLine indents it; they are exclusive.
     const hanging = ind ? intAttr(ind, W, 'hanging') : null;
     const firstLine = ind ? intAttr(ind, W, 'firstLine') : null;
