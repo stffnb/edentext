@@ -151,6 +151,14 @@ describe('per-section header/footer', () => {
     expect(docx.hfSections[1].distances?.header).toBeCloseTo(2, 2);
     expect(docx.hfSections[1].distances?.footer).toBeCloseTo(2, 2);
   });
+  // A section with zones after one without: the distance it shares with the first page
+  // layout is the document's, not the default the first section's missing zones leave.
+  it.each(FORMATS)('keeps a later section’s distance its first section has no zones for, through %s', async (_name, roundTrip) => {
+    const later = { ...hfOf({ sections: [EMPTY_HF_SET, { ...sections[1], distances: { header: 2, footer: 2 } }], pageCount: 2 }) };
+    const back = await roundTrip(doc, later);
+    expect(back.hfSections[1].distances?.footer ?? back.footerDistanceCm).toBeCloseTo(2, 2);
+    expect(back.hfSections[1].distances?.header ?? back.headerDistanceCm).toBeCloseTo(2, 2);
+  });
 });
 
 // A header logo placed against the page keeps its place through both formats: the

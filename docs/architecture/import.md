@@ -59,7 +59,9 @@ LibreOffice does; the document's first block keeps it.
 
 Master-page changes open document sections. Read page setup, headers, footers, edge distances,
 first-page and left/right variants from the governing master, and calculate content width per
-section. An explicit empty master-page name means no change. A left/right master pair represents
+section. A section whose distances match the first page layout's inherits them, so the document
+carries them once any section has a zone, not only the first: a manual whose title page has
+no footer otherwise set every later footer at the 1.25cm default, 8.5mm low. An explicit empty master-page name means no change. A left/right master pair represents
 mirrored layout; distinguish it from a first-page hand-over. Naming the current master again
 opens a new section only where that restarts something — a hand-over to a successor, or a
 `page-usage` side demand — which is how a book reopens Chapter Intro for every chapter.

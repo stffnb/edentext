@@ -1187,9 +1187,11 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   // repeats its header on left pages. An element that is *there* but empty blanks it.
   const headerEven = hf.headerLeft ? zoneOf(hf.headerLeft) : differentOddEven ? header : null;
   const footerEven = hf.footerLeft ? zoneOf(hf.footerLeft, true) : differentOddEven ? footer : null;
-  // A first-page/even zone reserves the band even if its default counterpart is empty.
-  const hasHeader = hf.header || headerFirst || headerEven;
-  const hasFooter = hf.footer || footerFirst || footerEven;
+  const sections = ctx.masterPages.map((name, i) => ({ ...hfSetOfMasterPage(name, ctx, geometry, docNumFormat, edge), pageNumberStart: ctx.masterPageStarts[i] ?? null }));
+  // A first-page/even zone reserves the band even if its default counterpart is empty. A
+  // later section's zone counts too: it inherits the distances where it matches them.
+  const hasHeader = hf.header || headerFirst || headerEven || sections.some((s) => s.header || s.headerFirst || s.headerEven);
+  const hasFooter = hf.footer || footerFirst || footerEven || sections.some((s) => s.footer || s.footerFirst || s.footerEven);
 
   const result: OdtImportResult = {
     // Deeper than ODF's ten levels, LibreOffice shows a list on the tenth.
@@ -1220,7 +1222,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     differentOddEven,
     hfSections: [
       { header, footer, headerFirst, footerFirst, differentFirstPage, headerEven, footerEven, differentOddEven },
-      ...ctx.masterPages.map((name, i) => ({ ...hfSetOfMasterPage(name, ctx, geometry, docNumFormat, edge), pageNumberStart: ctx.masterPageStarts[i] ?? null })),
+      ...sections,
     ],
     headerDistanceCm: hasHeader ? edge?.top ?? null : null,
     footerDistanceCm: hasFooter ? edge?.bottom ?? null : null,
