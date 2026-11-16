@@ -2170,7 +2170,7 @@ function listStyleFromOdf(name: string, el: Element, builtin?: boolean, resolver
       const key = orderedTypeFromFormat(odfNumFormatOf(def), def.getAttributeNS(NS.style, 'num-suffix'));
       level.numType = key === 'multilevel' ? 'decimal' : key;
       const sv = parseInt(def.getAttributeNS(NS.text, 'start-value') ?? '', 10);
-      if (Number.isFinite(sv) && sv > 1) level.startAt = sv;
+      if (Number.isFinite(sv) && sv >= 0 && sv !== 1) level.startAt = sv;
     } else {
       const ch = bulletCharFromOdf(def.getAttributeNS(NS.text, 'bullet-char'), listLevelFontName(def, resolver));
       if (ch) level.bulletChar = ch;
@@ -3586,7 +3586,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
     listStyleType = govMultilevel ? key : orderedTypeAttrAt(key, baseCycle);
   }
   // An automatic level's own start value is the list's; a named style's registry holds it.
-  const ownStart = named ? (levelStart > 1 ? levelStart : 1) : 1;
+  const ownStart = named ? levelStart : 1;
   if (start == null && !named && levelStart !== 1) start = levelStart;
   const attrs: Record<string, unknown> = {};
   if (start != null && (start !== ownStart || continued)) attrs.start = start;
