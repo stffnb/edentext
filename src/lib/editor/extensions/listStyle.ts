@@ -60,6 +60,8 @@ export function listStyleDecos(doc: ProseMirrorNode, sheet: StyleSheet): Decorat
         css.push(`--bullet: "${eff.bulletChar}"`);
       }
       if (!node.attrs.markerAlign && eff.markerAlign) attrs['data-marker-align'] = eff.markerAlign;
+      if (typeof node.attrs.hanging !== 'number' && eff.hanging != null) css.push(`--list-hang: ${eff.hanging}cm`);
+      if (!node.attrs.markerSuffix && eff.markerSuffix) attrs['data-marker-suffix'] = eff.markerSuffix;
       if (node.attrs.indent == null && eff.indent) css.push(`margin-left: calc(var(--sec-inset-left, 0px) + ${eff.indent}cm)`);
       if (css.length) attrs.style = css.join(';');
       if (Object.keys(attrs).length) decos.push(Decoration.node(pos, pos + node.nodeSize, attrs));

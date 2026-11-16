@@ -3450,15 +3450,18 @@ function applyListStyleNames(odtBytes: Uint8Array, names: (string | null)[]): Ui
 }
 
 // The full 10-level definition of a named list style for styles.xml. Undefined levels
-// fall back to decimal, as LibreOffice fills them in (probed); the hanging indent is
-// the flat 0.635cm every list export uses.
+// fall back to decimal, as LibreOffice fills them in (probed); a level without its own
+// hang takes the flat 0.635cm every list export uses.
 function buildNamedListStyleXml(style: ListStyle): string {
   let levels = '';
   for (let level = 1; level <= MAX_LIST_LEVELS; level++) {
     const def = style.levels[level - 1];
     const margin = `${listStyleMarginCm(style, level).toFixed(3)}cm`;
     const right = def?.markerAlign === 'right' ? ' fo:text-align="end"' : '';
-    const labelAlign = `<style:list-level-properties text:list-level-position-and-space-mode="label-alignment"${right}><style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="${margin}" fo:text-indent="-0.635cm" fo:margin-left="${margin}"/></style:list-level-properties>`;
+    const follow = def?.markerSuffix ?? 'listtab';
+    const tab = follow === 'listtab' ? ` text:list-tab-stop-position="${margin}"` : '';
+    const indent = `${(-(def?.hanging ?? 0.635)).toFixed(3)}cm`;
+    const labelAlign = `<style:list-level-properties text:list-level-position-and-space-mode="label-alignment"${right}><style:list-level-label-alignment text:label-followed-by="${follow}"${tab} fo:text-indent="${indent}" fo:margin-left="${margin}"/></style:list-level-properties>`;
     if (def?.kind === 'bullet') {
       const ch = escapeXml(def.bulletChar ?? defaultBulletChar(level - 1));
       levels += `<text:list-level-style-bullet text:level="${level}" text:bullet-char="${ch}">${labelAlign}</text:list-level-style-bullet>`;

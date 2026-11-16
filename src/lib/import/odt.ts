@@ -2118,6 +2118,7 @@ function listStyleFromOdf(name: string, el: Element, builtin?: boolean, resolver
     if (extra) level.indentCm = extra;
     prevMargin = margin;
     if (listLevelRightAligned(def)) level.markerAlign = 'right';
+    Object.assign(level, listLevelLabel(def, d));
     if (ordered) {
       if (parseInt(def.getAttributeNS(NS.text, 'display-levels') ?? '1', 10) > 1) multilevel = true;
       const key = orderedTypeFromFormat(odfNumFormatOf(def), def.getAttributeNS(NS.style, 'num-suffix'));

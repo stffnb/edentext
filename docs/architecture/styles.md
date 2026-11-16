@@ -38,6 +38,9 @@ A named list style belongs on the outermost list. Nested lists inherit it. Each 
 as node override, then named style level, then the depth-cycle default. The resolved level kind
 controls whether that depth displays numbers or bullets, regardless of the stored list-node
 species; applying a list style normalizes the subtree to those kinds.
+A level carries its label geometry too (`hanging`, `markerSuffix`: ODF `fo:text-indent` and
+`text:label-followed-by`, Word `w:hanging` and `w:suff`); a right-set label ends at the text
+start less the hang, as LibreOffice measures it.
 
 Export a named list reference only when no effective level is overridden. ODF list styles have
 no parent chain, so an override exports as a fully resolved automatic list style. Importers must

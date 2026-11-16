@@ -1488,7 +1488,7 @@ describe('DOCX named list styles', () => {
     levels: [
       { kind: 'number', numType: 'upper-roman-paren', markerAlign: 'right', indentCm: 0.5 },
       { kind: 'bullet', bulletChar: '✓' },
-      { kind: 'number', numType: 'lower-alpha' },
+      { kind: 'number', numType: 'lower-alpha', hanging: 0.3, markerSuffix: 'space' },
     ],
   };
   const fixture = {
@@ -1544,7 +1544,7 @@ describe('DOCX named list styles', () => {
     const imported = result.styles.list['Prüfliste'];
     expect(imported?.levels[0]).toMatchObject({ kind: 'number', numType: 'upper-roman-paren', markerAlign: 'right', indentCm: 0.5 });
     expect(imported?.levels[1]).toMatchObject({ kind: 'bullet', bulletChar: '✓' });
-    expect(imported?.levels[2]).toMatchObject({ kind: 'number', numType: 'lower-alpha' });
+    expect(imported?.levels[2]).toMatchObject({ kind: 'number', numType: 'lower-alpha', hanging: 0.3, markerSuffix: 'space' });
   });
 
   it('the style level decides a depth\'s kind — a species-mismatched nest keeps the shared abstract', async () => {

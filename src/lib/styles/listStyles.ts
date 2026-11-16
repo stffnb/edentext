@@ -14,6 +14,9 @@ export type ListLevelStyle = {
   numType?: Exclude<OrderedListType, 'multilevel'>;
   indentCm?: number;
   markerAlign?: 'right';
+  // The label's hang left of the text (cm) and what follows it, as on a list node.
+  hanging?: number;
+  markerSuffix?: 'space' | 'nothing';
   startAt?: number;
 };
 
@@ -102,8 +105,8 @@ export function effectiveListLevel(
     listStyleType,
     indent: typeof a.indent === 'number' ? a.indent : (level?.indentCm ?? 0),
     markerAlign: (a.markerAlign as 'right' | null) ?? (level?.markerAlign ?? null),
-    hanging: typeof a.hanging === 'number' ? a.hanging : null,
-    markerSuffix: a.markerSuffix === 'space' || a.markerSuffix === 'nothing' ? a.markerSuffix : null,
+    hanging: typeof a.hanging === 'number' ? a.hanging : (level?.hanging ?? null),
+    markerSuffix: a.markerSuffix === 'space' || a.markerSuffix === 'nothing' ? a.markerSuffix : (level?.markerSuffix ?? null),
     startAt: kind === 'number' && styled ? level?.startAt ?? null : null,
   };
 }

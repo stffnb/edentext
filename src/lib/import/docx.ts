@@ -1557,6 +1557,8 @@ function listStyleFromDocx(name: string, ctx: Ctx, numId: number, builtin?: bool
     if (extra) level.indentCm = extra;
     prevLeftCm = leftCm;
     if (def.rightAligned) level.markerAlign = 'right';
+    if (def.hangingTwip != null && Math.abs(twipToCm(def.hangingTwip) - LIST_HANGING_CM) > LIST_INDENT_EPS_CM) level.hanging = round2(twipToCm(def.hangingTwip));
+    if (def.suffix === 'space' || def.suffix === 'nothing') level.markerSuffix = def.suffix;
     if (bullet) {
       const ch = bulletCharFromDocx(def.lvlText, def.bulletFont);
       if (ch) level.bulletChar = ch;

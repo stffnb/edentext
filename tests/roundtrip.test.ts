@@ -1740,7 +1740,7 @@ describe('Leg 14: named list styles (ODF)', () => {
     levels: [
       { kind: 'number', numType: 'upper-roman-paren', markerAlign: 'right', indentCm: 0.5 },
       { kind: 'bullet', bulletChar: '✓' },
-      { kind: 'number', numType: 'lower-alpha' },
+      { kind: 'number', numType: 'lower-alpha', hanging: 0.3, markerSuffix: 'space' },
     ],
   };
 
@@ -1784,6 +1784,8 @@ describe('Leg 14: named list styles (ODF)', () => {
     check('level 1 survives whole', imported?.levels[0]?.numType === 'upper-roman-paren'
       && imported?.levels[0]?.markerAlign === 'right' && imported?.levels[0]?.indentCm === 0.5, imported?.levels[0]);
     check('level 2 keeps its bullet', imported?.levels[1]?.bulletChar === '✓', imported?.levels[1]);
+    check('level 3 keeps its hang and suffix', imported?.levels[2]?.hanging === 0.3
+      && imported?.levels[2]?.markerSuffix === 'space', imported?.levels[2]);
     expect.soft(res.styles.list['Diamond Bullets'], 'the built-in comes back as itself').toEqual(sheet.list['Diamond Bullets']);
   });
 

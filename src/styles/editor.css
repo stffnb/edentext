@@ -917,7 +917,8 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
 }
 
 /* A label set against the far end of the hanging indent grows into the margin instead
-   of into the text — what keeps Word's Roman numerals off the words they label. */
+   of into the text — what keeps Word's Roman numerals off the words they label. Its
+   last glyph ends there: nowrap drops the trailing space the label content carries. */
 .paper .tiptap :is(ol, ul)[data-marker-align="right"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before {
   float: none;
   position: absolute;
@@ -925,6 +926,7 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   min-width: 0;
   margin-left: 0;
   right: calc(100% + var(--list-hang));
+  white-space: nowrap;
 }
 /* A label followed by a space or nothing has no tab to run to: the text follows it. */
 .paper .tiptap :is(ol, ul)[data-marker-suffix] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before {

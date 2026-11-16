@@ -431,13 +431,14 @@ class Numbering {
       for (let l = 0; l < 9; l++) {
         const def = style.levels[l];
         const indent: IIndentAttributesProperties = {
-          left: cmToTwip(listStyleMarginCm(style, l + 1)), hanging: cmToTwip(LIST_HANGING_CM),
+          left: cmToTwip(listStyleMarginCm(style, l + 1)), ...listHangIndent(def?.hanging ?? null),
         };
+        const suffix = def?.markerSuffix === 'space' ? LevelSuffix.SPACE : def?.markerSuffix === 'nothing' ? LevelSuffix.NOTHING : undefined;
         const alignment = def?.markerAlign === 'right' ? AlignmentType.RIGHT : AlignmentType.LEFT;
         if (def?.kind === 'bullet') {
           levels.push({
             level: l, format: LevelFormat.BULLET, text: def.bulletChar ?? defaultBulletChar(l),
-            alignment, style: { paragraph: { indent } },
+            alignment, style: { paragraph: { indent } }, ...(suffix ? { suffix } : {}),
           });
         } else {
           const t = orderedTypeDef(style.multilevel ? 'decimal' : def?.numType ?? 'decimal');
@@ -446,7 +447,7 @@ class Numbering {
             format: ORDERED_FORMAT[t.numFormat] ?? LevelFormat.DECIMAL,
             text: style.multilevel ? Array.from({ length: l + 1 }, (_, i) => `%${i + 1}.`).join('') : `%${l + 1}${t.numSuffix}`,
             alignment, start: def?.startAt ?? 1,
-            style: { paragraph: { indent } },
+            style: { paragraph: { indent } }, ...(suffix ? { suffix } : {}),
           });
         }
       }
