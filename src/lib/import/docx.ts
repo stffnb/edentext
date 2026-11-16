@@ -3,6 +3,7 @@ import { strFromU8 } from 'fflate';
 import en from '../i18n/locales/en';
 import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readSpacing, readTabStops, toggle as onOff, wVal, W, R, WP, A, B, WPS, WPG, MC, VML, O, W10, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
 import { mostlyAsian } from '../utils/script';
+import { AUTO_COLOR } from '../utils/color';
 import { W14 } from '../utils/w14Effects';
 import { lengthToPt, WATERMARK_NAME } from './styleResolver';
 import { normalizeColor, labelledItems } from '../export/odt';
@@ -1387,7 +1388,12 @@ function styleText(ctx: Ctx, id: string | null, own = false): TextProps {
   if (!id) return {};
   // A character style adds to the run it decorates, so its own chain saying nothing
   // about kerning means "unchanged", not Word's off.
-  if (own) { const t = runTextProps(ctx.styles.styleOwn(id)); delete t.kerning; return t; }
+  if (own) {
+    const run = ctx.styles.styleOwn(id), t = runTextProps(run);
+    delete t.kerning;
+    if (run.color === AUTO_COLOR) t.color = AUTO_COLOR;
+    return t;
+  }
   // A paragraph style naming no font uses the document's theme (minorHAnsi for body,
   // majorHAnsi for headings) — the family single line spacing is measured against.
   const run = ctx.styles.paragraphRun(id);
@@ -2674,6 +2680,8 @@ function marksFor(props: RunProps, defaults: BlockDefaults, inLink: boolean): Ma
   let color = hexColor(props.color);
   if (inLink && color === LINK_BLUE) color = undefined; // strip the exporter's link visual
   if (color && color !== defaults.color) textStyle.color = color;
+  // Automatic outranks a coloured style: LibreOffice draws it black.
+  else if (props.color === AUTO_COLOR && defaults.color !== '#000000') textStyle.color = AUTO_COLOR;
 
   const sizePt = props.sizeHalfPt != null ? props.sizeHalfPt / 2 : null;
   if (sizePt != null && Math.abs(sizePt - defaults.fontSizePt) > 0.05) textStyle.fontSize = `${Math.round(sizePt * 10) / 10}pt`;

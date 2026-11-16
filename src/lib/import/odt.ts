@@ -5,6 +5,7 @@ import { StyleResolver, NS, WATERMARK_NAME, lengthToPt, lengthToCm, layerTextPro
 import { cjkDocFont, odfFromTag, tagFromOdf } from '../storage/documentLanguage';
 import { ASIAN_SCRIPT_RE } from '../utils/script';
 import { ODF_LOOK_ATTRS, normalizeColor, labelledItems } from '../export/odt';
+import { AUTO_COLOR } from '../utils/color';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL } from '../styles/headings';
 import { isAllowedUri } from '@tiptap/extension-link';
 import { builtinStyleSheet, DEFAULT_STYLE, screenFontName, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
@@ -1937,6 +1938,7 @@ function textPropsFromOdf(props: PropMap, resolver: StyleResolver): TextProps {
   if (lt) out.strike = lt !== 'none';
   const color = props['fo:color'] ? normalizeColor(props['fo:color']) : undefined;
   if (color) out.color = color;
+  else if (autoColor(props)) out.color = AUTO_COLOR;
   const caps = capsFromOdf(props);
   if (caps != null) out.caps = caps;
   const fx = effectsFromOdf(props);
@@ -1945,6 +1947,9 @@ function textPropsFromOdf(props: PropMap, resolver: StyleResolver): TextProps {
   if (fx.relief != null) out.relief = fx.relief;
   return out;
 }
+
+// ODF's automatic font colour; a style that names a colour as well keeps it.
+const autoColor = (props: PropMap): boolean => props['style:use-window-font-color'] === 'true' && !props['fo:color'];
 
 // What a style declares itself: its resolved props minus the parent's.
 function ownProps<T extends object>(resolved: T, parent: T): T {
@@ -2139,7 +2144,7 @@ function charDefaults(ctx: Ctx, base: BlockDefaults, odfName: string): BlockDefa
     boldByDefault: weight ? weight === 'bold' || parseInt(weight, 10) >= 600 : base.boldByDefault,
     fonts,
     asianFonts,
-    color: (props['fo:color'] && normalizeColor(props['fo:color'])) || base.color,
+    color: (props['fo:color'] && normalizeColor(props['fo:color'])) || (autoColor(props) ? '#000000' : base.color),
     italic: fontStyle ? fontStyle === 'italic' || fontStyle === 'oblique' : base.italic,
     underline: props['style:text-underline-style'] ? lineSig(props, 'underline') : base.underline,
     strike: props['style:text-line-through-style'] ? lineSig(props, 'line-through') : base.strike,
@@ -3284,6 +3289,7 @@ function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaul
   const color = props['fo:color'] ? normalizeColor(props['fo:color']) : undefined;
   // The style's own color (black by default; an explicit black mark would fight dark/allBlack).
   if (color && color !== defaults.color) textStyle.color = color;
+  else if (!color && autoColor(props) && defaults.color !== '#000000') textStyle.color = AUTO_COLOR;
 
   const sizePt = lengthToPt(props['fo:font-size']);
   if (sizePt != null && Math.abs(sizePt - defaults.fontSizePt) > 0.05) textStyle.fontSize = formatPt(sizePt);

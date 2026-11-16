@@ -1,6 +1,6 @@
 import { Extension } from '@tiptap/core';
 import '@tiptap/extension-text-style';
-import { normalizeColor } from '../../utils/color';
+import { cssColor, normalizeColor } from '../../utils/color';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -30,7 +30,7 @@ export const FontColor = Extension.create({
             // A browser hands a pasted span's colour back as rgb(), which ODF does not accept.
             parseHTML: element => normalizeColor(element.style.color) ?? null,
             renderHTML: attributes => {
-              const color = normalizeColor(attributes.color);
+              const color = cssColor(attributes.color);
               if (!color) return {};
               return {
                 style: `--font-color: ${color}; color: ${color}`,

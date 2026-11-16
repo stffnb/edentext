@@ -96,6 +96,11 @@ export function layerTextProps(base: PropMap, over: PropMap): PropMap {
     delete out['style:font-family-asian'];
     delete out['style:font-name-asian'];
   }
+  // A colour and the automatic one are one property: either replaces the other.
+  if ('fo:color' in over || 'style:use-window-font-color' in over) {
+    delete out['fo:color'];
+    delete out['style:use-window-font-color'];
+  }
   return Object.assign(out, over);
 }
 

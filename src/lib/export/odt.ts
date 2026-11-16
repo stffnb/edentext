@@ -53,7 +53,7 @@ import { findFormat, renderFormat, odfNumberStyle, toDateValue, localeTag, DEFAU
 import { parseLatex } from '../math/latex';
 import { mathmlDocument } from '../math/mathml';
 export { normalizeColor } from '../utils/color';
-import { normalizeColor } from '../utils/color';
+import { AUTO_COLOR, normalizeColor } from '../utils/color';
 
 type AlignValue = 'left' | 'center' | 'right' | 'justify';
 
@@ -2550,7 +2550,8 @@ function ownStyleAttrs(style: { para: Record<string, unknown>; text: Record<stri
   if (t.italic != null) text['fo:font-style'] = t.italic ? 'italic' : 'normal';
   if (t.underline) text['style:text-underline-style'] = 'solid';
   if (t.strike) text['style:text-line-through-style'] = 'solid';
-  if (t.color) text['fo:color'] = String(t.color);
+  if (t.color === AUTO_COLOR) text['style:use-window-font-color'] = 'true';
+  else if (t.color) text['fo:color'] = String(t.color);
   if (t.caps === 'smallCaps') text['fo:font-variant'] = 'small-caps';
   else if (t.caps) text['fo:text-transform'] = String(t.caps);
   else if (t.caps === false) Object.assign(text, { 'fo:text-transform': 'none', 'fo:font-variant': 'normal' });
@@ -2566,7 +2567,7 @@ const MANAGED_STYLE_ATTRS = [
   'fo:font-size', 'style:font-size-asian', 'style:font-size-complex',
   'fo:font-weight', 'style:font-weight-asian', 'style:font-weight-complex',
   'fo:font-style', 'style:font-style-asian', 'style:font-style-complex',
-  'style:text-underline-style', 'style:text-line-through-style', 'fo:color',
+  'style:text-underline-style', 'style:text-line-through-style', 'fo:color', 'style:use-window-font-color',
   'style:font-name', 'style:font-name-asian', 'style:font-name-complex',
 ];
 
@@ -4079,7 +4080,7 @@ function formattingFromMarks(marks: TiptapNode['marks'] = []): TextFormatting {
   if (tsm?.attrs?.fontSize)   fmt.fontSize   = String(tsm.attrs.fontSize);
   if (tsm?.attrs?.color) {
     const c = normalizeColor(String(tsm.attrs.color));
-    if (c) fmt.color = c;
+    if (c && c !== AUTO_COLOR) fmt.color = c;
   }
   // Text highlight (background). odf-kit maps highlightColor → fo:background-color
   // natively for normal paragraphs; this covers the custom-attr-paragraph path
@@ -4194,6 +4195,8 @@ export function odfExtraTextProps(marks: TiptapNode['marks'] = [], baseSizePt = 
   }
   const em = marks.find(m => m.type === 'textStyle')?.attrs?.emphasis;
   if (isEmphasis(em)) a.push(`style:text-emphasize="${em}"`);
+  if (marks.find(m => m.type === 'textStyle')?.attrs?.color === AUTO_COLOR) a.push('style:use-window-font-color="true"');
+  if (marks.find(m => m.type === 'textStyle')?.attrs?.fontStyle === 'normal' && !marks.some(m => m.type === 'italic')) a.push('fo:font-style="normal"');
   a.push(...Object.entries(effectsToOdf(marks.find(m => m.type === 'textStyle')?.attrs ?? {})).map(([k, v]) => `${k}="${v}"`));
   // ODF places a raised run in percent of its font size, Word and the editor in pt.
   const pos = marks.find(m => m.type === 'textStyle')?.attrs?.textPosition;
@@ -4226,10 +4229,18 @@ function charFormatting(sheet: StyleSheet, name: string): Record<string, unknown
 // reads marks itself on its native paths, so the pre-pass is what reaches all of them.
 function markTextEffects(node: TiptapNode, baseSizePt = DEFAULT_FONT_SIZE_PT, sheet?: StyleSheet): TiptapNode {
   if (node.type === 'text') {
-    const extra = odfExtraTextProps(node.marks, baseSizePt);
+    let extra = odfExtraTextProps(node.marks, baseSizePt);
+    // A character style's automatic colour mints no span of its own: the extra props do.
+    const cs = sheet && charStyleOf(node.marks);
+    if (cs && resolveStyle(sheet, cs, 'character').text.color === AUTO_COLOR && !/use-window-font-color/.test(extra)
+      && !node.marks?.some((m) => m.type === 'textStyle' && m.attrs?.color)) {
+      extra = `${extra} style:use-window-font-color="true"`.trim();
+    }
+    // odf-kit reads the marks itself and has no automatic colour: the extra props carry it.
+    const marks = node.marks?.map((m) => m.type === 'textStyle' && m.attrs?.color === AUTO_COLOR ? { ...m, attrs: { ...m.attrs, color: null } } : m);
     // The empty trailing pair marks where the run ends: a bare run following would
     // otherwise be indistinguishable from the run's own text and get wrapped with it.
-    return extra ? { ...node, text: `${TEF}${extra}${TEF}${node.text ?? ''}${TEF}${TEF}` } : node;
+    return extra ? { ...node, marks, text: `${TEF}${extra}${TEF}${node.text ?? ''}${TEF}${TEF}` } : node;
   }
   if (!node.content?.length) return node;
   // A named style's size is the reference for a raised run's percentage (a Title's
@@ -4288,7 +4299,7 @@ function textFormatting(t: TextProps): Record<string, unknown> {
   if (t.strike) fmt.strikethrough = true;
   if (t.fontFamily) fmt.fontFamily = directFontName(t.fontFamily);
   if (t.fontSizePt != null) fmt.fontSize = `${t.fontSizePt}pt`;
-  if (t.color) fmt.color = t.color;
+  if (t.color && t.color !== AUTO_COLOR) fmt.color = t.color;
   return fmt;
 }
 
@@ -4324,6 +4335,8 @@ function applyCharacterStyles(odtBytes: Uint8Array): Uint8Array {
   };
 
   const cstRe = new RegExp(`${CST}([^${CST}]*)${CST}`);
+  // A run whose span only its text effects minted has the sentinel just in front of it.
+  content = content.replace(new RegExp(`(${CST}[^${CST}]*${CST})(<text:span\\b[^>]*>)`, 'g'), '$2$1');
   content = content.replace(
     new RegExp(`<text:span\\b((?:[^>]*[^/>])?)>([\\s\\S]*?)</text:span>`, 'g'),
     (m, attrs: string, inner: string) => {

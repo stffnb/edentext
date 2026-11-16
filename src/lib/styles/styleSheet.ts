@@ -6,7 +6,7 @@ import { builtinTableStyles, tableStyleCss, type TableStyle } from './tableStyle
 import { outlineCss, type OutlineNumbering } from './outlineNumbering';
 import { builtinListStyles, type ListStyle } from './listStyles';
 import { effectCss, type CapsMode, type Relief, type TextGlow, type TextOutline, type TextShadow, type W14El } from '../editor/extensions/textEffects';
-import { normalizeColor } from '../utils/color';
+import { cssColor, normalizeColor } from '../utils/color';
 import { parseBorderAttr } from '../editor/extensions/tableCellBorders';
 
 const MAX_STYLE_NAME_LENGTH = 256;
@@ -437,7 +437,7 @@ export function textDeclarations(t: TextProps, asBlock = false): string[] {
   if (t.underline || t.strike) {
     out.push(`text-decoration: ${[t.underline && 'underline', t.strike && 'line-through'].filter(Boolean).join(' ')}`);
   }
-  const color = normalizeColor(t.color);
+  const color = cssColor(t.color);
   if (color) out.push(`color: ${color}`);
   if (t.caps && CAPS.has(t.caps)) out.push(t.caps === 'smallCaps' ? 'font-variant-caps: small-caps' : `text-transform: ${t.caps}`);
   else if (t.caps === false) out.push('text-transform: none', 'font-variant-caps: normal');
