@@ -1087,5 +1087,6 @@ function isFramed(props: Element): boolean {
   const border = (v: string | null) => !!v && !/^(none|hidden)$|\b(none|hidden)\b|^0\w*\s/.test(v.trim());
   const pad = (v: string | null) => !!v && parseFloat(v) > 0;
   return border(attr('border')) || sides.some((s) => border(attr(`border-${s}`)))
-    || pad(attr('padding')) || sides.some((s) => pad(attr(`padding-${s}`)));
+    || pad(attr('padding')) || sides.some((s) => pad(attr(`padding-${s}`)))
+    || /^#[0-9a-f]{6}$/i.test(attr('background-color') ?? '');
 }

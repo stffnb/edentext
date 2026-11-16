@@ -211,6 +211,7 @@
     return ` --hf-frame-bt: ${side(f.border.top)}; --hf-frame-br: ${side(f.border.right)};` +
       ` --hf-frame-bb: ${side(f.border.bottom)}; --hf-frame-bl: ${side(f.border.left)};` +
       ` --hf-frame-pad: ${px(p.top)} ${px(p.right)} ${px(p.bottom)} ${px(p.left)};` +
+      (f.background ? ` --hf-frame-bg: ${f.background};` : '') +
       ` --hf-frame-gap-${header ? 'b' : 't'}: ${px(f.dynamic ? 0 : f.gap)};` +
       (bandPx == null ? '' : ` --hf-frame-min: ${Math.max(0, bandPx - cmToPx(f.gap))}px;`);
   }
@@ -1002,6 +1003,7 @@
   }
   .hf-zone[style*='--hf-frame-pad'] :global(.tiptap) {
     padding: var(--hf-frame-pad);
+    background: var(--hf-frame-bg, none) !important;
     min-height: var(--hf-frame-min, 0px);
   }
   /* A paragraph ending in an inline atom (a page field) gets a phantom trailing <br> the

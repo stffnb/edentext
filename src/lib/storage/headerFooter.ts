@@ -64,6 +64,7 @@ export type HfFrame = {
   padding: { top: number; right: number; bottom: number; left: number };
   gap: number;
   dynamic?: boolean;
+  background?: string; // '#RRGGBB', filling the area inside its borders
 };
 export type HfFrames = { header?: HfFrame | null; footer?: HfFrame | null };
 // Section 1's frames, which the app keeps beside its zones.

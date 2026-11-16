@@ -1330,6 +1330,7 @@ function hfFramesOf(resolver: StyleResolver, name: string | null, restPage: stri
         padding: { top: pad('top'), right: pad('right'), bottom: pad('bottom'), left: pad('left') },
         gap: cm(lengthToCm(attr(`margin-${gapSide}`))),
         ...(el.getAttributeNS(NS.style, 'dynamic-spacing') === 'true' ? { dynamic: true } : {}),
+        ...(/^#[0-9a-f]{6}$/i.test(attr('background-color') ?? '') ? { background: attr('background-color')!.toUpperCase() } : {}),
       };
     };
     const header = frame(props.header, 'bottom');

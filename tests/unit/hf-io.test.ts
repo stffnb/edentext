@@ -155,7 +155,7 @@ describe('per-section header/footer', () => {
   // export), and keep the zone's paragraphs free of their space.
   it('carries a zone’s area frame through ODF, per section', async () => {
     const frame = { border: { top: '0.5pt solid #FF0000', right: null, bottom: null, left: null }, padding: { top: 0.1, right: 0, bottom: 0, left: 0.2 }, gap: 0.5 };
-    const dynamic = { ...frame, dynamic: true };
+    const dynamic = { ...frame, dynamic: true, background: '#FFCC00' };
     const own = { ...hf, sections: [{ ...sections[0], frames: { footer: dynamic } }, { ...sections[1], frames: { header: frame } }] };
     const back = importOdt(await buildOdt(doc, MARGINS, 'portrait', own));
     expect(back.hfSections[0].frames?.footer).toEqual(dynamic);

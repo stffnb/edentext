@@ -6339,7 +6339,8 @@ function hfBandProps(kind: 'header' | 'footer', minH: number, frame: HfFrame | n
     const pad = (side: keyof HfFrame['padding']) => ` fo:padding-${side}="${Math.round(p[side] * 1000) / 1000}cm"`;
     return `<style:header-footer-properties fo:min-height="${minH}cm" fo:margin-${kind === 'header' ? 'bottom' : 'top'}="${Math.round(frame.gap * 1000) / 1000}cm"` +
       border('top') + border('right') + border('bottom') + border('left') +
-      pad('top') + pad('right') + pad('bottom') + pad('left') + ` style:dynamic-spacing="${!!frame.dynamic}"/>`;
+      pad('top') + pad('right') + pad('bottom') + pad('left') + ` style:dynamic-spacing="${!!frame.dynamic}"` +
+      (frame.background ? ` fo:background-color="${frame.background}"/>` : '/>');
   }
   return kind === 'header'
     ? `<style:header-footer-properties fo:min-height="${minH}cm" fo:margin-bottom="0cm" style:dynamic-spacing="false"/>`
