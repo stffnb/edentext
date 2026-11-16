@@ -582,6 +582,7 @@ export function propsFromBlock(node: BlockNode, marks: BlockMark[] = []): Resolv
       if (typeof attrs.fontSize === 'string' && attrs.fontSize) text.fontSizePt = parseFloat(attrs.fontSize);
       if (typeof attrs.color === 'string' && attrs.color) text.color = attrs.color;
       if (attrs.fontWeight === 'normal') text.bold = false;
+      if (attrs.fontStyle === 'normal') text.italic = false;
     }
   }
   return { para, text };

@@ -40,7 +40,7 @@ export function markerFormat(marks: MarkLike[], blockFontSize: unknown, charProp
     fontFamily: str(ts.fontFamily) ?? cs.fontFamily ?? null,
     // An explicit fontWeight is the un-bold channel, so it outranks the bold mark.
     fontWeight: ts.fontWeight != null ? String(ts.fontWeight) : bold ? 'bold' : null,
-    fontStyle: marks.some((m) => m.type === 'italic') || cs.italic ? 'italic' : null,
+    fontStyle: ts.fontStyle === 'normal' ? 'normal' : marks.some((m) => m.type === 'italic') || cs.italic ? 'italic' : null,
     fontSize: str(size),
     color: str(ts.color) ?? cs.color ?? null,
   };

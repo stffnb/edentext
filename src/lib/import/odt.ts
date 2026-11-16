@@ -1748,9 +1748,8 @@ type BlockDefaults = {
   // The asian fonts the block already renders its CJK text in.
   asianFonts: Set<string>;
   color: string;
-  // Marks the style already provides. A run that opts *out* of one can't be expressed
-  // (only bold has fontWeight:'normal'), so it keeps the style's rendering.
-  // ponytail: per-mark "off" overrides need mark attrs like fontWeight's; add if files need it.
+  // Marks the style already provides. A run opts out of bold and italic through
+  // fontWeight/fontStyle 'normal'; out of a style's line it cannot (CSS draws it through).
   italic: boolean;
   // The line the style draws (lineSig), null where it draws none.
   underline: string | null;
@@ -3243,6 +3242,7 @@ function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaul
   // Marks the block's named style already renders need no mark of their own.
   const fs = props['fo:font-style'];
   if ((fs === 'italic' || fs === 'oblique') && !defaults.italic) marks.push({ type: 'italic' });
+  else if (fs === 'normal' && defaults.italic) textStyle.fontStyle = 'normal';
   const ul = props['style:text-underline-style'];
   if (ul && ul !== 'none' && lineSig(props, 'underline') !== defaults.underline) {
     const line = lineAttrs(ul, props['style:text-underline-type'], props['style:text-underline-color']);

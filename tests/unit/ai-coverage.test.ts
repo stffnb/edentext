@@ -284,6 +284,7 @@ const SCHEMA: Record<string, Entry> = {
   'mark:textStyle.fontFamilyAsian': ASIAN,
   'mark:textStyle.fontSize': check(fmt({ size_pt: 14 }), hasMark('textStyle', (a) => a.fontSize === '14pt')),
   'mark:textStyle.fontWeight': IMPORT,
+  'mark:textStyle.fontStyle': IMPORT,
   'mark:textStyle.color': check(fmt({ color: '#C00000' }), hasMark('textStyle', (a) => !!a.color)),
   'mark:textStyle.caps': check(css('font-variant: small-caps'), hasMark('textStyle', (a) => a.caps === 'smallCaps')),
   'mark:textStyle.textPosition': check(css('vertical-align: 3pt'), hasMark('textStyle', (a) => a.textPosition === 3)),

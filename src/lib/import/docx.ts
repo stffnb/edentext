@@ -2664,6 +2664,7 @@ function marksFor(props: RunProps, defaults: BlockDefaults, inLink: boolean): Ma
 
   // Marks the block's named style already renders need no mark of their own.
   if (props.italic && !defaults.italic) marks.push({ type: 'italic' });
+  else if (props.italic === false && defaults.italic) textStyle.fontStyle = 'normal';
   const line = lineSig(props);
   if (props.underline && !inLink && line.underline !== defaults.underline) { // link underline is the CSS default
     const attrs = underlineAttrs(props);

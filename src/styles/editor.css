@@ -1663,6 +1663,11 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   color: var(--font-color, currentColor);
 }
 
+/* An italic mark set over a run's un-italic channel (fontStyle: normal) wins. */
+.tiptap :is(em, i) [style*="font-style: normal"] {
+  font-style: italic !important;
+}
+
 /* allBlack theme: force all explicitly-colored text to the page text color.
    The color is still stored on the textStyle mark, so .odt exports remain faithful. */
 [data-theme="allBlack"] .tiptap [data-color] {

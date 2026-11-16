@@ -620,7 +620,10 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], force: TextProps = {
   if (force.bold && bold !== false) bold = true;
   if (bold !== undefined) props.bold = bold;
 
-  if (markPresent(marks, 'italic') || force.italic) props.italics = true;
+  // An italic mark set over the un-italic channel wins, as it does on screen.
+  if (markPresent(marks, 'italic')) props.italics = true;
+  else if (ts?.attrs?.fontStyle === 'normal') props.italics = false;
+  else if (force.italic) props.italics = true;
   const u = marks.find((m) => m.type === 'underline');
   if (u) props.underline = wordUnderline(u.attrs);
   const st = marks.find((m) => m.type === 'strike');
@@ -1320,6 +1323,7 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLangs: unknown[] 
   }
   if (bold) parts.push('<w:b/>');
   if (markPresent(marks, 'italic')) parts.push('<w:i/>');
+  else if (ts?.attrs?.fontStyle === 'normal') parts.push('<w:i w:val="0"/>');
   const st = marks.find((m) => m.type === 'strike');
   if (st) parts.push(st.attrs?.lineStyle === 'double' ? '<w:dstrike/>' : '<w:strike/>');
   const caps = ts?.attrs?.caps;
