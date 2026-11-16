@@ -681,6 +681,15 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   cursor: text;
   min-height: 1em;
   position: relative;
+  /* A frame's paragraphs take nothing from the one holding it, as in both word
+     processors: CSS would hand a centred or bold anchor's look to every one of them. */
+  text-align: start;
+  text-indent: 0;
+  font-weight: normal;
+  font-style: normal;
+  font-variant-caps: normal;
+  text-transform: none;
+  letter-spacing: normal;
 }
 .paper .tiptap .textbox-content > :first-child {
   margin-top: 0;

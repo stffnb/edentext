@@ -730,6 +730,18 @@ try {
   check(Math.abs(overlap[0][0] - 340) <= 1 && Math.abs(overlap[0][1]) <= 1 && Math.abs(overlap[1][0] - 38) <= 1,
     `side floats overlap an earlier block's at their own x from the column (${overlap.join(' | ')})`);
 
+  // A text box's paragraphs take nothing from the centred, bold heading holding it.
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
+    { type: 'heading', attrs: { level: 1, textAlign: 'center' }, content: [words('Head '),
+      { type: 'textBox', attrs: { width: 300, height: 80 }, content: [block(words('boxed'))] }] }] });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap .textbox-content p', { timeout: 15_000 });
+  const boxed = await page.evaluate(() => {
+    const c = getComputedStyle(document.querySelector('.tiptap-host .textbox-content p'));
+    return `${c.textAlign} ${c.fontWeight}`;
+  });
+  check(boxed === 'start 400', `a text box's paragraph keeps its own alignment and weight in a centred heading (${boxed})`);
+
   // An index shows the rows it saved, as both word processors do, until it is updated.
   const heading = (t) => ({ type: 'heading', attrs: { level: 1 }, content: [words(t)] });
   await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
