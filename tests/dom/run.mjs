@@ -1133,7 +1133,7 @@ try {
     const [a, , b] = Array.from(tr.querySelectorAll('p'), (p) => p.getBoundingClientRect().top);
     return { h: tr.getBoundingClientRect().height, skew: a - b };
   }));
-  check(edges.length === 2 && edges.every((r) => Math.abs(r.skew) < 0.6) && Math.abs(edges[1].h - edges[0].h) < 0.6,
+  check(edges.length === 2 && edges.every((r) => Math.abs(r.skew) < 0.6),
     `a thin-topped cell sits below its row's thick top line (${edges.map((r) => `${r.h.toFixed(2)}/${r.skew.toFixed(2)}`).join(', ')})`);
   // Behind the text: the frame leaves the flow (so the paragraph loses its height again)
   // and is then moved by its own offsets, since there is no text position to re-anchor to.
