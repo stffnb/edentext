@@ -15,7 +15,8 @@ const marksOf = (cell: N): N[] => cell.content[0].content[0].marks ?? [];
 const MARGINS = { top: 2, bottom: 2, left: 2, right: 2 };
 
 describe('the table grid', () => {
-  // Grid columns a row leaves without a cell (w:gridBefore/w:gridAfter) draw nothing.
+  // Grid columns a row leaves without a cell (w:gridBefore/w:gridAfter) draw nothing, and
+  // the row's first and last cell take the table's outer sides, not its inside line.
   it('keeps the grid rectangular with borderless empty cells where a row skips columns', () => {
     const rows = tables(docxOf(`<w:tbl><w:tblPr><w:tblBorders><w:insideV w:val="single" w:sz="4"/></w:tblBorders></w:tblPr>
       <w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="2000"/><w:gridCol w:w="2000"/></w:tblGrid>
@@ -27,6 +28,8 @@ describe('the table grid', () => {
     expect(rows[2].content[0].attrs.colspan).toBe(2);
     for (const c of [rows[1].content[2], rows[2].content[0]])
       for (const side of ['borderTop', 'borderBottom', 'borderLeft', 'borderRight']) expect(c.attrs[side]).toBe('none');
+    expect([rows[1].content[1].attrs.borderRight, rows[2].content[1].attrs.borderLeft]).toEqual(['none', 'none']);
+    expect(rows[0].content[1].attrs.borderRight).toBeUndefined();
   });
 
   it('keeps the cells a content control wraps, around a cell or a whole row', () => {

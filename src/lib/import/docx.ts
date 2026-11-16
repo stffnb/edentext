@@ -3792,6 +3792,9 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
     const isHeaderRow = !!trHdr && onOff(trHdr);
     const cells: Node[] = [];
     const lead = Math.min(gridSkip(tr, 'gridBefore'), gridCols - 1);
+    // A row's first and last cell take the table's left and right border, where
+    // w:gridBefore/w:gridAfter leave grid columns empty too (probed in LibreOffice).
+    const rowCols = fcAll(tr, 'tc').reduce((n, tc) => n + (intAttr(fc(fc(tc, 'tcPr'), 'gridSpan'), W, 'val') ?? 1), lead);
     let col = lead;
     for (const tc of fcAll(tr, 'tc')) {
       const tcPr = fc(tc, 'tcPr');
@@ -3847,7 +3850,7 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
       // cell's own w:tcBorders. An edge of the box a layer covers takes that layer's
       // outer side, anything inside it the layer's insideH/insideV.
       const tcBorders = fc(tcPr, 'tcBorders');
-      const table: GridBox = { row: 0, col: 0, rowEnd: trs.length, colEnd: gridCols };
+      const table: GridBox = { row: 0, col: lead, rowEnd: trs.length, colEnd: rowCols };
       // A band's own edges (top/bottom of a row band, left/right of a column band) close
       // each band row or column; inside the banded region it declares none for, its
       // insideH/insideV stands (probed in LibreOffice).
