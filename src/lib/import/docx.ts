@@ -21,7 +21,7 @@ import { TEXTBOX_PADDING_CM, boxTextWidthCm } from '../editor/extensions/textBox
 import { formatTabStops } from '../editor/extensions/tabStops';
 import type { CapsMode, LineStyle, Relief } from '../editor/extensions/textEffects';
 import { builtinTableStyles, parseTableLook, resolveTableCell, tableLookAttr } from '../styles/tableStyles';
-import { formatOrdinal, knownNumFormat, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
+import { formatOrdinal, listStart, knownNumFormat, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { DATE_FORMATS, TIME_FORMATS, docxPicture, findFormat, toDateValue } from '../utils/dateTime';
 import { shapeFromPrst, isLineKind, lineKindFor, parseSvgPath, parseVmlPath, fitPath, pathHeadsFor, isOpenOutline, joinOutlineParts, shadeFromDrawingMl, asTextArea, type OutlinePart, type PathCmd, type DrawingMlPreset } from '../utils/shapes';
@@ -232,7 +232,8 @@ const DEFAULT_FONTS = new Set(['times new roman', 'liberation serif']);
 // Headings render sans (HEADING_FONT); Word writes Arial, LibreOffice Liberation Sans.
 const DEFAULT_HEADING_FONTS = new Set(['arial', 'liberation sans']);
 const LIST_LEFT_STEP_CM = 1.27; // matches export/docx.ts
-const LIST_HANGING_CM = 0.635; // matches export/docx.ts
+// The 0.635cm hang export/docx.ts writes; any other is the file's own, compared exactly.
+const LIST_HANGING_TWIP = 360;
 const LIST_INDENT_EPS_CM = 0.05;
 const LINK_BLUE = '#0563C1'; // the visual the exporter paints on hyperlink runs
 
@@ -884,7 +885,7 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
           const count = ctx.listCounters.get(ctx.styles.counterKey(num.numId))?.get(0);
           const prev = lastOrdered as Ordered | null;
           if (ilvl === 0 && num.ilvl > 0 && list.type === 'orderedList' && count != null && prev && sameCount(ctx, prev.numId, num.numId)
-            && (Number(prev.list.attrs?.start) || 1) + labelledItems(prev.list) - 1 === count) {
+            && listStart(prev.list.attrs?.start) + labelledItems(prev.list) - 1 === count) {
             list.attrs = { ...(list.attrs ?? {}), start: count + 1, continueNumbering: true };
           }
           stack.push({ ilvl, numId: num.numId, list,
@@ -897,13 +898,14 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         // running count onto a fresh ordered node so numbering continues, not restarts at 1.
         // A level opened under an item without a label counts on by itself (listStarts).
         const underLabelless = stack.length > 1 && stack[stack.length - 2].list.content!.length === 0;
-        if (targetList.type === 'orderedList' && targetList.content!.length === 0 && number > 1 && !underLabelless) {
+        const levelStart = ctx.styles.level(num.numId, num.ilvl).start ?? 1;
+        if (targetList.type === 'orderedList' && targetList.content!.length === 0 && number !== levelStart && !underLabelless) {
           targetList.attrs = { ...(targetList.attrs ?? {}), start: number };
           // Word counts the numId on wherever it resumes: the editor's continuation does
           // the same while the list before it shares that count and ends right before.
           const prev = lastOrdered as Ordered | null;
           if (stack.length === 1 && prev && sameCount(ctx, prev.numId, num.numId)
-            && (Number(prev.list.attrs?.start) || 1) + labelledItems(prev.list) === number) {
+            && listStart(prev.list.attrs?.start) + labelledItems(prev.list) === number) {
             targetList.attrs.continueNumbering = true;
           }
         }
@@ -1123,7 +1125,7 @@ function makeListNode(ctx: Ctx, numId: number, ilvl: number, own: ItemIndent = E
       const attr = orderedTypeAttrAt(key, listBaseCycle(ctx, numId, ilvl));
       if (attr) attrs.listStyleType = attr;
     }
-    if (def.start != null && def.start > 1) attrs.start = def.start;
+    if (def.start != null && def.start !== 1) attrs.start = def.start;
   }
   const ownLeft = own.left ?? def.leftTwip;
   if (ownLeft != null) {
@@ -1136,14 +1138,14 @@ function makeListNode(ctx: Ctx, numId: number, ilvl: number, own: ItemIndent = E
     };
     const step = leftCm(ilvl) - (ilvl === 0 ? 0 : leftCm(ilvl - 1));
     const extra = round2(Math.max(-LIST_LEFT_STEP_CM, step - LIST_LEFT_STEP_CM));
-    if (Math.abs(extra) > LIST_INDENT_EPS_CM) attrs.indent = extra;
+    if (extra !== 0) attrs.indent = extra;
   }
   if (def.rightAligned) attrs.markerAlign = 'right';
   // The family as a run reads it, which is what the first portion it is held against has.
   const marker = def.run ? markerFormatFromText({ ...runTextProps(def.run), ...(def.run.font ? { fontFamily: def.run.font } : {}) }) : null;
   if (marker) attrs.markerFormat = marker;
   const hang = own.hang ?? def.hangingTwip;
-  if (hang != null && Math.abs(twipToCm(hang) - LIST_HANGING_CM) > LIST_INDENT_EPS_CM) attrs.hanging = round2(twipToCm(hang));
+  if (hang != null && hang !== LIST_HANGING_TWIP) attrs.hanging = round2(twipToCm(hang));
   if (def.suffix === 'space' || def.suffix === 'nothing') attrs.markerSuffix = def.suffix;
   const node: Node = { type: bullet ? 'bulletList' : 'orderedList', content: [] };
   if (Object.keys(attrs).length) node.attrs = attrs;
@@ -1560,7 +1562,7 @@ function listStyleFromDocx(name: string, ctx: Ctx, numId: number, builtin?: bool
     if (extra) level.indentCm = extra;
     prevLeftCm = leftCm;
     if (def.rightAligned) level.markerAlign = 'right';
-    if (def.hangingTwip != null && Math.abs(twipToCm(def.hangingTwip) - LIST_HANGING_CM) > LIST_INDENT_EPS_CM) level.hanging = round2(twipToCm(def.hangingTwip));
+    if (def.hangingTwip != null && def.hangingTwip !== LIST_HANGING_TWIP) level.hanging = round2(twipToCm(def.hangingTwip));
     if (def.suffix === 'space' || def.suffix === 'nothing') level.markerSuffix = def.suffix;
     if (bullet) {
       const ch = bulletCharFromDocx(def.lvlText, def.bulletFont);
@@ -1569,7 +1571,7 @@ function listStyleFromDocx(name: string, ctx: Ctx, numId: number, builtin?: bool
       if (((def.lvlText ?? '').match(/%\d/g) ?? []).length > 1) multilevel = true;
       const key = orderedTypeFromFormat(wordFmtChar(def.numFmt), lvlSuffix(def.lvlText));
       level.numType = key === 'multilevel' ? 'decimal' : key;
-      if (def.start != null && def.start > 1) level.startAt = def.start;
+      if (def.start != null && def.start !== 1) level.startAt = def.start;
     }
     levels.push(level);
   }

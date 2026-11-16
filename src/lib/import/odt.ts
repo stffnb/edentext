@@ -20,7 +20,7 @@ import {
   TABLE_REGIONS, builtinTableStyles, parseTableLook, resolveTableCell, tableLookAttr,
   type TableLook, type TableRegion,
 } from '../styles/tableStyles';
-import { knownNumFormat, odfNumFormatOf, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
+import { knownNumFormat, listStart, odfNumFormatOf, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { docxPicture, matchFormat, toDateValue, type Token } from '../utils/dateTime';
 import {
@@ -1070,7 +1070,6 @@ const DEFAULT_HEADING_FONTS = new Set(['arial', 'liberation sans']);
 // odf-kit emits each list level at margin-left = level × 1.27cm (label-alignment).
 // A top-level list's margin beyond this level-1 base is its whole-list indent.
 const LIST_BASE_MARGIN_CM = 1.27;
-const LIST_INDENT_EPS_CM = 0.05;
 const LIST_HANGING_CM = 0.635; // the hang every list export writes (export/docx.ts)
 
 // ---- entry --------------------------------------------------------------------
@@ -2065,7 +2064,7 @@ function outlineFromOdf(el: Element | null, ctx: Ctx): OutlineNumbering | null {
       prefix: def.getAttributeNS(NS.style, 'num-prefix') ?? '',
       suffix: (def.getAttributeNS(NS.style, 'num-suffix') ?? '') + geometry.pad,
       displayLevels: Math.max(1, parseInt(def.getAttributeNS(NS.text, 'display-levels') ?? '1', 10) || 1),
-      start: Math.max(0, parseInt(def.getAttributeNS(NS.text, 'start-value') ?? '1', 10) || 1),
+      start: Math.max(0, listStart(parseInt(def.getAttributeNS(NS.text, 'start-value') ?? '1', 10))),
       ...(name ? { charStyle: name } : {}),
       ...(labelText && Object.keys(labelText).length ? { labelText } : {}),
       ...geometry.pos,
@@ -3509,7 +3508,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
       listLevelMarginLeftCm(listLevelDef(ctx.resolver.listStyle(styleName), d)) ?? d * LIST_BASE_MARGIN_CM;
     const step = marginCm(depth) - (depth > 1 ? marginCm(depth - 1) : 0);
     const extra = Math.round(Math.max(-LIST_BASE_MARGIN_CM, step - LIST_BASE_MARGIN_CM) * 100) / 100;
-    if (Math.abs(extra) > LIST_INDENT_EPS_CM) indent = extra;
+    if (extra !== 0) indent = extra;
   }
 
   if (!ordered) {
@@ -3585,8 +3584,9 @@ function listLevelLabel(levelDef: Element | null, depth: number): { hanging?: nu
   if (!la) return {};
   const out: { hanging?: number; markerSuffix?: 'space' | 'nothing' } = {};
   const ti = lengthToCm(la.getAttributeNS(NS.fo, 'text-indent'));
-  const hang = ti == null ? null : Math.round(-ti * 100) / 100;
-  if (hang != null && ![LIST_HANGING_CM, depth * LIST_HANGING_CM].some((d) => Math.abs(hang - d) <= LIST_INDENT_EPS_CM)) out.hanging = hang;
+  // Exact: a hang a quarter millimetre off the default is the file's own, and LibreOffice draws it.
+  const hang = ti == null ? null : -ti;
+  if (hang != null && ![LIST_HANGING_CM, depth * LIST_HANGING_CM].some((d) => Math.abs(hang - d) < 0.001)) out.hanging = Math.round(hang * 100) / 100;
   const follow = la.getAttributeNS(NS.text, 'label-followed-by');
   if (follow === 'space' || follow === 'nothing') out.markerSuffix = follow;
   return out;
@@ -4013,12 +4013,12 @@ function liftListTables(list: Node, outer: boolean): Node[] {
   if (!JSON.stringify(list).includes('"type":"table"')) return [list];
   const out: Node[] = [];
   let part: Node = { ...list, content: [] };
-  let end = (Number(list.attrs?.start) || 1) - 1;
+  let end = listStart(list.attrs?.start) - 1;
   const cut = (table: Node, it: Node, item: Node[]) => {
     if (item.length) part.content!.push({ ...it, content: item.splice(0) });
     if (part.content!.length) {
       out.push(part);
-      end = (Number(part.attrs?.start) || 1) + labelledItems(part) - 1;
+      end = listStart(part.attrs?.start) + labelledItems(part) - 1;
     }
     out.push(table);
     const { start: _s, ...attrs } = list.attrs ?? {};
@@ -4042,7 +4042,7 @@ function liftListTables(list: Node, outer: boolean): Node[] {
 function keepContinuation(out: Node[], list: Node): Node {
   if (!list.attrs?.continueNumbering) return list;
   const prev = out.findLast((n) => n.type === 'orderedList');
-  const end = prev ? (Number(prev.attrs?.start) || 1) + labelledItems(prev) - 1 : 0;
+  const end = prev ? listStart(prev.attrs?.start) + labelledItems(prev) - 1 : 0;
   if (end + 1 !== list.attrs.start) delete list.attrs.continueNumbering;
   return list;
 }

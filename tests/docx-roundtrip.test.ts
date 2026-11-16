@@ -811,6 +811,27 @@ describe('paragraph rules: w:between groups', () => {
   });
 });
 
+describe('list levels LibreOffice reads literally', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  // No w:start (LibreOffice numbers from 0, probed) and a hang 14 twips off the default.
+  const numberingXml = `<?xml version="1.0"?><w:numbering ${W}><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:pPr><w:ind w:left="720" w:hanging="374"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`;
+  const item = (t: string) => `<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>${t}</w:t></w:r></w:p>`;
+  const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>${item('zero')}${item('one')}<w:sectPr/></w:body></w:document>`;
+  const res = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml), 'word/numbering.xml': strToU8(numberingXml),
+    'word/_rels/document.xml.rels': strToU8('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>') }));
+  const expectList = (doc: N) => {
+    const list = walk(doc, 'orderedList')[0];
+    expect(list.attrs?.start).toBe(0);
+    expect(list.attrs?.hanging).toBeCloseTo(0.66, 2);
+  };
+
+  it('starts a level without w:start at 0 and keeps a hang near the default, in both formats', async () => {
+    expectList(res.content as N);
+    expectList(importDocx(await buildDocx(res.content as N)).content as N);
+    expectList(importOdt(await buildOdt(res.content as N)).content as N);
+  });
+});
+
 describe('DOCX import: alignment inherited from a paragraph style', () => {
   const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
   // The default paragraph style (Standard) sets justify; body paragraphs and a heading
@@ -1230,7 +1251,7 @@ describe('DOCX import: a list continued across paragraphs keeps counting (shared
     ${item(5, 'One')}${gap('body a')}${item(5, 'Two')}${gap('body b')}${item(5, 'Three')}${item(6, 'Other')}${gap('body c')}${item(7, 'Again')}
   </w:body></w:document>`;
   const numberingXml = `<?xml version="1.0"?><w:numbering ${W}>
-    <w:abstractNum w:abstractNumId="5"><w:lvl w:ilvl="0"><w:numFmt w:val="upperRoman"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum>
+    <w:abstractNum w:abstractNumId="5"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="upperRoman"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum>
     <w:num w:numId="5"><w:abstractNumId w:val="5"/></w:num>
     <w:num w:numId="6"><w:abstractNumId w:val="5"/></w:num>
     <w:num w:numId="7"><w:abstractNumId w:val="5"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>

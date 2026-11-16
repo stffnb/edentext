@@ -138,7 +138,7 @@ function effOrderedKey(node: TiptapNode, style: ListStyleDef | null, depth0: num
 // A `start` attr anywhere means a numbering continued across a split — only a private
 // reference can carry that; the style's shared abstract starts every instance at 1.
 function subtreeHasStart(node: TiptapNode): boolean {
-  if (typeof node.attrs?.start === 'number' && node.attrs.start > 1) return true;
+  if (typeof node.attrs?.start === 'number' && node.attrs.start !== 1) return true;
   return (node.content ?? []).some(subtreeHasStart);
 }
 

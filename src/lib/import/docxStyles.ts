@@ -467,7 +467,8 @@ export class DocxStyles {
         const def: LevelDef = {};
         const fmt = firstChild(lvl, 'numFmt'); if (fmt) def.numFmt = wVal(fmt) ?? undefined;
         const txt = firstChild(lvl, 'lvlText'); if (txt) def.lvlText = wVal(txt) ?? undefined;
-        const start = firstChild(lvl, 'start'); if (start) { const n = parseInt(wVal(start) ?? '', 10); if (Number.isFinite(n)) def.start = n; }
+        // An absent w:start is 0: LibreOffice numbers such a level from 0 (probed).
+        const start = firstChild(lvl, 'start'); const n = start ? parseInt(wVal(start) ?? '', 10) : 0; if (Number.isFinite(n)) def.start = n;
         const ind = firstChild(lvl, 'pPr') && firstChild(firstChild(lvl, 'pPr')!, 'ind');
         if (ind) {
           const l = parseInt(ind.getAttributeNS(W, 'left') ?? ind.getAttributeNS(W, 'start') ?? '', 10);

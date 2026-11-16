@@ -3,7 +3,7 @@ import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/p
 import type { ResolvedPos } from '@tiptap/pm/model';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { childCycle, defaultOrderedTypeAt, formatOrdinal, orderedTypeDef, ROOT_ORDERED_CYCLE, type OrderedCycle, type OrderedListType } from '../../utils/orderedListTypes';
+import { childCycle, defaultOrderedTypeAt, formatOrdinal, listStart, orderedTypeDef, ROOT_ORDERED_CYCLE, type OrderedCycle, type OrderedListType } from '../../utils/orderedListTypes';
 import { sinkListItem } from '@tiptap/pm/schema-list';
 import { DOCX_LIST_LEVELS, effectiveListLevel } from '../../styles/listStyles';
 import type { ListStyle as ListStyleDef } from '../../styles/listStyles';
@@ -129,7 +129,7 @@ export function listNumberAt(
     }
     const own = eff.listStyleType;
     const type: OrderedListType = own === 'multilevel' || (multilevel && !own) ? 'multilevel' : own ?? defaultOrderedTypeAt(cycle);
-    const attrStart = Number(list.attrs.start) || 1;
+    const attrStart = listStart(list.attrs.start);
     const start = implicit.get(listPos) ?? (attrStart !== 1 ? attrStart : eff.startAt ?? 1);
     parts.push(formatOrdinal(start + index, orderedTypeDef(type).numFormat));
     cycle = childCycle(cycle, own as OrderedListType | null, true);
@@ -219,7 +219,7 @@ export function listStarts(doc: ProseMirrorNode, sheet: StyleSheet): { fixes: { 
   // A list's last number, then those of its open deeper levels after its last item.
   const visitList = (list: ProseMirrorNode, pos: number, from: number[] | null, how: 'attr' | 'implicit' | null, depth: number): number[] => {
     const ordered = list.type.name === 'orderedList';
-    let start = Number(list.attrs.start) || 1;
+    let start = listStart(list.attrs.start);
     let carry: number[] = [];
     if (from) {
       if (ordered && how === 'attr' && start !== (from[0] ?? 0) + 1) fixes.push({ pos, start: (from[0] ?? 0) + 1 });

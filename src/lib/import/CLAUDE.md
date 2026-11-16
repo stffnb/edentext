@@ -85,7 +85,7 @@ An ODF list with `text:continue-numbering="true"` continues the **latest top-lev
 its style**, `text:continue-list` the one with that `xml:id`, unless its first item has a
 `text:start-value`; both import as `start`, plus `continueNumbering` where counting on from
 the list before gives that start (`keepContinuation`). DOCX counts per abstractNum across
-numIds; a numId's `w:startOverride` restarts it. Both exports write the link back. An item
+numIds; a numId's `w:startOverride` restarts it. A level without `w:start` starts at 0 (LibreOffice draws "0.", probed); `start: 0` is a real start everywhere (`listStart`). A level's hang and indent step are kept unless exactly the default. Both exports write the link back. An item
 opening with a sub-list stays an item without a label, unless that sub-list restarts — our
 own export's form of an item's further sub-list, which goes back on the item before.
 

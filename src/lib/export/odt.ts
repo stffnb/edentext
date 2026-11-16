@@ -3042,7 +3042,7 @@ function collectListStartValues(node: TiptapNode, result: ListStart[]): void {
     } else if (child.type === 'orderedList') {
       const s = typeof child.attrs?.start === 'number' ? child.attrs.start : 1;
       const continues = child.attrs?.continueNumbering === true && prev && prev.end + 1 === s ? prev.slot : null;
-      result.push({ start: s > 1 && continues == null ? s : null, continues });
+      result.push({ start: s !== 1 && continues == null ? s : null, continues });
       prev = { slot: result.length - 1, end: s + labelledItems(child) - 1 };
     }
   }
@@ -3472,7 +3472,7 @@ function buildNamedListStyleXml(style: ListStyle): string {
     } else {
       const t = orderedTypeDef(style.multilevel ? 'decimal' : def?.numType ?? 'decimal');
       const disp = style.multilevel && level > 1 ? ` text:display-levels="${level}"` : '';
-      const start = def?.startAt && def.startAt !== 1 ? ` text:start-value="${def.startAt}"` : '';
+      const start = def?.startAt != null && def.startAt !== 1 ? ` text:start-value="${def.startAt}"` : '';
       levels += `<text:list-level-style-number text:level="${level}" ${odfNumFormatAttrs(t.numFormat)} style:num-suffix="${t.numSuffix}"${disp}${start}>${labelAlign}</text:list-level-style-number>`;
     }
   }

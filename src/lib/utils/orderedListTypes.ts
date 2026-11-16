@@ -222,6 +222,12 @@ const IROHA = [...'イロハニホヘトチリヌルヲワカヨタレソツネ�
 const cyclic = (signs: string[], n: number) => (n < 1 ? String(n) : signs[(n - 1) % signs.length]);
 
 // The ordinal body an item renders for a num-format (no suffix): 3/'a' → "c".
+// A list's `start` attr as a number: absent is 1, but 0 is a real start (both formats).
+export function listStart(start: unknown): number {
+  const n = Number(start);
+  return start == null || start === '' || !Number.isFinite(n) ? 1 : n;
+}
+
 export function formatOrdinal(n: number, numFormat: OrderedTypeDef['numFormat']): string {
   switch (numFormat) {
     case 'a': return toLetters(n, LATIN);
