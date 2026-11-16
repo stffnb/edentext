@@ -625,6 +625,7 @@ const uk: Messages = {
       lineDoubleArrow: 'Подвійна стрілка',
     },
     verticalText: 'Вертикальний текст',
+    verticalTextUp: 'Текст знизу вгору',
     vAlignTop: 'Текст за верхнім краєм',
     vAlignMiddle: 'Текст по центру',
     vAlignBottom: 'Текст за нижнім краєм',

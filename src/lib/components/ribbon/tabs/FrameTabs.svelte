@@ -26,7 +26,7 @@
     fillColor?: string | null;
     strokeColor?: string | null;
     strokeWidthPt?: number;
-    textVertical?: boolean;
+    textVertical?: boolean | 'up';
     textVAlign?: TextVAlign;
   } = $props();
 
@@ -182,8 +182,17 @@
       cmd="verticalText"
       label={t().textBox.verticalText}
       title={t().textBox.verticalText}
-      active={textVertical}
-      onclick={() => editor?.chain().focus().setTextBoxAttrs({ textVertical: !textVertical }).run()}
+      active={textVertical === true}
+      onclick={() => editor?.chain().focus().setTextBoxAttrs({ textVertical: textVertical !== true }).run()}
+    />
+    <RibbonButton
+      variant="big"
+      icon="textDirectionUp"
+      cmd="verticalTextUp"
+      label={t().textBox.verticalTextUp}
+      title={t().textBox.verticalTextUp}
+      active={textVertical === 'up'}
+      onclick={() => editor?.chain().focus().setTextBoxAttrs({ textVertical: textVertical === 'up' ? false : 'up' }).run()}
     />
     {#each VALIGNS as v}
       <RibbonButton

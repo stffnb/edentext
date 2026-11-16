@@ -3423,11 +3423,11 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
     if ((xfrm?.getAttribute('flipH') === '1') !== back) attrs.flipH = true;
   }
 
-  // Vertical text: every one of Word's top-to-bottom flows, the editor having the one
-  // direction the browser lays out (`vert270` reads bottom-to-top and is not one).
+  // Vertical text: every one of Word's top-to-bottom flows, and `vert270` bottom-to-top.
   const bodyPr = nsChild(wsp, WPS, 'bodyPr');
   const vert = bodyPr?.getAttribute('vert') ?? 'horz';
   if (['vert', 'eaVert', 'mongolianVert', 'wordArtVert'].includes(vert)) attrs.textVertical = true;
+  else if (vert === 'vert270') attrs.textVertical = 'up';
   // Where the text sits in a box taller than it is: bodyPr/@anchor, top by default.
   const vAnchor = bodyPr?.getAttribute('anchor');
   if (vAnchor === 'ctr') attrs.textVAlign = 'middle';
@@ -3523,7 +3523,10 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
   const vmlHeads = pathHeadsFor(vmlHead('startarrow'), vmlHead('endarrow'));
   if (outline && vmlHeads && isOpenOutline(outline)) attrs.arrowHeads = vmlHeads;
   // VML says vertical text in the box's own style, as `layout-flow:vertical`.
-  if (/layout-flow\s*:\s*vertical/.test(textbox?.getAttribute('style') ?? '')) attrs.textVertical = true;
+  const flow = textbox?.getAttribute('style') ?? '';
+  if (/layout-flow\s*:\s*vertical/.test(flow)) {
+    attrs.textVertical = /mso-layout-flow-alt\s*:\s*bottom-to-top/.test(flow) ? 'up' : true;
+  }
   const kind = shape.localName === 'oval' ? 'ellipse' : shape.localName === 'roundrect' ? 'roundRect' : 'textbox';
   if (kind !== 'textbox') attrs.shapeKind = kind;
   if (w) attrs.width = w;

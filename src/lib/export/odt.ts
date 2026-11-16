@@ -1289,7 +1289,7 @@ type TextBoxExport = {
   arrowHeads: PathHeads | null;
   flipV: boolean;
   flipH: boolean;
-  textVertical: boolean;
+  textVertical: boolean | 'up';
   textVAlign: TextVAlign;
   fill: string | null;
   stroke: string | null;
@@ -1328,7 +1328,7 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     arrowHeads: a.arrowHeads === 'start' || a.arrowHeads === 'end' || a.arrowHeads === 'both' ? a.arrowHeads : null,
     flipV: a.flipV === true,
     flipH: a.flipH === true,
-    textVertical: a.textVertical === true,
+    textVertical: a.textVertical === 'up' ? 'up' : a.textVertical === true,
     textVAlign: a.textVAlign === 'middle' || a.textVAlign === 'bottom' ? a.textVAlign : 'top',
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
@@ -5338,10 +5338,11 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
   // Vertical text: a frame takes style:writing-mode in its graphic properties (where
   // LibreOffice writes it); a drawing shape drops it there and needs the *paragraph*
   // properties of its style instead (both probed).
-  const vertMode = box.textVertical && isFrame ? ' style:writing-mode="tb-rl"' : '';
-  const vertical = box.textVertical && !isFrame
-    ? '<style:paragraph-properties style:writing-mode="tb-rl"/>'
-    : '';
+  // Upward text is LibreOffice's own bt-lr, which a shape needs in both places (probed).
+  const up = box.textVertical === 'up';
+  const mode = up ? 'loext:writing-mode="bt-lr"' : 'style:writing-mode="tb-rl"';
+  const vertMode = box.textVertical && (isFrame || up) ? ` ${mode}` : '';
+  const vertical = box.textVertical && !isFrame ? `<style:paragraph-properties ${mode}/>` : '';
   const parent = isFrame ? ' style:parent-style-name="Frame"' : '';
   return (
     `<style:style style:name="TbxFr${index + 1}" style:family="graphic"${parent}>` +

@@ -615,6 +615,7 @@ const zhHans: Messages = {
       lineDoubleArrow: '双向箭头',
     },
     verticalText: '竖排文字',
+    verticalTextUp: '文字自下而上',
     vAlignTop: '文字顶端对齐',
     vAlignMiddle: '文字垂直居中',
     vAlignBottom: '文字底端对齐',

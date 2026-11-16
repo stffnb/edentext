@@ -614,6 +614,7 @@ const pt: Messages = {
       lineDoubleArrow: 'Seta dupla',
     },
     verticalText: 'Texto vertical',
+    verticalTextUp: 'Texto de baixo para cima',
     vAlignTop: 'Alinhar o texto ao topo',
     vAlignMiddle: 'Centrar o texto verticalmente',
     vAlignBottom: 'Alinhar o texto ao fundo',

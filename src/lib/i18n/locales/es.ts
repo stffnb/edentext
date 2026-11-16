@@ -615,6 +615,7 @@ const es: Messages = {
       lineDoubleArrow: 'Flecha doble',
     },
     verticalText: 'Texto vertical',
+    verticalTextUp: 'Texto de abajo arriba',
     vAlignTop: 'Alinear el texto arriba',
     vAlignMiddle: 'Centrar el texto verticalmente',
     vAlignBottom: 'Alinear el texto abajo',

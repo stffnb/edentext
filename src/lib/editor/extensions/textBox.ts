@@ -34,6 +34,7 @@ export type TextVAlign = 'top' | 'middle' | 'bottom';
 
 // Fixed text inset inside the frame; exported as fo:padding / wps:bodyPr insets.
 export const TEXTBOX_PADDING_CM = 0.15;
+const SIDEWAYS_LR = typeof CSS !== 'undefined' && !!CSS.supports?.('writing-mode', 'sideways-lr');
 const paddingPx = (cm: unknown) => ((typeof cm === 'number' ? cm : TEXTBOX_PADDING_CM) * 96) / 2.54;
 
 // Extra per-axis inset that fits the text area into an ellipse's inscribed
@@ -76,7 +77,7 @@ export interface TextBoxAttrs {
   arrowHeads: PathHeads | null; // the ends of that outline carrying an arrow head
   flipV: boolean;             // a line runs bottom-left → top-right instead
   flipH: boolean;             // a line starts at the right, so its head ends on the left
-  textVertical: boolean;      // text runs top-to-bottom, right-to-left
+  textVertical: boolean | 'up';  // true: top-to-bottom, right-to-left; 'up': bottom-to-top
   textVAlign: TextVAlign;     // where the text sits in a box taller than it is
   fixedHeight: boolean;       // exactly `height` tall, clipping what overflows
   fillColor: string | null;
@@ -334,10 +335,14 @@ export const TextBox = Node.create({
         renderHTML: () => ({}),
       },
       // The text runs top-to-bottom, right-to-left instead of across (Word's
-      // `w:bodyPr vert`, ODF's tb-rl writing mode on the frame's style).
+      // `w:bodyPr vert`, ODF's tb-rl writing mode on the frame's style), or with 'up'
+      // bottom-to-top (`vert270`, LibreOffice's bt-lr).
       textVertical: {
         default: false,
-        parseHTML: el => (el as HTMLElement).getAttribute('data-text-vertical') === 'true',
+        parseHTML: el => {
+          const v = (el as HTMLElement).getAttribute('data-text-vertical');
+          return v === 'up' ? 'up' : v === 'true';
+        },
         renderHTML: () => ({}),
       },
       // Where the text sits in a box taller than the text: both formats anchor it
@@ -419,7 +424,7 @@ export const TextBox = Node.create({
       ...(a.arrowHeads ? { 'data-arrow-heads': a.arrowHeads } : {}),
       ...(a.flipV ? { 'data-flip-v': 'true' } : {}),
       ...(a.flipH ? { 'data-flip-h': 'true' } : {}),
-      ...(a.textVertical ? { 'data-text-vertical': 'true' } : {}),
+      ...(a.textVertical ? { 'data-text-vertical': a.textVertical === 'up' ? 'up' : 'true' } : {}),
       ...(a.textVAlign !== 'top' ? { 'data-text-valign': a.textVAlign } : {}),
       ...(a.fixedHeight ? { 'data-fixed-height': '' } : {}),
       ...(fill ? { 'data-fill': fill } : {}),
@@ -780,7 +785,9 @@ class TextBoxView {
     // (and in both exports' anchor), it just takes no room.
     this.contentDOM.style.display = line ? 'none' : '';
     // Vertical text: the browser flows it, so the box needs nothing but the mode.
-    this.contentDOM.style.writingMode = a.textVertical ? 'vertical-rl' : '';
+    // WebKit has no sideways-lr: upward text reads top-down there (vertical-rl).
+    this.contentDOM.style.writingMode = a.textVertical === 'up' && SIDEWAYS_LR ? 'sideways-lr'
+      : a.textVertical ? 'vertical-rl' : '';
     // Vertical anchor: the handles are absolute, so the rotor can flex its one child.
     this.rotor.style.display = a.textVAlign === 'top' ? '' : 'flex';
     this.rotor.style.flexDirection = 'column';

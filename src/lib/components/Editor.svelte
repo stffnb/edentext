@@ -927,7 +927,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   let textBoxUi = $state<{
     visible: boolean; top: number; left: number;
     wrap: WrapMode; inFront: boolean; wrapAlign: string | null; shapeKind: ShapeKind; fillColor: string | null;
-    strokeColor: string | null; strokeWidthPt: number; textVertical: boolean; textVAlign: TextVAlign; wrapDist: unknown;
+    strokeColor: string | null; strokeWidthPt: number; textVertical: boolean | 'up'; textVAlign: TextVAlign; wrapDist: unknown;
   }>({ visible: false, top: 0, left: 0, wrap: 'inline', inFront: false, wrapAlign: null, shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1, textVertical: false, textVAlign: 'top', wrapDist: null });
 
   function recomputeTextBoxUi() {
@@ -954,7 +954,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       fillColor: (a.fillColor as string | null) ?? null,
       strokeColor: (a.strokeColor as string | null) ?? null,
       strokeWidthPt: (a.strokeWidthPt as number) ?? 1,
-      textVertical: a.textVertical === true,
+      textVertical: a.textVertical === 'up' ? 'up' : a.textVertical === true,
       textVAlign: (a.textVAlign as TextVAlign) || 'top',
       wrapDist: a.wrapDist ?? null,
     };

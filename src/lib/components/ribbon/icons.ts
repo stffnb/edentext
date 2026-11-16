@@ -106,6 +106,7 @@ export const STROKED = {
   orderBack: ['M1.5 1.5h6v6h-6z', 'M8.5 8.5h6v6h-6z'],
   // A capital T beside an arrow running down: the text sets vertically.
   textDirection: ['M3 3.75h6M6 3.75v8.5', 'M12.5 4v7.5M10.9 10l1.6 1.6 1.6-1.6'],
+  textDirectionUp: ['M3 3.75h6M6 3.75v8.5', 'M12.5 11.5V4M10.9 5.6l1.6-1.6 1.6 1.6'],
   toc: ['M2 3h6M2 6.5h5M2 10h6M2 13.5h4', 'M11 3h3M10 6.5h4M11 10h3M10 13.5h4'],
   tocLevels: ['M2.5 3.5h11M4.5 7h9M6.5 10.5h7M8.5 14h5'],
   headingNumbering: ['M2 3.5h1.5M3.5 7.5h2.5M5 11.5h3.5', 'M5.5 3.5h8M8 7.5h5.5M10.5 11.5h3'],

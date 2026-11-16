@@ -238,7 +238,8 @@ export function frameCss(box: HTMLElement, el: HTMLElement): void {
   const css = (p: string) => s.getPropertyValue(p).trim();
   const pad = toCm(s.paddingTop || s.padding, 'cm');
   if (pad != null) box.setAttribute('data-padding', String(pad));
-  if (/vertical/.test(css('writing-mode'))) box.setAttribute('data-text-vertical', 'true');
+  const mode = css('writing-mode');
+  if (/vertical|sideways/.test(mode)) box.setAttribute('data-text-vertical', /sideways-lr/.test(mode) ? 'up' : 'true');
   const v = css('vertical-align') || css('align-content');
   if (/middle|center/.test(v)) box.setAttribute('data-text-valign', 'middle');
   else if (/bottom|end/.test(v)) box.setAttribute('data-text-valign', 'bottom');

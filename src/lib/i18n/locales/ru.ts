@@ -625,6 +625,7 @@ const ru: Messages = {
       lineDoubleArrow: 'Двойная стрелка',
     },
     verticalText: 'Вертикальный текст',
+    verticalTextUp: 'Текст снизу вверх',
     vAlignTop: 'Текст по верхнему краю',
     vAlignMiddle: 'Текст по центру',
     vAlignBottom: 'Текст по нижнему краю',

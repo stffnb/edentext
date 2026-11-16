@@ -617,6 +617,7 @@ const ja: Messages = {
       lineDoubleArrow: '双方向矢印',
     },
     verticalText: '縦書き',
+    verticalTextUp: '下から上へ',
     vAlignTop: '上揃え',
     vAlignMiddle: '上下中央揃え',
     vAlignBottom: '下揃え',

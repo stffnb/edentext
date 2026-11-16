@@ -624,6 +624,7 @@ const en = {
       lineDoubleArrow: 'Double arrow',
     },
     verticalText: 'Vertical text',
+    verticalTextUp: 'Text bottom to top',
     vAlignTop: 'Align text top',
     vAlignMiddle: 'Align text middle',
     vAlignBottom: 'Align text bottom',

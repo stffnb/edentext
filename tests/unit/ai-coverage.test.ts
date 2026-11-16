@@ -424,6 +424,7 @@ const RIBBON: Record<string, Entry> = {
   'order-forward': same('image.zIndex'), 'order-backward': same('image.zIndex'), 'order-front': same('image.zIndex'), 'order-back': same('image.zIndex'),
   altText: same('image.alt'), shape: same('textBox.shapeKind'), fillColor: same('textBox.fillColor'), borderColor: same('textBox.strokeColor'),
   borderWidth: same('textBox.strokeColor'), verticalText: same('textBox.textVertical'),
+  verticalTextUp: check(box('writing-mode: sideways-lr'), attr('textBox', 'textVertical', 'up')),
   'textAlign-Top': same('textBox.textVAlign'), 'textAlign-Middle': same('textBox.textVAlign'), 'textAlign-Bottom': same('textBox.textVAlign'),
   hfPageCount: same('pageNumber'), hfChapter: check(['set_header_footer', { zone: 'header', html: '<p>{chapter}</p>' }], () => true),
   differentFirstPage: same('hfOptions'), differentOddEven: check(['set_header_footer', { zone: 'footer', pages: 'even', html: '<p>Even</p>' }], () => true),

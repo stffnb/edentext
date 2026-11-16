@@ -624,6 +624,7 @@ const fr: Messages = {
       lineDoubleArrow: 'Double flèche',
     },
     verticalText: 'Texte vertical',
+    verticalTextUp: 'Texte de bas en haut',
     vAlignTop: 'Aligner le texte en haut',
     vAlignMiddle: 'Centrer le texte verticalement',
     vAlignBottom: 'Aligner le texte en bas',

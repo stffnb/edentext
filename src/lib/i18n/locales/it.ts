@@ -614,6 +614,7 @@ const it: Messages = {
       lineDoubleArrow: 'Freccia doppia',
     },
     verticalText: 'Testo verticale',
+    verticalTextUp: 'Testo dal basso in alto',
     vAlignTop: 'Allinea testo in alto',
     vAlignMiddle: 'Allinea testo al centro',
     vAlignBottom: 'Allinea testo in basso',

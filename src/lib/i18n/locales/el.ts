@@ -625,6 +625,7 @@ const el: Messages = {
       lineDoubleArrow: "Διπλό βέλος",
     },
     verticalText: "Κατακόρυφο κείμενο",
+    verticalTextUp: "Κείμενο από κάτω προς τα πάνω",
     vAlignTop: "Στοίχιση κειμένου επάνω",
     vAlignMiddle: "Κατακόρυφο κεντράρισμα κειμένου",
     vAlignBottom: "Στοίχιση κειμένου κάτω",

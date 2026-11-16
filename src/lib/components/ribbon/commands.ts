@@ -183,6 +183,7 @@ export const RIBBON_COMMANDS: RibbonCommand[] = [
   c('shapeFormat', 'borderColor', (m) => m.textBox.borderColor),
   c('shapeFormat', 'borderWidth', (m) => m.textBox.borderWidth),
   c('shapeFormat', 'verticalText', (m) => m.textBox.verticalText),
+  c('shapeFormat', 'verticalTextUp', (m) => m.textBox.verticalTextUp),
   ...(['Top', 'Middle', 'Bottom'] as const).map((k) => c('shapeFormat', `textAlign-${k}`, (m) => m.textBox[`vAlign${k}`])),
 
   c('headerFooter', 'hfPageCount', (m) => m.hf.pageCount),

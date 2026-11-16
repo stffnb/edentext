@@ -616,6 +616,7 @@ const zhHant: Messages = {
       lineDoubleArrow: '雙向箭號',
     },
     verticalText: '直書文字',
+    verticalTextUp: '文字由下而上',
     vAlignTop: '文字對齊上端',
     vAlignMiddle: '文字垂直置中',
     vAlignBottom: '文字對齊下端',

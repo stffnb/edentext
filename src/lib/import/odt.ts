@@ -295,14 +295,16 @@ function boxWrapAlign(gp: PropMap, attrs: Record<string, unknown>): void {
       && attrs.wrap !== 'left' && attrs.wrap !== 'right') attrs.wrapAlign = hpos;
 }
 
-// Vertical text in any box shape: the style's writing mode, both of ODF's top-to-bottom
-// modes (the editor has the one direction the browser lays out). A text frame carries it
-// in the graphic properties, a drawing shape in its style's paragraph properties.
+// Vertical text in any box shape: the style's writing mode, ODF's top-to-bottom modes
+// and LibreOffice's own tb-rl90 (down) and bt-lr (up). A text frame carries it in the
+// graphic properties, a drawing shape in its style's paragraph properties.
 function boxTextFlow(el: Element, ctx: Ctx, attrs: Record<string, unknown>): void {
   const name = el.getAttributeNS(NS.draw, 'style-name');
   const gp = ctx.resolver.graphicProps(name);
-  const mode = gp['style:writing-mode'] ?? ctx.resolver.graphicParaProps(name)['style:writing-mode'];
-  if (mode === 'tb-rl' || mode === 'tb-lr' || mode === 'tb') attrs.textVertical = true;
+  const pp = ctx.resolver.graphicParaProps(name);
+  const mode = gp['loext:writing-mode'] ?? gp['style:writing-mode'] ?? pp['loext:writing-mode'] ?? pp['style:writing-mode'];
+  if (mode === 'tb-rl' || mode === 'tb-lr' || mode === 'tb' || mode === 'tb-rl90') attrs.textVertical = true;
+  else if (mode === 'bt-lr') attrs.textVertical = 'up';
   // Where the text sits in a box taller than it is; 'justify' spreads it, top-anchored.
   const anchor = gp['draw:textarea-vertical-align'];
   if (anchor === 'middle' || anchor === 'bottom') attrs.textVAlign = anchor;

@@ -616,6 +616,7 @@ const de: Messages = {
       lineDoubleArrow: 'Doppelpfeil',
     },
     verticalText: 'Senkrechter Text',
+    verticalTextUp: 'Text von unten nach oben',
     vAlignTop: 'Text oben',
     vAlignMiddle: 'Text mittig',
     vAlignBottom: 'Text unten',

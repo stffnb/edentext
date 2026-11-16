@@ -434,7 +434,7 @@
         fillColor={frameAttrs?.fillColor as string | null}
         strokeColor={frameAttrs?.strokeColor as string | null}
         strokeWidthPt={frameAttrs?.strokeWidthPt as number}
-        textVertical={frameAttrs?.textVertical === true}
+        textVertical={frameAttrs?.textVertical === 'up' ? 'up' : frameAttrs?.textVertical === true}
         textVAlign={frameAttrs?.textVAlign as never}
       />
     {/if}
