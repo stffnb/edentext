@@ -3642,9 +3642,9 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   if (font) run.font = font;
   if (t.fontSizePt != null) run.size = Math.round(t.fontSizePt * 2);
   if (t.letterSpacingPt != null) run.characterSpacing = docxSpacing(t.letterSpacingPt);
-  // Word kerns nothing unless a size to start at is named, so the on state is the one
-  // this side has to write — half a point, i.e. every run.
-  if (t.kerning !== false) run.kern = 1;
+  // Word kerns nothing unless a size to start at is named: on is half a point, i.e. every
+  // run; off is written too, as 0 (the package skips a numeric 0), against a kerned parent.
+  run.kern = t.kerning === false ? '0pt' : 1;
   if (t.bold != null) run.bold = t.bold;
   if (t.italic != null) run.italics = t.italic;
   if (t.underline) run.underline = {};
@@ -3697,7 +3697,8 @@ function runPropsOf(t: TextProps): Writable<IRunStylePropertiesOptions> {
   if (font) run.font = font;
   if (t.fontSizePt != null) run.size = Math.round(t.fontSizePt * 2);
   if (t.letterSpacingPt != null) run.characterSpacing = docxSpacing(t.letterSpacingPt);
-  if (t.kerning !== false) run.kern = 1;
+  // Only a state the style states: unset, its runs keep the paragraph's kerning.
+  if (t.kerning != null) run.kern = t.kerning ? 1 : '0pt';
   if (t.bold != null) run.bold = t.bold;
   if (t.italic != null) run.italics = t.italic;
   if (t.underline) run.underline = {};

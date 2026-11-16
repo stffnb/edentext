@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { zipSync, strToU8 } from 'fflate';
-import { styleCss, builtinStyleSheet, resolveStyle } from '../../src/lib/styles/styleSheet';
+import { styleCss, builtinStyleSheet, resolveStyle, type StyleSheet } from '../../src/lib/styles/styleSheet';
 import { importDocx } from '../../src/lib/import/docx';
 import { buildDocx } from '../../src/lib/export/docx';
 
@@ -46,6 +46,12 @@ const STYLES = `<?xml version="1.0"?>
   <w:style w:type="paragraph" w:styleId="Small"><w:name w:val="Small"/><w:basedOn w:val="Normal"/>
     <w:rPr><w:kern w:val="28"/><w:sz w:val="20"/></w:rPr>
   </w:style>
+  <w:style w:type="paragraph" w:styleId="TitleFlat"><w:name w:val="TitleFlat"/><w:basedOn w:val="Title"/>
+    <w:rPr><w:kern w:val="0"/></w:rPr>
+  </w:style>
+  <w:style w:type="character" w:styleId="KernOn"><w:name w:val="KernOn"/><w:rPr><w:kern w:val="2"/></w:rPr></w:style>
+  <w:style w:type="character" w:styleId="KernOff"><w:name w:val="KernOff"/><w:rPr><w:kern w:val="0"/></w:rPr></w:style>
+  <w:style w:type="character" w:styleId="KernUnset"><w:name w:val="KernUnset"/><w:rPr><w:b/></w:rPr></w:style>
 </w:styles>`;
 
 const docx = () =>
@@ -53,6 +59,7 @@ const docx = () =>
     'word/document.xml': strToU8(`<?xml version="1.0"?><w:document xmlns:w="${W}"><w:body>` +
       `<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t>Title</w:t></w:r></w:p>` +
       `<w:p><w:pPr><w:pStyle w:val="Small"/></w:pPr><w:r><w:t>small</w:t></w:r></w:p>` +
+      `<w:p><w:pPr><w:pStyle w:val="TitleFlat"/></w:pPr>${['KernOn', 'KernOff', 'KernUnset'].map((c) => `<w:r><w:rPr><w:rStyle w:val="${c}"/></w:rPr><w:t>${c}</w:t></w:r>`).join('')}</w:p>` +
       `<w:p><w:r><w:t>body</w:t></w:r></w:p></w:body></w:document>`),
     'word/styles.xml': strToU8(STYLES),
   });
@@ -69,11 +76,19 @@ describe('a Word style’s own w:kern', () => {
     expect(resolveStyle(sheet, 'Small').text.kerning).toBe(false);
   });
 
+  // LibreOffice reads w:kern 0 as off and a character style without one as unchanged (probed).
+  const states = (sheet: StyleSheet) => [
+    sheet.paragraph.Title.text.kerning, sheet.paragraph.Standard.text.kerning, resolveStyle(sheet, 'TitleFlat').text.kerning,
+    ...['KernOn', 'KernOff', 'KernUnset'].map((c) => sheet.character[c].text.kerning)];
+  const want = [true, false, false, true, false, undefined];
+
+  it('keeps an explicit off against a kerned parent, and a character style\'s own state', () => {
+    expect(states(sheet)).toEqual(want);
+  });
+
   it('survives a round trip through the DOCX export', async () => {
     const doc = importDocx(docx());
     const out = await buildDocx(doc.content as never, undefined, 'portrait', undefined, null, 'A4', doc.styles);
-    const again = importDocx(out).styles!;
-    expect(again.paragraph.Title.text.kerning).toBe(true);
-    expect(again.paragraph.Standard.text.kerning).toBe(false);
+    expect(states(importDocx(out).styles!)).toEqual(want);
   });
 });

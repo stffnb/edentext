@@ -1404,7 +1404,7 @@ function styleText(ctx: Ctx, id: string | null, own = false): TextProps {
   // about kerning means "unchanged", not Word's off.
   if (own) {
     const run = ctx.styles.styleOwn(id), t = runTextProps(run);
-    delete t.kerning;
+    if (run.kernHalfPt == null) delete t.kerning;
     if (run.color === AUTO_COLOR) t.color = AUTO_COLOR;
     return t;
   }
