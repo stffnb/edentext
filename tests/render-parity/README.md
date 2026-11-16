@@ -14,13 +14,17 @@ npm run test:parity -- --quick # skip what last measured over 50 pages
 ```
 
 Exit code 1 when any document differs. `--json` also dumps both sides' lines
-(`y`, `x`, `x2` in mm, per page) — diagnose from that dump.
+(`y`, `x`, `x2` in mm, per page) and each document's `summary` — diagnose from that dump.
 
-Every run prints each document's issue count against the previous run's and updates
-`node_modules/.cache/render-parity/baseline.json`, so an A/B measurement reads
-`218 (was 220, −2)` without comparing two reports by hand. A run of one file
-leaves the other files' recorded counts alone. `--no-baseline` neither reads nor
-writes it — use it when measuring a deliberately broken tree.
+Every run prints each document's **cause** count against the previous run's (see *Causes,
+not symptoms* below) and updates `node_modules/.cache/render-parity/baseline.json`, so an
+A/B measurement reads `218 (was 220, −2)` without comparing two reports by hand, followed
+by the causes that are `new:` and `gone:` since then. The run ends with the totals, the
+causes per kind and the documents with the most causes, each with its causes per ten
+pages. A run of one file leaves the other files' recorded counts alone. `--no-baseline`
+neither reads nor writes it — use it when measuring a deliberately broken tree. A document
+whose render times out is retried once; one that still fails is listed as FAILED and is in
+no total, so read that line before reading a drop.
 
 Four documents render at a time (`PARITY_JOBS`, 1 for a serial run): a page is its own
 browser context and the reference is the file's alone. Each document's lines are written
@@ -63,7 +67,7 @@ The two documents are then **aligned as a whole**, not compared line index again
 index: after a divergence the harness searches up to `SYNC_WINDOW` lines on both sides
 for the nearest pair of skips that makes two consecutive lines match again. One dropped
 line therefore costs one report, not every line after it, and a page-level slip shows up
-as one `pageShift` naming the line it starts at instead of a wall of noise.
+as a `pageBreak` naming the line the page starts at instead of a wall of noise.
 
 Where no resync is in reach it steps both sides by one and keeps comparing. A contents
 block whose numbers are all off by one has no two consecutive matching rows anywhere in
@@ -71,11 +75,43 @@ it, and declaring the documents parted there hid 465 of the 458-page guide's pag
 behind a single report. Contiguous divergent lines are merged into one report carrying
 how many lines each side spent, so the region still reads as one difference.
 
-Reported differences are `pageCount`, `pageShift` (from here on the editor runs ±n pages
-off), `lineCount`, `lineBreak` (same place, different words) and `position` / `lineEnd`
-(same words, off by more than `POS_TOL_MM`). Consecutive lines off by the *same* amount
-are one report with a `×n` count, since that is one cause — a strut, a spacing, a band
-height — and not n of them.
+Reported differences are `pageCount`, `pageBreak` (a page starts `carry` lines later or
+earlier in the editor, or `only` on one side), `lineCount`, `lineBreak` (same place,
+different words) and `position` / `lineEnd` (same words, off by more than `POS_TOL_MM`).
+Consecutive lines off by the *same* amount are one report with a `×n` count, since that is
+one cause — a strut, a spacing, a band height — and not n of them.
+
+## Causes, not symptoms
+
+One line too many early in a document used to move every later line: each became a
+`position` report, every page start a pair of page shifts, so the 63-page guide reported
+1205 differences of which 457 were lines more than 10mm off on a page the editor had
+already broken differently. `compare` still reports every symptom, but marks the ones an
+earlier difference explains as `follows`, and `summarize` counts what is left — **the
+causes**, the number a run is judged by:
+
+- **Vertically a line is measured against the line before it.** A `position` whose offset
+  the previous line already had `follows`; one that adds more than `POS_TOL_MM` is a
+  `vertical: 'step'`, and offsets that creep up line by line past it are a `'drift'`
+  (`byMm` is what the line adds). A page top is measured against the page; after a page
+  only one side starts, or lines one side spent more of, the count starts again there.
+- **A page start** pairs with the other side's nearest one; a page that starts as many
+  lines off as the page before it only carries that on and `follows`.
+- **A text region** whose lines are the same on both sides in another order (a body line
+  and a running foot swapping places at a page end) `follows` that page break.
+- **A picture** that moved with the line nearest to it `follows` that line.
+- `summarize` then folds neighbouring lines of one kind on a page into one cause (a
+  font's width shows on every line it touches), one drift per page, and the same text on
+  another page — page numbers aside — into its first occurrence: a running head or foot
+  off on every page is one cause.
+
+Each cause has a root kind, printed in front of it and totalled at the end of a run:
+`pages`, `pageBreak`, `content` (lines only one side has), `wrap` (lines broken
+differently), `vertical`, `horizontal` (indent, alignment), `width` (where a line ends:
+font width, tabs, justification) and `image`. `first:` names where a document starts to
+differ — the place to look first, since everything after it may be its consequence.
+Issues stay in the `--json` dump with their `follows` mark for diagnosis; the issue count
+printed beside the causes includes them.
 
 Pictures are compared apart from the text: each reference picture pairs with the
 editor's nearest one, page first, where one of about its size counts two pages nearer.
