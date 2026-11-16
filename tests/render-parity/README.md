@@ -117,7 +117,8 @@ Issues stay in the `--json` dump with their `follows` mark for diagnosis; the is
 printed beside the causes includes them.
 
 Pictures are compared apart from the text: each reference picture pairs with the
-editor's nearest one, page first, where one of about its size counts two pages nearer.
+editor's nearest one of about its size, page first; a picture left over pairs with one of
+another size only on its own page and within half its size again either way.
 A pair off by more than `POS_TOL_MM`, sized differently by more than 1.5mm or on another
 page is an `image` report; a picture left unpaired is an `imageCount` one. A picture that
 moves with drifting text is reported beside that text. pdftohtml sees only raster images:

@@ -248,22 +248,32 @@ const norm = (s) => s.replace(/[\s\u00a0\u00ad\u200b\u2060\ufeff]+/g, '').replac
 
 
 // Pictures, which pdftotext cannot see: each reference picture pairs with the editor's
-// nearest to it, page first, where one of about its size (a tenth either way) counts two
-// pages nearer — so alike icons pair by place and one pushed a page on still finds itself.
+// nearest one of about its size (a tenth either way), page first, so alike icons pair by
+// place and one pushed a page on still finds itself. Only then does a picture left over
+// pair with one of another size, on its own page and within half its size again either
+// way: anything further off is another picture, and pairing it reports nonsense.
 const SIZE_TOL_MM = 1.5;
 export function compareImages(ref = [], ed = [], lines = []) {
-  const issues = [], left = [...ed];
+  const issues = [], left = [...ed], match = new Array(ref.length);
   const at = (i) => ({ page: i.page + 1, wMm: round(i.w), hMm: round(i.h) });
-  for (const a of ref) {
-    let best = -1, cost = Infinity;
-    left.forEach((b, k) => {
-      const alike = Math.abs(a.w - b.w) <= 0.1 * a.w && Math.abs(a.h - b.h) <= 0.1 * a.h;
-      const c = (alike ? 0 : 2e6) + Math.abs(a.page - b.page) * 1e6 + Math.hypot(a.x - b.x, a.y - b.y)
-        + 10 * (Math.abs(a.w - b.w) + Math.abs(a.h - b.h));
-      if (c < cost) { best = k; cost = c; }
+  const near = (a, b, f) => Math.max(a.w, b.w) <= f * Math.min(a.w, b.w) + 0.1 && Math.max(a.h, b.h) <= f * Math.min(a.h, b.h) + 0.1;
+  const alike = (a, b) => Math.abs(a.w - b.w) <= 0.1 * a.w && Math.abs(a.h - b.h) <= 0.1 * a.h;
+  for (const sized of [true, false]) {
+    ref.forEach((a, i) => {
+      if (match[i]) return;
+      let best = -1, cost = Infinity;
+      left.forEach((b, k) => {
+        if (sized ? !alike(a, b) : a.page !== b.page || !near(a, b, 1.5)) return;
+        const c = Math.abs(a.page - b.page) * 1e6 + Math.hypot(a.x - b.x, a.y - b.y)
+          + 10 * (Math.abs(a.w - b.w) + Math.abs(a.h - b.h));
+        if (c < cost) { best = k; cost = c; }
+      });
+      if (best >= 0) [match[i]] = left.splice(best, 1);
     });
-    if (best < 0) { issues.push({ kind: 'imageCount', side: 'ref', ...at(a) }); continue; }
-    const [b] = left.splice(best, 1);
+  }
+  ref.forEach((a, i) => {
+    const b = match[i];
+    if (!b) { issues.push({ kind: 'imageCount', side: 'ref', ...at(a) }); return; }
     const dx = round(b.x - a.x), dy = round(b.y - a.y), dw = round(b.w - a.w), dh = round(b.h - a.h);
     if (a.page !== b.page || Math.abs(dx) > POS_TOL_MM || Math.abs(dy) > POS_TOL_MM
         || Math.abs(dw) > SIZE_TOL_MM || Math.abs(dh) > SIZE_TOL_MM) {
@@ -274,7 +284,7 @@ export function compareImages(ref = [], ed = [], lines = []) {
       issues.push({ kind: 'image', ...at(a), edPage: b.page + 1, dxMm: dx, dyMm: dy, dwMm: dw, dhMm: dh,
         ...(moved ? { follows: true } : {}) });
     }
-  }
+  });
   for (const b of left) issues.push({ kind: 'imageCount', side: 'editor', ...at(b) });
   return issues;
 }

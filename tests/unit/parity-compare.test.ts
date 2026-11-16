@@ -103,4 +103,16 @@ describe('render-parity comparison', () => {
       { kind: 'imageCount', side: 'editor', page: 2, wMm: 15, hMm: 15 },
     ]);
   });
+
+  it('leaves a picture unpaired rather than pair it with one of an implausible size', () => {
+    const pic = (page: number, y: number, w: number, h: number) => ({ page, x: 20, y, w, h });
+    const ref = [pic(0, 30, 92, 85), pic(0, 130, 7, 89), pic(1, 30, 60, 40)];
+    const ed = [pic(0, 30, 148, 111), pic(1, 30, 66, 44), pic(2, 30, 7, 89)];
+    expect(compareImages(ref, ed)).toEqual([
+      { kind: 'imageCount', side: 'ref', page: 1, wMm: 92, hMm: 85 },
+      { kind: 'image', page: 1, wMm: 7, hMm: 89, edPage: 3, dxMm: 0, dyMm: -100, dwMm: 0, dhMm: 0 },
+      { kind: 'image', page: 2, wMm: 60, hMm: 40, edPage: 2, dxMm: 0, dyMm: 0, dwMm: 6, dhMm: 4 },
+      { kind: 'imageCount', side: 'editor', page: 1, wMm: 148, hMm: 111 },
+    ]);
+  });
 });
