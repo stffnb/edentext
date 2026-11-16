@@ -133,7 +133,10 @@ export function normalizeTextFxRaw(v: unknown): W14El[] | null {
 export const RAW_OF = { textOutline: 'textOutline', textShadow: 'shadow', textGlow: 'glow' } as const;
 
 const OFF = '0 0 transparent';
-const RING = ['-1px -1px', '0 -1px', '1px -1px', '1px 0', '1px 1px', '0 1px', '-1px 1px', '-1px 0'].map((o) => `${o} currentcolor`).join(', ');
+// The text colour by name, not currentcolor: Firefox reads that off the paper fill, and a
+// highlight's off its own colour, both of which hid the hollow letter's ring.
+const INK = 'var(--font-color, var(--color-page-text, #000))';
+const RING = ['-1px -1px', '0 -1px', '1px -1px', '1px 0', '1px 1px', '0 1px', '-1px 1px', '-1px 0'].map((o) => `${o} ${INK}`).join(', ');
 const PAPER = 'var(--color-page-bg, #fff)';
 
 /** How the w14 parameters become CSS: read off the [MS-DOCX] definitions, not measured

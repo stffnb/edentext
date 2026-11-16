@@ -9,7 +9,7 @@ list markers, paragraph boxes, date/time fields and cross-references.
 
 | Effect | LibreOffice | CSS |
 |---|---|---|
-| Outline | hairline (~0.25pt at any size) in the text colour, the inside filled white, also on a coloured background | eight 1px `text-shadow`s in `currentcolor`, `-webkit-text-fill-color` the page colour |
+| Outline | hairline (~0.25pt at any size) in the text colour, the inside filled white, also on a coloured background | eight 1px `text-shadow`s in the text colour named by `--font-color` (a run's colour and every style's set it; else the page text colour), `-webkit-text-fill-color` the page colour. Not `currentcolor`: Firefox resolves that in a shadow against the paper fill, and a `::highlight` against its own colour, which hid the letter there |
 | Shadow | ~1/24 of the line height down-right (3.6pt at 72pt); light grey `#c0c0c0` under black or near-black text, black under any other colour | `0.05em 0.05em` `text-shadow` in the same two colours |
 | Embossed / engraved | a ~1px copy down-right (embossed) or up-left (engraved) behind the text; black text turns white with a black edge, coloured text keeps its colour with a light grey edge | `±1px ±1px` `text-shadow`; black or unset colour gets the page colour as fill and the page text colour as edge |
 

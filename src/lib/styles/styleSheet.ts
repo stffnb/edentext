@@ -450,7 +450,8 @@ export function textDeclarations(t: TextProps, asBlock = false): string[] {
     out.push(`text-decoration: ${[t.underline && 'underline', t.strike && 'line-through'].filter(Boolean).join(' ')}`);
   }
   const color = cssColor(t.color);
-  if (color) out.push(`color: ${color}`);
+  // --font-color names it for what currentcolor cannot reach (a plain outline's ring).
+  if (color) out.push(`color: ${color}`, `--font-color: ${color}`);
   if (t.caps && CAPS.has(t.caps)) out.push(t.caps === 'smallCaps' ? 'font-variant-caps: small-caps' : `text-transform: ${t.caps}`);
   else if (t.caps === false) out.push('text-transform: none', 'font-variant-caps: normal');
   const fx = effectCss(t);
