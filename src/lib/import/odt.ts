@@ -9,7 +9,7 @@ import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL } from '../styles/headings';
 import { isAllowedUri } from '@tiptap/extension-link';
 import { builtinStyleSheet, DEFAULT_STYLE, screenFontName, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { DEFAULT_OUTLINE_LEVEL, MAX_OUTLINE_LEVELS, type OutlineLevel, type OutlineNumbering } from '../styles/outlineNumbering';
-import { LIST_LEVEL_STEP_CM, MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
+import { clampListLevels, LIST_LEVEL_STEP_CM, MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { colorModeOf, cropOf, fitInlineImage, framePx, stackRank, wrapGap, wrapGapAttr, type Crop } from '../editor/extensions/image';
 import { odfChartDataUrl } from './chart';
@@ -1191,7 +1191,8 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const hasFooter = hf.footer || footerFirst || footerEven;
 
   const result: OdtImportResult = {
-    content: { type: 'doc', content: blocks },
+    // Deeper than ODF's ten levels, LibreOffice shows a list on the tenth.
+    content: clampListLevels({ type: 'doc', content: blocks }, MAX_LIST_LEVELS),
     margins: geometry?.margins ?? null,
     orientation: geometry?.orientation ?? null,
     format: geometry?.format ?? null,

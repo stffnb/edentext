@@ -24,7 +24,7 @@ import { BulletList } from './extensions/bulletList';
 import { OrderedList } from './extensions/orderedList';
 import ListItem from '@tiptap/extension-list-item';
 import { ListMarker } from './extensions/listMarker';
-import { ListStyle, splitListAt } from './extensions/listStyle';
+import { ListStyle, sinkListItemWithin, splitListAt } from './extensions/listStyle';
 import { Table, TableHeader, TableCell, createTable } from '@tiptap/extension-table';
 import { addColumnAfter, addColumnBefore, addRowAfter, addRowBefore } from '@tiptap/pm/tables';
 import { ResizableTableRow } from './extensions/tableRow';
@@ -230,7 +230,8 @@ export const extensions = [
   OrderedList.configure({ headingNumbering: { get: () => styleSheet().outline, set: setOutline } }),
   // The tail is narrower than `block*`: neither file keeps a table (or a table of
   // contents) in a list item, and a list toggle over one would wrap it in silently.
-  ListItem.extend({ content: LIST_ITEM_CONTENT }),
+  // Indenting stops at the ninth level, as at any other limit: deeper has no .docx form.
+  ListItem.extend({ content: LIST_ITEM_CONTENT, addCommands: () => ({ sinkListItem: sinkListItemWithin }) }),
   // Bullet/number formatting: it follows the item's first text portion, as in
   // LibreOffice (the sheet resolves a character style on that portion).
   ListMarker.configure({ sheet: styleSheet }),

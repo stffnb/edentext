@@ -216,3 +216,31 @@ describe('a list label’s alignment', () => {
     expect(list(importDocx(await buildDocx(doc(), margins, 'portrait')).content).attrs?.markerAlign).toBeUndefined();
   });
 });
+
+// DOCX numbers nine levels and ODF ten: a list nested deeper goes on the last one, whose
+// kind it takes, and the editor indents no further than the ninth.
+describe('a list nested past the levels a format has', () => {
+  const chain = (n: number, at = 1): N => ({ type: at % 2 ? 'orderedList' : 'bulletList', content: [{ type: 'listItem', content: [
+    { type: 'paragraph', content: [{ type: 'text', text: `L${at}` }] }, ...(at < n ? [chain(n, at + 1)] : [])] }] });
+  // Each text's level and the kind of list it is on.
+  const levels = (doc: N) => {
+    const out: string[] = [];
+    const walk = (n: N, level: number, kind: string) => {
+      if (n.type === 'text') out.push(`${n.text}:${level}${kind}`);
+      const list = n.type === 'bulletList' || n.type === 'orderedList';
+      for (const c of n.content ?? []) walk(c, list ? level + 1 : level, list ? n.type[0] : kind);
+    };
+    walk(doc, 0, '');
+    return out;
+  };
+  const deep = { type: 'doc', content: [chain(12)] };
+  it('goes on the ninth level in DOCX and the tenth in ODT, as both read it back', async () => {
+    const [docx, odt] = await roundTrips(deep);
+    const on = (last: number) => Array.from({ length: 12 }, (_, i) => `L${i + 1}:${Math.min(i + 1, last)}${Math.min(i + 1, last) % 2 ? 'o' : 'b'}`);
+    expect(levels(docx)).toEqual(on(9));
+    expect(levels(odt)).toEqual(on(10));
+    expect(levels(importOdt(await buildOdt(deep)).content)).toEqual(on(10));
+    const numbering = strFromU8(unzipSync(await buildDocx(deep))['word/numbering.xml']);
+    expect(Math.max(...[...numbering.matchAll(/w:ilvl="(\d+)"/g)].map((m) => Number(m[1])))).toBe(8);
+  });
+});

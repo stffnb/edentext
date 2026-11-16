@@ -140,6 +140,14 @@ wrap, captions, and shape semantics; see `frames.md`. Formulas, bookmarks, cross
 captions, indexes, bibliography, ruby, placeholders, revisions, and notes retain their semantic
 nodes where the format supports them; their focused documents define fallback behavior.
 
+List levels: DOCX numbers nine (`w:ilvl` 0–8), ODF ten. The editor indents to the ninth
+(`sinkListItemWithin`, `DOCX_LIST_LEVELS`), so its own lists fit both. A file's deeper list
+is moved up onto the last level the format has (`clampListLevels`): its items follow the
+item they were in and take that level's kind, which is how LibreOffice shows such a list.
+The ODT keeps all ten, LibreOffice's own ceiling, since a file from it may use the tenth; both
+importers read no deeper than their format. odf-kit writes six levels of each list style,
+so `extendKitListLevels` adds the other four before the per-level passes rewrite them.
+
 Review printing renders the visible markup mode consistently. Raster paths clone live paper;
 the vector path rebuilds document markup. Comment bodies print as a final list when markup
 printing is enabled, while resolved comments do not print. See `reviewPrint.ts` for layout detail.

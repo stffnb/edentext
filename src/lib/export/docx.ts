@@ -48,7 +48,7 @@ import { w14EffectsXml } from '../utils/w14Effects';
 import { firstLineCm, leftCm, rightCm } from '../editor/extensions/indent';
 import { charStyleProps, listMarkerFormat } from '../editor/extensions/listMarker';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, orderedTypeDef, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
-import { effectiveListLevel, listStyleMarginCm, listStyleOverridden, type ListStyle as ListStyleDef } from '../styles/listStyles';
+import { clampListLevels, DOCX_LIST_LEVELS, effectiveListLevel, listStyleMarginCm, listStyleOverridden, type ListStyle as ListStyleDef } from '../styles/listStyles';
 import { outlineIsEmpty, type OutlineNumbering } from '../styles/outlineNumbering';
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import { normalizeColor, GENERATOR, mergeJoinedParagraphsJson, twinFontName, frameRank, labelledItems, type HfExport } from './odt';
@@ -3778,7 +3778,7 @@ export async function buildDocx(
   // rasterizing is async where the emitters that place them are not.
   docJson = await rasterizeSvgImages(docJson);
   exportSheet = styles;
-  docJson = stampBookmarkEdges(alignDisplayFormulas(docJson));
+  docJson = stampBookmarkEdges(alignDisplayFormulas(clampListLevels(docJson, DOCX_LIST_LEVELS)));
   exportSpacingModel = spacingModel;
   docFormulas = [];
   nextBookmarkId = 0;

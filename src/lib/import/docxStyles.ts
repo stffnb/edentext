@@ -780,6 +780,7 @@ export function readNumPr(numPr: Element): { numId: number; ilvl: number } | nul
   const numId = parseInt(wVal(idEl) ?? '', 10);
   if (!Number.isFinite(numId)) return null;
   const ilvlEl = firstChild(numPr, 'ilvl');
+  // w:ilvl ends at 8; a file's deeper one is numbered there.
   const ilvl = ilvlEl ? parseInt(wVal(ilvlEl) ?? '0', 10) : 0;
-  return { numId, ilvl: Number.isFinite(ilvl) ? ilvl : 0 };
+  return { numId, ilvl: Number.isFinite(ilvl) ? Math.min(8, Math.max(0, ilvl)) : 0 };
 }

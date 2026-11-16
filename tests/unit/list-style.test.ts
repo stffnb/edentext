@@ -209,3 +209,26 @@ describe('a table inserted in a list', () => {
     expect(() => ed.state.doc.check()).not.toThrow();
   });
 });
+
+// Nine levels, the deepest a .docx numbers: indenting further does nothing, as at any limit.
+describe('indenting a list item', () => {
+  const p = (text: string) => ({ type: 'paragraph', content: [{ type: 'text', text }] });
+  // `n` levels down to `last`, with `extra` items of their own below it.
+  const chain = (n: number, extra = 0): object => ({ type: 'bulletList', content: n > 1
+    ? [{ type: 'listItem', content: [p(`L${n}`), chain(n - 1, extra)] }]
+    : [{ type: 'listItem', content: [p('first')] }, { type: 'listItem', content: [p('last'), ...(extra ? [chain(extra)] : [])] }] });
+  const sinks = (n: number, extra = 0) => {
+    const editor = new Editor({ element: document.createElement('div'), extensions: fullExtensions, content: { type: 'doc', content: [chain(n, extra)] } });
+    let at = -1;
+    editor.state.doc.descendants((node, pos) => { if (node.isText && node.text === 'last') at = pos + 1; });
+    editor.commands.setTextSelection(at);
+    const can = editor.can().sinkListItem('listItem');
+    const did = editor.commands.indentListForward();
+    editor.destroy();
+    expect(did).toBe(can);
+    return did;
+  };
+  it.each([[8, 0, true], [9, 0, false], [7, 1, true], [8, 1, false]])('%i levels, %i below the item: %s', (n, extra, ok) => {
+    expect(sinks(n, extra)).toBe(ok);
+  });
+});

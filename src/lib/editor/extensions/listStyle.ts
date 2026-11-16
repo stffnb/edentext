@@ -1,10 +1,11 @@
-import { Extension, type CommandProps } from '@tiptap/core';
+import { Extension, getNodeType, type CommandProps, type RawCommands } from '@tiptap/core';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { ResolvedPos } from '@tiptap/pm/model';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { childCycle, defaultOrderedTypeAt, formatOrdinal, orderedTypeDef, ROOT_ORDERED_CYCLE, type OrderedCycle, type OrderedListType } from '../../utils/orderedListTypes';
-import { effectiveListLevel } from '../../styles/listStyles';
+import { sinkListItem } from '@tiptap/pm/schema-list';
+import { DOCX_LIST_LEVELS, effectiveListLevel } from '../../styles/listStyles';
 import type { ListStyle as ListStyleDef } from '../../styles/listStyles';
 import type { StyleSheet } from '../../styles/styleSheet';
 import { SHEET_CHANGED, touchesList } from './listMarker';
@@ -175,6 +176,30 @@ export function splitListAt(tr: Transaction, $from: ResolvedPos, itemDepth: numb
   tr.split(pos, depth - top + 1, typesAfter);
   return pos + depth - top + 1;
 }
+
+// The levels the lists below `node` reach down, 0 for none.
+function levelsBelow(node: ProseMirrorNode): number {
+  let max = 0;
+  node.forEach((list) => { if (isListNode(list)) list.forEach((item) => { max = Math.max(max, 1 + levelsBelow(item)); }); });
+  return max;
+}
+
+/** sinkListItem that leaves every item it moves, and their sub-lists, within DOCX_LIST_LEVELS. */
+export const sinkListItemWithin: RawCommands['sinkListItem'] = (typeOrName) => ({ state, dispatch }) => {
+  const type = getNodeType(typeOrName, state.schema);
+  const { $from, $to } = state.selection;
+  const range = $from.blockRange($to, (n) => n.childCount > 0 && n.firstChild!.type === type);
+  if (range) {
+    let level = 0;
+    for (let d = range.depth; d > 0 && (isListNode($from.node(d)) || $from.node(d).type.name === 'listItem'); d--) {
+      if (isListNode($from.node(d))) level++;
+    }
+    for (let i = range.startIndex; i < range.endIndex; i++) {
+      if (level + 1 + levelsBelow(range.parent.child(i)) > DOCX_LIST_LEVELS) return false;
+    }
+  }
+  return sinkListItem(type)(state, dispatch);
+};
 
 /** An item of sub-lists only — ODF's item without a paragraph: no label, no count. */
 export const isLabelless = (item: ProseMirrorNode) => !!item.firstChild && isListNode(item.firstChild);

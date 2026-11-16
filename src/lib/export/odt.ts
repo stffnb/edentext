@@ -21,7 +21,7 @@ import { HEADING_STYLE_OVERRIDES, HEADING_FONT, HEADING_LEVELS, MAX_HEADING_LEVE
 import {
   TABLE_REGIONS, parseTableLook, regionText, type TableLook, type TableRegion,
 } from '../styles/tableStyles';
-import { effectiveListLevel, listStyleMarginCm, listStyleOverridden, MAX_LIST_LEVELS, type ListStyle } from '../styles/listStyles';
+import { clampListLevels, effectiveListLevel, listStyleMarginCm, listStyleOverridden, MAX_LIST_LEVELS, type ListStyle } from '../styles/listStyles';
 import { outlineIsEmpty, type OutlineLevel, type OutlineNumbering } from '../styles/outlineNumbering';
 
 // A table's named style plus the conditional areas it opts into (Word's Table Style
@@ -46,7 +46,7 @@ import { stampBookmarkEdges, bookmarkEdgesOf } from '../editor/extensions/bookma
 import { indexKindOf, INDEX_TITLES, INDEX_COLUMN_GAP_CM, type IndexKind } from '../editor/extensions/tableOfContents';
 import { citationText, isBibType } from '../editor/extensions/bibliographyEntry';
 import { isCitationStyle, rowTemplate, type CitationStyle } from '../utils/citationStyle';
-import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
+import { defaultBulletChar } from '../utils/bulletListTypes';
 import { CELL_FORMAT_SPECS, currencyParts, datePattern, isCellFormat, type CellFormat } from '../utils/cellFormat';
 import { findFormat, renderFormat, odfNumberStyle, toDateValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
 import { parseLatex } from '../math/latex';
@@ -2804,11 +2804,13 @@ function applyParagraphBoxes(odtBytes: Uint8Array): Uint8Array {
 type OrderedFmt = { numFormat: string; numSuffix: string };
 type OlStyleFix = { fmts: OrderedFmt[]; multilevel: boolean };
 
-const DEFAULT_ORDERED_FMTS: OrderedFmt[] = Array.from({ length: 6 }, (_, i) => {
+const DEFAULT_ORDERED_FMTS: OrderedFmt[] = Array.from({ length: MAX_LIST_LEVELS }, (_, i) => {
   const d = effectiveOrderedDef(null, i);
   return { numFormat: d.numFormat, numSuffix: d.numSuffix };
 });
-const MULTILEVEL_FMTS: OrderedFmt[] = Array.from({ length: 6 }, () => ({ numFormat: '1', numSuffix: '.' }));
+const MULTILEVEL_FMTS: OrderedFmt[] = Array.from({ length: MAX_LIST_LEVELS }, () => ({ numFormat: '1', numSuffix: '.' }));
+// The default bullet of each of ODF's ten levels: the depth cycle, repeated.
+const LEVEL_BULLETS = Array.from({ length: MAX_LIST_LEVELS }, (_, i) => defaultBulletChar(i));
 
 // Effective numbering of an ordered list at a cycle position: its attr, else the
 // cycle default (re-anchoring slot + suffix at explicit styles; 'multilevel' handled
@@ -2875,7 +2877,7 @@ function collectListLevelKinds(doc: TiptapNode, result: (LevelKindFix | null)[][
       const fixAt = (kind: LevelKind, fmt: OrderedFmt, char: string, displayLevels: number): LevelKindFix | null =>
         (kind === 'number') === topOrdered ? null : { kind, fmt, char, displayLevels };
       const walk = (list: TiptapNode, depth: number, cycle: OrderedCycle) => {
-        if (depth > 6) return;
+        if (depth > MAX_LIST_LEVELS) return;
         if (fixes[depth - 1] === undefined) {
           const eff = effectiveListLevel(list.attrs ?? {}, list.type === 'orderedList', style, depth);
           fixes[depth - 1] = fixAt(eff.kind, effOrderedFmt(list, cycle, style, depth), effBulletChar(list, depth, style),
@@ -2892,7 +2894,7 @@ function collectListLevelKinds(doc: TiptapNode, result: (LevelKindFix | null)[][
       walk(child, 1, ROOT_ORDERED_CYCLE);
       // Depths the document never reaches still follow the style, so the clone stays
       // the full definition.
-      for (let d = 1; d <= 6; d++) {
+      for (let d = 1; d <= MAX_LIST_LEVELS; d++) {
         if (fixes[d - 1] !== undefined) continue;
         const lv = style.levels[d - 1];
         if (!lv) { fixes[d - 1] = null; continue; }
@@ -2903,6 +2905,29 @@ function collectListLevelKinds(doc: TiptapNode, result: (LevelKindFix | null)[][
     }
     result.push(fixes);
   }
+}
+
+// odf-kit writes six levels of each L# list style and ODF has ten: the rest follow in its
+// own pattern, before the passes below rewrite them level by level.
+function extendKitListLevels(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const content = strFromU8(files['content.xml']);
+  const extended = content.replace(/(<text:list-style style:name="L\d+">)([\s\S]*?)(<\/text:list-style>)/g, (m, open: string, body: string, close: string) => {
+    const last = /<text:list-level-style-(bullet|number) text:level="6"[\s\S]*?<\/text:list-level-style-\1>/.exec(body)?.[0];
+    if (!last || body.includes('text:level="7"')) return m;
+    let more = '';
+    for (let level = 7; level <= MAX_LIST_LEVELS; level++) {
+      const indent = level * 0.635;
+      more += last.replace('text:level="6"', `text:level="${level}"`)
+        .replace(/(text:list-tab-stop-position|fo:margin-left)="[^"]*"/g, `$1="${(indent * 2).toFixed(3)}cm"`)
+        .replace(/fo:text-indent="[^"]*"/, `fo:text-indent="-${indent.toFixed(3)}cm"`)
+        .replace(/text:bullet-char="[^"]*"/, `text:bullet-char="${escapeXml(defaultBulletChar(level - 1))}"`);
+    }
+    return open + body + more + close;
+  });
+  if (extended === content) return odtBytes;
+  files['content.xml'] = strToU8(extended);
+  return rezipOdt(files);
 }
 
 function applyListLevelKinds(odtBytes: Uint8Array, kinds: (LevelKindFix | null)[][]): Uint8Array {
@@ -2919,7 +2944,7 @@ function applyListLevelKinds(odtBytes: Uint8Array, kinds: (LevelKindFix | null)[
     content = content.replace(re, (_m, open: string, body: string, close: string) =>
       open +
       body.replace(
-        /<text:list-level-style-(bullet|number)( text:level="(\d)")[^>]*>([\s\S]*?)<\/text:list-level-style-\1>/g,
+        /<text:list-level-style-(bullet|number)( text:level="(\d+)")[^>]*>([\s\S]*?)<\/text:list-level-style-\1>/g,
         (m, _kind: string, lvlAttr: string, lvl: string, inner: string) => {
           const fix = fixes[+lvl - 1];
           if (!fix) return m;
@@ -2970,7 +2995,7 @@ function applyOrderedListFormats(odtBytes: Uint8Array, formats: (OlStyleFix | nu
     content = content.replace(re, (_m, open: string, body: string, close: string) =>
       open +
       body.replace(
-        /(<text:list-level-style-number text:level=")(\d)(" style:num-format=")[^"]*(" style:num-suffix=")[^"]*(")/g,
+        /(<text:list-level-style-number text:level=")(\d+)(" style:num-format=")[^"]*(" style:num-suffix=")[^"]*(")/g,
         (_mm, a: string, lvl: string) => {
           const f = fix.fmts[+lvl - 1] ?? DEFAULT_ORDERED_FMTS[+lvl - 1];
           const disp = fix.multilevel && +lvl > 1 ? ` text:display-levels="${lvl}"` : '';
@@ -3072,8 +3097,8 @@ function collectBulletListChars(node: TiptapNode, result: (string[] | null)[]): 
     if (child.type === 'orderedList') {
       result.push(null);
     } else if (child.type === 'bulletList') {
-      const vec = bulletCharVector(child, 1, DEFAULT_BULLET_CYCLE, listStyleOf(child));
-      result.push(vec.every((c, i) => c === DEFAULT_BULLET_CYCLE[i]) ? null : vec);
+      const vec = bulletCharVector(child, 1, LEVEL_BULLETS, listStyleOf(child));
+      result.push(vec.every((c, i) => c === LEVEL_BULLETS[i]) ? null : vec);
     }
   }
 }
@@ -3088,12 +3113,12 @@ function applyBulletListChars(odtBytes: Uint8Array, chars: (string[] | null)[]):
   let content = strFromU8(contentBytes);
   chars.forEach((vec, i) => {
     if (!vec) return;
-    // Rewrite only inside this list's own <text:list-style> block (all 6 levels).
+    // Rewrite only inside this list's own <text:list-style> block, every level.
     const re = new RegExp(`(<text:list-style style:name="L${i + 1}">)([\\s\\S]*?)(</text:list-style>)`);
     content = content.replace(re, (_m, open: string, body: string, close: string) =>
       open +
       body.replace(
-        /(<text:list-level-style-bullet text:level=")(\d)(" text:bullet-char=")[^"]*(")/g,
+        /(<text:list-level-style-bullet text:level=")(\d+)(" text:bullet-char=")[^"]*(")/g,
         (_mm, a: string, lvl: string, b: string, c: string) => a + lvl + b + escapeXml(vec[+lvl - 1] ?? defaultBulletChar(+lvl - 1)) + c,
       ) +
       close,
@@ -3228,7 +3253,7 @@ function applyListMarkerFormats(odtBytes: Uint8Array, formats: (MarkerFormat | n
     const re = new RegExp(`(<text:list-style style:name="L${i + 1}">)([\\s\\S]*?)(</text:list-style>)`);
     content = content.replace(re, (_m, open: string, body: string, close: string) =>
       open +
-      body.replace(/<text:list-level-style-(number|bullet) text:level="(\d)"/g, (match, kind: string, level: string) => {
+      body.replace(/<text:list-level-style-(number|bullet) text:level="(\d+)"/g, (match, kind: string, level: string) => {
         const format = levels[Number(level) - 1];
         return format ? `<text:list-level-style-${kind} text:level="${level}" text:style-name="${styleFor(format)}"` : match;
       }) +
@@ -3247,7 +3272,7 @@ function applyListMarkerFormats(odtBytes: Uint8Array, formats: (MarkerFormat | n
 
 // odf-kit emits nested lists as bare <text:list> sharing the top-level L# style, so a
 // nested list of a different kind/format/marker loses its look. Mint it its own
-// 6-level list style (same pattern applyCellBlocks uses for cell lists).
+// ten-level list style (same pattern applyCellBlocks uses for cell lists).
 type ListDef = { kinds: LevelKind[]; multilevel: boolean; fmts: OrderedFmt[]; bulletChars: string[] };
 
 // Per-level kind for a list subtree, same DFS-first model as the char/format vectors.
@@ -3277,8 +3302,8 @@ function listDefOf(node: TiptapNode, depth: number, cycle: OrderedCycle, baseCha
   // The top def mirrors its L# levels: homogeneous by species, unless a style made
   // applyListLevelKinds convert them (then: visited eff kind, unvisited style kind).
   const kinds = !baseKinds && !style
-    ? Array.from({ length: 6 }, () => species)
-    : kindVector(node, depth, baseKinds ?? Array.from({ length: 6 }, (_, i): LevelKind => style?.levels[i]?.kind ?? species), style);
+    ? Array.from({ length: MAX_LIST_LEVELS }, () => species)
+    : kindVector(node, depth, baseKinds ?? Array.from({ length: MAX_LIST_LEVELS }, (_, i): LevelKind => style?.levels[i]?.kind ?? species), style);
   return {
     kinds,
     multilevel,
@@ -3334,7 +3359,7 @@ function collectNestedListFixes(doc: TiptapNode, result: (ListDef | null)[], rep
     if (child.type === 'bulletList' || child.type === 'orderedList') {
       if (repoints[listIdx++]) { skipNested(child); continue; }
       const style = listStyleOf(child);
-      walkList(child, listDefOf(child, 1, ROOT_ORDERED_CYCLE, DEFAULT_BULLET_CYCLE, DEFAULT_ORDERED_FMTS, style), true, 1, ROOT_ORDERED_CYCLE, style);
+      walkList(child, listDefOf(child, 1, ROOT_ORDERED_CYCLE, LEVEL_BULLETS, DEFAULT_ORDERED_FMTS, style), true, 1, ROOT_ORDERED_CYCLE, style);
     }
   }
 }
@@ -3429,7 +3454,7 @@ function buildNamedListStyleXml(style: ListStyle): string {
 }
 
 // Mirror odf-kit's buildListStyle (content.js) for the automatic list style our
-// in-cell lists reference. Six nesting levels with the given bullet chars /
+// in-cell lists reference. Ten nesting levels with the given bullet chars /
 // indents / numbering, so cell lists match the editor's top-level lists.
 function buildCellListStyle(
   styleName: string,
@@ -3437,9 +3462,9 @@ function buildCellListStyle(
   opts: { fmts?: OrderedFmt[]; multilevel?: boolean; bulletChars?: string[]; kinds?: LevelKind[] } = {},
 ): string {
   const fmts = opts.multilevel ? MULTILEVEL_FMTS : opts.fmts ?? MULTILEVEL_FMTS;
-  const bulletChars = opts.bulletChars ?? DEFAULT_BULLET_CYCLE;
+  const bulletChars = opts.bulletChars ?? LEVEL_BULLETS;
   let levels = '';
-  for (let level = 1; level <= 6; level++) {
+  for (let level = 1; level <= MAX_LIST_LEVELS; level++) {
     const indent = level * 0.635;
     const marginLeft = `${(indent * 2).toFixed(3)}cm`;
     const textIndent = `-${indent.toFixed(3)}cm`;
@@ -3514,7 +3539,7 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
     if (!name) {
       name = `${CELL_LIST_BULLET_STYLE}${bulletStyleByKey.size + 1}`;
       bulletStyleByKey.set(key, name);
-      const chars = [...DEFAULT_BULLET_CYCLE];
+      const chars = [...LEVEL_BULLETS];
       chars[(depth - 1) % chars.length] = ch;
       bulletStyles.push({ name, chars });
     }
@@ -3635,7 +3660,7 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
     additions.push(buildCellListStyle(name, false, { bulletChars: chars }));
   }
   for (const { name, numFormat, numSuffix, multilevel } of numberStyles) {
-    additions.push(buildCellListStyle(name, true, { fmts: Array.from({ length: 6 }, () => ({ numFormat, numSuffix })), multilevel }));
+    additions.push(buildCellListStyle(name, true, { fmts: Array.from({ length: MAX_LIST_LEVELS }, () => ({ numFormat, numSuffix })), multilevel }));
   }
 
   if (additions.length) {
@@ -5880,7 +5905,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const pageWidthCm = pageDimsCm(pageFormat, orientation).w;
   const contentWidthCm = pageWidthCm - margins.left - margins.right;
 
-  const withZones: TiptapNode = splitNestedLists(zoneBlocks.length ? { ...docJson, content: [...(docJson.content ?? []), ...zoneBlocks] } : docJson);
+  const withZones: TiptapNode = splitNestedLists(clampListLevels(zoneBlocks.length ? { ...docJson, content: [...(docJson.content ?? []), ...zoneBlocks] } : docJson, MAX_LIST_LEVELS));
   const sentinels = replaceRuby(replaceBibEntries(replaceIndexEntries(replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replacePlaceholderFields(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replaceNestedTables(replacePageBreaks(replaceTableOfContents(replacePageFields(withZones, hf?.pageCount ?? 1), tocs)), contentWidthCm), textBoxes), columns), notes)))), images), dateFields), placeholderLabels), formulas), crossRefs), commentList), seqFields, seqAnchors), revisionList), indexMarks), bibMarks), rubies);
   const unmerged = markTextEffects(bakeListCharStyles(sentinels, styles), DEFAULT_FONT_SIZE_PT, styles);
   const raw = mergeListItemBlocks(unmerged);
@@ -6027,7 +6052,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // passes below patch elements of the right kind.
   const levelKinds: (LevelKindFix | null)[][] = [];
   collectListLevelKinds(raw, levelKinds);
-  let numberedOdt = applyListLevelKinds(dropKitAsianFonts(odt as Uint8Array), levelKinds);
+  let numberedOdt = applyListLevelKinds(extendKitListLevels(dropKitAsianFonts(odt as Uint8Array)), levelKinds);
 
   // Rewrite odf-kit's default numbering (1.) into per-level formats (depth cycle,
   // explicit types, multilevel chains). Runs before applyListItemStyles, which only
