@@ -397,6 +397,16 @@ describe('DOCX export → import round trip', () => {
     expect((changed.textFxRaw ?? []).some((e: any) => e.n === 'shadow' || e.n === 'glow')).toBe(false);
   });
 
+  // A paste can nest tables deeper than a cell is wide; both files keep every level.
+  it('saves tables nested deeper than their cells are wide', async () => {
+    let t: N = { type: 'table', content: [{ type: 'tableRow', content: [cell('a'), cell('b'), cell('c')] }] };
+    for (let i = 0; i < 6; i++) t = { type: 'table', content: [{ type: 'tableRow', content: [{ type: 'tableCell', attrs: {}, content: [para('x'), t, para('y')] }, cell('b'), cell('c')] }] };
+    const doc = { type: 'doc', content: [t] };
+    const depth = (n: N): number => (n.content ?? []).reduce((d, c) => Math.max(d, depth(c)), 0) + (n.type === 'table' ? 1 : 0);
+    expect(depth(importDocx(await buildDocx(doc as never)).content as N)).toBe(7);
+    expect(depth(importOdt(await buildOdt(doc as never)).content as N)).toBe(7);
+  });
+
   // What the commands or a paste put on a run is what a saved file reads back, whatever came in.
   it('holds the colour and effects a command or a paste sets as a saved file reads them back', async () => {
     const el = document.createElement('div');

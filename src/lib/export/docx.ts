@@ -3199,10 +3199,11 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
           left: docxCellBorder(cell.attrs, 'borderLeft'),
           right: docxCellBorder(cell.attrs, 'borderRight'),
         },
-        // A nested table measures against the cell's text width, as on import.
-        children: cellBlocksToDocx(content, cellForce(tableStyle, cell, bg), num,
+        // A nested table measures against the cell's text width, as on import; at least
+        // 0.5cm, as the ODT's, since tables nested deep leave a cell narrower than its padding.
+        children: cellBlocksToDocx(content, cellForce(tableStyle, cell, bg), num, Math.max(0.5,
           (widthTwip ? widthTwip * 2.54 / 1440 : (contentWidthCm - ml - mr) * colspan / gridCols)
-            - (ownPad ?? pad)[1] - (ownPad ?? pad)[3]),
+            - (ownPad ?? pad)[1] - (ownPad ?? pad)[3])),
       }));
     }
     return new TableRow({
