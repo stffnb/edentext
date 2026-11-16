@@ -116,6 +116,10 @@ a fresh page. **Word appends the list to the last page instead**, so it ends a d
 with endnotes one page earlier than LibreOffice and than we do — measured by rendering one
 `.docx` in both, identical body text on every page before the notes.
 
+**The note area ends where its page's body ends**: above that page's own footer reach,
+which a later section or a first page may set apart from the document's. Every leaf
+reports its anchors, a table row's and a column section's included.
+
 **The separator is drawn a pixel wider than it measures.** 0.5pt is 0.66px, which Chromium
 rounds away to nothing, so `editor.css` paints it at `max(1px, …)`. The reservation still
 uses the true weight — the same thing a hairline border does.

@@ -1467,6 +1467,7 @@ export const PageBreaks = Extension.create({
                 naturalTop: top,
                 naturalHeight: wrapperEl.offsetHeight - spacerHeight,
                 keepNext: keepNext && !inTableCell && realRows.length > 0,
+                refs: refsWithin(wrapperEl),
               });
               return;
             }
@@ -1502,6 +1503,8 @@ export const PageBreaks = Extension.create({
                 // A row its leader's cell spans into: it grows that leaf rather than
                 // opening a break candidate of its own.
                 openGroup.naturalHeight = naturalTopOf(tr) + rowHeight - openGroup.naturalTop;
+                const dy = naturalTopOf(tr) - openGroup.naturalTop;
+                openGroup.refs = [...openGroup.refs ?? [], ...refsWithin(tr).map((r) => ({ ...r, dy: r.dy + dy }))];
                 seenRealRow = true;
                 continue;
               }
@@ -1515,6 +1518,7 @@ export const PageBreaks = Extension.create({
                   naturalHeight: rowHeight,
                   tableRow: { columns, wrapperEl, isFirstRow: !seenRealRow },
                   forceBreakBefore: freshPage && !seenRealRow,
+                  refs: refsWithin(tr),
                 };
                 leaves.push(rowLeaf);
                 if (leader === tr) openGroup = rowLeaf;
@@ -1649,6 +1653,7 @@ export const PageBreaks = Extension.create({
                     firstBlockNeededPx: Math.max(firstPx, 16),
                     spaceAbovePx: breaks ? parseFloat(getComputedStyle(first!).getPropertyValue('--space-before')) || 0 : 0,
                   },
+                  refs: refsWithin(child),
                 });
                 continue;
               }
@@ -1739,6 +1744,7 @@ export const PageBreaks = Extension.create({
                 naturalTop: naturalTopOf(child),
                 naturalHeight: child.offsetHeight,
                 inTableCell,
+                refs: refsWithin(child),
               });
             }
           }
@@ -2432,7 +2438,7 @@ export const PageBreaks = Extension.create({
           for (const note of footnotes) {
             const page = placed.anchorPages.get(note.id);
             if (!page) continue;
-            const base = placed.grid.bottomOf(page) - vm.bottom - (reserved.get(page) ?? 0) + sepSpace;
+            const base = placed.grid.contentBottomOf(page) - (reserved.get(page) ?? 0) + sepSpace;
             const top = nextTop.get(page) ?? base;
             nextTop.set(page, top + note.height);
             // Resolved here, not at the decoration below: the key must watch the position

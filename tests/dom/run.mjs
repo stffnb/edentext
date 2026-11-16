@@ -588,6 +588,39 @@ try {
       `with ${label}, a borderless table's page-break mask draws no lines and its gap on the sheets', within its pages, over no text and under no note (${mask.lines} lines, ${mask.off.toFixed(1)}px off, ${mask.outside.toFixed(1)}px outside, ${mask.hidden} lines under it, ${mask.enclosed} notes enclosed or hidden)`);
   }
 
+  // A footnote anchored in a table cell goes to its anchor's page, and every note ends above
+  // that page's footer, one below the other.
+  await page.evaluate(([d, f]) => {
+    localStorage.setItem('edentext-doc', JSON.stringify(d));
+    localStorage.setItem('edentext-footer', JSON.stringify(f));
+    localStorage.removeItem('edentext-hf-sections');
+  }, [{ type: 'doc', content: [
+    ...Array.from({ length: 30 }, (_, i) => block(words(`filler ${i}`))),
+    block(words('body anchor'), { type: 'noteRef', attrs: { id: 'n1', kind: 'footnote' } }),
+    { type: 'table', content: [{ type: 'tableRow', content: [{ type: 'tableCell',
+      content: [block(words('cell anchor'), { type: 'noteRef', attrs: { id: 'n2', kind: 'footnote' } })] }] }] },
+    ...Array.from({ length: 40 }, (_, i) => block(words(`more ${i}`))),
+    { type: 'noteSection', content: ['n1', 'n2'].map((id) => ({ type: 'note', attrs: { id, kind: 'footnote' }, content: [words(`note ${id}`)] })) },
+  ] }, tallFooter]);
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
+  await settle(page, true);
+  const noteFit = await page.evaluate(() => {
+    const sheets = Array.from(document.querySelectorAll('.page-sheet'), (s) => s.getBoundingClientRect());
+    const sheetOf = (r) => sheets.findIndex((s) => r.top >= s.top && r.top < s.bottom);
+    const feet = Array.from(document.querySelectorAll('.hf-zone.hf-footer'), (z) => z.getBoundingClientRect());
+    let prevBottom = -Infinity;
+    return ['n1', 'n2'].map((id) => {
+      const note = document.querySelector(`.tiptap-host .note[data-note-id="${id}"]`).getBoundingClientRect();
+      const ref = document.querySelector(`.tiptap-host .note-ref[data-note-ref="${id}"]`).getBoundingClientRect();
+      const foot = feet.find((z) => sheetOf(z) === sheetOf(ref));
+      const ok = sheetOf(note) === sheetOf(ref) && !!foot && note.bottom <= foot.top + 0.5 && note.top >= prevBottom - 0.5;
+      prevBottom = note.bottom;
+      return ok ? '' : `${id}: page ${sheetOf(note)} for anchor page ${sheetOf(ref)}, ${foot ? (note.bottom - foot.top).toFixed(1) : '?'}px into the footer`;
+    }).filter(Boolean);
+  });
+  check(noteFit.length === 0, `footnotes from a paragraph and a table cell sit on their anchors' pages above the footer${noteFit.length ? ` (${noteFit.join('; ')})` : ''}`);
+
   // The ruler measures the page holding the caret, body or zone: its text column is that
   // page's own sheet less its own section's margins, a portrait page's beside a landscape one.
   await page.evaluate((d) => {
