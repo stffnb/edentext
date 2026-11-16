@@ -644,6 +644,8 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], force: TextProps = {
   // Half-points, as Word writes them: LibreOffice takes the number and ignores a unit
   // behind it. The library's type wants the unit, the file does not.
   if (typeof pos === 'number' && pos) props.position = String(Math.round(pos * 2)) as `${number}pt`;
+  const spacing = ts?.attrs?.letterSpacing;
+  if (typeof spacing === 'number') props.characterSpacing = docxSpacing(spacing);
   const em = ts?.attrs?.emphasis;
   if (isEmphasis(em)) props.emphasisMark = { type: emphasisToWord(em) as 'dot' };
   Object.assign(props, libEffects(ts?.attrs ?? {}));
@@ -1331,6 +1333,8 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLangs: unknown[] 
   if (caps === 'smallCaps') parts.push('<w:smallCaps/>');
   else if (caps === 'uppercase') parts.push('<w:caps/>');
   const pos = ts?.attrs?.textPosition;
+  const spacing = ts?.attrs?.letterSpacing;
+  if (typeof spacing === 'number') parts.push(`<w:spacing w:val="${Math.round(spacing * 20)}"/>`);
   if (typeof pos === 'number' && pos) parts.push(`<w:position w:val="${Math.round(pos * 2)}"/>`);
   if (isEmphasis(ts?.attrs?.emphasis)) parts.push(`<w:em w:val="${emphasisToWord(ts.attrs.emphasis)}"/>`);
   for (const [el, on] of Object.entries(wordEffectToggles(ts?.attrs ?? {}))) parts.push(on ? `<w:${el}/>` : `<w:${el} w:val="0"/>`);
@@ -3604,6 +3608,12 @@ export function docxStyleId(name: string): string {
   return name === DEFAULT_STYLE ? 'Normal' : name.replace(/[^A-Za-z0-9]/g, '');
 }
 
+// w:spacing in twips. A 0 resets the spacing above it, but the package skips a numeric 0,
+// so it goes as '0pt' (LibreOffice and the importer read it as 0).
+function docxSpacing(pt: number): number {
+  return (pt ? Math.round(pt * 20) : '0pt') as number;
+}
+
 // One registry style → a Word paragraph style with its parent chain.
 function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   const p = style.para;
@@ -3613,7 +3623,7 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   const font = fontPair(t.fontFamily, t.fontFamilyAsian, twinFontName);
   if (font) run.font = font;
   if (t.fontSizePt != null) run.size = Math.round(t.fontSizePt * 2);
-  if (t.letterSpacingPt) run.characterSpacing = Math.round(t.letterSpacingPt * 20);
+  if (t.letterSpacingPt != null) run.characterSpacing = docxSpacing(t.letterSpacingPt);
   // Word kerns nothing unless a size to start at is named, so the on state is the one
   // this side has to write — half a point, i.e. every run.
   if (t.kerning !== false) run.kern = 1;
@@ -3668,7 +3678,7 @@ function runPropsOf(t: TextProps): Writable<IRunStylePropertiesOptions> {
   const font = fontPair(t.fontFamily, t.fontFamilyAsian, screenToDoc);
   if (font) run.font = font;
   if (t.fontSizePt != null) run.size = Math.round(t.fontSizePt * 2);
-  if (t.letterSpacingPt) run.characterSpacing = Math.round(t.letterSpacingPt * 20);
+  if (t.letterSpacingPt != null) run.characterSpacing = docxSpacing(t.letterSpacingPt);
   if (t.kerning !== false) run.kern = 1;
   if (t.bold != null) run.bold = t.bold;
   if (t.italic != null) run.italics = t.italic;

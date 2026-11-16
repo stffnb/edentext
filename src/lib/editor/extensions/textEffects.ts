@@ -227,6 +227,15 @@ function capsFromStyle(el: HTMLElement): CapsMode | null {
   return isCaps(t) ? t : null;
 }
 
+// A CSS letter-spacing in pt; `normal` is 0, so a run can switch off its style's spacing.
+export function letterSpacingFromCss(v: string): number | null {
+  if (v === 'normal') return 0;
+  const n = parseFloat(v);
+  if (!Number.isFinite(n)) return null;
+  const pt = v.endsWith('px') ? n * 0.75 : v.endsWith('pt') ? n : n === 0 ? 0 : null;
+  return pt == null ? null : Math.round(pt * 100) / 100;
+}
+
 const toggleFrom = (v: string | null) => (v === 'true' ? true : v === 'false' ? false : null);
 
 const DRAWN = ['outline', 'shadow', 'relief', 'textOutline', 'textShadow', 'textGlow'] as const;
@@ -384,6 +393,13 @@ export const TextEffects = Extension.create({
               typeof attributes.textPosition === 'number' && attributes.textPosition
                 ? { style: `vertical-align: ${attributes.textPosition}pt` }
                 : {},
+          },
+          // Character spacing in pt; 0 is kept, it resets a style's spacing.
+          letterSpacing: {
+            default: null,
+            parseHTML: element => letterSpacingFromCss((element as HTMLElement).style.letterSpacing),
+            renderHTML: attributes =>
+              typeof attributes.letterSpacing === 'number' ? { style: `letter-spacing: ${attributes.letterSpacing}pt` } : {},
           },
           emphasis: {
             default: null,

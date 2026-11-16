@@ -1232,6 +1232,7 @@ type BlockDefaults = {
   underline: string | null;
   strike: string | null;
   caps: CapsMode | null;
+  letterSpacingPt: number; // w:spacing the style gives its runs
   // The effects the style draws (textEffects.ts).
   outline: boolean;
   shadow: boolean;
@@ -1271,6 +1272,7 @@ function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDef
     underline: lineSig(baseRun).underline,
     strike: lineSig(baseRun).strike,
     caps: baseRun.caps || null,
+    letterSpacingPt: (baseRun.spacingTwip ?? 0) / 20,
     outline: !!baseRun.outline,
     shadow: !!baseRun.shadow,
     relief: baseRun.relief && baseRun.relief !== 'none' ? baseRun.relief : null,
@@ -1417,7 +1419,7 @@ function runTextProps(run: RunProps): TextProps {
   if (run.font) out.fontFamily = screenFontName(run.font);
   if (run.fontEastAsia) out.fontFamilyAsian = screenFontName(run.fontEastAsia);
   if (run.sizeHalfPt != null) out.fontSizePt = Math.round((run.sizeHalfPt / 2) * 10) / 10;
-  if (run.spacingTwip) out.letterSpacingPt = Math.round((run.spacingTwip / 20) * 100) / 100;
+  if (run.spacingTwip != null) out.letterSpacingPt = Math.round((run.spacingTwip / 20) * 100) / 100;
   // Word kerns nothing unless w:kern names the size to start at, and a document that
   // says so for headings only leaves body text unkerned (probed against LibreOffice).
   const kern = run.kernHalfPt ?? 0;
@@ -2722,6 +2724,8 @@ function marksFor(props: RunProps, defaults: BlockDefaults, inLink: boolean): Ma
 
   if (props.caps && props.caps !== defaults.caps) textStyle.caps = props.caps;
   if (props.positionPt) textStyle.textPosition = props.positionPt;
+  const spacing = (props.spacingTwip ?? 0) / 20;
+  if (spacing !== defaults.letterSpacingPt) textStyle.letterSpacing = Math.round(spacing * 100) / 100;
   if (props.emphasis) textStyle.emphasis = props.emphasis;
   // Off is kept only where the style draws the effect; a run without one inherits it.
   if (!!props.outline !== defaults.outline) textStyle.outline = !!props.outline;

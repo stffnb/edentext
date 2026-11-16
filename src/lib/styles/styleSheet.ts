@@ -438,7 +438,7 @@ export function textDeclarations(t: TextProps, asBlock = false): string[] {
     if (lh !== 1.15) out.push(`${asBlock ? '--natural-line' : 'line-height'}: ${lh}`);
   }
   if (finite(t.fontSizePt)) out.push(`font-size: ${t.fontSizePt}pt`);
-  if (finite(t.letterSpacingPt) && t.letterSpacingPt) out.push(`letter-spacing: ${t.letterSpacingPt}pt`);
+  if (finite(t.letterSpacingPt)) out.push(`letter-spacing: ${t.letterSpacingPt}pt`);
   if (t.kerning != null) out.push(`font-kerning: ${t.kerning ? 'normal' : 'none'}`);
   if (t.bold != null) {
     out.push(`font-weight: ${t.bold ? 'var(--bold-weight, 700)' : 400}`, `-webkit-text-stroke-width: ${t.bold ? 'var(--bold-stroke, 0)' : 0}`);

@@ -62,6 +62,7 @@ describe('DOCX export → import round trip', () => {
         text('glowing ', [{ type: 'textStyle', attrs: { color: '#FFFFFF', textGlow: { color: '#4472C4', alpha: 0.6, radiusPt: 5 }, textOutline: { color: '#2F5597', widthPt: 0.5 } } }]),
         text('haloed ', [{ type: 'textStyle', attrs: { textGlow: { color: '#ED7D31', alpha: 0.25, radiusPt: 40 } } }]),
         text('lit ', [{ type: 'textStyle', attrs: { textGlow: { color: '#70AD47', alpha: 1, radiusPt: 1.5 } } }]),
+        text('spaced ', [{ type: 'textStyle', attrs: { letterSpacing: 1.5 } }]),
         text('raised', [{ type: 'textStyle', attrs: { fontSize: '14pt', textPosition: 3 } }]),
       ]),
       { type: 'paragraph', attrs: { fontSize: '22pt', textAlign: 'center' } }, // empty sized line
@@ -347,6 +348,7 @@ describe('DOCX export → import round trip', () => {
     expect(attrs('dotted ', 'underline')).toMatchObject({ lineStyle: 'dotted', lineColor: '#FF0000' });
     expect(attrs('crossed ', 'strike').lineStyle).toBe('double');
     expect(attrs('raised', 'textStyle').textPosition).toBe(3);
+    expect(attrs('spaced ', 'textStyle').letterSpacing).toBe(1.5);
     expect(documentXml).toMatch(/<w:em w:val="underDot"\/>/);
     expect(attrs('stressed ', 'textStyle').emphasis).toBe('dot below');
     expect(attrs('ringed ', 'textStyle').emphasis).toBe('circle above');
@@ -750,6 +752,36 @@ describe('DOCX import: empty line keeps its paragraph-mark font size', () => {
   it('keeps a run without w:sz at the style size, not the mark size', () => {
     const plain = doc.content![3].content!.find((t) => t.text === 'plain')!;
     expect(plain.marks?.find((m) => m.type === 'textStyle')?.attrs?.fontSize).toBe('10pt');
+  });
+});
+
+describe('run letter spacing against its style', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  // A style spaces its letters 2pt; one run resets that to 0, another widens it.
+  const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
+    <w:p><w:pPr><w:pStyle w:val="Wide"/></w:pPr><w:r><w:t xml:space="preserve">style </w:t></w:r><w:r><w:rPr><w:spacing w:val="0"/></w:rPr><w:t xml:space="preserve">reset </w:t></w:r><w:r><w:rPr><w:spacing w:val="60"/></w:rPr><w:t>wider</w:t></w:r></w:p>
+    <w:p><w:pPr><w:pStyle w:val="Narrow"/></w:pPr><w:r><w:t>narrow</w:t></w:r></w:p>
+    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr>
+  </w:body></w:document>`;
+  const stylesXml = `<?xml version="1.0"?><w:styles ${W}>
+    <w:style w:type="paragraph" w:styleId="Wide"><w:name w:val="Wide"/><w:rPr><w:spacing w:val="40"/></w:rPr></w:style>
+    <w:style w:type="paragraph" w:styleId="Narrow"><w:name w:val="Narrow"/><w:basedOn w:val="Wide"/><w:rPr><w:spacing w:val="0"/></w:rPr></w:style>
+  </w:styles>`;
+  const res = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml), 'word/styles.xml': strToU8(stylesXml) }));
+  const spacing = (doc: N, text: string) => walk(doc, 'text').find((t) => t.text === text)?.marks?.find((m) => m.type === 'textStyle')?.attrs?.letterSpacing;
+  const expectRuns = (doc: N, styles = res.styles) => {
+    expect(resolveStyle(styles, 'Narrow').text.letterSpacingPt).toBe(0);
+    expect(spacing(doc, 'style ')).toBeUndefined();
+    expect(spacing(doc, 'reset ')).toBe(0);
+    expect(spacing(doc, 'wider')).toBe(3);
+  };
+
+  it('keeps a run\'s own spacing, a reset to 0 included, through both formats', async () => {
+    expect(res.styles.paragraph['Wide'].text.letterSpacingPt).toBe(2);
+    expectRuns(res.content as N);
+    const sheet = res.styles;
+    for (const back of [importDocx(await buildDocx(res.content as N, undefined, undefined, undefined, undefined, 'A4', sheet)),
+      importOdt(await buildOdt(res.content as N, undefined, undefined, undefined, undefined, 'A4', sheet))]) expectRuns(back.content as N, back.styles);
   });
 });
 

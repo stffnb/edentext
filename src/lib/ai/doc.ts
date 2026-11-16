@@ -157,6 +157,7 @@ function runLabels(child: PMNode, base: ResolvedStyle): string[] {
       if (color) out.push(`color ${color}`);
       if (m.attrs.caps) out.push(m.attrs.caps === 'smallCaps' ? 'small caps' : `case ${m.attrs.caps}`);
       if (m.attrs.textPosition) out.push(`raised ${m.attrs.textPosition}pt`);
+      if (m.attrs.letterSpacing != null) out.push(`letter-spacing ${m.attrs.letterSpacing}pt`);
       if (m.attrs.emphasis) out.push(`emphasis ${m.attrs.emphasis}`);
       if (m.attrs.outline != null) out.push(m.attrs.outline ? 'outline' : 'no outline');
       if (m.attrs.shadow != null) out.push(m.attrs.shadow ? 'shadow' : 'no shadow');

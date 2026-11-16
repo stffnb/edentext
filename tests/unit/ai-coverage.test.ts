@@ -288,6 +288,7 @@ const SCHEMA: Record<string, Entry> = {
   'mark:textStyle.color': check(fmt({ color: '#C00000' }), hasMark('textStyle', (a) => !!a.color)),
   'mark:textStyle.caps': check(css('font-variant: small-caps'), hasMark('textStyle', (a) => a.caps === 'smallCaps')),
   'mark:textStyle.textPosition': check(css('vertical-align: 3pt'), hasMark('textStyle', (a) => a.textPosition === 3)),
+  'mark:textStyle.letterSpacing': check(css('letter-spacing: 2pt'), hasMark('textStyle', (a) => a.letterSpacing === 2)),
   'mark:textStyle.emphasis': check(css('text-emphasis: filled dot'), hasMark('textStyle', (a) => a.emphasis === 'dot above')),
   'mark:textStyle.outline': check(css('-webkit-text-stroke: 1px black'), hasMark('textStyle', (a) => a.outline === true)),
   'mark:textStyle.shadow': check(css('text-shadow: 1px 1px gray'), hasMark('textStyle', (a) => a.shadow === true)),

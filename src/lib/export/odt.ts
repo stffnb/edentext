@@ -2544,7 +2544,7 @@ function ownStyleAttrs(style: { para: Record<string, unknown>; text: Record<stri
     text['style:font-size-asian'] = size;
     text['style:font-size-complex'] = size;
   }
-  if (t.letterSpacingPt) text['fo:letter-spacing'] = `${t.letterSpacingPt}pt`;
+  if (t.letterSpacingPt != null) text['fo:letter-spacing'] = t.letterSpacingPt ? `${t.letterSpacingPt}pt` : 'normal';
   if (t.kerning != null) text['style:letter-kerning'] = String(t.kerning);
   if (t.bold != null) text['fo:font-weight'] = t.bold ? 'bold' : 'normal';
   if (t.italic != null) text['fo:font-style'] = t.italic ? 'italic' : 'normal';
@@ -4201,6 +4201,8 @@ export function odfExtraTextProps(marks: TiptapNode['marks'] = [], baseSizePt = 
   if (marks.find(m => m.type === 'textStyle')?.attrs?.color === AUTO_COLOR) a.push('style:use-window-font-color="true"');
   if (marks.find(m => m.type === 'textStyle')?.attrs?.fontStyle === 'normal' && !marks.some(m => m.type === 'italic')) a.push('fo:font-style="normal"');
   a.push(...Object.entries(effectsToOdf(marks.find(m => m.type === 'textStyle')?.attrs ?? {})).map(([k, v]) => `${k}="${v}"`));
+  const spacing = marks.find(m => m.type === 'textStyle')?.attrs?.letterSpacing;
+  if (typeof spacing === 'number') a.push(`fo:letter-spacing="${spacing ? `${spacing}pt` : 'normal'}"`);
   // ODF places a raised run in percent of its font size, Word and the editor in pt.
   const pos = marks.find(m => m.type === 'textStyle')?.attrs?.textPosition;
   if (typeof pos === 'number' && pos) {

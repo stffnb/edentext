@@ -80,6 +80,7 @@ const fixture: N = {
       T('engraved ', { type: 'textStyle', attrs: { relief: 'engraved' } }),
       // 4pt at 16pt is a whole 25%, the unit ODF stores it in — LibreOffice rounds
       // the percentage when it re-saves, so a fractional one comes back a notch off.
+      T('spaced ', { type: 'textStyle', attrs: { letterSpacing: 1.5 } }),
       T('raised', { type: 'textStyle', attrs: { fontSize: '16pt', textPosition: 4 } }),
     ),
     P({ textAlign: 'justify', lineHeight: '1.5', spaceBefore: 12, spaceAfter: 18 }, T('spaced')),

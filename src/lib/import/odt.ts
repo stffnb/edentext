@@ -1755,6 +1755,7 @@ type BlockDefaults = {
   underline: string | null;
   strike: string | null;
   caps: CapsMode | null;
+  letterSpacingPt: number; // fo:letter-spacing the style gives its runs
   // The effects the style draws (textEffects.ts).
   outline: boolean;
   shadow: boolean;
@@ -1836,6 +1837,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     underline: null,
     strike: null,
     caps: null,
+    letterSpacingPt: 0,
     outline: false,
     shadow: false,
     relief: null,
@@ -1868,6 +1870,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     underline: lineSig(text, 'underline'),
     strike: lineSig(text, 'line-through'),
     caps: capsFromOdf(text) || null,
+    letterSpacingPt: letterSpacingOf(text) ?? 0,
     ...effectDefaults(text, fallback),
     lang: langs.west ?? doc.west,
     langAsian: langs.asian ?? doc.asian,
@@ -1927,8 +1930,9 @@ function textPropsFromOdf(props: PropMap, resolver: StyleResolver): TextProps {
   if (asian) out.fontFamilyAsian = screenFontName(asian);
   const size = lengthToPt(props['fo:font-size']);
   if (size != null) out.fontSizePt = Math.round(size * 10) / 10;
-  const spacing = lengthToPt(props['fo:letter-spacing']);
-  if (spacing) out.letterSpacingPt = Math.round(spacing * 100) / 100;
+  // 0 (`normal`) is kept: it switches off the spacing of the style above.
+  const spacing = letterSpacingOf(props);
+  if (spacing != null) out.letterSpacingPt = spacing;
   // Kerning is on unless the file says otherwise (probed), which is the browser default
   // too — but a style under one that turns it off has to say so to get it back.
   const kerning = props['style:letter-kerning'];
@@ -2155,6 +2159,7 @@ function charDefaults(ctx: Ctx, base: BlockDefaults, odfName: string): BlockDefa
     underline: props['style:text-underline-style'] ? lineSig(props, 'underline') : base.underline,
     strike: props['style:text-line-through-style'] ? lineSig(props, 'line-through') : base.strike,
     caps: (capsFromOdf(props) ?? base.caps) || null,
+    letterSpacingPt: letterSpacingOf(props) ?? base.letterSpacingPt,
     ...effectDefaults(props, base),
   };
 }
@@ -3186,6 +3191,15 @@ function effectsFromOdf(props: PropMap): { outline: boolean | null; shadow: bool
   };
 }
 
+// fo:letter-spacing in pt (`normal` is 0); null where the props name none.
+function letterSpacingOf(props: PropMap): number | null {
+  const v = props['fo:letter-spacing'];
+  if (!v) return null;
+  if (v === 'normal') return 0;
+  const pt = lengthToPt(v);
+  return pt == null ? null : Math.round(pt * 100) / 100;
+}
+
 function effectDefaults(props: PropMap, base: Pick<BlockDefaults, 'outline' | 'shadow' | 'relief'>): Pick<BlockDefaults, 'outline' | 'shadow' | 'relief'> {
   const fx = effectsFromOdf(props);
   return {
@@ -3276,6 +3290,8 @@ function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaul
 
   const caps = capsFromOdf(props);
   if (caps && caps !== defaults.caps) textStyle.caps = caps;
+  const spacing = letterSpacingOf(props) ?? 0;
+  if (spacing !== defaults.letterSpacingPt) textStyle.letterSpacing = spacing;
   const em = props['style:text-emphasize'];
   if (isEmphasis(em)) textStyle.emphasis = em;
   const fx = effectsFromOdf(props);
