@@ -1856,7 +1856,7 @@ type CellBlock =
   | { kind: 'heading'; level: number; style: ParaStyle }
   | CellListBlock;
 // A table's own margins in cm (0/0 tables are recorded as null).
-type TableProps = { ml: number; mr: number; mt: number; mb: number; keepRows: boolean; repeatHeader: boolean;
+type TableProps = { ml: number; mr: number; mt: number; mb: number; keepRows: boolean; keepNext: boolean; repeatHeader: boolean;
   // A table can open a section and break the page in front of it like a paragraph:
   // fo:break-before on its own style, style:master-page-name for the section it opens.
   breakBefore: boolean; sectionIndex: number | null; widthCm: number };
@@ -2019,7 +2019,7 @@ function applyTableProps(odtBytes: Uint8Array, margins: (TableProps | null)[]): 
     const horiz = m.ml || m.mr
       ? ` style:width="${width}cm" fo:margin-left="${m.ml}cm" fo:margin-right="${m.mr}cm"` : '';
     const vert = `${m.mt ? ` fo:margin-top="${m.mt}cm"` : ''}${m.mb ? ` fo:margin-bottom="${m.mb}cm"` : ''}`;
-    const keep = m.keepRows ? ' style:may-break-between-rows="false"' : '';
+    const keep = (m.keepRows ? ' style:may-break-between-rows="false"' : '') + (m.keepNext ? ' fo:keep-with-next="always"' : '');
     const brk = m.breakBefore ? ' fo:break-before="page"' : '';
     content = content.replace(
       new RegExp(`(<style:style[^>]*style:name="Table${i + 1}"[^>]*>\\s*<style:table-properties)`),
@@ -4555,6 +4555,7 @@ function tablePropsOf(node: TiptapNode, contentWidthCm: number): TableProps | nu
   const mt = Math.max(0, Number(node.attrs?.marginTop) || 0);
   const mb = Math.max(0, Number(node.attrs?.marginBottom) || 0);
   const keepRows = node.attrs?.keepRows === true;
+  const keepNext = node.attrs?.keepNext === true;
   // A header row is one whether the table asked for the repeat or only the row's own
   // cells say they head it — ODF spells both with the one element (docx.ts does the same).
   const firstRow = (node.content ?? []).find(r => r.type === 'tableRow');
@@ -4564,8 +4565,8 @@ function tablePropsOf(node: TiptapNode, contentWidthCm: number): TableProps | nu
   const si = Number(node.attrs?.sectionIndex);
   const sectionIndex = Number.isInteger(si) && si > 0 ? si : null;
   if (ml + mr > contentWidthCm - 1) ml = mr = 0;
-  if (!ml && !mr && !mt && !mb && !keepRows && !repeatHeader && !breakBefore && sectionIndex == null) return null;
-  return { ml: round3(ml), mr: round3(mr), mt: round3(mt), mb: round3(mb), keepRows, repeatHeader, breakBefore, sectionIndex, widthCm: contentWidthCm };
+  if (!ml && !mr && !mt && !mb && !keepRows && !keepNext && !repeatHeader && !breakBefore && sectionIndex == null) return null;
+  return { ml: round3(ml), mr: round3(mr), mt: round3(mt), mb: round3(mb), keepRows, keepNext, repeatHeader, breakBefore, sectionIndex, widthCm: contentWidthCm };
 }
 
 // A formula cell as ODF writes it: LibreOffice's own formula language behind its

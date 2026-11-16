@@ -1331,7 +1331,10 @@ export const PageBreaks = Extension.create({
             // No break may fall between the rows (ODF style:may-break-between-rows), so
             // the table moves whole — unless it is taller than a page, where the rule
             // cannot be met and LibreOffice breaks it anyway.
-            const keepRows = tableEl?.dataset?.keepRows === 'true'
+            // A table kept with the next block moves whole with it, as LibreOffice
+            // moves one rather than split it (probed).
+            const keepNext = tableEl?.dataset?.keepNext === 'true';
+            const keepRows = (tableEl?.dataset?.keepRows === 'true' || keepNext)
               && wrapperEl.offsetHeight - spacerHeight <= contentHeight;
             // Fallback: no rows found — measure the whole wrapper as one atomic leaf.
             if (realRows.length === 0 || keepRows) {
@@ -1342,6 +1345,7 @@ export const PageBreaks = Extension.create({
                 kind: 'atomic',
                 naturalTop: top,
                 naturalHeight: wrapperEl.offsetHeight - spacerHeight,
+                keepNext: keepNext && !inTableCell && realRows.length > 0,
               });
               return;
             }

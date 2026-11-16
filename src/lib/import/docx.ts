@@ -1728,6 +1728,12 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   return node;
 }
 
+function tableKeepsNext(rows: Node[]): boolean {
+  const blocks = rows.flatMap((r) => r.content ?? []).flatMap((c) => c.content ?? [])
+    .filter((b) => b.type === 'paragraph' || b.type === 'heading');
+  return blocks.length > 0 && blocks.every((b) => b.attrs?.keepNext === true || (b.type === 'heading' && b.attrs?.keepNext !== false));
+}
+
 // w:contextualSpacing drops a paragraph's own spacing towards a neighbour of the same
 // style — Word's List Paragraph carries it, which is why list points sit line-tight. The
 // editor has no such mode, so the suppressed side becomes an explicit 0.
@@ -3878,6 +3884,9 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
   const firstTrPr = fc(fcAll(tbl, 'tr')[0] ?? null, 'trPr');
   const hdr = fc(firstTrPr, 'tblHeader');
   if (hdr && onOff(hdr)) attrs.repeatHeader = true;
+  // Every paragraph kept with the next keeps the table with the block after it, as
+  // LibreOffice reads it (probed: such a table moves whole with its caption).
+  if (tableKeepsNext(rows)) attrs.keepNext = true;
   if (named) {
     attrs.tableStyle = named;
     // '' is a declared all-off look — dropping it would revert to the default look.

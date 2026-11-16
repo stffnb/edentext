@@ -238,6 +238,7 @@ const SCHEMA: Record<string, Entry> = {
   'table.breakBefore': same('paragraph.breakBefore'),
   'table.sectionBreak': same('paragraph.sectionBreak'),
   'table.keepRows': IMPORT,
+  'table.keepNext': IMPORT,
   'table.repeatHeader': check(table('repeat_header', { value: 'on' }), attr('table', 'repeatHeader', true), TABLE),
   'table.marginLeft': IMPORT,
   'table.marginRight': IMPORT,

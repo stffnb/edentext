@@ -3824,9 +3824,9 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
   const attrs: Record<string, unknown> = { ...(margins ?? {}), ...tableSpacing(el, ctx) };
   if (cellPad) attrs.cellPadding = cellPad;
   // The default is to allow a break, so only the explicit "no" is worth an attr.
-  if (ctx.resolver.tableProps(el.getAttributeNS(NS.table, 'style-name'))['style:may-break-between-rows'] === 'false') {
-    attrs.keepRows = true;
-  }
+  const tableProps = ctx.resolver.tableProps(el.getAttributeNS(NS.table, 'style-name'));
+  if (tableProps['style:may-break-between-rows'] === 'false') attrs.keepRows = true;
+  if (tableProps['fo:keep-with-next'] === 'always') attrs.keepNext = true;
   // <table:table-header-rows> is what makes both word processors repeat the first row
   // on every page the table continues on.
   if (Array.from(el.children).some(c => c.namespaceURI === NS.table && c.localName === 'table-header-rows')) {

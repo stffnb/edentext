@@ -3140,9 +3140,12 @@ function formulaCellContent(cell: TiptapNode): TiptapNode[] | null {
   return [{ ...first, content: [field] }, ...(cell.content ?? []).slice(1)];
 }
 
-function cellBlocksToDocx(content: TiptapNode[] = [], force: TextProps, num: Numbering, contentWidthCm: number): (Paragraph | Table)[] {
+// A table kept with the next block is Word's every paragraph in it kept with the next.
+function cellBlocksToDocx(content: TiptapNode[] = [], force: TextProps, num: Numbering, contentWidthCm: number, keepNext = false): (Paragraph | Table)[] {
   const out: (Paragraph | Table)[] = [];
-  for (const child of content) {
+  for (const block of content) {
+    const child = keepNext && (block.type === 'paragraph' || block.type === 'heading')
+      ? { ...block, attrs: { ...block.attrs, keepNext: true } } : block;
     if (child.type === 'bulletList' || child.type === 'orderedList') {
       listEntryToDocx(child, num, out);
     } else if (child.type === 'table') {
@@ -3218,7 +3221,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
         // 0.5cm, as the ODT's, since tables nested deep leave a cell narrower than its padding.
         children: cellBlocksToDocx(content, cellForce(tableStyle, cell, bg), num, Math.max(0.5,
           (widthTwip ? widthTwip * 2.54 / 1440 : (contentWidthCm - ml - mr) * colspan / gridCols)
-            - (ownPad ?? pad)[1] - (ownPad ?? pad)[3])),
+            - (ownPad ?? pad)[1] - (ownPad ?? pad)[3]), node.attrs?.keepNext === true),
       }));
     }
     return new TableRow({

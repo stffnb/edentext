@@ -67,6 +67,8 @@ function applyTableStyleAttr(node: PMNode, table: HTMLElement): void {
   // pageBreaks.ts reads this to keep the table whole (ODF style:may-break-between-rows).
   if (node.attrs.keepRows === true) table.dataset.keepRows = 'true';
   else delete table.dataset.keepRows;
+  if (node.attrs.keepNext === true) table.dataset.keepNext = 'true';
+  else delete table.dataset.keepNext;
   if (node.attrs.repeatHeader === true) table.dataset.repeatHeader = 'true';
   else delete table.dataset.repeatHeader;
   // A section can open with a table, so it carries the two flags a paragraph does.

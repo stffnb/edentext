@@ -54,6 +54,17 @@ describe('table keep-rows', () => {
     expect(xml).not.toContain('may-break-between-rows');
     expect(keepRows).toBe(null);
   });
+
+  // fo:keep-with-next on the table; Word spells it as every paragraph in it kept.
+  it('keeps a table with the next block through both formats', async () => {
+    const doc = { type: 'doc', content: [{ type: 'table', attrs: { keepNext: true }, content: [0, 1].map((r) => ({ type: 'tableRow', content: [cell(`a${r}`), cell(`b${r}`)] })) }] } as N;
+    const odt = await buildOdt(doc);
+    expect(strFromU8(unzipSync(odt)['content.xml'])).toContain('fo:keep-with-next="always"');
+    const keeps = (d: N) => d.content?.[0]?.attrs?.keepNext ?? null;
+    expect(keeps(importOdt(odt).content)).toBe(true);
+    expect(keeps(importDocx(await buildDocx(doc)).content)).toBe(true);
+    expect(keeps(importDocx(await buildDocx({ ...doc, content: [{ ...doc.content[0], attrs: {} }] })).content)).toBe(null);
+  });
 });
 
 // A cell's verticalAlign attr round-trips through DOCX (w:vAlign); the ODF leg
