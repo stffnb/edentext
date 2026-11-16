@@ -3868,8 +3868,10 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
     if (cells.length && col < gridCols) cells.push(gap(col, gridCols - col));
     if (cells.length === 0) continue;
     const row: Node = { type: 'tableRow', content: cells };
-    const h = intAttr(fc(fc(tr, 'trPr'), 'trHeight'), W, 'val');
-    if (h && h > 0) row.attrs = { rowHeight: Math.round(twipToPx(h)) };
+    const trHeight = fc(fc(tr, 'trPr'), 'trHeight');
+    const h = intAttr(trHeight, W, 'val');
+    if (h && h > 0) row.attrs = { rowHeight: Math.round(twipToPx(h) * 100) / 100 };
+    if (h && h > 0 && trHeight?.getAttributeNS(W, 'hRule') === 'exact') row.attrs = { ...row.attrs, fixedHeight: true };
     const cs = fc(fc(tr, 'trPr'), 'cantSplit');
     if (cs && onOff(cs)) row.attrs = { ...row.attrs, cantSplit: true };
     const revMark = revMarkIn(fc(tr, 'trPr'), [['ins', 'insertion'], ['del', 'deletion']]);

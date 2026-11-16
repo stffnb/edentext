@@ -92,19 +92,23 @@ describe('table cell vertical alignment', () => {
   });
 });
 
-// A row that may not break across pages (w:cantSplit, ODF's row fo:keep-together)
-// keeps the flag through both formats.
-const row = (cant: boolean) => `<w:tr>${cant ? '<w:trPr><w:cantSplit/></w:trPr>' : ''}<w:tc><w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc></w:tr>`;
-const docx = docxOf(`<w:tbl><w:tblGrid><w:gridCol w:w="4000"/></w:tblGrid>${row(true)}${row(false)}</w:tbl><w:p/>`);
-const flags = (doc: any) => doc.content.find((n: any) => n.type === 'table').content.map((r: any) => r.attrs?.cantSplit ?? false);
+// A row's own properties — may not break across pages (w:cantSplit, ODF's row
+// fo:keep-together), an exact height (w:hRule="exact", ODF style:row-height) or a
+// minimum one — keep through both formats.
+const row = (trPr: string) => `<w:tr>${trPr ? `<w:trPr>${trPr}</w:trPr>` : ''}<w:tc><w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc></w:tr>`;
+const docx = docxOf(`<w:tbl><w:tblGrid><w:gridCol w:w="4000"/></w:tblGrid>${row('<w:cantSplit/>')}${row('')}`
+  + `${row('<w:trHeight w:val="284" w:hRule="exact"/>')}${row('<w:trHeight w:val="284"/>')}</w:tbl><w:p/>`);
+const flags = (doc: any) => doc.content.find((n: any) => n.type === 'table').content
+  .map((r: any) => [r.attrs?.cantSplit ?? false, r.attrs?.fixedHeight ?? false, r.attrs?.rowHeight ?? null]);
+const expected = [[true, false, null], [false, false, null], [false, true, 18.93], [false, false, 18.93]];
 
-describe('a row that may not break across pages', () => {
+describe("a row's own properties", () => {
   const imported = importDocx(docx);
-  it('imports from w:cantSplit', () => expect(flags(imported.content)).toEqual([true, false]));
+  it('imports from w:trPr', () => expect(flags(imported.content)).toEqual(expected));
   it('survives a DOCX round trip', async () => {
-    expect(flags(importDocx(await buildDocx(imported.content as any, DEFAULT_MARGINS, 'portrait')).content)).toEqual([true, false]);
+    expect(flags(importDocx(await buildDocx(imported.content as any, DEFAULT_MARGINS, 'portrait')).content)).toEqual(expected);
   });
   it('survives an ODT round trip', async () => {
-    expect(flags(importOdt(await buildOdt(imported.content as any, DEFAULT_MARGINS, 'portrait')).content)).toEqual([true, false]);
+    expect(flags(importOdt(await buildOdt(imported.content as any, DEFAULT_MARGINS, 'portrait')).content)).toEqual(expected);
   });
 });

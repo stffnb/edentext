@@ -517,9 +517,14 @@ export class StyleResolver {
     return !!styleName && this.merged(family, styleName).misc['loext:text-changes-only'] === 'false';
   }
 
-  rowMinHeightCm(styleName: string | null): number | null {
+  // A row's height: style:min-row-height is a minimum, style:row-height an exact height.
+  rowHeightCm(styleName: string | null): { cm: number; exact: boolean } | null {
     if (!styleName) return null;
-    return lengthToCm(this.merged('table-row', styleName).misc['style:min-row-height']);
+    const misc = this.merged('table-row', styleName).misc;
+    const min = lengthToCm(misc['style:min-row-height']);
+    if (min != null) return { cm: min, exact: false };
+    const exact = lengthToCm(misc['style:row-height']);
+    return exact != null ? { cm: exact, exact: true } : null;
   }
 
   // A cell style's fo:background-color (cell shading). null when none/transparent.

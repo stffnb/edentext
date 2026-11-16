@@ -1920,7 +1920,7 @@ function collectTableRowHeights(node: TiptapNode, result: (string | null)[]): vo
       const h = row.attrs?.rowHeight;
       const props = [
         typeof h === 'number' && h > 0
-          ? `style:min-row-height="${Math.round(((h * 2.54) / 96) * 1000) / 1000}cm" style:use-optimal-row-height="false"` : '',
+          ? `style:${row.attrs?.fixedHeight === true ? 'row-height' : 'min-row-height'}="${Math.round(((h * 2.54) / 96) * 10000) / 10000}cm" style:use-optimal-row-height="false"` : '',
         row.attrs?.cantSplit === true ? 'fo:keep-together="always"' : '',
         row.attrs?.revMark ? 'loext:text-changes-only="false"' : '',
       ].filter(Boolean).join(' ');
@@ -6166,7 +6166,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
     { header: docZones.header, footer: docZones.footer }, { header: headerDist, footer: footerDist }, borderInsetCm(decor), tableMargins);
   const withWatermark = applyFoldMarksOdf(applyWatermarkOdf(withSections, decor.watermark), foldMarks);
   const withFonts = applyEmbeddedFontsOdf(declareReferencedFonts(withWatermark), fonts);
-  return zipFinal(declareLoext(applyOdfVersion(applyDocProperties(applyPageNumberStart(applySpacingModel(withFonts, spacingModel, spacingAtPageStart, balanceSpaces, recordLock?.key), pageNumbering.start), props))));
+  return zipFinal(declareLoext(applyOdfVersion(applyDocProperties(applyPageNumberStart(applySpacingModel(withFonts, spacingModel, spacingAtPageStart, balanceSpaces, recordLock?.key, rowHeights.some((r) => r?.includes('row-height='))), pageNumbering.start), props))));
 }
 
 // A pass that writes a loext: attribute (a character indent) or a drawooo: one (a shape's
@@ -6258,15 +6258,17 @@ function applyDocProperties(odtBytes: Uint8Array, props: DocProperties): Uint8Ar
 // AddParaTableSpacing=false — its own default adds them, so without this the space
 // between every pair of blocks would grow when the file is reopened. The same file
 // carries whether a block opening a page keeps its space above, and whether every space is
-// set at half the font size.
-function applySpacingModel(odtBytes: Uint8Array, model: SpacingModel, atPageStart = true, balanceSpaces = false, recordKey?: string): Uint8Array {
-  if (model !== 'max' && atPageStart && !balanceSpaces && !recordKey) return odtBytes;
+// set at half the font size, and that a row height leaves out the cells' margins
+// (tableRow.ts; LibreOffice's MinRowHeightInclBorder, whose ODF default counts them in).
+function applySpacingModel(odtBytes: Uint8Array, model: SpacingModel, atPageStart = true, balanceSpaces = false, recordKey?: string, rowHeights = false): Uint8Array {
+  if (model !== 'max' && atPageStart && !balanceSpaces && !recordKey && !rowHeights) return odtBytes;
   const files = unzipSync(odtBytes);
   const item =
     '<config:config-item-set config:name="ooo:configuration-settings">' +
     (model === 'max' ? '<config:config-item config:name="AddParaTableSpacing" config:type="boolean">false</config:config-item>' : '') +
     (atPageStart ? '' : '<config:config-item config:name="AddParaTableSpacingAtStart" config:type="boolean">false</config:config-item>') +
     (balanceSpaces ? '<config:config-item config:name="BalanceSpacesAndIdeographicSpaces" config:type="boolean">true</config:config-item>' : '') +
+    (rowHeights ? '<config:config-item config:name="MinRowHeightInclBorder" config:type="boolean">true</config:config-item>' : '') +
     (recordKey ? `<config:config-item config:name="RedlineProtectionKey" config:type="base64Binary">${recordKey}</config:config-item>` : '') +
     '</config:config-item-set>';
   const existing = files['settings.xml'];

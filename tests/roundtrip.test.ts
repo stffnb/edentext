@@ -908,7 +908,7 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
     check('foreign: colspan 2 + covered skipped', row.content!.length === 2 && row.content![0].attrs?.colspan === 2, row.content!.map((x: N) => x.attrs));
     check('foreign: col weights 5/10/10cm', JSON.stringify(hdr.content!.map((x: N) => x.attrs.colwidth)) === JSON.stringify([[500], [1000], [1000]]), hdr.content!.map((x: N) => x.attrs.colwidth));
     check('foreign: spanned cell colwidth [500,1000]', JSON.stringify(row.content![0].attrs?.colwidth) === JSON.stringify([500, 1000]), row.content![0].attrs);
-    check('foreign: min-row-height 2cm → 76px', row.attrs?.rowHeight === 76, row.attrs);
+    check('foreign: min-row-height 2cm → 75.59px', row.attrs?.rowHeight === 75.59, row.attrs);
 
     const notes = c.find((n: N) => n.type === 'noteSection');
     check('foreign: the note body follows at the document end', notes?.content?.[0]?.content?.[0]?.text === 'note body', notes);

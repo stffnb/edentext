@@ -3806,8 +3806,8 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
     if (cells.length === 0) { dropped.push(rowIdx); return; }
 
     const row: Node = { type: 'tableRow', content: cells };
-    const heightCm = ctx.resolver.rowMinHeightCm(rowEl.getAttributeNS(NS.table, 'style-name'));
-    if (heightCm != null && heightCm > 0) row.attrs = { rowHeight: Math.round(heightCm * PX_PER_CM) };
+    const height = ctx.resolver.rowHeightCm(rowEl.getAttributeNS(NS.table, 'style-name'));
+    if (height && height.cm > 0) row.attrs = { rowHeight: Math.round(height.cm * PX_PER_CM * 100) / 100, ...(height.exact ? { fixedHeight: true } : {}) };
     if (ctx.resolver.rowKeepTogether(rowEl.getAttributeNS(NS.table, 'style-name'))) row.attrs = { ...row.attrs, cantSplit: true };
     const revMark = ctx.resolver.recordedLine('table-row', rowEl.getAttributeNS(NS.table, 'style-name')) ? lineChange(cells) : undefined;
     if (revMark) row.attrs = { ...row.attrs, revMark };

@@ -96,9 +96,11 @@ function handleMouseDown(view: EditorView, event: MouseEvent): boolean {
   // to document px without walking the ancestor chain.
   const zoom = tr.getBoundingClientRect().height / startHeight || 1;
 
-  // The attr is the minimum without the cells' vertical margins (tableRow.ts).
+  // The attr is the height without the cells' vertical margins, an exact one without
+  // the bottom margin only (tableRow.ts).
   const cell = tr.firstElementChild ? getComputedStyle(tr.firstElementChild) : null;
-  const padPx = cell ? (parseFloat(cell.paddingTop) || 0) + (parseFloat(cell.paddingBottom) || 0) : 0;
+  const top = tr.dataset.fixedHeight === 'true' ? 0 : parseFloat(cell?.paddingTop ?? '') || 0;
+  const padPx = cell ? top + (parseFloat(cell.paddingBottom) || 0) : 0;
   const startY = event.clientY;
   let lastHeight = startHeight;
   let pendingHeight = startHeight;

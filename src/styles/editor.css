@@ -1142,14 +1142,14 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
 .paper .tiptap td,
 .paper .tiptap th {
   border: 1px solid #000;
-  padding: var(--cell-pad-t, 0) var(--cell-pad-r, 0.19cm) var(--cell-pad-b, 0) var(--cell-pad-l, 0.19cm);
+  padding: var(--row-pad-t, var(--cell-pad-t, 0px)) var(--cell-pad-r, 0.19cm) var(--row-pad-b, var(--cell-pad-b, 0px)) var(--cell-pad-l, 0.19cm);
   /* A painted border is a whole pixel wide whatever the file declares, so the excess
      comes off the padding — else a long table grows a line every few rows
      (tableCellBorders.ts). Below first, then what is left of it above, then ::after. */
   --border-over-default: calc(1px - 0.5pt);
-  padding-bottom: max(0px, calc(var(--cell-pad-b, 0px) - var(--border-over, var(--border-over-default))));
-  padding-top: max(0px, calc(var(--cell-pad-t, 0px)
-    - max(0px, var(--border-over, var(--border-over-default)) - var(--cell-pad-b, 0px))));
+  padding-bottom: max(0px, calc(var(--row-pad-b, var(--cell-pad-b, 0px)) - var(--border-over, var(--border-over-default))));
+  padding-top: max(0px, calc(var(--row-pad-t, var(--cell-pad-t, 0px))
+    - max(0px, var(--border-over, var(--border-over-default)) - var(--row-pad-b, var(--cell-pad-b, 0px)))));
   vertical-align: top;
   /* A repeating header row is a <th>, and no word processor centres or bolds its text
      for that reason — drop the two UA defaults so the cell follows its own style. */
@@ -1168,7 +1168,7 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
 .paper .tiptap :is(td, th)::after {
   content: '';
   display: block;
-  margin-top: min(0px, calc(var(--cell-pad-t, 0px) + var(--cell-pad-b, 0px)
+  margin-top: min(0px, calc(var(--row-pad-t, var(--cell-pad-t, 0px)) + var(--row-pad-b, var(--cell-pad-b, 0px))
     - var(--border-over, var(--border-over-default))));
 }
 
@@ -1199,6 +1199,8 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   --cell-pad-r: initial;
   --cell-pad-b: initial;
   --cell-pad-l: initial;
+  --row-pad-t: initial;
+  --row-pad-b: initial;
 }
 
 /* Header-row cells (tableHeaderRow.ts toggle): bold rendered presentationally so all
