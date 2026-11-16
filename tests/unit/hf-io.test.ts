@@ -151,6 +151,18 @@ describe('per-section header/footer', () => {
     expect(docx.hfSections[1].distances?.header).toBeCloseTo(2, 2);
     expect(docx.hfSections[1].distances?.footer).toBeCloseTo(2, 2);
   });
+  // A zone's area border and padding are ODF's alone (LibreOffice drops them on DOCX
+  // export), and keep the zone's paragraphs free of their space.
+  it('carries a zone’s area frame through ODF, per section', async () => {
+    const frame = { border: { top: '0.5pt solid #FF0000', right: null, bottom: null, left: null }, padding: { top: 0.1, right: 0, bottom: 0, left: 0.2 }, gap: 0.5 };
+    const own = { ...hf, sections: [{ ...sections[0], frames: { footer: frame } }, { ...sections[1], frames: { header: frame } }] };
+    const back = importOdt(await buildOdt(doc, MARGINS, 'portrait', own));
+    expect(back.hfSections[0].frames?.footer).toEqual(frame);
+    expect(back.hfSections[0].frames?.header ?? null).toBe(null);
+    expect(back.hfSections[1].frames?.header).toEqual(frame);
+    expect(back.hfSections[1].header?.content?.[0]?.attrs?.spaceAfter ?? 0).toBe(0);
+    expect(back.hfSections[0].footer?.content?.[0]?.attrs?.spaceBefore ?? 0).toBe(0);
+  });
   // A section with zones after one without: the distance it shares with the first page
   // layout is the document's, not the default the first section's missing zones leave.
   it.each(FORMATS)('keeps a later section’s distance its first section has no zones for, through %s', async (_name, roundTrip) => {

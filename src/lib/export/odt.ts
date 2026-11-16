@@ -6,7 +6,7 @@ import type { RecordLock } from '../storage/trackChanges.svelte';
 import type { SpacingModel } from '../storage/spacingModel';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
-import { HF_DISTANCE_CM, HF_ZONE_KEYS, hfIsEmpty, type HfDoc, type HfSet, type HfZoneKey } from '../storage/headerFooter';
+import { HF_DISTANCE_CM, HF_ZONE_KEYS, hfIsEmpty, type HfDoc, type HfFrame, type HfFrames, type HfSet, type HfZoneKey } from '../storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS, NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, keywordList, type DocProperties } from '../storage/docProperties';
 import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
@@ -6192,7 +6192,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   zoneXml = cut.xml;
   const docZoneXml = Object.fromEntries(HF_ZONE_KEYS.map((key) =>
     [key, docZones[key] ? zoneXmlOf(hf?.[key], key.startsWith('header') ? 'header' : 'footer') : null])) as Record<HfZoneKey, string | null>;
-  const withHf = applyHfPostProcess(cut.bytes, margins, docZoneXml, headerDist, footerDist);
+  const withHf = applyHfPostProcess(cut.bytes, margins, docZoneXml, headerDist, footerDist, hf?.sections?.[0]?.frames ?? null);
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it. The page decor goes
   // into every master's header after that, so the section pages show it too.
@@ -6330,7 +6330,17 @@ function applySpacingModel(odtBytes: Uint8Array, model: SpacingModel, atPageStar
 // A zone's band of `minH` up to the body. LibreOffice lays a zone out from the band's
 // body-facing edge, which keeps a header at its distance; a footer stands on its distance,
 // as the editor draws it, only as a dynamic gap the size of the band (probed).
-function hfBandProps(kind: 'header' | 'footer', minH: number): string {
+// A framed area (HfFrame) keeps its gap as the spacing LibreOffice puts outside it.
+function hfBandProps(kind: 'header' | 'footer', minH: number, frame: HfFrame | null = null): string {
+  if (frame) {
+    const b = frame.border;
+    const p = frame.padding;
+    const border = (side: keyof HfFrame['border']) => ` fo:border-${side}="${b[side] ?? 'none'}"`;
+    const pad = (side: keyof HfFrame['padding']) => ` fo:padding-${side}="${Math.round(p[side] * 1000) / 1000}cm"`;
+    return `<style:header-footer-properties fo:min-height="${minH}cm" fo:margin-${kind === 'header' ? 'bottom' : 'top'}="${Math.round(frame.gap * 1000) / 1000}cm"` +
+      border('top') + border('right') + border('bottom') + border('left') +
+      pad('top') + pad('right') + pad('bottom') + pad('left') + ' style:dynamic-spacing="false"/>';
+  }
   return kind === 'header'
     ? `<style:header-footer-properties fo:min-height="${minH}cm" fo:margin-bottom="0cm" style:dynamic-spacing="false"/>`
     : `<style:header-footer-properties fo:min-height="${minH}cm" fo:margin-top="${minH}cm" style:dynamic-spacing="true"/>`;
@@ -6339,7 +6349,7 @@ function hfBandProps(kind: 'header' | 'footer', minH: number): string {
 // Header/footer post-processing on styles.xml: section 1's zones replace the sentinel
 // paragraphs odf-kit wrote (variants go in beside them), and the geometry is rewritten
 // to ODF's own mapping (page margin = HF distance, min-height fills up to the body margin).
-function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, zones: Record<HfZoneKey, string | null>, headerDist: number, footerDist: number): Uint8Array {
+function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, zones: Record<HfZoneKey, string | null>, headerDist: number, footerDist: number, frames: HfFrames | null = null): Uint8Array {
   if (!Object.values(zones).some((z) => z != null)) return odtBytes;
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
@@ -6353,7 +6363,7 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, zones: R
     const minH = round3(Math.max(0.2, bodyMarginCm - distCm));
     styles = styles.replace(
       new RegExp(`<style:${kind}-style>[\\s\\S]*?</style:${kind}-style>`),
-      `<style:${kind}-style>${hfBandProps(kind, minH)}</style:${kind}-style>`,
+      `<style:${kind}-style>${hfBandProps(kind, minH, frames?.[kind] ?? null)}</style:${kind}-style>`,
     );
   };
   if (zones.header != null) band('header', margins.top, headerDist);
@@ -6577,7 +6587,8 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], zoneXmlOf:
     const paper = set.format || set.orientation ? pageDimsCm(set.format ?? format, set.orientation ?? orientation) : null;
     const numFormat = set.pageNumberFormat ?? null;
     const has = { header: !!(set.header || set.headerFirst || set.headerEven), footer: !!(set.footer || set.footerFirst || set.footerEven) };
-    const sameZones = has.header === docZones.header && has.footer === docZones.footer && !set.distances;
+    const sameZones = has.header === docZones.header && has.footer === docZones.footer && !set.distances
+      && JSON.stringify(set.frames ?? null) === JSON.stringify(sets[0]?.frames ?? null);
     if ((!m && !paper && !numFormat && sameZones && !side) || !layoutXml) return layout;
     const body = m ?? margins;
     const band = (kind: 'header' | 'footer', edge: 'top' | 'bottom'): { margin: number; minH: number | null } => {
@@ -6591,7 +6602,7 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], zoneXmlOf:
     const bottom = band('footer', 'bottom');
     const bandXml = (kind: 'header' | 'footer', minH: number | null) => (minH == null
       ? `<style:${kind}-style/>`
-      : `<style:${kind}-style>${hfBandProps(kind, round3(minH))}</style:${kind}-style>`);
+      : `<style:${kind}-style>${hfBandProps(kind, round3(minH), set.frames?.[kind] ?? null)}</style:${kind}-style>`);
     const name = `${layout}Sec${index + 1}${side ? side[0] : ''}`;
     // The usage is the section's own: mirrored or not, whatever the document's layout says.
     const usage = side ?? (body.mirrored ? 'mirrored' : null);

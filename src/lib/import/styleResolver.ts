@@ -762,6 +762,27 @@ export class StyleResolver {
     return null;
   }
 
+  // A page layout's header-/footer-style properties: the zone's band and area.
+  private areaProps(layout: Element | null, local: 'header-style' | 'footer-style'): Element | null {
+    for (const child of Array.from(layout?.children ?? [])) {
+      if (child.namespaceURI === NS.style && child.localName === local) {
+        return child.getElementsByTagNameNS(NS.style, 'header-footer-properties')[0] ?? null;
+      }
+    }
+    return null;
+  }
+
+  // The header and footer area properties of a master page's layout, where a border or
+  // padding frames them (the import's HfFrame); null where none does.
+  hfFrameProps(pageName: string | null): { header: Element | null; footer: Element | null } {
+    const layout = this.pageLayoutEl(pageName);
+    const framed = (local: 'header-style' | 'footer-style') => {
+      const props = this.areaProps(layout, local);
+      return props && isFramed(props) ? props : null;
+    };
+    return { header: framed('header-style'), footer: framed('footer-style') };
+  }
+
   private pageLayoutEl(pageName: string | null = null): Element | null {
     const doc = this.stylesDoc;
     const layoutName = this.masterPageEl(pageName)?.getAttributeNS(NS.style, 'page-layout-name');
@@ -786,6 +807,8 @@ export class StyleResolver {
     footerExtraCm: number;
     headerBandCm: number;
     footerBandCm: number;
+    headerFirstBandCm: number;
+    footerFirstBandCm: number;
     firstPageOnly: boolean;
     restPage: string | null;
     mirrorPair: boolean;
@@ -836,17 +859,11 @@ export class StyleResolver {
     const handover = pair || (successor && sameAsRest('header') && sameAsRest('footer')) ? null : successor;
 
     const zone = (local: string) => zoneIn(rest, local);
+    const restLayout = rest && rest !== mp ? this.pageLayoutEl(rest.getAttributeNS(NS.style, 'name')) : layout;
     const firstZone = (local: string): Element | null =>
       zoneIn(mp, `${local}-first`) ?? (handover ? zoneIn(mp, local) : null);
-    const bandProps = (local: 'header-style' | 'footer-style'): Element | null => {
-      if (!layout) return null;
-      for (const child of Array.from(layout.children)) {
-        if (child.namespaceURI === NS.style && child.localName === local) {
-          return child.getElementsByTagNameNS(NS.style, 'header-footer-properties')[0] ?? null;
-        }
-      }
-      return null;
-    };
+    const bandProps = (local: 'header-style' | 'footer-style', of: Element | null = layout): Element | null =>
+      this.areaProps(of, local);
     // The band LibreOffice lays out is max(declared height, zone content + its gap), and
     // the zone's own fo:padding counts on both sides of that content — but a *dynamic*
     // gap is absorbed instead of added, so there the band is max(height, content).
@@ -865,9 +882,11 @@ export class StyleResolver {
         ?? 0;
       return Math.max(height, gapCm(props, spacingAttr));
     };
-    const bandCm = (local: 'header-style' | 'footer-style', spacingAttr: 'margin-bottom' | 'margin-top'): number => {
-      const props = bandProps(local);
-      if (!props) return 0;
+    // A framed area keeps its padding and gap itself (`hfFrameProps`), so nothing rides
+    // the zone's spacing. The zones a page shows measure against that page's layout.
+    const bandCm = (local: 'header-style' | 'footer-style', spacingAttr: 'margin-bottom' | 'margin-top', of: Element | null = layout): number => {
+      const props = bandProps(local, of);
+      if (!props || isFramed(props)) return 0;
       const pad = lengthToCm(props.getAttributeNS(NS.fo, 'padding'));
       const padTop = lengthToCm(props.getAttributeNS(NS.fo, 'padding-top')) ?? pad ?? 0;
       const padBottom = lengthToCm(props.getAttributeNS(NS.fo, 'padding-bottom')) ?? pad ?? 0;
@@ -885,8 +904,10 @@ export class StyleResolver {
       footerLeft: zoneIn(rest, 'footer-left') ?? zoneIn(leftPage, 'footer'),
       headerExtraCm: extraCm('header-style', 'margin-bottom'),
       footerExtraCm: extraCm('footer-style', 'margin-top'),
-      headerBandCm: bandCm('header-style', 'margin-bottom'),
-      footerBandCm: bandCm('footer-style', 'margin-top'),
+      headerBandCm: bandCm('header-style', 'margin-bottom', restLayout),
+      footerBandCm: bandCm('footer-style', 'margin-top', restLayout),
+      headerFirstBandCm: bandCm('header-style', 'margin-bottom'),
+      footerFirstBandCm: bandCm('footer-style', 'margin-top'),
       // Handing over to a successor is itself the "different first page" flag: a title
       // master with no zones of its own leaves page one deliberately blank.
       firstPageOnly: !!handover,
@@ -1057,4 +1078,14 @@ export class StyleResolver {
     const widthPt = lengthToPt(border.trim().split(/\s+/)[0]) ?? 0;
     return (lengthToCm(props.getAttributeNS(NS.fo, 'padding')) ?? 0) + (widthPt * 2.54) / 72;
   }
+}
+
+// Whether a zone's area draws a border or insets its content by a padding.
+function isFramed(props: Element): boolean {
+  const attr = (name: string) => props.getAttributeNS(NS.fo, name);
+  const sides = ['top', 'right', 'bottom', 'left'];
+  const border = (v: string | null) => !!v && !/^(none|hidden)$|\b(none|hidden)\b|^0\w*\s/.test(v.trim());
+  const pad = (v: string | null) => !!v && parseFloat(v) > 0;
+  return border(attr('border')) || sides.some((s) => border(attr(`border-${s}`)))
+    || pad(attr('padding')) || sides.some((s) => pad(attr(`padding-${s}`)));
 }

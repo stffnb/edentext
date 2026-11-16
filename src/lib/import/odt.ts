@@ -39,7 +39,7 @@ import type { RecordLock } from '../storage/trackChanges.svelte';
 import type { SpacingModel } from '../storage/spacingModel';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
-import { hfIsEmpty, type HfDistances, type HfDoc, type HfSet } from '../storage/headerFooter';
+import { hfIsEmpty, type HfDistances, type HfDoc, type HfFrame, type HfFrames, type HfSet } from '../storage/headerFooter';
 import { NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { clampPageStart, type PageNumbering } from '../storage/pageNumbering';
@@ -1179,10 +1179,10 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   }
 
   const docNumFormat = resolver.pageNumberFormat(first);
-  const zoneOf = (el: Element | null, footer = false) =>
-    (el ? convertHfZone(el, ctx, geo, footer ? hf.footerBandCm : hf.headerBandCm, footer) : null);
-  const headerFirst = zoneOf(hf.headerFirst);
-  const footerFirst = zoneOf(hf.footerFirst, true);
+  const zoneOf = (el: Element | null, footer = false, first = false) =>
+    (el ? convertHfZone(el, ctx, geo, bandOf(hf, footer, first), footer) : null);
+  const headerFirst = zoneOf(hf.headerFirst, false, true);
+  const footerFirst = zoneOf(hf.footerFirst, true, true);
   // The presence of a first-page element is the flag, even when it's empty (an empty
   // first-page zone deliberately blanks page 1 while the default fills later pages).
   const differentFirstPage = !!(hf.headerFirst || hf.footerFirst || hf.firstPageOnly);
@@ -1227,7 +1227,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     footerEven,
     differentOddEven,
     hfSections: [
-      { header, footer, headerFirst, footerFirst, differentFirstPage, headerEven, footerEven, differentOddEven },
+      { header, footer, headerFirst, footerFirst, differentFirstPage, headerEven, footerEven, differentOddEven, ...hfFramesOf(resolver, first, hf.restPage) },
       ...sections,
     ],
     headerDistanceCm: hasHeader ? edge?.top ?? null : null,
@@ -1253,8 +1253,8 @@ function hfSetOfMasterPage(
 ): HfSet {
   const hf = ctx.resolver.masterPageHF(name);
   // Its zones measure against the section's own page layout (`geo`, below).
-  const zone = (el: Element | null, footer = false) =>
-    (el ? convertHfZone(el, ctx, geo, footer ? hf.footerBandCm : hf.headerBandCm, footer) : null);
+  const zone = (el: Element | null, footer = false, first = false) =>
+    (el ? convertHfZone(el, ctx, geo, bandOf(hf, footer, first), footer) : null);
   // Odd/even is per zone: an absent left variant repeats the default one on left pages.
   const oddEven = !!(hf.headerLeft || hf.footerLeft);
   // Its page layout is the section's own geometry; where the master hands over, that
@@ -1282,6 +1282,7 @@ function hfSetOfMasterPage(
   const restDist = distOf(hf.restPage ?? name);
   const firstDist = hf.restPage ? distOf(name) : null;
   return {
+    ...hfFramesOf(ctx.resolver, name, hf.restPage),
     distances: sameDist(restDist, docDist) ? null : restDist,
     distancesFirst: firstDist && !sameDist(firstDist, restDist) ? firstDist : null,
     margins: rest,
@@ -1294,13 +1295,50 @@ function hfSetOfMasterPage(
     orientation: paper && doc && paper.orientation !== doc.orientation ? paper.orientation : null,
     header: zone(hf.header),
     footer: zone(hf.footer, true),
-    headerFirst: zone(hf.headerFirst),
-    footerFirst: zone(hf.footerFirst, true),
+    headerFirst: zone(hf.headerFirst, false, true),
+    footerFirst: zone(hf.footerFirst, true, true),
     differentFirstPage: !!(hf.headerFirst || hf.footerFirst || hf.firstPageOnly),
     headerEven: hf.headerLeft ? zone(hf.headerLeft) : oddEven ? zone(hf.header) : null,
     footerEven: hf.footerLeft ? zone(hf.footerLeft, true) : oddEven ? zone(hf.footer, true) : null,
     differentOddEven: oddEven,
   };
+}
+
+// The space a zone's content carries toward the body: its first page's layout's where
+// that page has zones of its own.
+function bandOf(hf: ReturnType<StyleResolver['masterPageHF']>, footer: boolean, first: boolean): number {
+  if (first) return footer ? hf.footerFirstBandCm : hf.headerFirstBandCm;
+  return footer ? hf.footerBandCm : hf.headerBandCm;
+}
+
+// A master page's framed header/footer areas (HfFrame), from the layout of the pages after
+// its first where it hands over, and the first page's own where those differ.
+function hfFramesOf(resolver: StyleResolver, name: string | null, restPage: string | null): Pick<HfSet, 'frames' | 'framesFirst'> {
+  const of = (page: string | null): HfFrames | null => {
+    const props = resolver.hfFrameProps(page);
+    const frame = (el: Element | null, gapSide: 'bottom' | 'top'): HfFrame | null => {
+      if (!el) return null;
+      const attr = (n: string) => el.getAttributeNS(NS.fo, n);
+      const side = (s: string) => {
+        const b = borderAttrFromOdf(attr(`border-${s}`) ?? attr('border'), false);
+        return b === 'none' ? null : b;
+      };
+      const cm = (v: number | null) => Math.round((v ?? 0) * 1000) / 1000;
+      const pad = (s: string) => cm(lengthToCm(attr(`padding-${s}`)) ?? lengthToCm(attr('padding')));
+      return {
+        border: { top: side('top'), right: side('right'), bottom: side('bottom'), left: side('left') },
+        padding: { top: pad('top'), right: pad('right'), bottom: pad('bottom'), left: pad('left') },
+        gap: el.getAttributeNS(NS.style, 'dynamic-spacing') === 'true' ? 0 : cm(lengthToCm(attr(`margin-${gapSide}`))),
+      };
+    };
+    const header = frame(props.header, 'bottom');
+    const footer = frame(props.footer, 'top');
+    return header || footer ? { header, footer } : null;
+  };
+  const frames = of(restPage ?? name);
+  const first = restPage ? of(name) : frames;
+  // An unframed first page is `{}`: null would inherit the frames of the pages after it.
+  return { frames, framesFirst: JSON.stringify(first) !== JSON.stringify(frames) ? first ?? {} : null };
 }
 
 // A header/footer zone → a zone doc, through the body's block converter at the section's

@@ -55,7 +55,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import { RESYNC_NOTES } from '../editor/extensions/notes';
   import { applyPageSizeVars, pageDimsCm, type PageFormat } from '../storage/pageFormat';
   import { MAX_PAGE_COLUMNS } from '../storage/theme';
-  import { DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, hfIsEmpty, hfUsesChapterField, type HfDoc, type HfZone, type HfDistances, type HfSet, type HfZoneKey } from '../storage/headerFooter';
+  import { DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, NO_HF_FRAMES, hfIsEmpty, hfUsesChapterField, type HfSetFrames, type HfDoc, type HfZone, type HfDistances, type HfSet, type HfZoneKey } from '../storage/headerFooter';
   import { pageStartBlock, type PageBox } from '../utils/pageStrip';
   import { FORCE_PAGE_RECALC, PAGE_GAP, pageOfElement, readVerticalMargins, topInEditor, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { SHEET_CHANGED } from '../editor/extensions/listMarker';
@@ -72,7 +72,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
     zoom = 100, onZoom, onDocumentLost, showFormattingMarks = false, showFieldShading = true, showPageLabels = true, showRuler = true, splitView = false, pageColumns = 1, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
     pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add', spacingAtPageStart = true, documentEpoch = 0, pageRtl = false, hyphenate = false, documentLanguage = 'en', pageNumbering = DEFAULT_PAGE_NUMBERING, pageDecor = EMPTY_PAGE_DECOR, lineNumbering = DEFAULT_LINE_NUMBERING, lineGrid = DEFAULT_LINE_GRID, balanceSpaces = false, foldMarks = false, commentAuthor = '',
-    headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
+    headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES, hfFrames = NO_HF_FRAMES,
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
     headerEvenDoc = $bindable(null), footerEvenDoc = $bindable(null), differentOddEven = false,
     hfEditor = $bindable(null), hfActive = $bindable(null), hfTick = $bindable(0),
@@ -109,7 +109,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     balanceSpaces?: boolean;
     /** Fold + punch marks in the left margin (DIN 5008 letter sheets). */
     foldMarks?: boolean;
-    headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances;
+    headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances; hfFrames?: HfSetFrames;
     headerFirstDoc?: HfDoc; footerFirstDoc?: HfDoc; differentFirstPage?: boolean;
     headerEvenDoc?: HfDoc; footerEvenDoc?: HfDoc; differentOddEven?: boolean;
     hfEditor?: Editor | null; hfActive?: HfZone | null; hfTick?: number;
@@ -1956,6 +1956,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         {orientation}
         {pageFormat}
         {hfDistances}
+        {hfFrames}
         bind:extraHfSections
         {sectionStartPages}
         {blankPages}

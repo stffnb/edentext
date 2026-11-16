@@ -52,7 +52,7 @@
   import { OPEN_COMPARE_EVENT, OPEN_RECORD_LOCK_EVENT, recordChanges, recordLock, setRecordChanges, setRecordLock } from './lib/storage/trackChanges.svelte';
   import { DEFAULT_NOTE_SETTINGS, type NoteSettings } from './lib/storage/noteSettings';
   import { builtinStyleSheet, visibleStyles, type StyleFamily, type StyleSheet } from './lib/styles/styleSheet';
-  import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, spreadMargins, DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, EMPTY_HF_SET, loadExtraHfSections, saveExtraHfSections, loadHfPictures, type HfDoc, type HfZone, type HfDistances, type HfSet } from './lib/storage/headerFooter';
+  import { loadHfDoc, saveHfDoc, loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, hfIsEmpty, spreadMargins, DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, EMPTY_HF_SET, loadExtraHfSections, saveExtraHfSections, loadHfPictures, loadHfFrames, saveHfFrames, NO_HF_FRAMES, type HfSetFrames, type HfDoc, type HfZone, type HfDistances, type HfSet } from './lib/storage/headerFooter';
   import { loadDocName, saveDocName, loadDocFormat, saveDocFormat, stripOdtExtension, docNameOfFile, sanitizeNameForFile, deriveFilename, filenameFor, loadDocProtected, saveDocProtected, loadDocFile, saveDocFile, type DocumentFormat } from './lib/storage/documentName';
   import { loadDocProperties, saveDocProperties, EMPTY_DOC_PROPERTIES, type DocProperties } from './lib/storage/docProperties';
   import { userName, setUserName } from './lib/storage/userName.svelte';
@@ -159,6 +159,7 @@
   let footerEvenDoc: HfDoc = $state(storedZones.footerEven);
   let differentOddEven: boolean = $state(loadDifferentOddEven());
   let hfDistances: HfDistances = $state(loadHfDistances());
+  let hfFrames: HfSetFrames = $state(loadHfFrames());
   // Sections past the first; the layer edits them in place, section 1 stays the
   // per-zone state above.
   let extraHfSections: HfSet[] = $state(loadExtraHfSections().map((z) => repairZones(z)));
@@ -335,14 +336,14 @@
   // both word processors (stateHistory.ts): every change, from whichever control, lands.
   const isZoneKey = (k: string) => (HF_ZONE_KEYS as readonly string[]).includes(k);
   const layoutFields = () => ({
-    pageMargins, pageOrientation, pageFormat, hfDistances, differentFirstPage, differentOddEven,
+    pageMargins, pageOrientation, pageFormat, hfDistances, hfFrames, differentFirstPage, differentOddEven,
     pageNumbering, pageDecor, lineNumbering, lineGrid, tabIntervalCm, spacingModel,
     spacingAtPageStart, pageRtl, hyphenate, balanceSpaces, foldMarks, sections: extraHfSections,
   });
   // A section's zones are steps of their own (HeaderFooterLayer.svelte), so a step drops them.
   const layoutWatch = watchState('layout', () => editor, layoutFields, (to) => {
     ({
-      pageMargins, pageOrientation, pageFormat, hfDistances, differentFirstPage, differentOddEven,
+      pageMargins, pageOrientation, pageFormat, hfDistances, hfFrames, differentFirstPage, differentOddEven,
       pageNumbering, pageDecor, lineNumbering, lineGrid, tabIntervalCm, spacingModel,
       spacingAtPageStart, pageRtl, hyphenate, balanceSpaces, foldMarks,
     } = to as ReturnType<typeof layoutFields>);
@@ -578,6 +579,9 @@
 
   $effect(() => {
     saveHfDistances(hfDistances);
+  });
+  $effect(() => {
+    saveHfFrames(hfFrames);
   });
   $effect(() => {
     saveExtraHfSections(extraHfSections);
@@ -844,7 +848,7 @@
     return {
       header: headerDoc, footer: footerDoc,
       headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage,
-      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven,
+      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven, ...hfFrames,
     };
   }
 
@@ -925,6 +929,7 @@
     documentLanguage = defaultDocumentLanguage();
     documentLanguageOther = null;
     hfDistances = { ...DEFAULT_HF_DISTANCES };
+    hfFrames = { ...NO_HF_FRAMES };
     extraHfSections = [];
     documentName = '';
     hyphenate = false;
@@ -1245,6 +1250,8 @@
       footerEvenDoc = result.footerEven;
       differentOddEven = result.differentOddEven;
       extraHfSections = (result.hfSections ?? []).slice(1);
+      const own = result.hfSections?.[0];
+      hfFrames = { frames: own?.frames ?? null, framesFirst: own?.framesFirst ?? null };
       hfDistances = {
         header: result.headerDistanceCm ?? DEFAULT_HF_DISTANCES.header,
         footer: result.footerDistanceCm ?? DEFAULT_HF_DISTANCES.footer,
@@ -2306,6 +2313,7 @@
     bind:hfActive
     bind:hfTick
     {hfDistances}
+    {hfFrames}
     {tabIntervalCm}
     {spacingModel}
     {spacingAtPageStart}

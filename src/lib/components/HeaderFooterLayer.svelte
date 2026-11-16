@@ -12,12 +12,13 @@
   import { TextSelection, type Transaction } from '@tiptap/pm/state';
   import { plainPastedSpaces, unwrapPastedBoxes } from '../editor/paste';
   import { readClickCaret } from '../editor/clickCaret';
-  import { hfIsEmpty, DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, type HfDoc, type HfZone, type HfVariant, type HfDistances, type HfSet, type HfZoneKey } from '../storage/headerFooter';
+  import { hfIsEmpty, DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, NO_HF_FRAMES, type HfSetFrames, type HfFrame, type HfDoc, type HfZone, type HfVariant, type HfDistances, type HfSet, type HfZoneKey } from '../storage/headerFooter';
   import { cmToPx, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
   import { type Orientation } from '../storage/pageOrientation';
   import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
   import { DEFAULT_PAGE_NUMBERING, isLeftPage, printedPageNumber, type PageNumbering } from '../storage/pageNumbering';
   import { formatOrdinal } from '../utils/orderedListTypes';
+  import { cssBorder } from '../editor/extensions/tableCellBorders';
   import { chapterOn, type ChapterStart } from '../utils/chapterField';
   import { t } from '../i18n/i18n.svelte';
   import { allPagesDrawn } from './pageWindow.svelte';
@@ -38,6 +39,7 @@
     orientation,
     pageFormat = 'A4',
     hfDistances = DEFAULT_HF_DISTANCES,
+    hfFrames = NO_HF_FRAMES,
     hfEditor = $bindable(),
     hfActive = $bindable(),
     activePage = $bindable(1),
@@ -71,6 +73,7 @@
     orientation: Orientation;
     pageFormat?: PageFormat;
     hfDistances?: HfDistances;
+    hfFrames?: HfSetFrames;
     hfEditor: Editor | null;
     hfActive: HfZone | null;
     /** The page whose zone is being edited, which the ruler measures. */
@@ -193,6 +196,32 @@
     return ` --hit-${zone === 'header' ? 'top' : 'bottom'}: ${-edge}px;` +
       ` --hit-left: ${box.left - z.left}px; --hit-right: ${box.left + box.width - z.left - z.width}px;`;
   }
+  // A zone's framed area (HfFrame) as the variables its editor root draws: borders and
+  // padding around the content, the gap outside them, and on a page the area's least
+  // height, its band less the gap.
+  function frameOf(index: number, key: HfZoneKey, first = key.endsWith('First')): HfFrame | null {
+    const s = sets[index];
+    return ((first ? s?.framesFirst ?? s?.frames : s?.frames)?.[key.startsWith('header') ? 'header' : 'footer']) ?? null;
+  }
+  function frameVars(f: HfFrame | null, header: boolean, bandPx: number | null = null): string {
+    if (!f) return '';
+    const side = (v: string | null) => (v && cssBorder(v)) || 'none';
+    const px = (cm: number) => `${cmToPx(cm)}px`;
+    const p = f.padding;
+    return ` --hf-frame-bt: ${side(f.border.top)}; --hf-frame-br: ${side(f.border.right)};` +
+      ` --hf-frame-bb: ${side(f.border.bottom)}; --hf-frame-bl: ${side(f.border.left)};` +
+      ` --hf-frame-pad: ${px(p.top)} ${px(p.right)} ${px(p.bottom)} ${px(p.left)};` +
+      ` --hf-frame-gap-${header ? 'b' : 't'}: ${px(f.gap)};` +
+      (bandPx == null ? '' : ` --hf-frame-min: ${Math.max(0, bandPx - cmToPx(f.gap))}px;`);
+  }
+  // A page's zone frame, filling the page's band.
+  function pageFrameVars(zone: HfZone, page: number): string {
+    const index = Math.min(sectionOf(page), setSig.length - 1);
+    const f = frameOf(index, zoneKey(zone, variantFor(page, index)), page === sectionFirstPage(index));
+    const m = marginsOf(page);
+    const d = distancesOf(page);
+    return frameVars(f, zone === 'header', zone === 'header' ? cmToPx(m.top) - d.header : cmToPx(m.bottom) - d.footer);
+  }
   const boxStyle = (b: { top: number; left: number; width: number; height: number }) =>
     `top: ${b.top}px; left: ${b.left}px; width: ${b.width}px; height: ${b.height}px;`;
 
@@ -201,7 +230,7 @@
     {
       header: headerDoc, footer: footerDoc,
       headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage,
-      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven,
+      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven, ...hfFrames,
     },
     ...extraHfSections,
   ]);
@@ -697,7 +726,7 @@
 <div class="hf-measure" aria-hidden="true" bind:this={measureRoot}>
   {#each sets as set, i}
     {#each HF_ZONE_KEYS as key}
-      <div class="hf-zone hf-measure-box" style="width: {contentWidthOf(sectionFirstPage(i))}px">
+      <div class="hf-zone hf-measure-box" style="width: {contentWidthOf(sectionFirstPage(i))}px;{frameVars(frameOf(i, key), key.startsWith('header'))}">
         {#if setSig[i]?.[key]}
           <div use:staticZone={[`${i}:${key}`, set[key]]}></div>
         {/if}
@@ -718,7 +747,7 @@
         <div
           class="hf-zone hf-zone-bg hf-{zone}"
           class:hf-clipped={clipOf(zone, p) !== null}
-          style={boxStyle(zb) + pageVar(zb, p)}
+          style={boxStyle(zb) + pageVar(zb, p) + pageFrameVars(zone, p)}
           use:fillZone={[p, sig.includes('"pageCount"') ? numPages : 0, sources[id], sig.includes('"chapterField"') ? chapterStarts : null, zone, pageLabel(p), sourceVersion]}
         ></div>
       {/if}
@@ -741,7 +770,7 @@
           class:hf-has-bg={bg}
           class:hf-clipped={clipOf(zone, p) !== null}
           data-hf-label={zone === 'header' ? t().hf.addHeaderHint : t().hf.addFooterHint}
-          style={boxStyle(zb) + pageVar(zb, p) + (interactive ? hitVars(zone, p, zb) : '')}
+          style={boxStyle(zb) + pageVar(zb, p) + pageFrameVars(zone, p) + (interactive ? hitVars(zone, p, zb) : '')}
           ondblclick={() => interactive && startEdit(zone, p)}
           role="button"
           tabindex="-1"
@@ -755,7 +784,7 @@
     {@const box = activeZoneBox(hfActive, editingPage)}
     {@const index = sectionOf(editingPage)}
     {@const variant = variantFor(editingPage, index)}
-    <div class="hf-zone hf-{hfActive} hf-active" class:hf-clipped={clipOf(hfActive, editingPage) !== null} style={boxStyle(box) + pageVar(box, editingPage) + ` --hf-tb-offset: ${-activeTrailingPx}px;`} bind:this={liveMount}></div>
+    <div class="hf-zone hf-{hfActive} hf-active" class:hf-clipped={clipOf(hfActive, editingPage) !== null} style={boxStyle(box) + pageVar(box, editingPage) + pageFrameVars(hfActive, editingPage) + ` --hf-tb-offset: ${-activeTrailingPx}px;`} bind:this={liveMount}></div>
     <div class="hf-tag" style="top: {box.top}px; left: {box.left}px;">
       {hfActive === 'header'
         ? (variant === 'first' ? t().hf.firstPageHeader : variant === 'even' ? t().hf.evenPageHeader : t().hf.headerLabel)
@@ -846,7 +875,7 @@
   /* The space above a footer's first block carries the zone's own gap to the body
      (import/odt.ts), so it is measured (.hf-measure) but not drawn: drawn, it would
      push the text off the page. */
-  .hf-footer :global(.tiptap > :first-child) {
+  .hf-footer:not([style*='--hf-frame-pad']) :global(.tiptap > :first-child) {
     --space-before: 0 !important;
   }
 
@@ -962,7 +991,18 @@
     flex-shrink: 0;
     /* Drop the editor by the trailing-break line so the caret line overflows past the
        anchored edge while the real content stays put (set per active zone). */
-    margin-bottom: var(--hf-tb-offset, 0px);
+    margin-bottom: calc(var(--hf-tb-offset, 0px) + var(--hf-frame-gap-b, 0px));
+    /* A framed area (frameVars); unframed, each variable falls back to nothing. */
+    margin-top: var(--hf-frame-gap-t, 0px);
+    border-top: var(--hf-frame-bt, none);
+    border-right: var(--hf-frame-br, none);
+    border-bottom: var(--hf-frame-bb, none);
+    border-left: var(--hf-frame-bl, none);
+    box-sizing: border-box;
+  }
+  .hf-zone[style*='--hf-frame-pad'] :global(.tiptap) {
+    padding: var(--hf-frame-pad);
+    min-height: var(--hf-frame-min, 0px);
   }
   /* A paragraph ending in an inline atom (a page field) gets a phantom trailing <br> the
      static <p> lacks; ProseMirror marks that case with a separator <img>, so hide the
