@@ -85,7 +85,8 @@ type Ctx = {
   rels: Map<string, RelInfo>;
   imageCache: Map<string, string>;
   convertedImages: ConvertedImages;
-  listCounters: Map<number, Map<number, number>>; // numId → ilvl → last number used
+  listCounters: Map<string, Map<number, number>>; // counter (abstract) → ilvl → last number used
+  listOverridden: Set<string>; // `numId:ilvl` whose w:startOverride has been applied
   // Heading level → the first w:numPr a heading of it states on itself, for chapter
   // numbering where the heading style carries none.
   headingNumPr: Map<number, { numId: number; ilvl: number }>;
@@ -326,7 +327,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
   const rightMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'right') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, listCounters: new Map(), headingNumPr: new Map(), bodyNumLevels: new Set(), usedListStyles: new Map(), contentWidthCm, leftMarginCm, rightMarginCm, ...sectionHeightsCm(sectPr), pageRtl: sectPrRtl(sectPr), mainLang: docLangs.main, hyphenate: docSetting(files, 'autoHyphenation'), mathJc: docMathJc(files), cellSpacing: {}, compatMode: wordCompatMode(files), accents: themeAccents(themeDoc), themeColors: theme, themeLineWidths: Array.from(themeDoc?.getElementsByTagNameNS(A, 'lnStyleLst')[0]?.children ?? [], (ln) => (Number(ln.getAttribute('w')) || 12700) / 12700), openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentDefs: docxComments(files), moveNames: moveNames(body), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, listCounters: new Map(), listOverridden: new Set(), headingNumPr: new Map(), bodyNumLevels: new Set(), usedListStyles: new Map(), contentWidthCm, leftMarginCm, rightMarginCm, ...sectionHeightsCm(sectPr), pageRtl: sectPrRtl(sectPr), mainLang: docLangs.main, hyphenate: docSetting(files, 'autoHyphenation'), mathJc: docMathJc(files), cellSpacing: {}, compatMode: wordCompatMode(files), accents: themeAccents(themeDoc), themeColors: theme, themeLineWidths: Array.from(themeDoc?.getElementsByTagNameNS(A, 'lnStyleLst')[0]?.children ?? [], (ln) => (Number(ln.getAttribute('w')) || 12700) / 12700), openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentDefs: docxComments(files), moveNames: moveNames(body), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
     footnote: noteParts(files, 'footnotes', 'footnote'),
     endnote: noteParts(files, 'endnotes', 'endnote'),
   }, noteBookmarks: new Map() };
@@ -879,9 +880,9 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
           const list = makeListNode(ctx, num.numId, ilvl, ilvl === num.ilvl ? own : EMPTY_ITEM_INDENT);
           // Opened by a deeper paragraph, the first level has no item of its own yet; it
           // continues the list before it where that one ends on the numId's count.
-          const count = ctx.listCounters.get(num.numId)?.get(0);
+          const count = ctx.listCounters.get(ctx.styles.counterKey(num.numId))?.get(0);
           const prev = lastOrdered as Ordered | null;
-          if (ilvl === 0 && num.ilvl > 0 && list.type === 'orderedList' && count != null && prev?.numId === num.numId
+          if (ilvl === 0 && num.ilvl > 0 && list.type === 'orderedList' && count != null && prev && sameCount(ctx, prev.numId, num.numId)
             && (Number(prev.list.attrs?.start) || 1) + labelledItems(prev.list) - 1 === count) {
             list.attrs = { ...(list.attrs ?? {}), start: count + 1, continueNumbering: true };
           }
@@ -898,9 +899,9 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         if (targetList.type === 'orderedList' && targetList.content!.length === 0 && number > 1 && !underLabelless) {
           targetList.attrs = { ...(targetList.attrs ?? {}), start: number };
           // Word counts the numId on wherever it resumes: the editor's continuation does
-          // the same while the list before it is that numId and ends right before.
+          // the same while the list before it shares that count and ends right before.
           const prev = lastOrdered as Ordered | null;
-          if (stack.length === 1 && prev && prev.numId === num.numId
+          if (stack.length === 1 && prev && sameCount(ctx, prev.numId, num.numId)
             && (Number(prev.list.attrs?.start) || 1) + labelledItems(prev.list) === number) {
             targetList.attrs.continueNumbering = true;
           }
@@ -1000,11 +1001,18 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
 // Word numbering is document-global per numId: a level keeps counting across intervening
 // non-list paragraphs (which split the list into separate nodes here) and resets its deeper
 // levels whenever a shallower level advances. Returns this item's number.
+const sameCount = (ctx: Ctx, a: number, b: number) => ctx.styles.counterKey(a) === ctx.styles.counterKey(b);
+
+// A numId's w:startOverride restarts the shared count where that numId first numbers the level.
 function nextListNumber(ctx: Ctx, numId: number, ilvl: number): number {
-  let per = ctx.listCounters.get(numId);
-  if (!per) { per = new Map(); ctx.listCounters.set(numId, per); }
+  const key = ctx.styles.counterKey(numId);
+  let per = ctx.listCounters.get(key);
+  if (!per) { per = new Map(); ctx.listCounters.set(key, per); }
   const cur = per.get(ilvl);
-  const n = cur == null ? (ctx.styles.level(numId, ilvl).start ?? 1) : cur + 1;
+  const restart = ctx.styles.startOverride(numId, ilvl);
+  const first = !ctx.listOverridden.has(`${numId}:${ilvl}`);
+  ctx.listOverridden.add(`${numId}:${ilvl}`);
+  const n = restart != null && first ? restart : cur == null ? (ctx.styles.level(numId, ilvl).start ?? 1) : cur + 1;
   per.set(ilvl, n);
   for (const l of Array.from(per.keys())) if (l > ilvl) per.delete(l);
   return n;
@@ -4580,7 +4588,7 @@ function convertHfPart(relId: string | null, ctx: Ctx, sect: Element | null): Hf
   const zoneCtx: Ctx = {
     ...ctx, zone: true, footer: root.localName === 'ftr', rels: parseRels(ctx.files[path.replace(/^word\/(.*)$/, 'word/_rels/$1.rels')]),
     openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentDefs: new Map(), moveNames: moveNames(root),
-    listCounters: new Map(), cellSpacing: {},
+    listCounters: new Map(), listOverridden: new Set(), cellSpacing: {},
     contentWidthCm: sectionContentWidthCm(sect), leftMarginCm: twipToCm(intAttr(fc(sect, 'pgMar'), W, 'left') ?? 1440), rightMarginCm: twipToCm(intAttr(fc(sect, 'pgMar'), W, 'right') ?? 1440),
     ...sectionHeightsCm(sect),
   };

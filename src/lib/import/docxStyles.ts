@@ -223,6 +223,7 @@ export class DocxStyles {
   private memoOwn = new Map<string, RunProps>();
   private styleNum = new Map<string, { numId: number; ilvl: number }>();
   private ownNumId = new Map<string, number>(); // style's own w:numPr/w:numId
+  private startOverrides = new Map<string, number>(); // `numId:ilvl` → w:startOverride
   private ownIlvl = new Map<string, number>(); // style's own w:numPr/w:ilvl
   private ownOutline = new Map<string, number>(); // style's own w:outlineLvl (heading marker)
   private ownAlign = new Map<string, string>(); // style's own w:pPr/w:jc
@@ -492,6 +493,11 @@ export class DocxStyles {
       const numId = num.getAttributeNS(W, 'numId');
       const absId = firstChild(num, 'abstractNumId');
       if (numId && absId) this.numToAbstract.set(numId, wVal(absId) ?? '');
+      for (const o of Array.from(num.children).filter((c) => c.localName === 'lvlOverride')) {
+        const so = firstChild(o, 'startOverride');
+        const v = so ? parseInt(wVal(so) ?? '', 10) : NaN;
+        if (numId && Number.isFinite(v)) this.startOverrides.set(`${numId}:${o.getAttributeNS(W, 'ilvl') || 0}`, v);
+      }
     }
   }
 
@@ -733,6 +739,15 @@ export class DocxStyles {
     const np = linked ? this.styleNum.get(linked) : null;
     if (!np) return abs;
     return this.resolvedAbstract(np.numId, seen) ?? abs;
+  }
+
+  // Numbers count per abstract: numIds sharing one count on from each other (probed).
+  counterKey(numId: number): string {
+    return this.resolvedAbstract(numId) ?? `num:${numId}`;
+  }
+
+  startOverride(numId: number, ilvl: number): number | null {
+    return this.startOverrides.get(`${numId}:${ilvl}`) ?? null;
   }
 
   level(numId: number, ilvl: number): LevelDef {

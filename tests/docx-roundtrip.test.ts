@@ -1161,30 +1161,31 @@ describe('DOCX import: hardBreak carries its run font (empty-line height)', () =
   });
 });
 
-describe('DOCX import: a list continued across paragraphs keeps counting (same numId)', () => {
+describe('DOCX import: a list continued across paragraphs keeps counting (shared count)', () => {
   const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
   const item = (numId: number, t: string) =>
     `<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="${numId}"/></w:numPr></w:pPr><w:r><w:t>${t}</w:t></w:r></w:p>`;
   const gap = (t: string) => `<w:p><w:r><w:t>${t}</w:t></w:r></w:p>`;
-  // numId 5 (upperRoman) split by body paragraphs; numId 6 shares the format but is its own
-  // counter, so it must restart — Word continues per numId, not per glyph style.
+  // numId 5 (upperRoman) split by body paragraphs; numId 6 shares its abstract and so its
+  // count; numId 7 restarts it through w:startOverride (both probed in LibreOffice).
   const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
-    ${item(5, 'One')}${gap('body a')}${item(5, 'Two')}${gap('body b')}${item(5, 'Three')}${item(6, 'Other')}
+    ${item(5, 'One')}${gap('body a')}${item(5, 'Two')}${gap('body b')}${item(5, 'Three')}${item(6, 'Other')}${gap('body c')}${item(7, 'Again')}
   </w:body></w:document>`;
   const numberingXml = `<?xml version="1.0"?><w:numbering ${W}>
     <w:abstractNum w:abstractNumId="5"><w:lvl w:ilvl="0"><w:numFmt w:val="upperRoman"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum>
     <w:num w:numId="5"><w:abstractNumId w:val="5"/></w:num>
     <w:num w:numId="6"><w:abstractNumId w:val="5"/></w:num>
+    <w:num w:numId="7"><w:abstractNumId w:val="5"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>
   </w:numbering>`;
   const bytes = zipSync({ 'word/document.xml': strToU8(documentXml), 'word/numbering.xml': strToU8(numberingXml) });
   const doc = importDocx(bytes).content as N;
 
-  it('emits separate ordered lists whose start values continue the numId', () => {
+  it('emits separate ordered lists whose start values continue the shared count', () => {
     const ols = doc.content!.filter((n) => n.type === 'orderedList');
-    expect(ols.length).toBe(4);
-    expect(ols.map((o) => o.attrs?.start)).toEqual([undefined, 2, 3, undefined]);
+    expect(ols.length).toBe(5);
+    expect(ols.map((o) => o.attrs?.start)).toEqual([undefined, 2, 3, 4, undefined]);
     expect(ols.every((o) => o.attrs?.listStyleType === 'upper-roman')).toBe(true);
-    expect(walk(ols[3], 'text')[0].text).toBe('Other'); // separate numId → restarts at 1
+    expect(walk(ols[3], 'text')[0].text).toBe('Other');
   });
 });
 

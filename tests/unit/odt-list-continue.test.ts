@@ -30,7 +30,8 @@ describe('ODT list continuation', () => {
        <text:list text:style-name="B">${item('b')}</text:list>
        <text:list text:continue-numbering="true" text:style-name="A">${item('3')}</text:list>
        <text:list text:continue-list="x" text:style-name="A">${item('3')}</text:list>
-       <text:list text:style-name="A">${item('1')}</text:list>`,
-    ))).toEqual([1, 1, 3, 3, 1]);
+       <text:list text:style-name="A">${item('1')}</text:list>
+       <text:list text:continue-list="x" text:style-name="A"><text:list-item text:start-value="1"><text:p>r</text:p></text:list-item></text:list>`,
+    ))).toEqual([1, 1, 3, 3, 1, 1]); // an item's own start value restarts a continued list
   });
 });

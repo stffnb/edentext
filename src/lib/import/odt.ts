@@ -3416,8 +3416,9 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
     if (item.namespaceURI !== NS.text || (item.localName !== 'list-item' && item.localName !== 'list-header')) continue;
 
     if (ordered && items.length === 0) {
+      // An item's own start value restarts the count, even one a continue-list names.
       const sv = parseInt(item.getAttributeNS(NS.text, 'start-value') ?? '', 10);
-      if (Number.isFinite(sv) && sv > 1) start = sv;
+      if (Number.isFinite(sv) && sv >= 0) start = sv;
     }
 
     const blocks: Node[] = [];
