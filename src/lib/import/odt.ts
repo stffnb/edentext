@@ -3515,7 +3515,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
     listStyleType = govMultilevel ? key : orderedTypeAttrAt(key, baseCycle);
   }
   const attrs: Record<string, unknown> = {};
-  if (start != null) attrs.start = start;
+  if (start != null && (start !== 1 || continued)) attrs.start = start;
   if (continued) attrs.continueNumbering = true;
   if (named) {
     if (depth === 1) attrs.listStyleName = displayStyleName(styleName!, ctx.resolver.listStyleDisplayName(styleName!));
