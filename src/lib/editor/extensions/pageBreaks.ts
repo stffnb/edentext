@@ -123,6 +123,12 @@ export function isPaginating(view: EditorView): boolean {
   return paginating.get(view)?.() ?? false;
 }
 
+// The height each page's footnotes take from its body, by page number (last pass).
+const noteReserves = new WeakMap<EditorView, Map<number, number>>();
+export function noteReservesOf(view: EditorView): Map<number, number> | undefined {
+  return noteReserves.get(view);
+}
+
 const layingOut = new WeakMap<EditorView, () => boolean>();
 // True while a pass runs or is due next frame; one merely queued behind typing is not.
 export function isLayingOut(view: EditorView): boolean {
@@ -197,10 +203,13 @@ export function readVerticalMargins(dom: HTMLElement): VMargins {
 // The content band of the page a document-px y falls on: where its body text may begin,
 // where it must end, and what is left between the two. Everything that places itself
 // against a page reads it here, so no consumer assumes a uniform page.
-export function bandAt(vm: VMargins, y: number): { start: number; end: number; height: number } {
+export function bandAt(
+  vm: VMargins, y: number, notes?: Map<number, number>,
+): { start: number; end: number; height: number } {
   const page = vm.grid.pageAt(y);
   const start = vm.grid.contentTopOf(page);
-  const end = vm.grid.contentBottomOf(page);
+  // A page's footnotes end its body above them (`notes`: noteReservesOf).
+  const end = vm.grid.contentBottomOf(page) - (notes?.get(page) ?? 0);
   return { start, end, height: end - start };
 }
 
@@ -2425,6 +2434,7 @@ export const PageBreaks = Extension.create({
             reserved = next;
             placed = placeLeaves(reserved);
           }
+          noteReserves.set(editorView, reserved);
           const {
             maxEffectiveBottom, sectionStartPages, placements, collapsedTrailing,
             pageTopBlocks, sectionInsets, sectionTops, sideShifts, tableBands, leavesDebug, placementsDebug,
