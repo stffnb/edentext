@@ -515,12 +515,16 @@ class Numbering {
   // number format, bullet char or label formatting forks its own reference (the ODT side mints its own
   // list style). The fork copies the shallower levels so the importer's cycle walk
   // (listBaseCycle) still sees the ancestry.
-  forkFor(reference: string, depth: number, node: TiptapNode, cycle: OrderedCycle, style: ListStyleDef | null = null): string {
+  // `restarts`: an item's later sub-list, which counts afresh here but on in Word.
+  forkFor(reference: string, depth: number, node: TiptapNode, cycle: OrderedCycle, style: ListStyleDef | null = null, restarts = false): string {
     const levels = this.map.get(reference)!;
     const l = levels.find((lv) => lv.level === depth);
     if (!l) return reference;
     // The style level's kind decides what the depth renders, whatever the node species.
     const eff = effectiveListLevel(node.attrs ?? {}, node.type === 'orderedList', style, depth + 1);
+    // Word restarts a sub-list at its level's start: one starting elsewhere needs its own.
+    const start = typeof node.attrs?.start === 'number' ? node.attrs.start : eff.startAt ?? 1;
+    restarts ||= eff.kind === 'number' && start !== (l.start ?? 1);
     let format: string, text: string;
     if (eff.kind === 'number') {
       const attr = eff.listStyleType;
@@ -532,7 +536,7 @@ class Numbering {
       format = LevelFormat.BULLET;
       text = bulletCharOf(node, depth, style);
     }
-    if (l.format === format && l.text === text
+    if (!restarts && l.format === format && l.text === text
       && JSON.stringify(l.style?.run ?? null) === JSON.stringify(markerRunProps(node) ?? null)) return reference;
     const fork = this.newReference();
     this.map.get(fork)!.push(...levels.filter((lv) => lv.level < depth));
@@ -3073,10 +3077,10 @@ function listToParagraphs(
   const cChild = childCycle(cycle, eff.listStyleType, eff.kind === 'number');
   for (const item of node.content ?? []) {
     if (item.type !== 'listItem') continue;
-    let numberedFirst = false;
+    let numberedFirst = false, lists = 0;
     for (const child of item.content ?? []) {
       if (child.type === 'bulletList' || child.type === 'orderedList') {
-        const ref = num.forkFor(reference, depth + 1, child, cChild, style);
+        const ref = num.forkFor(reference, depth + 1, child, cChild, style, lists++ > 0 && child.type === 'orderedList');
         listToParagraphs(child, depth + 1, ref, indentCm, num, out, cChild, style, ref === reference ? instance : 0);
       } else if (child.type === 'paragraph' || child.type === 'heading') {
         if (!numberedFirst) {

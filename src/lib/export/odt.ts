@@ -448,7 +448,8 @@ function replacePageBreaks(doc: TiptapNode): TiptapNode {
 }
 
 // An item's sub-lists after its first each open an item of their own, from the blocks
-// before the next one on, behind an NLI paragraph (applyNestedListItems drops it).
+// before the next one on, behind an NLI paragraph (applyNestedListItems drops it). A
+// sub-list's own start rides an NLI#n paragraph, as only top-level lists carry an L# style.
 function splitNestedLists(node: TiptapNode): TiptapNode {
   if (!node.content?.length) return node;
   const isList = (b: TiptapNode) => b.type === 'bulletList' || b.type === 'orderedList';
@@ -463,6 +464,8 @@ function splitNestedLists(node: TiptapNode): TiptapNode {
         items.push({ ...item, content: cur });
         cur = [{ type: 'paragraph', content: [{ type: 'text', text: NLI }] }];
       }
+      const start = b.type === 'orderedList' && !b.attrs?.continueNumbering && typeof b.attrs?.start === 'number' ? b.attrs.start : null;
+      if (start != null) cur.push({ type: 'paragraph', content: [{ type: 'text', text: `${NLI}#${start}` }] });
       cur.push(isList(b) ? splitNestedLists(b) : b);
     }
     items.push({ ...item, content: cur });
@@ -476,7 +479,8 @@ function applyNestedListItems(odtBytes: Uint8Array): Uint8Array {
   if (!content.includes(NLI)) return odtBytes;
   // The sub-list starts its own count, as in the editor: LibreOffice would carry the
   // level's count on from the item's first sub-list — which an item without a label does.
-  files['content.xml'] = strToU8(content.replace(new RegExp(`<text:p\\b[^>]*>\\s*${NLI}${NLI}\\s*</text:p>`, 'g'), '').replace(new RegExp(`<text:p\\b[^>]*>\\s*${NLI}\\s*</text:p>(\\s*<text:list\\b[^>]*>\\s*<text:list-item)(?![^>]*start-value)`, 'g'),
+  files['content.xml'] = strToU8(content.replace(new RegExp(`<text:p\\b[^>]*>\\s*${NLI}#(\\d+)\\s*</text:p>(\\s*<text:list\\b[^>]*>\\s*<text:list-item)`, 'g'), '$2 text:start-value="$1"')
+    .replace(new RegExp(`<text:p\\b[^>]*>\\s*${NLI}${NLI}\\s*</text:p>`, 'g'), '').replace(new RegExp(`<text:p\\b[^>]*>\\s*${NLI}\\s*</text:p>(\\s*<text:list\\b[^>]*>\\s*<text:list-item)(?![^>]*start-value)`, 'g'),
     '$1 text:start-value="1"').replace(new RegExp(`<text:p\\b[^>]*>\\s*${NLI}\\s*</text:p>`, 'g'), ''));
   return rezipOdt(files);
 }

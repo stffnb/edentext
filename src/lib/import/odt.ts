@@ -1529,8 +1529,9 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         if (headingEls) {
           for (const h of headingEls) out.push(...blocksOf(convertParaLike(h, ctx, 'body')));
         } else {
-          const list = convertList(el, ctx, null, 1, false, ROOT_ORDERED_CYCLE, !isChapterList(el, ctx.resolver));
-          for (const part of list ? liftListTables(list, true) : []) out.push(part.type === 'table' ? part : keepContinuation(out, part));
+          for (const list of convertList(el, ctx, null, 1, false, ROOT_ORDERED_CYCLE, !isChapterList(el, ctx.resolver))) {
+            for (const part of liftListTables(list, true)) out.push(part.type === 'table' ? part : keepContinuation(out, part));
+          }
         }
       } else if (el.localName === 'section') {
         const cols = ctx.resolver.sectionColumns(el.getAttributeNS(NS.text, 'style-name'));
@@ -3464,7 +3465,7 @@ function headingLeaves(listEl: Element): Element[] | null {
 // outermost list's style governs, one level def per depth. `govMultilevel`: inside a
 // display-levels chain, so an explicit numbering here is never suppressed (null = rejoin).
 // `keepHeadings`: the list is no chapter numbering, so a heading opening an item stays one.
-function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, depth: number, govMultilevel = false, baseCycle: OrderedCycle = ROOT_ORDERED_CYCLE, keepHeadings = false): Node | null {
+function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, depth: number, govMultilevel = false, baseCycle: OrderedCycle = ROOT_ORDERED_CYCLE, keepHeadings = false): Node[] {
   const styleName = el.getAttributeNS(NS.text, 'style-name') ?? inheritedStyleName;
   // A named list style travels as `listStyleName` on the outermost list; everything the
   // style's levels say stays in the registry, so no per-level attrs are derived.
@@ -3485,14 +3486,14 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
 
   const items: Node[] = [];
   let start: number | null = null;
+  // A later item's own start value restarts the count there: the list splits before it.
+  const restartAt: { at: number; start: number }[] = [];
   for (const item of Array.from(el.children)) {
     if (item.namespaceURI !== NS.text || (item.localName !== 'list-item' && item.localName !== 'list-header')) continue;
 
-    if (ordered && items.length === 0) {
-      // An item's own start value restarts the count, even one a continue-list names.
-      const sv = parseInt(item.getAttributeNS(NS.text, 'start-value') ?? '', 10);
-      if (Number.isFinite(sv) && sv >= 0) start = sv;
-    }
+    // An item's own start value restarts the count, even one a continue-list names.
+    const sv = ordered ? parseInt(item.getAttributeNS(NS.text, 'start-value') ?? '', 10) : NaN;
+    if (items.length === 0 && Number.isFinite(sv) && sv >= 0) start = sv;
 
     const blocks: Node[] = [];
     for (const child of Array.from(item.children)) {
@@ -3504,8 +3505,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
           blocks.push(part);
         }
       } else if (child.namespaceURI === NS.text && child.localName === 'list') {
-        const nested = convertList(child, ctx, styleName, depth + 1, inChain, childBaseCycle, keepHeadings);
-        if (nested) blocks.push(nested);
+        blocks.push(...convertList(child, ctx, styleName, depth + 1, inChain, childBaseCycle, keepHeadings));
       } else if (child.namespaceURI === NS.table && child.localName === 'table') {
         // Kept in place for now; liftListTables cuts the list around it.
         const table = convertTable(child, ctx);
@@ -3524,18 +3524,22 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
       continue;
     }
     if (!blocks.length) blocks.push({ type: 'paragraph' });
+    if (items.length && Number.isFinite(sv) && sv >= 0) restartAt.push({ at: items.length, start: sv });
     items.push({ type: 'listItem', content: blocks });
   }
-  if (items.length === 0) return null;
+  if (items.length === 0) return [];
   let continued = false;
+  const levelStartRaw = ordered ? parseInt(levelDef!.getAttributeNS(NS.text, 'start-value') ?? '', 10) : NaN;
+  const levelStart = Number.isFinite(levelStartRaw) && levelStartRaw >= 0 ? levelStartRaw : 1;
   if (ordered && depth === 1 && styleName) {
     // LibreOffice continues the latest list of the same style, or the one continue-list names.
     const ref = el.getAttributeNS(NS.text, 'continue-list');
     const prev = ref ? ctx.listEnds.get(`id:${ref}`)
       : el.getAttributeNS(NS.text, 'continue-numbering') === 'true' ? ctx.listEnds.get(`style:${styleName}`) : undefined;
     if (start == null && prev != null) { start = prev + 1; continued = true; }
-    const styleStart = parseInt(levelDef!.getAttributeNS(NS.text, 'start-value') ?? '', 10);
-    const end = (start ?? (styleStart > 0 ? styleStart : 1)) + labelledItems({ type: 'orderedList', content: items }) - 1;
+    const last = restartAt[restartAt.length - 1];
+    const end = last ? last.start + labelledItems({ type: 'orderedList', content: items.slice(last.at) }) - 1
+      : (start ?? levelStart) + labelledItems({ type: 'orderedList', content: items }) - 1;
     ctx.listEnds.set(`style:${styleName}`, end);
     const id = el.getAttribute('xml:id');
     if (id) ctx.listEnds.set(`id:${id}`, end);
@@ -3567,7 +3571,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
     }
     const node: Node = { type: 'bulletList', content: items };
     if (Object.keys(attrs).length) node.attrs = attrs;
-    return node;
+    return [node];
   }
 
   let listStyleType: string | null;
@@ -3581,8 +3585,11 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
     // (re-anchored per ancestor) imports as null so round trips don't accrete attrs.
     listStyleType = govMultilevel ? key : orderedTypeAttrAt(key, baseCycle);
   }
+  // An automatic level's own start value is the list's; a named style's registry holds it.
+  const ownStart = named ? (levelStart > 1 ? levelStart : 1) : 1;
+  if (start == null && !named && levelStart !== 1) start = levelStart;
   const attrs: Record<string, unknown> = {};
-  if (start != null && (start !== 1 || continued)) attrs.start = start;
+  if (start != null && (start !== ownStart || continued)) attrs.start = start;
   if (continued) attrs.continueNumbering = true;
   if (named) {
     if (depth === 1) attrs.listStyleName = displayStyleName(styleName!, ctx.resolver.listStyleDisplayName(styleName!));
@@ -3592,9 +3599,14 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
     if (listLevelRightAligned(levelDef)) attrs.markerAlign = 'right';
     Object.assign(attrs, listLevelLabel(levelDef, depth), listLevelMarker(levelDef, ctx));
   }
-  const node: Node = { type: 'orderedList', content: items };
-  if (Object.keys(attrs).length) node.attrs = attrs;
-  return node;
+  // Each restart opens a list of its own, the same but for its start.
+  const { start: _s, continueNumbering: _c, ...rest } = attrs;
+  return [0, ...restartAt.map((r) => r.at)].map((at, i, cuts) => {
+    const node: Node = { type: 'orderedList', content: items.slice(at, cuts[i + 1]) };
+    const own = i ? { ...rest, ...(restartAt[i - 1].start !== ownStart ? { start: restartAt[i - 1].start } : {}) } : attrs;
+    if (Object.keys(own).length) node.attrs = own;
+    return node;
+  });
 }
 
 // The text style a level formats its label with, as the list's own marker format.
