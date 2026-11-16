@@ -96,10 +96,16 @@ export const ResizableTableRow = TableRow.extend({
         props: { decorations: (state) => exactKey.getState(state) },
         view: (view) => {
           let frame = 0;
+          // A row that grows without a doc change (its columns settle, a cell rewraps) is
+          // measured again; one at its own height reports nothing.
+          const resized = typeof ResizeObserver === 'function' ? new ResizeObserver(() => schedule()) : null;
+          const watched = new WeakSet<Element>();
           const schedule = () => {
             cancelAnimationFrame(frame);
             frame = requestAnimationFrame(() => {
-              if (!view.dom.querySelector('tr[data-fixed-height]') && exactKey.getState(view.state) === DecorationSet.empty) return;
+              const rows = view.dom.querySelectorAll('tr[data-fixed-height]');
+              rows.forEach((tr) => { if (!watched.has(tr)) { watched.add(tr); resized?.observe(tr); } });
+              if (!rows.length && exactKey.getState(view.state) === DecorationSet.empty) return;
               const next = measureExact(view);
               const cur = exactKey.getState(view.state) ?? DecorationSet.empty;
               // Measured with the current excess applied: the children keep their place.
@@ -108,7 +114,7 @@ export const ResizableTableRow = TableRow.extend({
           };
           schedule();
           void document.fonts?.ready.then(schedule);
-          return { update: (_v, prev) => { if (!prev.doc.eq(view.state.doc)) schedule(); }, destroy: () => cancelAnimationFrame(frame) };
+          return { update: (_v, prev) => { if (!prev.doc.eq(view.state.doc)) schedule(); }, destroy: () => { cancelAnimationFrame(frame); resized?.disconnect(); } };
         },
       }),
     ];
