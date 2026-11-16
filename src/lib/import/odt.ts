@@ -508,7 +508,8 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
   const title = frame.getElementsByTagNameNS(NS.svg, 'title')[0]?.textContent;
   if (title) attrs.alt = title;
   const gp = ctx.resolver.frameGraphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
-  const crop = clipCrop(gp['fo:clip'], ctx.files[href]);
+  // The clip is measured against the frame's own picture, which a fallback only replaces.
+  const crop = clipCrop(gp['fo:clip'], ctx.files[hrefs[0]], ctx.files[href]);
   if (crop) attrs.crop = crop;
   const mode = colorModeOf(gp['draw:color-mode']);
   if (mode) attrs.colorMode = mode;
@@ -519,9 +520,9 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
 }
 
 // fo:clip="rect(top, right, bottom, left)" cuts lengths off the picture at its own size.
-function clipCrop(clip: unknown, bytes: Uint8Array | undefined): Crop | null {
+function clipCrop(clip: unknown, ...pictures: (Uint8Array | undefined)[]): Crop | null {
   const m = typeof clip === 'string' ? /rect\(([^)]*)\)/.exec(clip) : null;
-  const size = m && bytes ? imageSizeCm(bytes) : null;
+  const size = m ? pictures.reduce<ReturnType<typeof imageSizeCm>>((got, b) => got ?? (b ? imageSizeCm(b) : null), null) : null;
   if (!m || !size) return null;
   const [t, r, b, l] = m[1].split(/[\s,]+/).filter(Boolean).map((v) => Math.max(0, lengthToCm(v) ?? 0));
   return cropOf({ l: l / size.w, t: t / size.h, r: r / size.w, b: b / size.h });
