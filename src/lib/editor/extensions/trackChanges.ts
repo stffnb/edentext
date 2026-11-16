@@ -450,6 +450,9 @@ function restoreLists(tr: Transaction, pos: number, levels: ListLevel[]): void {
     if (target == null) return;
     tr.lift(range, target);
   }
+  // What the block leaves of a numbered list after it counts on, as it did in one list.
+  const after = here() + tr.doc.nodeAt(here())!.nodeSize, { nodeBefore: a } = tr.doc.resolve(here()), b = tr.doc.nodeAt(after);
+  if (a?.type.name === 'orderedList' && b?.type === a.type && !b.attrs.continueNumbering) tr.setNodeAttribute(after, 'continueNumbering', true);
   if (!levels.length) return;
   tr.wrap(rangeAt(here()), levels.flatMap((l) => [{ type: nodes[l.type], attrs: l.attrs }, { type: nodes.listItem }]));
   const sameBeside = (a: PMNode | null | undefined, b: PMNode | null | undefined) => !!a && !!b && a.type === b.type;
@@ -903,6 +906,15 @@ function recordFormats(tr: Transaction, transactions: readonly Transaction[], at
         });
         return;
       }
+      // Two lists that meet join into the first, which takes the second's attrs off its
+      // blocks: its first block keeps them, the rest rejoin it when rejected.
+      const joined = joinedList(step, doc);
+      if (joined != null) {
+        let first = -1;
+        doc.nodeAt(joined)!.descendants((node, pos) => { if (first < 0 && hasParagraphMark(node)) first = joined + 1 + pos; return first < 0; });
+        if (first >= 0) recordBlockFormat(tr, final(first, 1), doc, first, attrs, settled, true);
+        return;
+      }
       if (!(step instanceof AddMarkStep || step instanceof RemoveMarkStep) || UNFORMATTED_MARKS.has(step.mark.type.name)) return;
       t.docs[i].nodesBetween(step.from, step.to, (node, pos) => {
         if (!isMarkable(node)) return true;
@@ -938,6 +950,13 @@ function formattedBlock(step: Step, doc: PMNode): number | null {
   return pos != null && hasParagraphMark(doc.nodeAt(pos)!) ? pos : null;
 }
 
+// The second of two lists a step joins (its position), if it is such a join.
+function joinedList(step: Step, doc: PMNode): number | null {
+  if (!(step instanceof ReplaceStep) || step.slice.size || step.to - step.from !== 2) return null;
+  const { nodeBefore: a, nodeAfter: b } = doc.resolve(step.from + 1);
+  return a && b && a.type === b.type && LISTS.has(a.type.name) ? step.from + 1 : null;
+}
+
 // Whether an earlier step of `t` opened the block at `pos`, as a split does its second half:
 // what the same edit then sets on it is no change of a format it had.
 function bornIn(t: Transaction, step: number, pos: number): boolean {
@@ -952,14 +971,14 @@ function bornIn(t: Transaction, step: number, pos: number): boolean {
 // The first record stands, and a block back at it has no change left.
 // `settled` holds the blocks found back at their record: a later step of the same edit
 // starts from a halfway state, which is no format to go back to.
-function recordBlockFormat(tr: Transaction, at: number, doc: PMNode, pos: number, attrs: RevisionAttrs, settled?: Set<number>): void {
+function recordBlockFormat(tr: Transaction, at: number, doc: PMNode, pos: number, attrs: RevisionAttrs, settled?: Set<number>, joined = false): void {
   const now = tr.doc.nodeAt(at), before = doc.nodeAt(pos)!;
   if (!now || !hasParagraphMark(now) || settled?.has(at)) return;
   // The author's own new empty block has no format to go back to.
   if (!now.content.size && (now.attrs.revMark as RevMark | null)?.insertion?.author === attrs.author) return;
   const rec = now.attrs.revFormat as RevFormat | null;
   const old = rec ? rec.old : { ...blockFormat(before.type.name, before.attrs), list: listChain(doc, pos) };
-  const same = !!old && sameBlockFormat(blockFormat(now.type.name, now.attrs), old) && sameLists(old.list, listChain(tr.doc, at));
+  const same = !joined && !!old && sameBlockFormat(blockFormat(now.type.name, now.attrs), old) && sameLists(old.list, listChain(tr.doc, at));
   if (rec && same) { tr.setNodeAttribute(at, 'revFormat', null); settled?.add(at); }
   else if (!rec && !same) tr.setNodeAttribute(at, 'revFormat', { ...attrs, old });
 }

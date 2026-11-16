@@ -134,6 +134,7 @@ export const LIST_CASES: [string, string, Act[]][] = [
   ['a nested list off', LEVELS, ranged(4, 20, (e) => e.commands.toggleBulletList())],
   ['an item one level up', LEVELS, ranged(11, 11, (e) => e.commands.liftListItem('listItem'))],
   ['a paragraph made a list, joining the one after it', '<p>more</p><ul data-list-style-name="Named"><li><p>one</p></li><li><p>two</p></li></ul>', ranged(2, 2, (e) => e.commands.toggleBulletList())],
+  ['a paragraph made a list by Delete, joining the continued list after it', '<ol><li><p>one</p></li><li><p>two</p></li></ol><p>mid</p><ol start="3" data-continue-numbering="true"><li><p>three</p></li><li><p>four</p></li></ol>', [(e) => select(e, 13), (e) => e.commands.joinForward()]],
   ['another bullet', ITEMS, ranged(4, 4, (e) => e.commands.setBulletChar('*'))],
   ['another numbering', ITEMS.replace(/ul>/g, 'ol>'), ranged(4, 4, (e) => e.commands.setOrderedListType('lower-alpha'))],
 ];
