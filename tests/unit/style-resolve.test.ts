@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  builtinStyleSheet, mergeStoredSheet, resolveStyle, styleCss, styleOrder, visibleStyles, DEFAULT_STYLE,
+  builtinStyleSheet, fontPairDeclarations, mergeStoredSheet, resolveStyle, styleCss, styleOrder, visibleStyles, DEFAULT_STYLE,
   STYLE_SHEET_VERSION, type StyleSheet,
 } from '../../src/lib/styles/styleSheet';
 import { HEADING_STYLE_OVERRIDES } from '../../src/lib/styles/headings';
@@ -115,5 +115,17 @@ describe('persisted style sheet', () => {
   it('falls back to the built-ins for junk', () => {
     expect(mergeStoredSheet(null).paragraph['Standard'].text.fontSizePt).toBe(12);
     expect(mergeStoredSheet({ v: 2 }).paragraph['Heading 1'].text.fontSizePt).toBe(18);
+  });
+});
+
+// A face name with a style or vendor suffix renders as its base family's substitute when
+// it is not installed, as LibreOffice's font lookup strips the suffix.
+describe('font names with a style suffix', () => {
+  const family = (name: string) => fontPairDeclarations(name).at(-1)!;
+  it.each(['Arial Bold', 'ArialMT', 'Arial-BoldMT', 'Liberation Sans Narrow'])('%s falls back to sans', (name) => {
+    expect(family(name)).toMatch(new RegExp(`^font-family: .*"${name}", 'Arial', 'Liberation Sans',.*--font-heading\\)$`));
+  });
+  it.each(['Comic Sans MS', 'Georgia Bold', 'Calibri'])('%s keeps the serif tail', (name) => {
+    expect(family(name)).toMatch(/--font-serif\)$/);
   });
 });

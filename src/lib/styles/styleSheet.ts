@@ -276,7 +276,7 @@ export function screenFontName(family: string): string {
 export function cssFontFamily(name: string): string {
   if (name === 'Liberation Serif') return 'var(--font-serif)';
   if (name === 'Liberation Sans' || name === 'Arial') return 'var(--font-heading)';
-  return `"${cssString(name)}", var(--font-serif)`;
+  return `"${cssString(name)}", var(${fontProfile(name).sans ? '--font-heading' : '--font-serif'})`;
 }
 
 // What a family's substitute does differently, one row per family. `stack`: the names it
@@ -326,9 +326,27 @@ const FONT_PROFILES: Record<string, FontProfile> = {
   'MS PMincho': CJK_NO_BOLD, 'MS Gothic': CJK_NO_BOLD, 'MS PGothic': CJK_NO_BOLD,
 };
 
+// A face name with a weight, width, slant or vendor suffix (`Arial Bold`, `Arial-BoldMT`)
+// that is not installed falls back, as in LibreOffice, to its base family's substitute;
+// probed: the suffix's weight is not applied, and only the substitute's class is kept.
+const FACE_SUFFIX = /(?:[\s_-]*(?:MT|PS|MS)|(?:[\s_-]+|(?<=\p{Ll}))(?:(?:Extra|Ultra|Semi|Demi)?(?:Bold|Light|Condensed|Expanded)|Thin|Book|Regular|Normal|Medium|Black|Heavy|Narrow|Italic|Oblique))$/u;
+const PROFILE_KEYS = new Map(Object.keys(FONT_PROFILES).map((k) => [k.replace(/\s/g, '').toLowerCase(), k]));
+function baseProfile(name: string): FontProfile {
+  let base = name;
+  for (let next = base.replace(FACE_SUFFIX, ''); next && next !== base; next = base.replace(FACE_SUFFIX, '')) {
+    base = next;
+    const own = FONT_PROFILES[base] ?? FONT_PROFILES[PROFILE_KEYS.get(base.replace(/[\s_-]/g, '').toLowerCase()) ?? ''];
+    if (own) return { stack: own.stack, sans: own.sans };
+  }
+  return {};
+}
+
 // A family named in Han is a Chinese face all the same.
 function fontProfile(name: string): FontProfile {
-  return FONT_PROFILES[name] ?? (/\p{sc=Han}/u.test(name) ? { wideQuotes: true } : {});
+  const own = FONT_PROFILES[name] ?? (/\p{sc=Han}/u.test(name) ? { wideQuotes: true } : undefined);
+  if (own) return own;
+  const base = baseProfile(name);
+  return base.stack ? { ...base, stack: `"${cssString(name)}", ${base.stack}` } : base;
 }
 
 export function fauxBold(asian: string): boolean {
