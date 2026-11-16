@@ -505,6 +505,13 @@ export function styleCss(sheet: StyleSheet): string {
     // the rest in; :where keeps the selector's weight what it was.
     if (style.name === DEFAULT_STYLE) selectors.push('.paper .tiptap p:not([data-style]):where(:not(.hf-zone *))', '.paper .tiptap .toc');
     rules.push(`${selectors.join(',\n')} {\n  ${decls.join(';\n  ')};\n}`);
+    // Blocks of one ruled style in a row are one box (editor.css data-pjoin-*): the rule
+    // and its gap are drawn above the first and below the last only.
+    const p = resolved.para;
+    if ([p.borderTop, p.borderRight, p.borderBottom, p.borderLeft].some((b) => b && b !== 'none')) {
+      rules.push(`.paper .tiptap ${attr}:has(+ ${attr}) {\n  border-bottom-style: none;\n  padding-bottom: 0;\n}`,
+        `.paper .tiptap ${attr} + ${attr} {\n  border-top-style: none;\n  padding-top: 0;\n}`);
+    }
 
     // A list marker inherits the item's own font, never its paragraph's, so the item
     // carries the style's text half too — else the number renders in the editor

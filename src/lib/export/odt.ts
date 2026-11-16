@@ -1675,6 +1675,8 @@ type ParaStyle = {
   borderRight: string | null;
   borderBottom: string | null;
   borderLeft: string | null;
+  // pt between the text and its rules, on the ruled sides (fo:padding-*).
+  borderPadding: number | null;
   // The block's own base direction (textDirection.ts); null inherits the page's.
   dir: 'ltr' | 'rtl' | null;
   // Left/first-line/right indents in cm — cell blocks only: a list item's indent
@@ -1774,6 +1776,7 @@ function paraStyleFromAttrs(attrs: TiptapNode['attrs'], withIndents = true): Par
     borderRight: border(attrs?.borderRight),
     borderBottom: border(attrs?.borderBottom),
     borderLeft: border(attrs?.borderLeft),
+    borderPadding: typeof attrs?.borderPadding === 'number' && attrs.borderPadding > 0 ? attrs.borderPadding : null,
     dir: attrs?.dir === 'rtl' || attrs?.dir === 'ltr' ? attrs.dir : null,
     // An explicit 0 is kept: it overrides the named style's indent.
     indent: withIndents && attrs?.indent === 0 ? 0 : cm(attrs?.indent),
@@ -1828,6 +1831,7 @@ function paraStyleProps(style: ParaStyle): string[] {
   ] as const) {
     const v = style[attr];
     if (v) props.push(`fo:border-${side}="${v}"`);
+    if (v && style.borderPadding != null) props.push(`fo:padding-${side}="${style.borderPadding}pt"`);
   }
   const wm = writingModeOf(style.dir);
   if (wm) props.push(`style:writing-mode="${wm}"`);
@@ -2406,7 +2410,7 @@ function applyEmptyLineFontSizes(odtBytes: Uint8Array): Uint8Array {
 // each the raw value (canonical border '<W>pt solid #RRGGBB' is a valid fo:border) or '',
 // then a widow flag, the right indent, a keep-with-next flag, the writing mode, a
 // no-hyphenation flag, the paragraph's two language tags, an off-the-grid flag and the
-// first-line and left indents in characters.
+// first-line and left indents in characters, then the gap to the rules.
 // '' when it needs none.
 function paraBoxSpec(attrs: TiptapNode['attrs']): string {
   const s = paraStyleFromAttrs(attrs);
@@ -2427,17 +2431,17 @@ function paraBoxSpec(attrs: TiptapNode['attrs']): string {
   if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft && !noWidow && !right && !keepNext && !keepLines && !wm && !noHyphen && !lang && !langAsian && !noSnap && !chars && !leftChars) return '';
   return [s.background, s.borderTop, s.borderRight, s.borderBottom, s.borderLeft]
     .map((v) => v ?? '')
-    .concat(noWidow ? 'w0' : '', right, keepNext ? (attrs?.keepNext ? 'k1' : 'k0') : '', keepLines ? 'g1' : '', wm ?? '', noHyphen ? 'h0' : '', lang, langAsian, noSnap ? 's0' : '', chars ? `${chars}ic` : '', leftChars ? `${leftChars}ic` : '').join('|');
+    .concat(noWidow ? 'w0' : '', right, keepNext ? (attrs?.keepNext ? 'k1' : 'k0') : '', keepLines ? 'g1' : '', wm ?? '', noHyphen ? 'h0' : '', lang, langAsian, noSnap ? 's0' : '', chars ? `${chars}ic` : '', leftChars ? `${leftChars}ic` : '', s.borderPadding != null ? `${s.borderPadding}pt` : '').join('|');
 }
 
 function boxSpecToProps(spec: string): string {
-  const [bg, bt, br, bb, bl, widow, marginRight, keepNext, keepLines, writingMode, , , , snap, firstChars, leftChars] = spec.split('|');
+  const [bg, bt, br, bb, bl, widow, marginRight, keepNext, keepLines, writingMode, , , , snap, firstChars, leftChars, pad] = spec.split('|');
   const props: string[] = [];
   if (bg) props.push(`fo:background-color="${bg}"`);
-  if (bt) props.push(`fo:border-top="${bt}"`);
-  if (br) props.push(`fo:border-right="${br}"`);
-  if (bb) props.push(`fo:border-bottom="${bb}"`);
-  if (bl) props.push(`fo:border-left="${bl}"`);
+  for (const [v, side] of [[bt, 'top'], [br, 'right'], [bb, 'bottom'], [bl, 'left']] as const) {
+    if (v) props.push(`fo:border-${side}="${v}"`);
+    if (v && pad) props.push(`fo:padding-${side}="${pad}"`);
+  }
   // LibreOffice writes 0/0 for "off"; the default style carries the 2 of "on".
   if (widow === 'w0') props.push('fo:orphans="0"', 'fo:widows="0"');
   if (marginRight) props.push(`${marginRight.endsWith('ic') ? 'loext' : 'fo'}:margin-right="${marginRight}"`);

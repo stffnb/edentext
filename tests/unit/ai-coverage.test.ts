@@ -87,6 +87,7 @@ const SCHEMA: Record<string, Entry> = {
   'paragraph.borderRight': same('paragraph.borderTop'),
   'paragraph.borderBottom': same('paragraph.borderTop'),
   'paragraph.borderLeft': same('paragraph.borderTop'),
+  'paragraph.borderPadding': na('the gap to the rule: read from files, a rule drawn here sets one point'),
   'paragraph.fontSize': na('the paragraph mark\'s own font, which follows its text'),
   'paragraph.fontFamily': same('paragraph.fontSize'),
   'paragraph.fontFamilyAsian': ASIAN,

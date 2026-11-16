@@ -1,6 +1,7 @@
 import { Extension, InputRule } from '@tiptap/core';
 import type { CommandProps } from '@tiptap/core';
-import type { EditorState } from '@tiptap/pm/state';
+import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { cssBorder, parseBorderAttr, type BorderSpec } from './tableCellBorders';
 import { normalizeColor } from '../../utils/color';
@@ -104,8 +105,49 @@ export const ParagraphBox = Extension.create({
               },
             ]),
           ),
+          // pt between the text and its rules (w:pBdr w:space, fo:padding-*), on the ruled
+          // sides only; none is no gap, as in both file formats.
+          borderPadding: {
+            default: null,
+            keepOnSplit: false,
+            parseHTML: (element: HTMLElement) => {
+              const v = parseFloat(element.getAttribute('data-pborder-pad') ?? '');
+              return Number.isFinite(v) ? v : null;
+            },
+            renderHTML: (attributes: Record<string, unknown>) => {
+              const pad = attributes.borderPadding;
+              if (typeof pad !== 'number' || !(pad > 0)) return {};
+              const ruled = (side: Side) => {
+                const b = parseBorderAttr(attributes[side] as string | null);
+                return !!b && b !== 'none';
+              };
+              const css = [`--pborder-pad: ${pad}pt`];
+              if (ruled('borderLeft')) css.push(`--pad-left: ${pad}pt`);
+              for (const side of ['borderTop', 'borderRight', 'borderBottom'] as const) {
+                if (ruled(side)) css.push(`padding-${side.slice(6).toLowerCase()}: ${pad}pt`);
+              }
+              return { 'data-pborder-pad': String(pad), style: css.join('; ') };
+            },
+          },
         },
       },
+    ];
+  },
+
+  // Consecutive blocks with the same rules and indents form one box, as in both word
+  // processors: the rule and gap between them are drawn only above the first and below
+  // the last (LibreOffice's "merge with next paragraph", on by default).
+  addProseMirrorPlugins() {
+    const types = new Set(this.options.types as string[]);
+    return [
+      new Plugin({
+        key: new PluginKey('paragraphBoxJoin'),
+        state: {
+          init: (_, state) => joinDecorations(state.doc, types),
+          apply: (tr, set) => (tr.docChanged ? joinDecorations(tr.doc, types) : set),
+        },
+        props: { decorations(state) { return this.getState(state); } },
+      }),
     ];
   },
 
@@ -133,8 +175,10 @@ export const ParagraphBox = Extension.create({
           const patch: Partial<Record<Side, string | null>> = {};
           for (const side of PRESET_SIDES[preset]) patch[side] = value;
           if (dispatch) {
+            // A rule drawn here keeps the text a point off it, written to the file as the gap.
+            const pad = value ? { borderPadding: 1 } : {};
             for (const { pos, node } of blocks) {
-              tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...patch });
+              tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...patch, ...(node.attrs.borderPadding == null ? pad : {}) });
             }
             dispatch(tr);
           }
@@ -164,6 +208,31 @@ export const ParagraphBox = Extension.create({
     ];
   },
 });
+
+const JOIN_KEYS = [...BORDER_SIDES, 'borderPadding', 'indent', 'indentRight'] as const;
+const ruledBlock = (node: PMNode) => BORDER_SIDES.some((s) => {
+  const b = parseBorderAttr(node.attrs[s] as string | null);
+  return !!b && b !== 'none';
+});
+
+function joinDecorations(doc: PMNode, types: Set<string>): DecorationSet {
+  const decos: Decoration[] = [];
+  const walk = (parent: PMNode, start: number) => {
+    let prev: { node: PMNode; pos: number } | null = null;
+    parent.forEach((node, offset) => {
+      const pos = start + offset;
+      const cur = types.has(node.type.name) && ruledBlock(node) ? { node, pos } : null;
+      if (cur && prev && JOIN_KEYS.every((k) => (prev!.node.attrs[k] ?? null) === (cur.node.attrs[k] ?? null))) {
+        decos.push(Decoration.node(prev.pos, prev.pos + prev.node.nodeSize, { 'data-pjoin-next': '' }));
+        decos.push(Decoration.node(pos, pos + node.nodeSize, { 'data-pjoin-prev': '' }));
+      }
+      prev = cur;
+      if (!node.isTextblock && !node.isLeaf) walk(node, pos + 1);
+    });
+  };
+  walk(doc, 0);
+  return decos.length ? DecorationSet.create(doc, decos) : DecorationSet.empty;
+}
 
 // Active states for the paragraph border picker: a preset is active when every
 // covered block renders exactly the pen border on every side the preset targets. `none`

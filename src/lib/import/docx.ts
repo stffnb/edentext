@@ -1934,8 +1934,8 @@ function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number |
 // Paragraph background + per-side border attrs (paragraphBox.ts) from direct w:pPr.
 // Shading: w:shd/@w:fill; borders: w:pBdr/w:{top,right,bottom,left} (w:sz in eighths of a
 // point). Sides with w:val none/nil are skipped. Matches the ODF paraBoxAttrs shape.
-function readParaBox(ppr: Element | null): Record<string, string> {
-  const out: Record<string, string> = {};
+function readParaBox(ppr: Element | null): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
   if (!ppr) return out;
   const shd = fc(ppr, 'shd');
   const fill = shd ? hexColor(shd.getAttributeNS(W, 'fill')) : undefined;
@@ -1943,10 +1943,17 @@ function readParaBox(ppr: Element | null): Record<string, string> {
 
   const pBdr = fc(ppr, 'pBdr');
   if (pBdr) {
+    let space = 0;
     for (const [wSide, attr] of PARA_BORDER_SIDES) {
-      const v = paraBorderAttr(fc(pBdr, wSide));
-      if (v) out[attr] = v;
+      const side = fc(pBdr, wSide);
+      const v = paraBorderAttr(side);
+      if (v) {
+        out[attr] = v;
+        // w:space in whole points, per side; the widest is the paragraph's, as on styles.
+        space = Math.max(space, intAttr(side!, W, 'space') ?? 0);
+      }
     }
+    if (space) out.borderPadding = space;
   }
   return out;
 }

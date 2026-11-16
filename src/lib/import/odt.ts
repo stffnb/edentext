@@ -1756,7 +1756,7 @@ type BlockDefaults = {
   lang: string | null;
   langAsian: string | null;
   // The style's own paragraph background and rule lines (paraBoxAttrs).
-  box: Record<string, string>;
+  box: Record<string, string | number>;
 };
 
 
@@ -2447,8 +2447,8 @@ function flowSibling(el: Element, dir: 'previous' | 'next'): Element | null {
 // Paragraph background + per-side border attrs (paragraphBox.ts) from resolved paraProps.
 // Each key is omitted when absent so a paragraph with no box props stays clean. Borders:
 // a per-side fo:border-* overrides the all-sides fo:border; 'none' ⇒ no border (undefined).
-export function paraBoxAttrs(paraProps: PropMap): Record<string, string> {
-  const out: Record<string, string> = {};
+export function paraBoxAttrs(paraProps: PropMap): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
   const bg = paraProps['fo:background-color'];
   if (bg && bg !== 'transparent') {
     const c = normalizeColor(bg);
@@ -2461,12 +2461,18 @@ export function paraBoxAttrs(paraProps: PropMap): Record<string, string> {
     ['borderBottom', 'fo:border-bottom'],
     ['borderLeft', 'fo:border-left'],
   ];
+  let pad = 0;
   for (const [attr, key] of sides) {
     const raw = paraProps[key] ?? all;
     if (raw == null) continue;
     const v = borderAttrFromOdf(raw, false);
-    if (v && v !== 'none') out[attr] = v;
+    if (v && v !== 'none') {
+      out[attr] = v;
+      // The gap to the rule; the widest ruled side's is the paragraph's, as on styles.
+      pad = Math.max(pad, lengthToPt(paraProps[key.replace('border', 'padding')] ?? paraProps['fo:padding']) ?? 0);
+    }
   }
+  if (pad) out.borderPadding = snapPt(pad);
   return out;
 }
 
