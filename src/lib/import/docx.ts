@@ -2160,7 +2160,10 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     if (!props.font) {
       props.font = ctx.styles.themeFont(props.fontTheme ?? (runDefaults.boldByDefault ? 'major' : 'minor'));
     }
-    const marks = marksFor(props, runDefaults, !!linkHref);
+    // Only our exporter's blue is an editor link, drawn underlined by CSS; any other link
+    // is plain and keeps its own underline and colour as marks.
+    const ours = !!linkHref && hexColor(props.color)?.toUpperCase() === LINK_BLUE;
+    const marks = marksFor(props, runDefaults, ours);
     if (charName) {
       ctx.usedCharStyles.add(charId!);
       marks.push({ type: 'charStyle', attrs: { name: charName } });
@@ -2169,7 +2172,6 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
       // Word never paints a hyperlink for being one: the blue is its Hyperlink character
       // style, which arrives as an ordinary run mark, so the editor must add nothing of
       // its own. Only our exporter's blue is an editor link — it is stripped above.
-      const ours = hexColor(props.color)?.toUpperCase() === LINK_BLUE;
       marks.push({ type: 'link', attrs: { href: linkHref, ...(ours ? {} : { plain: true }) } });
     }
     const change = fc(rPr, 'rPrChange');
