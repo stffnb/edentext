@@ -78,14 +78,16 @@ it('keeps a header’s full-page background as a frame beside the inline logo', 
 });
 
 // A page number anchored in a text box at the right margin, next to the footer's own
-// line: the zone keeps the box, and the box its live page number.
+// line: the zone keeps the box, and the box its live page number. Its offset below the
+// bottom margin's strip counts from the footer's top, which is its paragraph's.
 it('keeps a footer text box with a live page number in it', () => {
   const res = importDocx(docxOf(ZONE_SECT('<w:footerReference w:type="default" r:id="rId1"/>'), { files: {
     'word/_rels/document.xml.rels': rels(['rId1', 'footer', 'footer1.xml']),
     'word/footer1.xml': `<?xml version="1.0"?><w:ftr ${NS}><w:p>
       <w:pPr><w:tabs><w:tab w:val="center" w:pos="4513"/><w:tab w:val="left" w:pos="5687"/></w:tabs></w:pPr>
       <w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><wp:anchor>
-        <wp:positionH relativeFrom="margin"><wp:posOffset>4968240</wp:posOffset></wp:positionH><wp:extent cx="788670" cy="395605"/>
+        <wp:positionH relativeFrom="margin"><wp:posOffset>4968240</wp:posOffset></wp:positionH>
+        <wp:positionV relativeFrom="bottomMargin"><wp:posOffset>92710</wp:posOffset></wp:positionV><wp:extent cx="788670" cy="395605"/>
         <a:graphic><a:graphicData><wps:wsp><wps:txbx><w:txbxContent><w:p><w:pPr><w:jc w:val="right"/></w:pPr>
           <w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE  \\* Arabic  \\* MERGEFORMAT </w:instrText></w:r>
           <w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>15</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>
@@ -98,6 +100,7 @@ it('keeps a footer text box with a live page number in it', () => {
   expect(inline.map((n: N) => n.type === 'text' ? n.text : `<${n.type}>`).join('')).toBe('<textBox>Annual report');
   expect(box.content[0].content).toEqual([{ type: 'pageNumber' }]);
   expect(box.content[0].attrs.textAlign).toBe('right');
+  expect(box.attrs.wrapOffsetY).toBe(0.26);
   expect([...res.warnings]).not.toContain('Text boxes in headers or footers were flattened to text');
 });
 

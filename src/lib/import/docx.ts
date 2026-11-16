@@ -143,6 +143,8 @@ type Ctx = {
   notes: { id: string; kind: NoteKind; label: string | null; text: string; content: Node[]; styleName: string | null }[];
   // Converting a header/footer part: page fields, no notes, comments or revisions.
   zone?: boolean;
+  // The part is a footer, whose top is where the strip below the body starts.
+  footer?: boolean;
   // The body's open index field. Word may open one in the paragraph that ends a section
   // and fill it in the next, so it outlives the per-section walk.
   bodyField?: BodyField;
@@ -3004,10 +3006,12 @@ function frameNode(src: string, box: { w: number; h: number }, label: string, an
 // How far below its anchor paragraph the frame sits, or below the top of its page (the
 // top margin's strip starts there too) or of the page's body text (`margin`). The strip
 // below the body is left at the anchor: LibreOffice starts it where the body ends, which
-// a footer can move — nothing the editor places a frame against.
+// a footer can move — nothing the editor places a frame against. In a footer that is the
+// footer's own top, so the offset counts from its paragraph (probed).
 function anchorOffsetY(anchor: Element, ctx: Ctx): { cm: number | null; fromPage: boolean; fromBody: boolean } {
   const posV = anchor.getElementsByTagNameNS(WP, 'positionV')[0];
-  const from = posV?.getAttribute('relativeFrom');
+  const rel = posV?.getAttribute('relativeFrom');
+  const from = rel === 'bottomMargin' && ctx.footer ? 'paragraph' : rel;
   const fromBody = from === 'margin';
   // A page-relative offset counts from the top of the page the anchor lands on, which
   // is where a cover page's own blocks are placed; the node view resolves the page.
@@ -4540,7 +4544,7 @@ function convertHfPart(relId: string | null, ctx: Ctx, sect: Element | null): Hf
   const root = doc.getElementsByTagNameNS(W, 'hdr')[0] ?? doc.getElementsByTagNameNS(W, 'ftr')[0];
   if (!root) return null;
   const zoneCtx: Ctx = {
-    ...ctx, zone: true, rels: parseRels(ctx.files[path.replace(/^word\/(.*)$/, 'word/_rels/$1.rels')]),
+    ...ctx, zone: true, footer: root.localName === 'ftr', rels: parseRels(ctx.files[path.replace(/^word\/(.*)$/, 'word/_rels/$1.rels')]),
     openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentDefs: new Map(), moveNames: moveNames(root),
     listCounters: new Map(), cellSpacing: {},
     contentWidthCm: sectionContentWidthCm(sect), leftMarginCm: twipToCm(intAttr(fc(sect, 'pgMar'), W, 'left') ?? 1440), rightMarginCm: twipToCm(intAttr(fc(sect, 'pgMar'), W, 'right') ?? 1440),
