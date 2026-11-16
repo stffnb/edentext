@@ -1775,6 +1775,12 @@ const FONT_TWINS: Record<string, string[]> = {
   'liberation sans': ['arial'],
 };
 
+// The family a style sets replaces the one the block rendered before (a run naming that
+// one again leaves the style's), with its metric twin.
+function ownFont(set: Set<string>, family: string | null | undefined): Set<string> {
+  return family ? withFont(new Set(), family) : set;
+}
+
 // The set plus the family and its metric twin, lower-cased as the sets compare.
 function withFont(set: Set<string>, family: string | null | undefined): Set<string> {
   const out = new Set(set);
@@ -1840,7 +1846,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
   if (!named) return fallback;
   const para = resolver.paraProps(named);
   const text = resolver.paraTextProps(named);
-  const fonts = withFont(fallback.fonts, resolver.fontFamilyOf(text));
+  const fonts = ownFont(fallback.fonts, resolver.fontFamilyOf(text));
   const asianFonts = withFont(fallback.asianFonts, resolver.asianFontOf(text));
   const weight = text['fo:font-weight'];
   const fontStyle = text['fo:font-style'];
@@ -2133,7 +2139,7 @@ function listStyleFromOdf(name: string, el: Element, builtin?: boolean, resolver
 // The block's yardstick plus what the run's character style provides.
 function charDefaults(ctx: Ctx, base: BlockDefaults, odfName: string): BlockDefaults {
   const props = ctx.resolver.spanTextProps(odfName);
-  const fonts = withFont(base.fonts, ctx.resolver.fontFamilyOf(props));
+  const fonts = ownFont(base.fonts, ctx.resolver.fontFamilyOf(props));
   const asianFonts = withFont(base.asianFonts, ctx.resolver.asianFontOf(props));
   const weight = props['fo:font-weight'];
   const fontStyle = props['fo:font-style'];

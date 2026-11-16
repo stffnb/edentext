@@ -42,16 +42,21 @@ describe.each([
 describe('a run opting out of its style', () => {
   const styles = '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>'
     + '<w:style w:type="paragraph" w:styleId="Lilac"><w:name w:val="Lilac"/><w:basedOn w:val="Normal"/>'
-    + '<w:rPr><w:i/><w:color w:val="592C82"/></w:rPr></w:style>'
-    + '<w:style w:type="character" w:styleId="Plain"><w:name w:val="Plain"/><w:rPr><w:color w:val="auto"/></w:rPr></w:style>';
+    + '<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:i/><w:color w:val="592C82"/></w:rPr></w:style>'
+    + '<w:style w:type="character" w:styleId="Plain"><w:name w:val="Plain"/><w:rPr><w:color w:val="auto"/></w:rPr></w:style>'
+    + '<w:style w:type="character" w:styleId="Code"><w:name w:val="Code"/><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/></w:rPr></w:style>';
+  const font = (f: string) => `<w:rFonts w:ascii="${f}" w:hAnsi="${f}"/>`;
   const run = (rPr: string, text: string) => `<w:r><w:rPr>${rPr}</w:rPr><w:t>${text}</w:t></w:r>`;
   const src = importDocx(docxOf(`<w:p><w:pPr><w:pStyle w:val="Lilac"/></w:pPr>${run('<w:color w:val="auto"/><w:i w:val="0"/>', 'a')}`
-    + `${run('', 'b')}${run('<w:rStyle w:val="Plain"/>', 'c')}</w:p>`, { styles }));
+    + `${run('', 'b')}${run('<w:rStyle w:val="Plain"/>', 'c')}`
+    + `${run(`<w:rStyle w:val="Code"/>${font('Arial')}`, 'd')}${run(font('Times New Roman'), 'e')}</w:p>`, { styles }));
   const looks = (doc: any) => doc.content[0].content.map((c: any) => {
     const ts = c.marks?.find((m: any) => m.type === 'textStyle')?.attrs ?? {};
-    return [ts.color ?? null, ts.fontStyle ?? null, c.marks?.find((m: any) => m.type === 'charStyle')?.attrs.name ?? null];
+    return [ts.color ?? null, ts.fontStyle ?? null, c.marks?.find((m: any) => m.type === 'charStyle')?.attrs.name ?? null, ts.fontFamily ?? null];
   });
-  const want = [['auto', 'normal', null], [null, null, null], [null, null, 'Plain']];
+  // d leaves its character style's font for the paragraph's, e the paragraph's for the default.
+  const want = [['auto', 'normal', null, null], [null, null, null, null], [null, null, 'Plain', null],
+    [null, null, 'Code', 'Arial'], [null, null, null, 'Times New Roman']];
 
   it('reads it, and the character style keeps the automatic colour', () => {
     expect(looks(src.content)).toEqual(want);

@@ -1256,7 +1256,8 @@ function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDef
     const f = font?.toLowerCase();
     return f ? new Set([...set, f, ...(FONT_TWINS[f] ?? [])]) : set;
   };
-  const fonts = withFont(new Set(headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS), baseRun.font);
+  // The style's family replaces the default: a run naming the default again leaves it.
+  const fonts = withFont(baseRun.font ? new Set() : new Set(headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS), baseRun.font);
   const asianFonts = withFont(DEFAULT_FONTS, baseRun.fontEastAsia);
   return {
     fontSizePt: baseRun.sizeHalfPt != null ? baseRun.sizeHalfPt / 2
