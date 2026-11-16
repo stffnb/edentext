@@ -96,6 +96,9 @@ function handleMouseDown(view: EditorView, event: MouseEvent): boolean {
   // to document px without walking the ancestor chain.
   const zoom = tr.getBoundingClientRect().height / startHeight || 1;
 
+  // The attr is the minimum without the cells' vertical margins (tableRow.ts).
+  const cell = tr.firstElementChild ? getComputedStyle(tr.firstElementChild) : null;
+  const padPx = cell ? (parseFloat(cell.paddingTop) || 0) + (parseFloat(cell.paddingBottom) || 0) : 0;
   const startY = event.clientY;
   let lastHeight = startHeight;
   let pendingHeight = startHeight;
@@ -137,7 +140,7 @@ function handleMouseDown(view: EditorView, event: MouseEvent): boolean {
     if (!st?.dragging) return;
     const node = view.state.doc.nodeAt(activeRow);
     if (moved && node && node.type.name === 'tableRow') {
-      const tx = view.state.tr.setNodeMarkup(activeRow, undefined, { ...node.attrs, rowHeight: lastHeight });
+      const tx = view.state.tr.setNodeMarkup(activeRow, undefined, { ...node.attrs, rowHeight: Math.max(MIN_ROW_PX, Math.round(lastHeight - padPx)) });
       tx.setMeta(tableRowResizeKey, { setDragging: false, setPreview: null } as RowResizeAction);
       view.dispatch(tx);
     } else {
