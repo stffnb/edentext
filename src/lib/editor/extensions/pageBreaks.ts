@@ -1857,6 +1857,8 @@ export const PageBreaks = Extension.create({
             let sectionFirstPage = 1;
             // First page per section, which is what a numbering restart counts from.
             const sectionFirstPages: number[] = [1];
+            // The blank pages a section's start side inserts: no header or footer there.
+            const blankPages: number[] = [];
             // The grid this placement lays out against, grown as each section's first
             // page becomes known, with its reaches. Built here, not read back, so a pass
             // never measures its own last answer.
@@ -1980,6 +1982,7 @@ export const PageBreaks = Extension.create({
                 const side = i > 0 ? sideAt(sectionIndex) : null;
                 if (side) {
                   if ((sectionFirstPage % 2 === 0 ? 'even' : 'odd') !== side) {
+                    blankPages.push(sectionFirstPage);
                     sectionFirstPage++;
                     sectionFirstPages[sectionIndex] = sectionFirstPage;
                   }
@@ -2391,7 +2394,7 @@ export const PageBreaks = Extension.create({
               }
             }
             return {
-              anchorPages, maxEffectiveBottom, sectionStartPages, placements, collapsedTrailing,
+              anchorPages, maxEffectiveBottom, sectionStartPages, blankPages, placements, collapsedTrailing,
               pageTopBlocks, sectionInsets, sectionTops, sideShifts, tableBands, leavesDebug, placementsDebug, grid,
             };
           }
@@ -2436,7 +2439,7 @@ export const PageBreaks = Extension.create({
           }
           noteReserves.set(editorView, reserved);
           const {
-            maxEffectiveBottom, sectionStartPages, placements, collapsedTrailing,
+            maxEffectiveBottom, sectionStartPages, blankPages, placements, collapsedTrailing,
             pageTopBlocks, sectionInsets, sectionTops, sideShifts, tableBands, leavesDebug, placementsDebug,
           } = placed;
 
@@ -2601,13 +2604,13 @@ export const PageBreaks = Extension.create({
           // Announced only where the layout differs from the last one: every reader
           // re-reads the whole document from it and writes back what it found, so a pass
           // that lands what the last one did would set the round going again.
-          const announced = `${numPages}:${targetHeight}:${sectionStartPages.join()}:${placementsKey}:`
+          const announced = `${numPages}:${targetHeight}:${sectionStartPages.join()}:${blankPages.join()}:${placementsKey}:`
             + tableBreakBands.map((b) => `${b.key}@${Math.round(b.closeY)}|${Math.round(b.left)}|${Math.round(b.width)}`).join();
           if (announced !== lastAnnounced) {
             lastAnnounced = announced;
             dom.dispatchEvent(new CustomEvent('pm-pagecount', {
               bubbles: true,
-              detail: { numPages, docHeight: targetHeight, tableBreakBands, sectionStartPages },
+              detail: { numPages, docHeight: targetHeight, tableBreakBands, sectionStartPages, blankPages },
             }));
           }
 

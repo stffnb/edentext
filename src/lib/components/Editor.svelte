@@ -119,6 +119,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // Page each section after the first starts on (pageBreaks reports it); the layer
   // turns it into a per-page set.
   let sectionStartPages = $state<number[]>([]);
+  // The blank pages a section's start side inserts (pageBreaks.ts).
+  let blankPages = $state<number[]>([]);
   // Where each heading starts, for the running head's chapter field. Only collected
   // when a zone actually shows one — it costs a layout read per heading.
   let chapterStarts = $state<ChapterStart[]>([]);
@@ -369,9 +371,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     ...extraHfSections.map((s) => s.pageNumberStart ?? 'x')].join(','));
 
   // The side each section must open on ('x' = wherever it falls): a blank page goes
-  // before one whose flow would open it on the other.
+  // before one whose flow would open it on the other. A restart without a side opens on
+  // the sheet whose side its number has, page 1 setting the parity (LibreOffice, probed).
   let sectionStartsOn = $derived(['x',
-    ...extraHfSections.map((s) => (s.startsOn === 'odd' ? 'o' : s.startsOn === 'even' ? 'e' : 'x'))].join(','));
+    ...extraHfSections.map((s) => (s.startsOn === 'odd' ? 'o' : s.startsOn === 'even' ? 'e'
+      : s.pageNumberStart == null ? 'x' : (s.pageNumberStart - pageNumbering.start) % 2 === 0 ? 'o' : 'e'))].join(','));
 
   // The number a page shows, and from it its side: a left page is an even-numbered one.
   let printedNumberAt = $derived.by(() => {
@@ -1192,11 +1196,13 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   }
 
   function onPageCount(e: Event) {
-    const detail = (e as CustomEvent<{ numPages: number; docHeight?: number; tableBreakBands?: TableBreakBand[]; sectionStartPages?: number[] }>).detail;
+    const detail = (e as CustomEvent<{ numPages: number; docHeight?: number; tableBreakBands?: TableBreakBand[]; sectionStartPages?: number[]; blankPages?: number[] }>).detail;
     numPages = detail.numPages;
     if (typeof detail.docHeight === 'number') docHeightDoc = detail.docHeight;
     tableBandsDoc = detail.tableBreakBands ?? [];
     sectionStartPages = detail.sectionStartPages ?? [];
+    const blank = detail.blankPages ?? [];
+    if (blank.join() !== blankPages.join()) blankPages = blank;
     refreshChapterStarts();
     // The document height changed → resize the scaled scroll footprint.
     recomputeScaledSize();
@@ -1952,6 +1958,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         {hfDistances}
         bind:extraHfSections
         {sectionStartPages}
+        {blankPages}
         {chapterStarts}
         {pageNumbering}
         bind:zoneHeights={hfZoneHeights}

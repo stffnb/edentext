@@ -44,6 +44,7 @@
     hfTick = $bindable(),
     extraHfSections = $bindable([]),
     sectionStartPages = [],
+    blankPages = [],
     chapterStarts = [],
     pageNumbering = DEFAULT_PAGE_NUMBERING,
     zoneHeights = $bindable([]),
@@ -77,6 +78,8 @@
     hfTick: number;
     extraHfSections?: HfSet[];
     sectionStartPages?: number[];
+    // Pages a section's start side leaves blank: LibreOffice draws no zone there.
+    blankPages?: number[];
     chapterStarts?: ChapterStart[];
     /** Rendered height (px) of each set's six zones, in HF_ZONE_KEYS order — read back
      *  by Editor.svelte, whose margins have to clear the band the zone really needs. */
@@ -139,14 +142,15 @@
   // window shifts a step at a time, so a scroll does not rebuild it on every tick.
   const WINDOW_STEP = 25;
   const WINDOW_PAGES = 75;
-  let pages = $derived.by(() => {
+  function allPages(): number[] {
     const total = Math.max(1, numPages);
     if (onlyPage && !allPagesDrawn.on) return onlyPage <= total ? [onlyPage] : [];
     if (allPagesDrawn.on || total <= WINDOW_PAGES) return Array.from({ length: total }, (_, i) => i + 1);
     const step = Math.floor((currentPage - 1) / WINDOW_STEP) * WINDOW_STEP - WINDOW_STEP + 1;
     const start = Math.max(1, Math.min(total - WINDOW_PAGES + 1, step));
     return Array.from({ length: WINDOW_PAGES }, (_, i) => start + i);
-  });
+  }
+  let pages = $derived(allPages().filter((p) => !blankPages.includes(p)));
 
   function zoneBox(zone: HfZone, page: number) {
     // Mirrored margins: an even page is the left-hand one, so the pair is swapped.
