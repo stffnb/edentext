@@ -2,6 +2,7 @@ import { TableRow } from '@tiptap/extension-table';
 import { mergeAttributes } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { parseCellPadding } from './tableCellPadding';
+import { DEFAULT_BORDER_WIDTH_PT, parseBorderAttr } from './tableCellBorders';
 
 // TableRow with a `rowHeight` attr (CSS px @96dpi, two decimals), rendered as a <tr>
 // min-height and exported as style:min-row-height (export/odt.ts). null auto-sizes
@@ -26,10 +27,22 @@ function rowPadStyle(row: PMNode): string | null {
   return `${side(0, 't')};${side(2, 'b')}`;
 }
 
+// A minimum row also adds its top border, an exact one none (probed: 0.5pt adds 0.18mm, 3pt
+// 1.06mm a row) — LibreOffice's MinRowHeightInclBorder, which every Word import sets.
+function rowBorderStyle(row: PMNode): string | null {
+  if (!row.attrs.rowHeight || row.attrs.fixedHeight) return null;
+  let pt = 0;
+  row.forEach((cell) => {
+    const b = parseBorderAttr(cell.attrs.borderTop as string | null);
+    pt = Math.max(pt, b === 'none' ? 0 : b ? b.widthPt : DEFAULT_BORDER_WIDTH_PT);
+  });
+  return pt ? `--row-border-t:${pt}pt` : null;
+}
+
 export const ResizableTableRow = TableRow.extend({
   renderHTML({ node, HTMLAttributes }) {
-    const pad = rowPadStyle(node);
-    return ['tr', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, pad ? { style: pad } : {}), 0];
+    const style = [rowPadStyle(node), rowBorderStyle(node)].filter(Boolean).join(';');
+    return ['tr', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, style ? { style } : {}), 0];
   },
 
   addAttributes() {
@@ -49,7 +62,7 @@ export const ResizableTableRow = TableRow.extend({
           const h = attributes.rowHeight as number | null;
           if (!h) return {};
           const top = 'var(--row-pad-t, var(--cell-pad-t, 0px))';
-          const pad = attributes.fixedHeight ? '' : ` + ${top}`;
+          const pad = attributes.fixedHeight ? '' : ` + ${top} + var(--row-border-t, 0px)`;
           // --row-text is the content box's height: the line length of a turned cell's text.
           const text = attributes.fixedHeight ? `calc(${h}px - ${top})` : `${h}px`;
           return { style: `height: calc(${h}px${pad} + var(--row-pad-b, var(--cell-pad-b, 0px))); --row-text: ${text}` };

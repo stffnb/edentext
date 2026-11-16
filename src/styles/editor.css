@@ -1210,6 +1210,7 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   --cell-pad-l: initial;
   --row-pad-t: initial;
   --row-pad-b: initial;
+  --row-border-t: initial;
   --row-text: initial;
 }
 

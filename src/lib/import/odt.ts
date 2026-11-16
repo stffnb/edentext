@@ -53,7 +53,8 @@ import { FOLD_MARK_NAME } from '../storage/foldMarks';
 import type { LineNumbering } from '../storage/lineNumbering';
 import type { LineGrid } from '../storage/lineGrid';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
-import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
+import { cellPaddingAttr, DEFAULT_CELL_PADDING, parseCellPadding, type CellPadding } from '../editor/extensions/tableCellPadding';
+import { DEFAULT_BORDER_WIDTH_PT, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { fromWriterFormula } from '../utils/tableFormula';
 import { cellFormatFromSpec, type CellFormat, type FormatKind } from '../utils/cellFormat';
 import { TEXTBOX_PADDING_CM, boxTextWidthCm } from '../editor/extensions/textBox';
@@ -189,6 +190,9 @@ type Ctx = {
   pageRtl: boolean;
   // LibreOffice's Word 2013 layout (TabOverSpacing without TabOverMargin, settings.xml).
   breakDropsSpace: boolean;
+  // settings.xml MinRowHeightInclBorder: a row height leaves the margins and a minimum
+  // row's top border out, the editor's model; without it the height includes them.
+  rowHeightInclBorder: boolean;
   // Master pages the body switches to, in order — one section each past the first.
   masterPages: string[];
   leadingMaster: string; // the master the document opens on: naming it first switches nothing
@@ -1121,7 +1125,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   const first = resolver.hasMasterPage(masters.leading) ? masters.leading : null;
   const geo = resolver.pageGeometry(first) ?? resolver.pageGeometry();
   const contentWidthCm = contentWidthOf(geo);
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), listEnds: new Map(), warnings, seqRefNames: sequenceRefNames(body), files, imageCache: new Map(), convertedImages, contentWidthCm, docContentWidthCm: contentWidthCm, leftMarginCm: geo?.margins.left ?? 0, ...heightsOf(geo), pageRtl: geo?.rtl ?? false, breakDropsSpace: odfBreakDropsSpace(files), masterPages: [], leadingMaster: masters.leading ?? 'Standard', masterPageStarts: [], bodyBlocks: 0, openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentReplies: odfCommentReplies(body), revisions: odfRevisions(body), openInsertions: new Map(), openFormats: new Map(), notes: [], foldMarks: false };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), listEnds: new Map(), warnings, seqRefNames: sequenceRefNames(body), files, imageCache: new Map(), convertedImages, contentWidthCm, docContentWidthCm: contentWidthCm, leftMarginCm: geo?.margins.left ?? 0, ...heightsOf(geo), pageRtl: geo?.rtl ?? false, breakDropsSpace: odfBreakDropsSpace(files), rowHeightInclBorder: /MinRowHeightInclBorder"[^>]*>true</.test(files['settings.xml'] ? strFromU8(files['settings.xml']) : ''), masterPages: [], leadingMaster: masters.leading ?? 'Standard', masterPageStarts: [], bodyBlocks: 0, openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentReplies: odfCommentReplies(body), revisions: odfRevisions(body), openInsertions: new Map(), openFormats: new Map(), notes: [], foldMarks: false };
   // Whole-document columns declared on the page layout instead of a
   // text:section: the body's wrappable runs are wrapped the way a section's would be.
   const pageCols = resolver.pageColumns();
@@ -3812,7 +3816,22 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
 
     const row: Node = { type: 'tableRow', content: cells };
     const height = ctx.resolver.rowHeightCm(rowEl.getAttributeNS(NS.table, 'style-name'));
-    if (height && height.cm > 0) row.attrs = { rowHeight: Math.round(height.cm * PX_PER_CM * 100) / 100, ...(height.exact ? { fixedHeight: true } : {}) };
+    if (height && height.cm > 0) {
+      // A native row's height holds what the editor draws around it (tableRow.ts): an exact
+      // row its bottom margin, a minimum row both margins and its top border (probed).
+      let cm = height.cm;
+      if (!ctx.rowHeightInclBorder) {
+        const pads = cells.map((c) => parseCellPadding(c.attrs?.cellPadding) ?? cellPad ?? DEFAULT_CELL_PADDING);
+        const bottom = Math.max(...pads.map((p) => p[2]));
+        const top = Math.max(...pads.map((p) => p[0]));
+        const border = Math.max(...cells.map((c) => {
+          const b = parseBorderAttr(c.attrs?.borderTop as string | null);
+          return b === 'none' ? 0 : b ? b.widthPt : DEFAULT_BORDER_WIDTH_PT;
+        })) * 2.54 / 72;
+        cm = Math.max(0.01, cm - bottom - (height.exact ? 0 : top + border));
+      }
+      row.attrs = { rowHeight: Math.round(cm * PX_PER_CM * 100) / 100, ...(height.exact ? { fixedHeight: true } : {}) };
+    }
     if (ctx.resolver.rowKeepTogether(rowEl.getAttributeNS(NS.table, 'style-name'))) row.attrs = { ...row.attrs, cantSplit: true };
     const revMark = ctx.resolver.recordedLine('table-row', rowEl.getAttributeNS(NS.table, 'style-name')) ? lineChange(cells) : undefined;
     if (revMark) row.attrs = { ...row.attrs, revMark };

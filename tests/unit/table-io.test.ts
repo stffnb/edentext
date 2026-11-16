@@ -117,4 +117,16 @@ describe("a row's own properties", () => {
   it('survives an ODT round trip', async () => {
     expect(flags(importOdt(await buildOdt(imported.content as any, DEFAULT_MARGINS, 'portrait')).content)).toEqual(expected);
   });
+  // Without MinRowHeightInclBorder a native ODT's height includes the margins: an exact
+  // row's bottom one, a minimum row's both (and its top border, none here).
+  it('reads a native ODT height as including the margins', async () => {
+    const doc = structuredClone(imported.content as any);
+    doc.content[0].attrs = { ...doc.content[0].attrs, cellPadding: [0.1, 0.19, 0.2, 0.19] };
+    const files = unzipSync(await buildOdt(doc, DEFAULT_MARGINS, 'portrait'));
+    expect(flags(importOdt(zipSync(files)).content)).toEqual(expected);
+    files['settings.xml'] = strToU8(strFromU8(files['settings.xml']).replace(/<config:config-item config:name="MinRowHeightInclBorder"[^]*?<\/config:config-item>/, ''));
+    const native = flags(importOdt(zipSync(files)).content);
+    expect(native[2][2]).toBeCloseTo(18.93 - 0.2 * 37.795, 1);
+    expect(native[3][2]).toBeCloseTo(18.93 - 0.3 * 37.795, 1);
+  });
 });
