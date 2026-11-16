@@ -8,26 +8,11 @@ handles, wrap modes, frame offsets — and their ODF/DOCX legs.
 
 ## A side float below its anchor
 
-A left or right float takes its `wrapOffsetY` as a top margin, and `shape-outside: inset(<gap>
-0 0 0) margin-box` keeps the lines beside that margin at full width, as Word and LibreOffice
-set them: only the picture excludes text. The offset is the frame's own even where it reaches
-over the next float on that side: CSS floats cannot overlap, where LibreOffice lets two frames
-do so, and `shiftToOffset` (below) sets the later one at its own x on its own line instead.
+A left or right float takes its `wrapOffsetY` as a top margin, and `shape-outside: inset(<gap> 0 0 0) margin-box` keeps the lines beside that margin at full width, as Word and LibreOffice set them: only the picture excludes text. The offset is the frame's own even where it reaches over the next float on that side (see below).
 
 ## Overlapping side floats
 
-CSS queues floats of one side behind each other: a later frame whose line an earlier one
-still covers — in its own paragraph or reaching down from an earlier block — sits beside it,
-or below it where it no longer fits, and its text is squeezed to a word a line. Both word
-processors let the frames overlap. `shiftToOffset` (`pageBreaks.ts`, on the frame's first
-layout and on every pagination pass) measures the line the frame would start on with a box
-of no width, finds the earlier float of its side and formatting context covering that line,
-and sets the margins so its outer edge lies against that float's while its box sits at its
-own x; with none, against the block's edge. The x counts from the column (a cell's or a text
-box's inside one), not from the anchor's indent: probed, LibreOffice places a `paragraph`
-frame in a list item from the column on either side. A picture in a list item beside one
-reaching down from the heading above landed 68mm left of its place and wrapped its text into
-10 lines for 6; within tolerance after.
+CSS queues floats of one side behind each other: a later frame whose line an earlier one still covers — in its own paragraph or reaching down from an earlier block — sits beside it, or below it where it no longer fits, and its text is squeezed to a word a line. Both word processors let the frames overlap. `shiftToOffset` (`pageBreaks.ts`, on the frame's first layout and on every pagination pass) measures the line the frame would start on with a box of no width, finds the earlier float of its side and formatting context covering that line, and sets the margins so its outer edge lies against that float's while its box sits at its own x; with none, against the block's edge. The x counts from the column (a cell's or a text box's inside one), not from the anchor's indent: probed, LibreOffice places a `paragraph` frame in a list item from the column on either side. A picture in a list item beside one reaching down from the heading above landed 68mm left of its place and wrapped its text into 10 lines for 6; within tolerance after.
 
 ## A floating table
 
