@@ -133,9 +133,6 @@ footer together take at most 80% of the room between the edges they start from, 
 first, as LibreOffice does (probed: the body keeps ten 12pt lines on A4 under any zone height).
 `HeaderFooterLayer` publishes the fitted bands and cuts a zone past its band (`hf-clipped`).
 The open zone scrolls instead, so the caret stays in view.
-An ODF zone's area border and padding (`HfFrame`, per section and first page) are drawn on the
-zone's editor root, the gap to the body as its margin outside them, so the measured band counts
-all three; the area fills its band less the gap, as LibreOffice's does (probed).
 
 ## Review UI
 
