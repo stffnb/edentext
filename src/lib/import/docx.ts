@@ -3502,6 +3502,14 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
     if (h) imgAttrs.height = h;
     const mode = vmlColorMode(imagedata);
     if (mode) imgAttrs.colorMode = mode;
+    // croptop/…: a fraction of the picture, in 65536ths where it ends in `f`; a negative one pads.
+    const cut = (k: string) => {
+      const v = imagedata.getAttribute(`crop${k}`)?.trim() ?? '';
+      const n = parseFloat(v);
+      return Number.isFinite(n) ? Math.max(0, v.endsWith('f') ? n / 65536 : n) : 0;
+    };
+    const crop = cropOf({ l: cut('left'), t: cut('top'), r: cut('right'), b: cut('bottom') });
+    if (crop) imgAttrs.crop = crop;
     if (anchor) setAnchorAttrs(imgAttrs, anchor, ctx);
     return { type: 'image', attrs: imgAttrs };
   }

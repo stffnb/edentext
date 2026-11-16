@@ -1045,9 +1045,9 @@ describe('DOCX import of foreign text boxes / shapes', () => {
       return walk(res.content as N, type)[0]?.attrs;
     };
     const vml = (style: string, inner = '', data = '') => picture(`<w:pict><v:shape style="position:absolute;width:144pt;height:72pt;${style}">${inner}<v:imagedata r:id="rImg"${data}/></v:shape></w:pict>`);
-    const dml = (attrs: string, h: string, v: string, wrap: string, effect = '') => picture(`<w:drawing><wp:anchor ${attrs}>
+    const dml = (attrs: string, h: string, v: string, wrap: string, effect = '', fill = '') => picture(`<w:drawing><wp:anchor ${attrs}>
       <wp:positionH relativeFrom="${h.split(':')[0]}">${posOf(h)}</wp:positionH><wp:positionV relativeFrom="${v.split(':')[0]}">${posOf(v)}</wp:positionV>
-      <wp:extent cx="1828800" cy="914400"/>${wrap}<a:graphic><a:graphicData><pic:pic><pic:blipFill><a:blip r:embed="rImg">${effect}</a:blip></pic:blipFill></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing>`);
+      <wp:extent cx="1828800" cy="914400"/>${wrap}<a:graphic><a:graphicData><pic:pic><pic:blipFill><a:blip r:embed="rImg">${effect}</a:blip>${fill}</pic:blipFill></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing>`);
     const posOf = (p: string) => { const v = p.split(':')[1]; return /^-?\d+$/.test(v) ? `<wp:posOffset>${v}</wp:posOffset>` : `<wp:align>${v}</wp:align>`; };
     it.each([
       ['centred on the text area, behind the text, washed out',
@@ -1059,6 +1059,9 @@ describe('DOCX import of foreign text boxes / shapes', () => {
       ['aligned right with text wrapping beside it',
         () => vml('mso-position-horizontal:right;mso-position-horizontal-relative:margin', '<w10:wrap type="square"/>'),
         () => dml('behindDoc="0"', 'margin:right', 'paragraph:0', '<wp:wrapSquare wrapText="bothSides"/>')],
+      ['cropped, in 65536ths or as a fraction',
+        () => vml('margin-left:36pt;margin-top:72pt;mso-position-horizontal-relative:page;mso-position-vertical-relative:page', '', ' croptop="16384f" cropleft="0.1"'),
+        () => dml('behindDoc="0"', 'page:457200', 'page:914400', '<wp:wrapNone/>', '', '<a:srcRect l="10000" t="25000"/>')],
     ])('%s', (_label, fromVml, fromDml) => {
       const a = fromVml(), b = fromDml();
       expect(a?.wrap).toBeTruthy();
