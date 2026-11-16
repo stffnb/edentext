@@ -225,6 +225,17 @@ export function applyRunThrough(el: HTMLElement, offsetCm: unknown, offsetYCm: u
   }
 }
 
+// A header's or footer's text does not wrap around a frame anchored in it (probed in
+// LibreOffice: full-width and narrow, paragraph- and margin-relative): it runs through at its
+// anchor, and its gap above is kept for the footer's band (HeaderFooterLayer).
+export function runInZone(view: EditorView, el: HTMLElement, offsetCm: unknown, offsetYCm: unknown, dist: unknown, rank: unknown): void {
+  applyRunThrough(el, offsetCm, offsetYCm, true, false, false, rank);
+  // How far its gap reaches above its paragraph's top.
+  el.dataset.zoneGap = String(gapPx(wrapGap(dist).top) - (typeof offsetYCm === 'number' ? gapPx(offsetYCm) : 0));
+  if (el.isConnected) placeInColumn(view, el);
+  else placeFrameSoon(view, el);
+}
+
 // A free frame's layer: in front of the text under the header layer (22), behind it over
 // the sheets (-200), where every picture paints over every shape whatever their ranks, as
 // LibreOffice paints them (frames.md). Past the caps the document order decides.
@@ -305,6 +316,7 @@ export function restackFrame(state: EditorState, dispatch: ((tr: Transaction) =>
 
 // A frame leaving run-through, or its page, takes no page place along.
 export function clearPagePlace(el: HTMLElement): void {
+  delete el.dataset.zoneGap;
   delete el.dataset.fromBody;
   delete el.dataset.pageX;
   delete el.dataset.pageY;
@@ -825,7 +837,11 @@ class ImageView {
   private offX(): unknown { return this.dragBy ? this.dragX + this.dragBy.x : this.node.attrs.wrapOffset; }
   private offY(): unknown { const v = this.node.attrs.wrapOffsetY; return this.dragBy ? (typeof v === 'number' ? v : 0) + this.dragBy.y : v; }
   // A frame out of the flow is placed by those offsets alone, so it is dragged by them.
-  private isFree(): boolean { return this.attrWrap() === 'through' || typeof this.node.attrs.anchorPage === 'number' || this.pastZone(); }
+  private isFree(): boolean { return this.attrWrap() === 'through' || typeof this.node.attrs.anchorPage === 'number' || this.inZone(); }
+  // Any frame of a zone's own that is not in its line is out of the zone's text flow.
+  private inZone(): boolean {
+    return this.attrWrap() !== 'inline' && !!(this.view.dom as HTMLElement).closest('.hf-zone');
+  }
   // A zone's frame set against the page or its body text is out of the zone's flow: the
   // layer places it there and moves the body clear of it (HeaderFooterLayer).
   private pastZone(): boolean {
@@ -891,6 +907,10 @@ class ImageView {
     delete d.dataset.anchorPage;
     if (wrap !== 'through' && this.pastZone()) {
       applyRunThrough(d, this.offX(), this.offY(), true, a.wrapFromPage === true, a.wrapFromBody === true, a.zIndex);
+      return;
+    }
+    if (wrap !== 'through' && this.inZone()) {
+      runInZone(this.view, d, this.offX(), this.offY(), a.wrapDist, a.zIndex);
       return;
     }
     if (wrap === 'through') {

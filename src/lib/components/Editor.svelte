@@ -191,7 +191,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   let hfZoneHeights = $state<number[][]>([]);
   const zoneHeightPx = (section: number, key: HfZoneKey): number =>
     hfZoneHeights[section]?.[HF_ZONE_KEYS.indexOf(key)] ?? 0;
-  // How far a header's frames set against the body push its text down (HeaderFooterLayer).
+  // How far a header's frames set against the body push its text down, and how far a
+  // footer's frames reach above its text (HeaderFooterLayer).
   let hfZoneIntrusions = $state<number[][]>([]);
   const pushed = (top: number, section: number, key: HfZoneKey): number =>
     top + (hfZoneIntrusions[section]?.[HF_ZONE_KEYS.indexOf(key)] ?? 0);
@@ -253,15 +254,15 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // variant folded in (max), since one --pb-content-*-rest covers all of them.
   let evenTopReach = $derived(differentOddEven
     ? pushed(Math.max(mTopPx, hfReachPx(headerEvenDoc ?? null, headerDistPx, false, zoneHeightPx(0, 'headerEven'))), 0, 'headerEven') : 0);
-  let evenBottomReach = $derived(differentOddEven ? hfReachPx(footerEvenDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footerEven')) : 0);
+  let evenBottomReach = $derived(differentOddEven ? pushed(hfReachPx(footerEvenDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footerEven')), 0, 'footerEven') : 0);
   let effTopRest = $derived(Math.max(pushed(Math.max(mTopPx, hfReachPx(headerDoc ?? null, headerDistPx, false, zoneHeightPx(0, 'header'))), 0, 'header'), evenTopReach));
   let effTopFirst = $derived(differentFirstPage
     ? pushed(Math.max(mTopPx, hfReachPx(headerFirstDoc ?? null, headerDistPx, false, zoneHeightPx(0, 'headerFirst'))), 0, 'headerFirst')
     : pushed(Math.max(mTopPx, hfReachPx(headerDoc ?? null, headerDistPx, false, zoneHeightPx(0, 'header'))), 0, 'header'));
-  let effBottomRest = $derived(Math.max(mBottomPx, hfReachPx(footerDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footer')), evenBottomReach));
+  let effBottomRest = $derived(Math.max(mBottomPx, pushed(hfReachPx(footerDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footer')), 0, 'footer'), evenBottomReach));
   let effBottomFirst = $derived(Math.max(mBottomPx, differentFirstPage
-    ? hfReachPx(footerFirstDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footerFirst'))
-    : hfReachPx(footerDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footer'))));
+    ? pushed(hfReachPx(footerFirstDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footerFirst')), 0, 'footerFirst')
+    : pushed(hfReachPx(footerDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footer')), 0, 'footer')));
   // Per-section reaches for pageBreaks, [topFirst, topRest, bottomFirst, bottomRest] in
   // px. Section 1 repeats the four vars below; a section with page margins of its own
   // measures against those (`marginsFirst` = page 1).
@@ -277,8 +278,10 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       const firstD = s.distancesFirst ?? restD;
       const hDist = (d: HfDistances | null) => (d ? cmToPx(d.header) : headerDistPx);
       const fDist = (d: HfDistances | null) => (d ? cmToPx(d.footer) : footerDistPx);
-      const reach = (key: HfZoneKey, dist: number, footer = false) =>
-        hfReachPx(s[key] ?? null, dist, footer, zoneHeightPx(i + 1, key));
+      const reach = (key: HfZoneKey, dist: number, footer = false) => {
+        const px = hfReachPx(s[key] ?? null, dist, footer, zoneHeightPx(i + 1, key));
+        return footer && px ? pushed(px, i + 1, key) : px;
+      };
       const firstKey = s.differentFirstPage ? 'headerFirst' : 'header';
       return [
         pushed(Math.max(topOf(first), reach(firstKey, hDist(firstD))), i + 1, firstKey),
@@ -332,17 +335,21 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // its blocks inset by the difference ("leftFirst|rightFirst|leftRest|rightRest").
   // A section narrower than the sheet (.paper reserves the widest paper) splits the
   // difference between its sides, so its text sits on the centred page it belongs to.
+  // The left share is rounded as the page box is, and the right one takes the rest, so the
+  // text keeps its page's exact width (a rounded pair widened it 0.8px and moved breaks).
   let sectionInset = $derived.by(() => {
-    const half = (i: number) => Math.round((paperWidth - (sectionPaper[i]?.w ?? paperWidth)) / 2);
+    const spare = (i: number) => paperWidth - (sectionPaper[i]?.w ?? paperWidth);
+    const half = (i: number) => Math.round(spare(i) / 2);
+    const exact = (n: number) => Math.round(n * 1000) / 1000;
     return [
-      [half(0), half(0), half(0), half(0)],
+      [half(0), exact(spare(0) - half(0)), half(0), exact(spare(0) - half(0))],
       ...extraHfSections.map((s, i) => {
         const rest = s.margins ?? null;
         const first = s.marginsFirst ?? rest;
         const d = (m: PageMargins | null, side: 'left' | 'right') =>
-          m ? Math.round(cmToPx(m[side]) - cmToPx(pageMargins[side])) : 0;
-        const narrow = half(i + 1);
-        return [d(first, 'left') + narrow, d(first, 'right') + narrow, d(rest, 'left') + narrow, d(rest, 'right') + narrow];
+          m ? cmToPx(m[side]) - cmToPx(pageMargins[side]) : 0;
+        const left = half(i + 1), right = spare(i + 1) - left;
+        return [d(first, 'left') + left, d(first, 'right') + right, d(rest, 'left') + left, d(rest, 'right') + right].map(exact);
       }),
     ].map((g) => g.join('|')).join(',');
   });

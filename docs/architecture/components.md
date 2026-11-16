@@ -111,8 +111,8 @@ undo lands pending changes first (`flushPending`). A store set in the same task 
 outside the history. Document properties, the recording switch and embedded fonts stay out,
 as in both.
 
-A frame in a zone flows there when it wraps (side or band) and stays out of the zone's height
-when it runs through. One placed against the page is placed by CSS from the zone box:
+A frame anchored in a zone never moves its text (probed): it runs through (`runInZone`); a footer
+frame as wide as the column keeps its gap above clear of the body (`rise`: a 2.54mm gap, 2.5mm). One placed against the page is placed by CSS from the zone box:
 `--page-x`/`--page-y` from the node view against the zone's `--hf-page-y`, so the zone's editor
 and that paragraph take no position of their own. One placed against the body's top
 (`wrapFromBody`) is placed from `--hf-body-y`, where that page's body begins; a wrapping one

@@ -81,8 +81,9 @@
     /** Rendered height (px) of each set's six zones, in HF_ZONE_KEYS order — read back
      *  by Editor.svelte, whose margins have to clear the band the zone really needs. */
     zoneHeights?: number[][];
-    /** How far past the body's top each zone's frames set against the body keep its text
-     *  (px, same layout) — a letterhead block the body wraps below. */
+    /** How far past the body's top each header's frames set against the body keep its text
+     *  (px, same layout) — a letterhead block the body wraps below; for a footer, how far
+     *  its frames' gaps reach above its text. */
     zoneIntrusions?: number[][];
     /** False in a split view's second pane: it draws the zones, it does not edit them. */
     interactive?: boolean;
@@ -275,7 +276,7 @@
     const read = () => {
       const next = setSig.map((_, i) => HF_ZONE_KEYS.map((_, k) => boxes[i * n + k]?.offsetHeight ?? 0));
       if (String(next) !== String(untrack(() => renderedHeights))) renderedHeights = next;
-      const past = setSig.map((_, i) => HF_ZONE_KEYS.map((key, k) => (key.startsWith('header') ? intrusion(boxes[i * n + k]) : 0)));
+      const past = setSig.map((_, i) => HF_ZONE_KEYS.map((key, k) => (key.startsWith('header') ? intrusion(boxes[i * n + k]) : rise(boxes[i * n + k]))));
       if (String(past) !== String(untrack(() => zoneIntrusions))) zoneIntrusions = past;
     };
     // A web font arriving late (an embedded one lands after the import) reflows the zone,
@@ -308,8 +309,9 @@
     const top = header ? cmToPx(d.header) : cmToPx(m.top);
     const bottom = footer ? cmToPx(d.footer) : cmToPx(m.bottom);
     const room = HF_MAX_SHARE * (boxOf(sectionFirstPage(i)).height - top - bottom);
-    const foot = footer && Math.max(MIN_ZONE_PX, Math.min(footer, room - (header ? MIN_ZONE_PX : 0)));
-    return k & 1 ? foot : Math.max(MIN_ZONE_PX, Math.min(header, room - foot));
+    // Cut to its share but never below a line, and never grown past its content.
+    const foot = footer && Math.min(footer, Math.max(MIN_ZONE_PX, room - (header ? MIN_ZONE_PX : 0)));
+    return k & 1 ? foot : Math.min(header, Math.max(MIN_ZONE_PX, room - foot));
   }
   // The band a page's zone is cut to, or null where its content fits.
   function clipOf(zone: HfZone, page: number): number | null {
@@ -332,6 +334,23 @@
       const room = wrap === 'left' ? box!.clientWidth - x - el.offsetWidth : wrap === 'right' ? x : 0;
       if (wrap === 'through' || room >= WRAP_ROOM_PX) continue;
       px = Math.max(px, (Number(el.dataset.pageY) || 0) + el.offsetHeight);
+    }
+    return px;
+  }
+
+  // A footer frame spanning its column keeps its gap above clear of the body, though the
+  // footer's text runs through it (probed in LibreOffice: a full-width rule with a 2.54mm
+  // gap ends the body 2.5mm higher; one 15cm wide, or with no gap, moves nothing).
+  function rise(box: HTMLElement | undefined): number {
+    const text = box?.querySelector<HTMLElement>('.tiptap');
+    if (!box || !text) return 0;
+    const scale = box.getBoundingClientRect().width / (box.offsetWidth || 1) || 1;
+    const top = text.getBoundingClientRect().top;
+    let px = 0;
+    for (const el of Array.from(box.querySelectorAll<HTMLElement>('[data-zone-gap]'))) {
+      const para = el.parentElement;
+      if (!para || el.offsetWidth < box.clientWidth - 1) continue;
+      px = Math.max(px, (Number(el.dataset.zoneGap) || 0) - (para.getBoundingClientRect().top - top) / scale);
     }
     return px;
   }

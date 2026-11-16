@@ -358,22 +358,23 @@ export function pageOfElement(view: EditorView, el: HTMLElement, grid: PageGrid)
 // An element's top in document px from the editor's own top — spacers included, since
 // they sit in the flow above it.
 export function topInEditor(view: EditorView, el: HTMLElement): number {
-  const tiptap = view.dom as HTMLElement;
-  let top = 0;
-  for (let n: HTMLElement | null = el; n && n !== tiptap; n = n.offsetParent as HTMLElement | null) {
-    top += n.offsetTop;
-  }
-  return top;
+  return offsetIn(view.dom as HTMLElement, el, 'offsetTop');
 }
 
 // Its left, likewise — the same chain, so a frame reads both in one pass.
 export function leftInEditor(view: EditorView, el: HTMLElement): number {
-  const tiptap = view.dom as HTMLElement;
-  let left = 0;
-  for (let n: HTMLElement | null = el; n && n !== tiptap; n = n.offsetParent as HTMLElement | null) {
-    left += n.offsetLeft;
-  }
-  return left;
+  return offsetIn(view.dom as HTMLElement, el, 'offsetLeft');
+}
+
+// A header/footer zone's editor is not positioned, so the chain passes it by: both
+// chains then run to the root, and the editor's own offset comes off.
+function offsetIn(tiptap: HTMLElement, el: HTMLElement, key: 'offsetTop' | 'offsetLeft'): number {
+  let at = 0;
+  let n: HTMLElement | null = el;
+  for (; n && n !== tiptap; n = n.offsetParent as HTMLElement | null) at += n[key];
+  if (n) return at;
+  for (n = tiptap; n; n = n.offsetParent as HTMLElement | null) at -= n[key];
+  return at;
 }
 
 // A run-through frame the file places against the page, not against its anchor (Word's
