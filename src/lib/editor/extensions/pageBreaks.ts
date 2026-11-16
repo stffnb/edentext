@@ -2065,20 +2065,29 @@ export const PageBreaks = Extension.create({
               }
 
               // Keep with next: a heading that fits but whose successor's first line does
-              // not is left stranded at the page foot, so it goes down with it. One level
-              // only — a run of them would need the pass to reconsider earlier leaves.
+              // not is left stranded at the page foot, so it goes down with it. A run of
+              // kept blocks goes down from its first one, whole, when it fits on a page.
               if (
                 breaks.length === 0 && leaf.keepNext && i + 1 < leaves.length
                 && effectiveTop > contentStart + 0.5
               ) {
-                const next = leaves[i + 1];
-                // What the pair needs below this block: its own space below, then the
-                // successor's space above (its padding; an atomic leaf's height has it
-                // already) and its first line.
-                const wantLines = next.el.getAttribute('data-widow-control') === 'false' ? 1 : MIN_KEPT_LINES;
-                const needed = next.kind === 'atomic'
-                  ? Math.min(next.naturalHeight, CONTENT_HEIGHT)
-                  : firstLinesHeight(next.el, scale, wantLines) + (parseFloat(getComputedStyle(next.el).paddingTop) || 0);
+                // What the run needs below this block: its own space below, the kept blocks,
+                // then the last one's space above (its padding; an atomic leaf's height has
+                // it already) and its first lines.
+                const run = (j: number) => leaves[j].naturalTop - leaves[i + 1].naturalTop;
+                const needs = (j: number) => {
+                  const next = leaves[j];
+                  const wantLines = next.el.getAttribute('data-widow-control') === 'false' ? 1 : MIN_KEPT_LINES;
+                  return run(j) + (next.kind === 'atomic'
+                    ? Math.min(next.naturalHeight, CONTENT_HEIGHT)
+                    : firstLinesHeight(next.el, scale, wantLines) + (parseFloat(getComputedStyle(next.el).paddingTop) || 0));
+                };
+                let last = i + 1;
+                if (!leaves[i - 1]?.keepNext) {
+                  while (last + 1 < leaves.length && leaves[last].keepNext && !leaves[last + 1].forceBreakBefore) last++;
+                }
+                let needed = needs(last);
+                if (last > i + 1 && effectiveBottom - effectiveTop + (leaf.spaceAfter ?? 0) + needed > contentEnd - contentStart) needed = needs(i + 1);
                 if (effectiveBottom + (leaf.spaceAfter ?? 0) + needed > contentEnd) {
                   const target = pageContentStart(page + 1, topRest, grid);
                   const { docPos, row } = leafSpacer(leaf);
