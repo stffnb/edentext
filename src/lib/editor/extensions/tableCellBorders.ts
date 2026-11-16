@@ -1,7 +1,10 @@
 import { Extension } from '@tiptap/core';
 import type { CommandProps } from '@tiptap/core';
 import type { EditorState } from '@tiptap/pm/state';
-import { selectedRect, isInTable } from '@tiptap/pm/tables';
+import { selectedRect, isInTable, TableMap } from '@tiptap/pm/tables';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import type { Node as PMNode } from '@tiptap/pm/model';
 
 // Per-side border attrs (`borderTop/Right/Bottom/Left`) on table cells: `null` = the
 // table default (0.5pt solid black), `'none'` = no border, else the canonical
@@ -86,6 +89,61 @@ export function borderOvershootPx(value: string): number {
   const declared = (b.widthPt * 96) / 72;
   return Math.round((paintedPx(b) - declared) * 1000) / 1000;
 }
+
+// A row edge as LibreOffice spaces it, in either format: every cell of a row sits below the
+// widest line along its top edge and above the widest along its bottom (probed: one cell's
+// 3pt top lowers its neighbours' text 0.88mm). A collapsed CSS cell takes half its own line.
+const paintedOf = (v: string | null | undefined) => {
+  const b = parseBorderAttr(v);
+  return b === 'none' ? 0 : b ? paintedPx(b) : 1;
+};
+const overOf = (v: string | null | undefined) => (v == null ? 1 - 2 / 3 : borderOvershootPx(v));
+function rowEdgeDecorations(doc: PMNode): DecorationSet {
+  const decos: Decoration[] = [];
+  doc.descendants((table, pos) => {
+    if (table.type.spec.tableRole !== 'table') return true;
+    const map = TableMap.get(table);
+    const cellAt = (row: number, col: number) => (row < 0 || row >= map.height ? null : map.map[row * map.width + col]);
+    // The collapsed line per grid line and column: the wider of the two facing sides.
+    const seg = (line: number, col: number): { px: number; attr: string | null } | null => {
+      const above = cellAt(line - 1, col), below = cellAt(line, col);
+      if (above != null && above === below) return null;
+      const a = above != null ? table.nodeAt(above)?.attrs.borderBottom ?? null : undefined;
+      const b = below != null ? table.nodeAt(below)?.attrs.borderTop ?? null : undefined;
+      const pa = a === undefined ? -1 : paintedOf(a), pb = b === undefined ? -1 : paintedOf(b);
+      return pa > pb ? { px: pa, attr: a ?? null } : { px: pb, attr: b ?? null };
+    };
+    const widest = Array.from({ length: map.height + 1 }, (_, line) => {
+      let best: { px: number; attr: string | null } | null = null;
+      for (let col = 0; col < map.width; col++) {
+        const s = seg(line, col);
+        if (s && (!best || s.px > best.px)) best = s;
+      }
+      return best;
+    });
+    const seen = new Set<number>();
+    map.map.forEach((offset) => {
+      if (seen.has(offset)) return;
+      seen.add(offset);
+      const cell = table.nodeAt(offset)!;
+      const rect = map.findCell(offset);
+      const row = table.child(rect.top);
+      if (row.attrs.fixedHeight) return;
+      const own = (line: number) => Math.max(0, ...Array.from({ length: rect.right - rect.left }, (_, k) => seg(line, rect.left + k)?.px ?? 0));
+      const topMax = widest[rect.top], bottomMax = widest[rect.bottom];
+      const t = topMax ? (topMax.px - own(rect.top)) / 2 : 0;
+      const ownB = own(rect.bottom);
+      const b = bottomMax && bottomMax.px > ownB ? (bottomMax.px - ownB) / 2 + overOf(cell.attrs.borderBottom) - overOf(bottomMax.attr) : 0;
+      if (t <= 0 && b <= 0) return;
+      const r3 = (n: number) => Math.round(Math.max(0, n) * 1000) / 1000;
+      decos.push(Decoration.node(pos + 1 + offset, pos + 1 + offset + cell.nodeSize,
+        { style: `--edge-pad-t: ${r3(t)}px; --edge-pad-b: ${r3(b)}px` }));
+    });
+    return true;
+  });
+  return DecorationSet.create(doc, decos);
+}
+const rowEdgeKey = new PluginKey<DecorationSet>('tableRowEdges');
 
 const SIDE_META: Record<BorderSide, { data: string; css: string }> = {
   borderTop: { data: 'data-border-top', css: 'border-top' },
@@ -259,6 +317,17 @@ export const TableCellBorders = Extension.create({
         ),
       },
     ];
+  },
+
+  addProseMirrorPlugins() {
+    return [new Plugin<DecorationSet>({
+      key: rowEdgeKey,
+      state: {
+        init: (_c, state) => rowEdgeDecorations(state.doc),
+        apply: (tr, old) => (tr.docChanged ? rowEdgeDecorations(tr.doc) : old),
+      },
+      props: { decorations: (state) => rowEdgeKey.getState(state) },
+    })];
   },
 
   addCommands() {

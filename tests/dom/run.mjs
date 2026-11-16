@@ -1121,6 +1121,20 @@ try {
   const wantH = [17, 17, 30, 30];
   check(exact.length === 4 && exact.every((r, i) => Math.abs(r.h - wantH[i]) < 0.5) && exact.every((r) => r.firstLines < 0.5 || r.h > 20),
     `an exact row keeps its height and clips what does not fit (${exact.map((r) => `${r.h.toFixed(2)}/${r.firstLines.toFixed(1)}`).join(', ')})`);
+  // Every cell of a row sits below the widest line on the row's top edge, a thin-topped
+  // cell beside a thick-topped one too, as LibreOffice spaces rows (tableCellBorders.ts).
+  const edgeCell = (top, lines) => ({ type: 'tableCell', attrs: { borderTop: top },
+    content: lines.map((t) => ({ type: 'paragraph', content: [words(t)] })) });
+  await page.evaluate((d) => document.querySelector('.tiptap').editor.commands.setContent(d), { type: 'doc', content: [
+    { type: 'table', content: [0, 1].map(() => ({ type: 'tableRow', content: [edgeCell(null, ['two', 'lines']), edgeCell('3pt solid #000000', ['one'])] })) },
+  ] });
+  await settle(page, true);
+  const edges = await page.evaluate(() => Array.from(document.querySelectorAll('.tiptap table tr'), (tr) => {
+    const [a, , b] = Array.from(tr.querySelectorAll('p'), (p) => p.getBoundingClientRect().top);
+    return { h: tr.getBoundingClientRect().height, skew: a - b };
+  }));
+  check(edges.length === 2 && edges.every((r) => Math.abs(r.skew) < 0.6) && Math.abs(edges[1].h - edges[0].h) < 0.6,
+    `a thin-topped cell sits below its row's thick top line (${edges.map((r) => `${r.h.toFixed(2)}/${r.skew.toFixed(2)}`).join(', ')})`);
   // Behind the text: the frame leaves the flow (so the paragraph loses its height again)
   // and is then moved by its own offsets, since there is no text position to re-anchor to.
   await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [

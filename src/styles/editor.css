@@ -1158,9 +1158,11 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
      comes off the padding — else a long table grows a line every few rows
      (tableCellBorders.ts). Below first, then what is left of it above, then ::after. */
   --border-over-default: calc(1px - 0.5pt);
-  padding-bottom: max(0px, calc(var(--row-pad-b, var(--cell-pad-b, 0px)) - var(--border-over, var(--border-over-default))));
-  padding-top: max(0px, calc(var(--row-pad-t, var(--cell-pad-t, 0px))
-    - max(0px, var(--border-over, var(--border-over-default)) - var(--row-pad-b, var(--cell-pad-b, 0px)))));
+  padding-bottom: calc(max(0px, calc(var(--row-pad-b, var(--cell-pad-b, 0px)) - var(--border-over, var(--border-over-default))))
+    + var(--edge-pad-b, 0px));
+  padding-top: calc(max(0px, calc(var(--row-pad-t, var(--cell-pad-t, 0px))
+    - max(0px, var(--border-over, var(--border-over-default)) - var(--row-pad-b, var(--cell-pad-b, 0px)))))
+    + var(--edge-pad-t, 0px));
   vertical-align: top;
   /* A repeating header row is a <th>, and no word processor centres or bolds its text
      for that reason — drop the two UA defaults so the cell follows its own style. */
@@ -1217,6 +1219,8 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   --row-pad-t: initial;
   --row-pad-b: initial;
   --row-border-t: initial;
+  --edge-pad-t: initial;
+  --edge-pad-b: initial;
   --row-text: initial;
 }
 
