@@ -7,6 +7,11 @@ import type { EditorView } from '@tiptap/pm/view';
 
 export type CellVerticalAlign = 'middle' | 'bottom';
 
+// A cell's text turned a quarter: `btLr` runs bottom to top (Word's w:textDirection,
+// ODF's loext:writing-mode="bt-lr"), `tbRl` top to bottom (ODF style:writing-mode="tb-rl").
+export type CellTextFlow = 'btLr' | 'tbRl';
+export const cellTextFlow = (v: unknown): CellTextFlow | null => (v === 'btLr' || v === 'tbRl' ? v : null);
+
 export const TableCellAlign = Extension.create({
   name: 'tableCellAlign',
 
@@ -24,6 +29,14 @@ export const TableCellAlign = Extension.create({
             renderHTML: (attributes: Record<string, unknown>) => {
               const v = attributes.verticalAlign;
               return v === 'middle' || v === 'bottom' ? { style: `vertical-align: ${v}` } : {};
+            },
+          },
+          textFlow: {
+            default: null,
+            parseHTML: (element: HTMLElement) => cellTextFlow(element.dataset.textFlow),
+            renderHTML: (attributes: Record<string, unknown>) => {
+              const v = cellTextFlow(attributes.textFlow);
+              return v ? { 'data-text-flow': v } : {};
             },
           },
         },

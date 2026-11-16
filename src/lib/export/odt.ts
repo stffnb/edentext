@@ -31,6 +31,7 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { effectsToOdf, isEmphasis } from '../editor/extensions/textEffects';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
+import { cellTextFlow } from '../editor/extensions/tableCellAlign';
 import { TEXTBOX_PADDING_CM, boxTextWidthCm, type TextVAlign } from '../editor/extensions/textBox';
 import { colorModeOf, cropOf, wrapGap, wrapGapAttr, type ColorMode, type Crop, type WrapGap } from '../editor/extensions/image';
 import { imageSizeCm } from '../import/imageFormats';
@@ -1990,11 +1991,13 @@ function expandCellPadding(odtBytes: Uint8Array): Uint8Array {
   const content = strFromU8(contentBytes).replace(
     /(<style:table-cell-properties\b[^>]*?)fo:padding="([^"]*)"/g,
     (_m, head: string, value: string) => {
-      const [top, right, bottom, left, rev] = value.trim().split(/\s+/);
+      const [top, right, bottom, left, ...flags] = value.trim().split(/\s+/);
       if (!left) return head + `fo:padding="${value}"`;
       return head + `fo:padding-top="${top}" fo:padding-right="${right}"`
         + ` fo:padding-bottom="${bottom}" fo:padding-left="${left}"`
-        + (rev === REV_CELL ? ' loext:text-changes-only="false"' : '');
+        + (flags.includes(REV_CELL) ? ' loext:text-changes-only="false"' : '')
+        // Bottom to top is LibreOffice's own value, outside ODF 1.3's list (probed).
+        + (flags.includes('btLr') ? ' loext:writing-mode="bt-lr"' : flags.includes('tbRl') ? ' style:writing-mode="tb-rl"' : '');
     },
   );
 
@@ -4760,7 +4763,9 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
           // Emit the cell's runs (SEG-separated) and record its descriptor; addCell is
           // synchronous, so the push stays in document order, matching applyCellBlocks'
           // walk. Spans make odf-kit emit covered cells, which its cell regex never matches.
-          const opts: CellOptions = { padding: padValue(parseCellPadding(cell.attrs?.cellPadding) ?? tablePad) + (cell.attrs?.revMark && !mergedColumn ? ` ${REV_CELL}` : '') };
+          const flow = cellTextFlow(cell.attrs?.textFlow);
+          const opts: CellOptions = { padding: padValue(parseCellPadding(cell.attrs?.cellPadding) ?? tablePad)
+            + (cell.attrs?.revMark && !mergedColumn ? ` ${REV_CELL}` : '') + (flow ? ` ${flow}` : '') };
           const colspan = (cell.attrs?.colspan as number) ?? 1;
           const rowspan = (cell.attrs?.rowspan as number) ?? 1;
           if (colspan > 1) opts.colSpan = colspan;

@@ -548,6 +548,14 @@ export class StyleResolver {
     return v === 'middle' ? 'middle' : v === 'bottom' ? 'bottom' : null;
   }
 
+  // A cell's turned text: ODF's tb-rl, or LibreOffice's own loext bt-lr.
+  cellTextFlow(styleName: string | null): 'btLr' | 'tbRl' | null {
+    if (!styleName) return null;
+    const misc = this.merged('table-cell', styleName).misc;
+    const v = misc['style:writing-mode'] ?? misc['loext:writing-mode'];
+    return v === 'bt-lr' ? 'btLr' : v === 'tb-rl' ? 'tbRl' : null;
+  }
+
   // A cell style's raw fo:border-* values (per-side overriding the fo:border
   // shorthand). Sides the style doesn't declare stay undefined (= no border in ODF).
   cellBorders(styleName: string | null): Partial<Record<'top' | 'right' | 'bottom' | 'left', string>> {

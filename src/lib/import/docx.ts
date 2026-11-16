@@ -3816,6 +3816,10 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
       const vAlign = vAlignEl ? wVal(vAlignEl) : null;
       if (vAlign === 'center') attrs.verticalAlign = 'middle';
       else if (vAlign === 'bottom') attrs.verticalAlign = 'bottom';
+      // w:textDirection — text turned a quarter; the East Asian forms read as their turn.
+      const flowEl = fc(tcPr, 'textDirection');
+      const flow = flowEl ? wVal(flowEl) : null;
+      if (flow === 'btLr' || flow === 'tbRl' || flow === 'tbRlV') attrs.textFlow = flow === 'btLr' ? 'btLr' : 'tbRl';
       // The cell's own margins (w:tcMar), kept only where they differ from the table's.
       const ownPad = cellPaddingAttr(ownSides, padBase);
       if (ownPad) attrs.cellPadding = ownPad;

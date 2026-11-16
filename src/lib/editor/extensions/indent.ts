@@ -194,7 +194,7 @@ export const Indent = Extension.create({
             renderHTML: (attributes: Record<string, unknown>) => {
               if (attributes.indentRightChars == null) return {};
               const n = Number(attributes.indentRightChars);
-              return { 'data-indent-right-chars': String(n), style: `margin-right: calc(var(--sec-inset-right, 0px) + ${n} * var(--char-unit, 1em))` };
+              return { 'data-indent-right-chars': String(n), style: `margin-right: calc(var(--sec-inset-right, 0px) + ${n} * var(--char-unit, 1em)); --ind-r: calc(${n} * var(--char-unit, 1em))` };
             },
           },
           // Right indent in cm (fo:margin-right / w:ind w:right), the mirror of `indent`.
@@ -206,7 +206,7 @@ export const Indent = Extension.create({
               const cm = Number(attributes.indentRight);
               return {
                 'data-indent-right': String(cm),
-                style: `margin-right: calc(var(--sec-inset-right, 0px) + ${cm}cm)`,
+                style: `margin-right: calc(var(--sec-inset-right, 0px) + ${cm}cm); --ind-r: ${cm}cm`,
               };
             },
           },

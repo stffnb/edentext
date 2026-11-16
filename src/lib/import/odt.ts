@@ -3798,6 +3798,8 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
         if (ownPad) attrs.cellPadding = ownPad;
         if (backgroundColor) attrs.backgroundColor = backgroundColor;
         if (verticalAlign) attrs.verticalAlign = verticalAlign;
+        const textFlow = ctx.resolver.cellTextFlow(cellStyleName);
+        if (textFlow) attrs.textFlow = textFlow;
         if (weights) attrs.colwidth = weights.slice(colIndex, colIndex + colspan);
         const content = blocks.length ? structuredClone(blocks) : [{ type: 'paragraph' }];
         const revMark = ctx.resolver.recordedLine('table-cell', cellStyleName) ? lineChange(content) : undefined;

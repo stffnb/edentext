@@ -48,8 +48,11 @@ export const ResizableTableRow = TableRow.extend({
         renderHTML: (attributes) => {
           const h = attributes.rowHeight as number | null;
           if (!h) return {};
-          const pad = attributes.fixedHeight ? '' : ' + var(--row-pad-t, var(--cell-pad-t, 0px))';
-          return { style: `height: calc(${h}px${pad} + var(--row-pad-b, var(--cell-pad-b, 0px)))` };
+          const top = 'var(--row-pad-t, var(--cell-pad-t, 0px))';
+          const pad = attributes.fixedHeight ? '' : ` + ${top}`;
+          // --row-text is the content box's height: the line length of a turned cell's text.
+          const text = attributes.fixedHeight ? `calc(${h}px - ${top})` : `${h}px`;
+          return { style: `height: calc(${h}px${pad} + var(--row-pad-b, var(--cell-pad-b, 0px))); --row-text: ${text}` };
         },
       },
       // The height is exact, not a minimum; only meaningful with a rowHeight.

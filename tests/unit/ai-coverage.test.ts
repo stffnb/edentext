@@ -257,6 +257,7 @@ const SCHEMA: Record<string, Entry> = {
   tableHeader: check(insert('<table><tr><th>h</th></tr><tr><td>c</td></tr></table>'), (d) => !!first(d, 'tableHeader')),
   'tableCell.formula': check(table('formula', { value: '=SUM(<A1:B1>)' }), (d) => !!first(d, 'tableCell')!.attrs.formula, TABLE),
   'tableCell.cellFormat': IMPORT,
+  'tableCell.textFlow': IMPORT,
   'tableCell.backgroundColor': check(table('shade', { color: '#EEEEEE' }), attr('tableCell', 'backgroundColor', '#EEEEEE'), TABLE),
   'tableCell.verticalAlign': check(table('css', { value: 'vertical-align: middle' }), attr('tableCell', 'verticalAlign', 'middle'), TABLE),
   'tableCell.borderTop': check(table('borders', { borders: 'none' }), (d) => first(d, 'tableCell')!.attrs.borderTop != null, TABLE),

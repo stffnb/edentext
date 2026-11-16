@@ -69,28 +69,32 @@ describe('table keep-rows', () => {
   });
 });
 
-// A cell's verticalAlign attr round-trips through DOCX (w:vAlign); the ODF leg
-// (style:vertical-align) rides along in roundtrip.test.ts.
-const cell = (text: string, verticalAlign?: string): N => ({
+// A cell's box properties — where its content sits (w:vAlign, style:vertical-align) and
+// which way its text runs (w:textDirection, ODF writing-mode) — keep through both formats.
+const cell = (text: string, attrs: Record<string, unknown> = {}): N => ({
   type: 'tableCell',
-  attrs: { colspan: 1, rowspan: 1, colwidth: [120], ...(verticalAlign ? { verticalAlign } : {}) },
+  attrs: { colspan: 1, rowspan: 1, colwidth: [120], ...attrs },
   content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
 });
 
-describe('table cell vertical alignment', () => {
-  it('round-trips middle/bottom and leaves top unset', async () => {
-    const doc: N = {
-      type: 'doc',
-      content: [
-        { type: 'paragraph', content: [{ type: 'text', text: 'Before' }] },
-        { type: 'table', content: [
-          { type: 'tableRow', content: [cell('A', 'middle'), cell('B', 'bottom'), cell('C')] },
-        ] },
-      ],
-    };
-    const res = importDocx(await buildDocx(doc, { top: 2, bottom: 2, left: 2, right: 2 }, 'portrait'));
-    const cells = (res.content.content!.find((n: N) => n.type === 'table') as N).content[0].content;
-    expect(cells.map((c: N) => c.attrs?.verticalAlign ?? null)).toEqual(['middle', 'bottom', null]);
+describe('table cell box properties', () => {
+  const doc: N = {
+    type: 'doc',
+    content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Before' }] },
+      { type: 'table', content: [{ type: 'tableRow', attrs: { rowHeight: 80 }, content: [
+        cell('A', { verticalAlign: 'middle', textFlow: 'btLr' }), cell('B', { verticalAlign: 'bottom', textFlow: 'tbRl' }), cell('C'),
+      ] }] },
+    ],
+  };
+  const props = (res: { content: N }) => (res.content.content!.find((n: N) => n.type === 'table') as N).content[0].content
+    .map((c: N) => [c.attrs?.verticalAlign ?? null, c.attrs?.textFlow ?? null]);
+  const expected = [['middle', 'btLr'], ['bottom', 'tbRl'], [null, null]];
+  it('round-trips through DOCX', async () => {
+    expect(props(importDocx(await buildDocx(doc, { top: 2, bottom: 2, left: 2, right: 2 }, 'portrait')))).toEqual(expected);
+  });
+  it('round-trips through ODT', async () => {
+    expect(props(importOdt(await buildOdt(doc)))).toEqual(expected);
   });
 });
 

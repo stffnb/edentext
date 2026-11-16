@@ -42,6 +42,7 @@ import { DOCX_STYLE_NAME, isCitationStyle, type CitationStyle } from '../utils/c
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
+import { cellTextFlow } from '../editor/extensions/tableCellAlign';
 import { parseTabStops, type TabAlign } from '../editor/extensions/tabStops';
 import { emphasisToWord, isEmphasis, type TextEffectAttrs } from '../editor/extensions/textEffects';
 import { w14EffectsXml } from '../utils/w14Effects';
@@ -3216,6 +3217,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
         // Content set against the middle/bottom of the box → w:vAlign.
         verticalAlign: cell.attrs?.verticalAlign === 'middle' ? 'center'
           : cell.attrs?.verticalAlign === 'bottom' ? 'bottom' : undefined,
+        textDirection: cellTextFlow(cell.attrs?.textFlow) ?? undefined,
         width: widthTwip ? { size: widthTwip, type: WidthType.DXA } : undefined,
         borders: {
           top: docxCellBorder(cell.attrs, 'borderTop'),

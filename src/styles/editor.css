@@ -1210,6 +1210,27 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   --cell-pad-l: initial;
   --row-pad-t: initial;
   --row-pad-b: initial;
+  --row-text: initial;
+}
+
+/* A turned cell (tableCellAlign.ts): its lines run as long as the row's height, which the
+   text does not grow, and what does not fit is cut off, as LibreOffice lays it out. WebKit
+   without sideways-lr keeps vertical-rl, which reads top to bottom. */
+.paper .tiptap :is(td, th)[data-text-flow] {
+  writing-mode: vertical-rl;
+  overflow: hidden;
+}
+.paper .tiptap :is(td, th)[data-text-flow='btLr'] {
+  writing-mode: sideways-lr;
+}
+/* A block's indents run along its turned lines and its spacing across them: the space above
+   on the right, below on the left, both ways up (probed in LibreOffice). */
+.paper .tiptap :is(td, th)[data-text-flow] > * {
+  inline-size: calc(var(--row-text, auto) - var(--ind, 0px) - var(--ind-r, 0px));
+  margin-right: var(--space-before, 0px) !important;
+  margin-left: var(--space-after, 0px) !important;
+  margin-inline: var(--ind, 0px) var(--ind-r, 0px) !important;
+  padding-inline: 0 !important;
 }
 
 /* Header-row cells (tableHeaderRow.ts toggle): bold rendered presentationally so all
