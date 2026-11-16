@@ -1175,12 +1175,16 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
 }
 
 /* What of the border's excess no padding could take: a negative margin on an empty last
-   block, which collapses with the cell's last paragraph's own space below. */
+   block, which collapses with the cell's last paragraph's own space below. An exact row's
+   overflowing cell also gives up its measured excess there (tableRow.ts) and clips it. */
 .paper .tiptap :is(td, th)::after {
   content: '';
   display: block;
-  margin-top: min(0px, calc(var(--row-pad-t, var(--cell-pad-t, 0px)) + var(--row-pad-b, var(--cell-pad-b, 0px))
-    - var(--border-over, var(--border-over-default))));
+  margin-top: calc(min(0px, calc(var(--row-pad-t, var(--cell-pad-t, 0px)) + var(--row-pad-b, var(--cell-pad-b, 0px))
+    - var(--border-over, var(--border-over-default)))) - var(--exact-over, 0px));
+}
+.paper .tiptap tr[data-fixed-height] > [style*="--exact-over"] {
+  overflow: hidden;
 }
 
 /* Word measures a cell's margin from the grid line, and the border takes nothing from the

@@ -3,6 +3,8 @@ import { mergeAttributes } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { parseCellPadding } from './tableCellPadding';
 import { DEFAULT_BORDER_WIDTH_PT, parseBorderAttr } from './tableCellBorders';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 // TableRow with a `rowHeight` attr (CSS px @96dpi, two decimals), rendered as a <tr>
 // min-height and exported as style:min-row-height (export/odt.ts). null auto-sizes
@@ -39,7 +41,75 @@ function rowBorderStyle(row: PMNode): string | null {
   return pt ? `--row-border-t:${pt}pt` : null;
 }
 
+// An exact row clips what does not fit, from the top (probed: content taller than the row
+// keeps the row's height and its first line where a top-aligned cell has it). A CSS cell
+// grows instead, so each overflowing cell's excess is measured and taken off its ::after.
+const exactKey = new PluginKey<DecorationSet>('exactRowClip');
+
+function measureExact(view: EditorView): DecorationSet {
+  const decos: Decoration[] = [];
+  for (const tr of view.dom.querySelectorAll<HTMLElement>('tr[data-fixed-height]')) {
+    const h = parseFloat(/([\d.]+)px/.exec(tr.style.height)?.[1] ?? '');
+    if (!Number.isFinite(h)) continue;
+    for (const td of Array.from(tr.children) as HTMLElement[]) {
+      const first = td.firstElementChild as HTMLElement | null;
+      const last = td.lastElementChild as HTMLElement | null;
+      if (!first || !last) continue;
+      const cs = getComputedStyle(td);
+      const scale = td.offsetHeight / (td.getBoundingClientRect().height || 1);
+      const top = first.getBoundingClientRect().top - (parseFloat(getComputedStyle(first).marginTop) || 0) / scale;
+      const bottom = last.getBoundingClientRect().bottom + (parseFloat(getComputedStyle(last).marginBottom) || 0) / scale;
+      const avail = h + (parseFloat(cs.paddingBottom) || 0) - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+      const over = Math.round(((bottom - top) * scale - avail) * 10) / 10;
+      if (over <= 0.5) continue;
+      const $pos = view.state.doc.resolve(view.posAtDOM(td, 0));
+      for (let d = $pos.depth; d > 0; d--) {
+        if ($pos.node(d).type.spec.tableRole?.toString().includes('cell')) {
+          decos.push(Decoration.node($pos.before(d), $pos.after(d), { style: `--exact-over: ${over}px` }));
+          break;
+        }
+      }
+    }
+  }
+  return DecorationSet.create(view.state.doc, decos);
+}
+
+const sameDecos = (a: DecorationSet, b: DecorationSet) => {
+  const key = (s: DecorationSet) => s.find().map((d) => `${d.from}:${(d as unknown as { type: { attrs: { style: string } } }).type.attrs.style}`).join('|');
+  return key(a) === key(b);
+};
+
 export const ResizableTableRow = TableRow.extend({
+  addProseMirrorPlugins() {
+    return [
+      ...(this.parent?.() ?? []),
+      new Plugin<DecorationSet>({
+        key: exactKey,
+        state: {
+          init: () => DecorationSet.empty,
+          apply: (tr, old) => tr.getMeta(exactKey) ?? old.map(tr.mapping, tr.doc),
+        },
+        props: { decorations: (state) => exactKey.getState(state) },
+        view: (view) => {
+          let frame = 0;
+          const schedule = () => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(() => {
+              if (!view.dom.querySelector('tr[data-fixed-height]') && exactKey.getState(view.state) === DecorationSet.empty) return;
+              const next = measureExact(view);
+              const cur = exactKey.getState(view.state) ?? DecorationSet.empty;
+              // Measured with the current excess applied: the children keep their place.
+              if (!sameDecos(cur, next)) view.dispatch(view.state.tr.setMeta(exactKey, next).setMeta('addToHistory', false));
+            });
+          };
+          schedule();
+          void document.fonts?.ready.then(schedule);
+          return { update: (_v, prev) => { if (!prev.doc.eq(view.state.doc)) schedule(); }, destroy: () => cancelAnimationFrame(frame) };
+        },
+      }),
+    ];
+  },
+
   renderHTML({ node, HTMLAttributes }) {
     const style = [rowPadStyle(node), rowBorderStyle(node)].filter(Boolean).join(';');
     return ['tr', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, style ? { style } : {}), 0];
