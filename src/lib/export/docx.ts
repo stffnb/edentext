@@ -646,6 +646,8 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], force: TextProps = {
   if (typeof pos === 'number' && pos) props.position = String(Math.round(pos * 2)) as `${number}pt`;
   const spacing = ts?.attrs?.letterSpacing;
   if (typeof spacing === 'number') props.characterSpacing = docxSpacing(spacing);
+  const box = runBorderOf(ts?.attrs);
+  if (box) props.border = box;
   const em = ts?.attrs?.emphasis;
   if (isEmphasis(em)) props.emphasisMark = { type: emphasisToWord(em) as 'dot' };
   Object.assign(props, libEffects(ts?.attrs ?? {}));
@@ -1335,6 +1337,8 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLangs: unknown[] 
   const pos = ts?.attrs?.textPosition;
   const spacing = ts?.attrs?.letterSpacing;
   if (typeof spacing === 'number') parts.push(`<w:spacing w:val="${Math.round(spacing * 20)}"/>`);
+  const box = runBorderOf(ts?.attrs);
+  if (box) parts.push(`<w:bdr w:val="${box.style}" w:sz="${box.size}" w:space="${box.space}" w:color="${box.color}"/>`);
   if (typeof pos === 'number' && pos) parts.push(`<w:position w:val="${Math.round(pos * 2)}"/>`);
   if (isEmphasis(ts?.attrs?.emphasis)) parts.push(`<w:em w:val="${emphasisToWord(ts.attrs.emphasis)}"/>`);
   for (const [el, on] of Object.entries(wordEffectToggles(ts?.attrs ?? {}))) parts.push(on ? `<w:${el}/>` : `<w:${el} w:val="0"/>`);
@@ -1419,8 +1423,8 @@ function txbxPPrXml(attrs: TiptapNode['attrs'], indentTwip: number, pt: number):
   const borders = paraBordersOf(attrs);
   if (borders) {
     const side = (name: string, b?: IBorderOptions) =>
-      b ? `<w:${name} w:val="${b.style}" w:sz="${b.size}" w:space="1" w:color="${b.color}"/>` : '';
-    out.push(`<w:pBdr>${side('top', borders.top)}${side('left', borders.left)}${side('bottom', borders.bottom)}${side('right', borders.right)}</w:pBdr>`);
+      b ? `<w:${name} w:val="${b.style}" w:sz="${b.size}" w:space="${b.space ?? 0}" w:color="${b.color}"/>` : '';
+    out.push(`<w:pBdr>${side('top', borders.top)}${side('left', borders.left)}${side('bottom', borders.bottom)}${side('right', borders.right)}${side('between', borders.between)}</w:pBdr>`);
   }
   const shd = paraShadingOf(attrs);
   if (shd) out.push(`<w:shd w:val="clear" w:fill="${shd.fill}"/>`);
@@ -2957,13 +2961,23 @@ function docxLine(b: { widthPt: number; line: BorderLine }): { style: (typeof Bo
   return { style: DOCX_LINE[b.line], size: Math.max(2, Math.round(stroke * 8)) };
 }
 
+// A run's box → w:bdr, its gap in whole points as w:space.
+function runBorderOf(attrs: TiptapNode['attrs']): (IBorderOptions & { space: number; color: string }) | undefined {
+  const b = parseBorderAttr(attrs?.textBorder as string | null);
+  if (!b || b === 'none') return undefined;
+  return { ...docxLine(b), color: hexColor(b.color) ?? '000000', space: Math.round(Number(attrs?.textBorderPadding) || 0) };
+}
+
 function paraBordersOf(attrs: TiptapNode['attrs']) {
-  const out: { top?: IBorderOptions; left?: IBorderOptions; bottom?: IBorderOptions; right?: IBorderOptions } = {};
+  const out: { top?: IBorderOptions; left?: IBorderOptions; bottom?: IBorderOptions; right?: IBorderOptions; between?: IBorderOptions } = {};
   for (const [attr, side] of [['borderTop', 'top'], ['borderLeft', 'left'], ['borderBottom', 'bottom'], ['borderRight', 'right']] as const) {
     const b = parseBorderAttr(attrs?.[attr] as string | null);
     // w:space is the gap to the rule in points; the editor draws none unless one is set.
     if (b && b !== 'none') out[side] = { ...docxLine(b), color: hexColor(b.color) ?? '000000', space: Number(attrs?.borderPadding) || 0 };
   }
+  // An unmerged block's top rule is its w:between too: a like neighbour then still draws
+  // it between the two instead of merging them into one box.
+  if (attrs?.borderJoin === false && out.top) out.between = out.top;
   return Object.keys(out).length ? out : undefined;
 }
 

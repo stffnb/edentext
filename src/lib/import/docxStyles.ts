@@ -36,6 +36,7 @@ export type RunProps = {
   color?: string; // raw w:val hex (no #) or 'auto'
   sizeHalfPt?: number; // w:sz (half-points)
   spacingTwip?: number; // w:spacing (character spacing, twentieths of a point)
+  bdr?: Element; // w:bdr, the box round the run
   kernHalfPt?: number; // w:kern: the smallest size pair kerning applies to (0/absent = never)
   font?: string; // explicit w:rFonts w:ascii/hAnsi
   fontEastAsia?: string; // explicit w:rFonts w:eastAsia, the font CJK text is set in
@@ -172,6 +173,7 @@ export function parseRunProps(rPr: Element | null | undefined, colorOf?: (holder
       }
       case 'sz': { const n = parseInt(wVal(child) ?? '', 10); if (Number.isFinite(n)) p.sizeHalfPt = n; break; }
       case 'spacing': { const n = parseInt(wVal(child) ?? '', 10); if (Number.isFinite(n)) p.spacingTwip = n; break; }
+      case 'bdr': p.bdr = child; break;
       case 'kern': { const n = parseInt(wVal(child) ?? '', 10); if (Number.isFinite(n)) p.kernHalfPt = n; break; }
       case 'rFonts': {
         const ea = child.getAttributeNS(W, 'eastAsia');

@@ -127,6 +127,13 @@ export const ParagraphBox = Extension.create({
               return { 'data-pborder-pad': String(pad), style: css.join('; ') };
             },
           },
+          // false: the block never merges its rules with a like neighbour (ODF style:join-border;
+          // DOCX w:between, whose groups LibreOffice draws this way).
+          borderJoin: {
+            default: null,
+            parseHTML: (element: HTMLElement) => (element.getAttribute('data-border-join') === 'false' ? false : null),
+            renderHTML: (attributes: Record<string, unknown>) => (attributes.borderJoin === false ? { 'data-border-join': 'false' } : {}),
+          },
         },
       },
     ];
@@ -220,8 +227,9 @@ function joinDecorations(doc: PMNode, types: Set<string>): DecorationSet {
     parent.forEach((node, offset) => {
       const pos = start + offset;
       const cur = types.has(node.type.name) && ruledBlock(node) ? { node, pos } : null;
-      if (cur && prev && JOIN_KEYS.every((k) => (prev!.node.attrs[k] ?? null) === (cur.node.attrs[k] ?? null))) {
-        decos.push(Decoration.node(prev.pos, prev.pos + prev.node.nodeSize, { 'data-pjoin-next': '' }));
+      const last = prev;
+      if (cur && last && cur.node.attrs.borderJoin !== false && last.node.attrs.borderJoin !== false && JOIN_KEYS.every((k) => (last.node.attrs[k] ?? null) === (cur.node.attrs[k] ?? null))) {
+        decos.push(Decoration.node(last.pos, last.pos + last.node.nodeSize, { 'data-pjoin-next': '' }));
         decos.push(Decoration.node(pos, pos + node.nodeSize, { 'data-pjoin-prev': '' }));
       }
       prev = cur;

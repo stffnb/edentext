@@ -3,6 +3,7 @@ import Strike from '@tiptap/extension-strike';
 import { Extension, type ChainedCommands, type Command } from '@tiptap/core';
 import '@tiptap/extension-text-style';
 import { normalizeColor } from '../../utils/color';
+import { cssBorder } from './tableCellBorders';
 
 // The character effects beyond bold/italic that both Word and LibreOffice carry and
 // CSS can draw: letter case, a raised or lowered run, emphasis marks, outline, shadow,
@@ -400,6 +401,27 @@ export const TextEffects = Extension.create({
             parseHTML: element => letterSpacingFromCss((element as HTMLElement).style.letterSpacing),
             renderHTML: attributes =>
               typeof attributes.letterSpacing === 'number' ? { style: `letter-spacing: ${attributes.letterSpacing}pt` } : {},
+          },
+          // A box round the run (canonical border value) and its gap to the text in pt,
+          // on every side, as LibreOffice draws DOCX w:bdr and ODF text borders.
+          textBorder: {
+            default: null,
+            parseHTML: element => element.getAttribute('data-text-border'),
+            renderHTML: attributes => {
+              const css = typeof attributes.textBorder === 'string' ? cssBorder(attributes.textBorder) : null;
+              if (!css || css === 'none') return {};
+              const pad = typeof attributes.textBorderPadding === 'number' ? attributes.textBorderPadding : 0;
+              return { 'data-text-border': attributes.textBorder, style: `border: ${css}; padding: ${pad}pt` };
+            },
+          },
+          textBorderPadding: {
+            default: null,
+            parseHTML: element => {
+              const v = parseFloat(element.getAttribute('data-text-border-pad') ?? '');
+              return Number.isFinite(v) ? v : null;
+            },
+            renderHTML: attributes =>
+              typeof attributes.textBorderPadding === 'number' ? { 'data-text-border-pad': String(attributes.textBorderPadding) } : {},
           },
           emphasis: {
             default: null,

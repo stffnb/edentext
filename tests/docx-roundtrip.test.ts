@@ -63,6 +63,7 @@ describe('DOCX export → import round trip', () => {
         text('haloed ', [{ type: 'textStyle', attrs: { textGlow: { color: '#ED7D31', alpha: 0.25, radiusPt: 40 } } }]),
         text('lit ', [{ type: 'textStyle', attrs: { textGlow: { color: '#70AD47', alpha: 1, radiusPt: 1.5 } } }]),
         text('spaced ', [{ type: 'textStyle', attrs: { letterSpacing: 1.5 } }]),
+        text('boxed ', [{ type: 'textStyle', attrs: { textBorder: '1.5pt solid #FF0000', textBorderPadding: 4 } }]),
         text('raised', [{ type: 'textStyle', attrs: { fontSize: '14pt', textPosition: 3 } }]),
       ]),
       { type: 'paragraph', attrs: { fontSize: '22pt', textAlign: 'center' } }, // empty sized line
@@ -349,6 +350,7 @@ describe('DOCX export → import round trip', () => {
     expect(attrs('crossed ', 'strike').lineStyle).toBe('double');
     expect(attrs('raised', 'textStyle').textPosition).toBe(3);
     expect(attrs('spaced ', 'textStyle').letterSpacing).toBe(1.5);
+    expect(attrs('boxed ', 'textStyle')).toMatchObject({ textBorder: '1.5pt solid #FF0000', textBorderPadding: 4 });
     expect(documentXml).toMatch(/<w:em w:val="underDot"\/>/);
     expect(attrs('stressed ', 'textStyle').emphasis).toBe('dot below');
     expect(attrs('ringed ', 'textStyle').emphasis).toBe('circle above');
@@ -782,6 +784,30 @@ describe('run letter spacing against its style', () => {
     const sheet = res.styles;
     for (const back of [importDocx(await buildDocx(res.content as N, undefined, undefined, undefined, undefined, 'A4', sheet)),
       importOdt(await buildOdt(res.content as N, undefined, undefined, undefined, undefined, 'A4', sheet))]) expectRuns(back.content as N, back.styles);
+  });
+});
+
+describe('paragraph rules: w:between groups', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const side = (n: string, c: string) => `<w:${n} w:val="single" w:sz="8" w:space="1" w:color="${c}"/>`;
+  const grouped = (t: string) => `<w:p><w:pPr><w:pBdr>${side('top', '000000')}${side('bottom', '000000')}${side('between', 'FF0000')}</w:pBdr></w:pPr><w:r><w:t>${t}</w:t></w:r></w:p>`;
+  const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>${['a', 'b', 'c', 'd'].map(grouped).join('')}<w:p><w:r><w:t>after</w:t></w:r></w:p>
+    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr></w:body></w:document>`;
+  const res = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml) }));
+  // LibreOffice draws the group with the top rule first, the between rule above each
+  // later paragraph and the bottom rule last, none of them merged (probed).
+  const expectGroup = (doc: N) => {
+    const rules = doc.content!.slice(0, 5).map((p) => [p.attrs?.borderTop ?? null, p.attrs?.borderBottom ?? null, p.attrs?.borderJoin ?? null]);
+    expect(rules).toEqual([
+      ['1pt solid #000000', null, false], ['1pt solid #FF0000', null, false], ['1pt solid #FF0000', null, false],
+      ['1pt solid #FF0000', '1pt solid #000000', false], [null, null, null],
+    ]);
+  };
+
+  it('draws the between rule inside the group and survives both formats', async () => {
+    expectGroup(res.content as N);
+    expectGroup(importDocx(await buildDocx(res.content as N)).content as N);
+    expectGroup(importOdt(await buildOdt(res.content as N)).content as N);
   });
 });
 

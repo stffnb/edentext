@@ -92,6 +92,7 @@ const fixture: N = {
       T('embossed ', { type: 'textStyle', attrs: { relief: 'embossed' } }),
       T('engraved ', { type: 'textStyle', attrs: { relief: 'engraved' } }),
       T('spaced ', { type: 'textStyle', attrs: { letterSpacing: 1.5 } }),
+      T('boxed ', { type: 'textStyle', attrs: { textBorder: '1.5pt solid #FF0000', textBorderPadding: 4 } }),
       T('raised', { type: 'textStyle', attrs: { fontSize: '14pt', textPosition: 3 } }),
     ),
     P(null,

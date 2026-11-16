@@ -1764,7 +1764,7 @@ type BlockDefaults = {
   lang: string | null;
   langAsian: string | null;
   // The style's own paragraph background and rule lines (paraBoxAttrs).
-  box: Record<string, string | number>;
+  box: Record<string, string | number | boolean>;
 };
 
 
@@ -2470,8 +2470,8 @@ function flowSibling(el: Element, dir: 'previous' | 'next'): Element | null {
 // Paragraph background + per-side border attrs (paragraphBox.ts) from resolved paraProps.
 // Each key is omitted when absent so a paragraph with no box props stays clean. Borders:
 // a per-side fo:border-* overrides the all-sides fo:border; 'none' ⇒ no border (undefined).
-export function paraBoxAttrs(paraProps: PropMap): Record<string, string | number> {
-  const out: Record<string, string | number> = {};
+export function paraBoxAttrs(paraProps: PropMap): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {};
   const bg = paraProps['fo:background-color'];
   if (bg && bg !== 'transparent') {
     const c = normalizeColor(bg);
@@ -2496,6 +2496,8 @@ export function paraBoxAttrs(paraProps: PropMap): Record<string, string | number
     }
   }
   if (pad) out.borderPadding = snapPt(pad);
+  // Only a ruled block has rules to merge.
+  if (sides.some(([attr]) => out[attr]) && paraProps['style:join-border'] === 'false') out.borderJoin = false;
   return out;
 }
 
@@ -3292,6 +3294,13 @@ function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaul
   if (caps && caps !== defaults.caps) textStyle.caps = caps;
   const spacing = letterSpacingOf(props) ?? 0;
   if (spacing !== defaults.letterSpacingPt) textStyle.letterSpacing = spacing;
+  // LibreOffice writes a run's box as loext:, and reads fo: as well (probed).
+  const box = borderAttrFromOdf(props['loext:border'] ?? props['fo:border'], false);
+  if (box && box !== 'none') {
+    textStyle.textBorder = box;
+    const pad = lengthToPt(props['loext:padding'] ?? props['fo:padding']);
+    if (pad) textStyle.textBorderPadding = snapPt(pad);
+  }
   const em = props['style:text-emphasize'];
   if (isEmphasis(em)) textStyle.emphasis = em;
   const fx = effectsFromOdf(props);

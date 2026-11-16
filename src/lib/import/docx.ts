@@ -1961,8 +1961,8 @@ function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number |
 // Paragraph background + per-side border attrs (paragraphBox.ts) from direct w:pPr.
 // Shading: w:shd/@w:fill; borders: w:pBdr/w:{top,right,bottom,left} (w:sz in eighths of a
 // point). Sides with w:val none/nil are skipped. Matches the ODF paraBoxAttrs shape.
-function readParaBox(ppr: Element | null): Record<string, string | number> {
-  const out: Record<string, string | number> = {};
+function readParaBox(ppr: Element | null): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {};
   if (!ppr) return out;
   const shd = fc(ppr, 'shd');
   const fill = shd ? hexColor(shd.getAttributeNS(W, 'fill')) : undefined;
@@ -1971,8 +1971,10 @@ function readParaBox(ppr: Element | null): Record<string, string | number> {
   const pBdr = fc(ppr, 'pBdr');
   if (pBdr) {
     let space = 0;
+    const group = betweenGroup(pBdr);
     for (const [wSide, attr] of PARA_BORDER_SIDES) {
-      const side = fc(pBdr, wSide);
+      const side = group && wSide === 'top' && !group.first ? fc(pBdr, 'between')
+        : group && wSide === 'bottom' && !group.last ? null : fc(pBdr, wSide);
       const v = paraBorderAttr(side);
       if (v) {
         out[attr] = v;
@@ -1981,8 +1983,29 @@ function readParaBox(ppr: Element | null): Record<string, string | number> {
       }
     }
     if (space) out.borderPadding = space;
+    if (group) out.borderJoin = false;
   }
   return out;
+}
+
+// Paragraphs in a row whose w:pBdr is the same and draws w:between are one bordered group:
+// LibreOffice gives every paragraph after the first the between line as its top, only the
+// last the bottom line, and merges none of them (probed); the import does the same.
+function betweenGroup(pBdr: Element): { first: boolean; last: boolean } | null {
+  if (!paraBorderAttr(fc(pBdr, 'between'))) return null;
+  const flat = (el: Element) => el.outerHTML.replace(/\s+/g, '');
+  const like = (p: Element | null) => {
+    const other = p?.localName === 'p' ? fc(fc(p, 'pPr'), 'pBdr') : null;
+    return !!other && flat(other) === flat(pBdr);
+  };
+  // Range marks between two paragraphs do not part them.
+  const step = (el: Element | null, dir: 'previousElementSibling' | 'nextElementSibling') => {
+    let n = el?.[dir] ?? null;
+    while (n && /^(bookmark|commentRange|perm|move(From|To)Range)(Start|End)$|^proofErr$/.test(n.localName)) n = n[dir];
+    return n;
+  };
+  const p = pBdr.parentElement?.parentElement ?? null;
+  return { first: !like(step(p, 'previousElementSibling')), last: !like(step(p, 'nextElementSibling')) };
 }
 
 const PARA_BORDER_SIDES = [
@@ -2725,6 +2748,13 @@ function marksFor(props: RunProps, defaults: BlockDefaults, inLink: boolean): Ma
   if (props.caps && props.caps !== defaults.caps) textStyle.caps = props.caps;
   if (props.positionPt) textStyle.textPosition = props.positionPt;
   const spacing = (props.spacingTwip ?? 0) / 20;
+  // A style's box is not drawn by its CSS, so every run in one carries it.
+  const box = paraBorderAttr(props.bdr ?? null);
+  if (box) {
+    textStyle.textBorder = box;
+    const space = intAttr(props.bdr!, W, 'space');
+    if (space) textStyle.textBorderPadding = space;
+  }
   if (spacing !== defaults.letterSpacingPt) textStyle.letterSpacing = Math.round(spacing * 100) / 100;
   if (props.emphasis) textStyle.emphasis = props.emphasis;
   // Off is kept only where the style draws the effect; a run without one inherits it.

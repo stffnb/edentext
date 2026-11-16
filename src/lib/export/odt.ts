@@ -1678,6 +1678,7 @@ type ParaStyle = {
   borderLeft: string | null;
   // pt between the text and its rules, on the ruled sides (fo:padding-*).
   borderPadding: number | null;
+  borderJoin: false | null; // style:join-border="false" (paragraphBox.ts)
   // The block's own base direction (textDirection.ts); null inherits the page's.
   dir: 'ltr' | 'rtl' | null;
   // Left/first-line/right indents in cm — cell blocks only: a list item's indent
@@ -1778,6 +1779,7 @@ function paraStyleFromAttrs(attrs: TiptapNode['attrs'], withIndents = true): Par
     borderBottom: border(attrs?.borderBottom),
     borderLeft: border(attrs?.borderLeft),
     borderPadding: typeof attrs?.borderPadding === 'number' && attrs.borderPadding > 0 ? attrs.borderPadding : null,
+    borderJoin: attrs?.borderJoin === false ? false : null,
     dir: attrs?.dir === 'rtl' || attrs?.dir === 'ltr' ? attrs.dir : null,
     // An explicit 0 is kept: it overrides the named style's indent.
     indent: withIndents && attrs?.indent === 0 ? 0 : cm(attrs?.indent),
@@ -1834,6 +1836,7 @@ function paraStyleProps(style: ParaStyle): string[] {
     if (v) props.push(`fo:border-${side}="${v}"`);
     if (v && style.borderPadding != null) props.push(`fo:padding-${side}="${style.borderPadding}pt"`);
   }
+  if (style.borderJoin === false) props.push('style:join-border="false"');
   const wm = writingModeOf(style.dir);
   if (wm) props.push(`style:writing-mode="${wm}"`);
   // The pair LibreOffice writes: the mode alone leaves the block left-aligned (probed).
@@ -2434,17 +2437,18 @@ function paraBoxSpec(attrs: TiptapNode['attrs']): string {
   if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft && !noWidow && !right && !keepNext && !keepLines && !wm && !noHyphen && !lang && !langAsian && !noSnap && !chars && !leftChars) return '';
   return [s.background, s.borderTop, s.borderRight, s.borderBottom, s.borderLeft]
     .map((v) => v ?? '')
-    .concat(noWidow ? 'w0' : '', right, keepNext ? (attrs?.keepNext ? 'k1' : 'k0') : '', keepLines ? 'g1' : '', wm ?? '', noHyphen ? 'h0' : '', lang, langAsian, noSnap ? 's0' : '', chars ? `${chars}ic` : '', leftChars ? `${leftChars}ic` : '', s.borderPadding != null ? `${s.borderPadding}pt` : '').join('|');
+    .concat(noWidow ? 'w0' : '', right, keepNext ? (attrs?.keepNext ? 'k1' : 'k0') : '', keepLines ? 'g1' : '', wm ?? '', noHyphen ? 'h0' : '', lang, langAsian, noSnap ? 's0' : '', chars ? `${chars}ic` : '', leftChars ? `${leftChars}ic` : '', s.borderPadding != null ? `${s.borderPadding}pt` : '', s.borderJoin === false ? 'j0' : '').join('|');
 }
 
 function boxSpecToProps(spec: string): string {
-  const [bg, bt, br, bb, bl, widow, marginRight, keepNext, keepLines, writingMode, , , , snap, firstChars, leftChars, pad] = spec.split('|');
+  const [bg, bt, br, bb, bl, widow, marginRight, keepNext, keepLines, writingMode, , , , snap, firstChars, leftChars, pad, join] = spec.split('|');
   const props: string[] = [];
   if (bg) props.push(`fo:background-color="${bg}"`);
   for (const [v, side] of [[bt, 'top'], [br, 'right'], [bb, 'bottom'], [bl, 'left']] as const) {
     if (v) props.push(`fo:border-${side}="${v}"`);
     if (v && pad) props.push(`fo:padding-${side}="${pad}"`);
   }
+  if (join === 'j0') props.push('style:join-border="false"');
   // LibreOffice writes 0/0 for "off"; the default style carries the 2 of "on".
   if (widow === 'w0') props.push('fo:orphans="0"', 'fo:widows="0"');
   if (marginRight) props.push(`${marginRight.endsWith('ic') ? 'loext' : 'fo'}:margin-right="${marginRight}"`);
@@ -4201,7 +4205,13 @@ export function odfExtraTextProps(marks: TiptapNode['marks'] = [], baseSizePt = 
   if (marks.find(m => m.type === 'textStyle')?.attrs?.color === AUTO_COLOR) a.push('style:use-window-font-color="true"');
   if (marks.find(m => m.type === 'textStyle')?.attrs?.fontStyle === 'normal' && !marks.some(m => m.type === 'italic')) a.push('fo:font-style="normal"');
   a.push(...Object.entries(effectsToOdf(marks.find(m => m.type === 'textStyle')?.attrs ?? {})).map(([k, v]) => `${k}="${v}"`));
-  const spacing = marks.find(m => m.type === 'textStyle')?.attrs?.letterSpacing;
+  const ts = marks.find(m => m.type === 'textStyle')?.attrs;
+  const box = parseBorderAttr(ts?.textBorder as string | null);
+  if (box && box !== 'none') {
+    a.push(`loext:border="${box.widthPt}pt ${box.line} ${box.color}"`);
+    if (typeof ts?.textBorderPadding === 'number') a.push(`loext:padding="${ts.textBorderPadding}pt"`);
+  }
+  const spacing = ts?.letterSpacing;
   if (typeof spacing === 'number') a.push(`fo:letter-spacing="${spacing ? `${spacing}pt` : 'normal'}"`);
   // ODF places a raised run in percent of its font size, Word and the editor in pt.
   const pos = marks.find(m => m.type === 'textStyle')?.attrs?.textPosition;
