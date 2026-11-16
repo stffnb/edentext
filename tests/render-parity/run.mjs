@@ -107,7 +107,8 @@ const decode = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&qu
 
 async function editorRender(browser, file) {
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
-  page.on('dialog', (d) => d.accept());
+  // A dialog still open as the page closes rejects its accept: unhandled, that ends the run.
+  page.on('dialog', (d) => d.accept().catch(() => {}));
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
   await page.evaluate(() => {
     localStorage.clear();
@@ -180,7 +181,9 @@ async function worker() {
     const log = [];
     try {
       const ref = pdfReference(file) ?? loRender(file, work, cache);
-      const ed = await editorRender(browser, file);
+      // A render that times out under load is retried once: a failed document drops out
+      // of the total, which would read as a drop in differences.
+      const ed = await editorRender(browser, file).catch(() => editorRender(browser, file));
       const issues = [...compare(ref, ed), ...compareImages(ref.images, ed.images)];
       report[at] = {
         file: name, refPages: ref.pages.length, editorPages: ed.pages.length, issues,
@@ -209,6 +212,8 @@ await Promise.all(Array.from({ length: Math.max(1, Math.min(JOBS, files.length))
 // leaves the other files' recorded counts alone.
 const done = report.filter((r) => !r.error);
 const total = done.reduce((n, r) => n + r.issues.length, 0);
+const failed = report.filter((r) => r.error);
+if (failed.length) console.log(`\n${failed.length} document(s) FAILED and are in no total: ${failed.map((r) => r.file).join(', ')}`);
 const seen = done.filter((r) => baseline?.[r.file]);
 const before = seen.reduce((n, r) => n + baseline[r.file].issues, 0);
 console.log(`\ntotal ${total} across ${done.length} document(s)`
