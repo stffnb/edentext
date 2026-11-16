@@ -3610,8 +3610,8 @@ function areaSide(area: GridBox, cell: GridBox, side: 'top' | 'bottom' | 'left' 
 
 // A cell's shading and run properties from the table style, layered over its areas. The
 // runs are baked below: a file's own table style has no entry in the editor's registry.
-function condPaint(areas: CondArea[]): { fill?: string; run: RunProps } {
-  let fill: string | undefined;
+function condPaint(areas: CondArea[], wholeFill?: string): { fill?: string; run: RunProps } {
+  let fill = wholeFill;
   let run: RunProps = {};
   for (const a of areas) {
     const shd = fc(fc(a.el, 'tcPr'), 'shd');
@@ -3780,6 +3780,10 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
   // baked into the cells: a foreign style is not in the editor's registry, which is where
   // an assigned table style's regions otherwise come from (refreshTableStyles).
   const conds = ctx.styles.tableConditional(styleId);
+  // Under every area lies the style's whole-table shading (probed: it fills the body
+  // rows a band leaves alone); the table's own w:tblPr/w:shd LibreOffice does not draw.
+  const styleShd = ctx.styles.tableCellShading(styleId);
+  const styleFill = styleShd ? hexColor(styleShd.getAttributeNS(W, 'fill')) : undefined;
   const flags = docxLookFlags(fc(tbl, 'tblPr'));
   const band = ctx.styles.tableBandSize(styleId);
   // A registry style instead is name-only (our own export): its regions are re-derived
@@ -3828,7 +3832,7 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
       const rowEnd = ri + (vMerge === 'restart' ? vMergeRows(trs, ri, col) : 1);
       const box: GridBox = { row: ri, col, rowEnd, colEnd: col + colspan };
       const areas = conds.size ? condAreasFor(conds, flags, band, box, trs.length, gridCols) : [];
-      const paint = condPaint(areas);
+      const paint = condPaint(areas, styleFill);
       const styled = regStyle ? resolveTableCell(regStyle, {
         row: ri, col, rowSpan: rowEnd - ri, colSpan: colspan, rows: trs.length, cols: gridCols,
       }, regLook) : null;

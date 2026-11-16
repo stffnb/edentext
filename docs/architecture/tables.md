@@ -137,7 +137,9 @@ ODT importer cuts a list whose item holds a table the same way (`liftListTables`
   no entry to re-derive them from, so the DOCX importer bakes those into the cells instead —
   fill, borders and run marks alike (`src/lib/import/CLAUDE.md` for the area rules). What is
   re-exported is that bake, which is why the round trip is stable: our `w:tblStyle` is
-  name-only, so a reimport finds no areas to apply over it.
+  name-only, so a reimport finds no areas to apply over it. Probed: the style's `w:tcPr/w:shd` lies under
+  the areas, `w:tblPr/w:shd` is not drawn, firstCol/lastCol are grid columns even beside `w:gridBefore`;
+  an ODF transparent cell takes its row's `fo:background-color`, a row without one the table's (baked too).
 
 - **Table-style gallery**: `TableStylePicker.svelte` in the floating `TableToolbar` — tiles drawn
   by `previewCellCss` (the same resolver), so a preview can't disagree with what applying does,

@@ -85,7 +85,7 @@ describe('a table style paints its conditional areas', () => {
       <w:tblPr><w:tblStyleRowBandSize w:val="1"/><w:tblBorders>
         <w:top w:val="${BLUE}"/><w:left w:val="${BLUE}"/><w:bottom w:val="${BLUE}"/>
         <w:right w:val="${BLUE}"/><w:insideH w:val="${BLUE}"/><w:insideV w:val="${BLUE}"/>
-      </w:tblBorders></w:tblPr>
+      </w:tblBorders></w:tblPr><w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="EEF3FA"/></w:tcPr>
       <w:tblStylePr w:type="firstRow"><w:rPr><w:b/><w:color w:val="FFFFFF"/></w:rPr>
         <w:tcPr><w:tcBorders><w:bottom w:val="single" w:sz="18" w:color="4F81BD"/><w:insideV w:val="nil"/></w:tcBorders>
           <w:shd w:val="clear" w:color="auto" w:fill="4F81BD"/></w:tcPr></w:tblStylePr>
@@ -104,7 +104,8 @@ describe('a table style paints its conditional areas', () => {
   const rows = cellsOf(docxWith(table()));
 
   it('shades the header row and bands from the first body row', () => {
-    expect(rows.map((r) => r[0].attrs.backgroundColor)).toEqual(['#4F81BD', '#D3DFEE', undefined, '#D3DFEE']);
+    // The style's whole-table shading lies under the areas, where no band paints.
+    expect(rows.map((r) => r[0].attrs.backgroundColor)).toEqual(['#4F81BD', '#D3DFEE', '#EEF3FA', '#D3DFEE']);
   });
   it('bakes the area’s run properties onto the cell’s text', () => {
     expect(marksOf(rows[0][1])).toEqual([{ type: 'bold' }, { type: 'textStyle', attrs: { color: '#FFFFFF' } }]);
@@ -126,8 +127,8 @@ describe('a table style paints its conditional areas', () => {
   });
   it('paints nothing the table’s look switches off', () => {
     const off = cellsOf(docxWith(table('<w:tblLook w:firstRow="0" w:firstColumn="0" w:noHBand="1" w:noVBand="1"/>')));
-    expect(off[0][0].attrs.backgroundColor).toBeUndefined();
-    expect(off[1][0].attrs.backgroundColor).toBeUndefined();
+    expect(off[0][0].attrs.backgroundColor).toBe('#EEF3FA');
+    expect(off[1][0].attrs.backgroundColor).toBe('#EEF3FA');
     expect(marksOf(off[1][0])).toEqual([]);
   });
   it('reads the older w:val bitmask where the named flags are absent', () => {
@@ -141,7 +142,7 @@ describe('a table style paints its conditional areas', () => {
     expect(strFromU8(unzipSync(bytes)['word/document.xml'])).not.toContain('tblStylePr');
     const again = cellsOf(bytes);
     expect(again[0][0].attrs.backgroundColor).toBe('#4F81BD');
-    expect(again[2][0].attrs.backgroundColor).toBeUndefined();
+    expect(again[2][0].attrs.backgroundColor).toBe('#EEF3FA');
     expect(marksOf(again[1][0])).toEqual([{ type: 'bold' }]);
   });
 });

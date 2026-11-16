@@ -3754,8 +3754,10 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
   const dropped: number[] = [];
   let srcRow = 0;
   let cellPad: CellPadding | null | undefined;
+  const tableBg = ctx.resolver.cellBackgroundColor(el.getAttributeNS(NS.table, 'style-name'), 'table');
   const addRow = (rowEl: Element, header: boolean) => {
     const rowIdx = srcRow++;
+    const rowBg = ctx.resolver.cellBackgroundColor(rowEl.getAttributeNS(NS.table, 'style-name'), 'table-row');
     const cells: Node[] = [];
     let colIndex = 0;
     for (const cellEl of Array.from(rowEl.children)) {
@@ -3777,7 +3779,8 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       if (cellPad === undefined) cellPad = cellPaddingAttr(padSides);
       const ownPad = cellPaddingAttr(padSides, cellPad ?? DEFAULT_CELL_PADDING);
       const verticalAlign = ctx.resolver.cellVerticalAlign(cellStyleName);
-      const rawBg = ctx.resolver.cellBackgroundColor(cellStyleName);
+      // A transparent cell shows its row's background, a transparent row the table's (probed).
+      const rawBg = ctx.resolver.cellBackgroundColor(cellStyleName) ?? rowBg ?? tableBg;
       const backgroundColor = normalizeColor(rawBg) ?? null;
       // Per-side borders; an undeclared side means no border in ODF → 'none'.
       // Only null (= the editor's 0.5pt-black default) is left off the attrs.

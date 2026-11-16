@@ -815,7 +815,9 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
   </text:list-style>
   <style:style style:name="co1" style:family="table-column"><style:table-column-properties style:column-width="5cm"/></style:style>
   <style:style style:name="co2" style:family="table-column"><style:table-column-properties style:column-width="10cm"/></style:style>
-  <style:style style:name="ro1" style:family="table-row"><style:table-row-properties style:min-row-height="2cm"/></style:style>
+  <style:style style:name="ro1" style:family="table-row"><style:table-row-properties style:min-row-height="2cm" fo:background-color="#e6e6e6"/></style:style>
+  <style:style style:name="ta1" style:family="table"><style:table-properties fo:background-color="#ffff00"/></style:style>
+  <style:style style:name="ce1" style:family="table-cell"><style:table-cell-properties fo:background-color="transparent"/></style:style>
  </office:automatic-styles>
  <office:body><office:text>
   <text:p>plain default text</text:p>
@@ -831,14 +833,14 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
   <text:list text:style-name="L2">
    <text:list-item><text:p>wingdings arrow</text:p></text:list-item>
   </text:list>
-  <table:table>
+  <table:table table:style-name="ta1">
    <table:table-column table:style-name="co1"/>
    <table:table-column table:style-name="co2" table:number-columns-repeated="2"/>
    <table:table-header-rows>
     <table:table-row><table:table-cell><text:p>h1</text:p></table:table-cell><table:table-cell table:number-columns-repeated="2"><text:p>hx</text:p></table:table-cell></table:table-row>
    </table:table-header-rows>
    <table:table-row table:style-name="ro1">
-    <table:table-cell table:number-columns-spanned="2"><text:p>spanned</text:p></table:table-cell>
+    <table:table-cell table:style-name="ce1" table:number-columns-spanned="2"><text:p>spanned</text:p></table:table-cell>
     <table:covered-table-cell/>
     <table:table-cell><text:p>c3</text:p></table:table-cell>
    </table:table-row>
@@ -909,6 +911,9 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
     check('foreign: col weights 5/10/10cm', JSON.stringify(hdr.content!.map((x: N) => x.attrs.colwidth)) === JSON.stringify([[500], [1000], [1000]]), hdr.content!.map((x: N) => x.attrs.colwidth));
     check('foreign: spanned cell colwidth [500,1000]', JSON.stringify(row.content![0].attrs?.colwidth) === JSON.stringify([500, 1000]), row.content![0].attrs);
     check('foreign: min-row-height 2cm → 75.59px', row.attrs?.rowHeight === 75.59, row.attrs);
+    // A transparent cell shows its row's background, a row without one the table's.
+    check('foreign: row and table backgrounds reach the cells', row.content![0].attrs?.backgroundColor === '#E6E6E6'
+      && hdr.content![0].attrs?.backgroundColor === '#FFFF00', [row.content![0].attrs, hdr.content![0].attrs]);
 
     const notes = c.find((n: N) => n.type === 'noteSection');
     check('foreign: the note body follows at the document end', notes?.content?.[0]?.content?.[0]?.text === 'note body', notes);

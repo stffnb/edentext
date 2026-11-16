@@ -533,10 +533,10 @@ export class StyleResolver {
     return exact != null ? { cm: exact, exact: true } : null;
   }
 
-  // A cell style's fo:background-color (cell shading). null when none/transparent.
-  cellBackgroundColor(styleName: string | null): string | null {
+  // A cell, row or table style's fo:background-color. null when none/transparent.
+  cellBackgroundColor(styleName: string | null, family: 'table-cell' | 'table-row' | 'table' = 'table-cell'): string | null {
     if (!styleName) return null;
-    const c = this.merged('table-cell', styleName).misc['fo:background-color'];
+    const c = this.merged(family, styleName).misc['fo:background-color'];
     return c && c !== 'transparent' && c !== 'none' ? c : null;
   }
 

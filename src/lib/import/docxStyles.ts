@@ -249,6 +249,7 @@ export class DocxStyles {
   private ownPBdr = new Map<string, Element>(); // style's own w:pPr/w:pBdr (rule lines)
   private ownParaShd = new Map<string, Element>(); // style's own w:pPr/w:shd (colored field)
   private ownCond = new Map<string, Map<string, Element>>(); // table styleId → w:type → w:tblStylePr
+  private ownTcShd = new Map<string, Element>(); // table style's own w:tcPr/w:shd (whole table)
   private ownBandSize = new Map<string, { row: number; col: number }>(); // w:tblStyle*BandSize
   private defaultsWidow: boolean | null = null; // docDefaults w:pPrDefault/w:widowControl
   private numToAbstract = new Map<string, string>();
@@ -354,6 +355,8 @@ export class DocxStyles {
       if (cellMar) this.ownCellMar.set(id, cellMar);
       const tblBorders = tblPr && firstChild(tblPr, 'tblBorders');
       if (tblBorders) this.ownTblBorders.set(id, tblBorders);
+      const tcShd = firstChild(style, 'tcPr') && firstChild(firstChild(style, 'tcPr')!, 'shd');
+      if (tcShd) this.ownTcShd.set(id, tcShd);
       const conds = Array.from(style.children).filter((c) => c.namespaceURI === W && c.localName === 'tblStylePr');
       if (conds.length) {
         const m = new Map<string, Element>();
@@ -707,6 +710,13 @@ export class DocxStyles {
     if (!styleId || seen.has(styleId)) return null;
     seen.add(styleId);
     return this.ownParaShd.get(styleId) ?? this.paragraphShading(this.basedOn.get(styleId) ?? null, seen);
+  }
+
+  // The nearest whole-table cell shading (the style's own w:tcPr/w:shd), under every area.
+  tableCellShading(styleId: string | null | undefined, seen = new Set<string>()): Element | null {
+    if (!styleId || seen.has(styleId)) return null;
+    seen.add(styleId);
+    return this.ownTcShd.get(styleId) ?? this.tableCellShading(this.basedOn.get(styleId) ?? null, seen);
   }
 
   // The table style's conditional areas (w:tblStylePr) along the w:basedOn chain: Word's
