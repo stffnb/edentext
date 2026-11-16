@@ -196,9 +196,9 @@
     return ` --hit-${zone === 'header' ? 'top' : 'bottom'}: ${-edge}px;` +
       ` --hit-left: ${box.left - z.left}px; --hit-right: ${box.left + box.width - z.left - z.width}px;`;
   }
-  // A zone's framed area (HfFrame) as the variables its editor root draws: borders and
-  // padding around the content, the gap outside them, and on a page the area's least
-  // height, its band less the gap.
+  // A zone's framed area (HfFrame) as its editor root draws it: borders, padding, the gap
+  // outside them and on a page the area's least height, band less gap. A dynamic gap is
+  // no margin, so the band reaches max(band, area) as LibreOffice's does (probed).
   function frameOf(index: number, key: HfZoneKey, first = key.endsWith('First')): HfFrame | null {
     const s = sets[index];
     return ((first ? s?.framesFirst ?? s?.frames : s?.frames)?.[key.startsWith('header') ? 'header' : 'footer']) ?? null;
@@ -211,7 +211,7 @@
     return ` --hf-frame-bt: ${side(f.border.top)}; --hf-frame-br: ${side(f.border.right)};` +
       ` --hf-frame-bb: ${side(f.border.bottom)}; --hf-frame-bl: ${side(f.border.left)};` +
       ` --hf-frame-pad: ${px(p.top)} ${px(p.right)} ${px(p.bottom)} ${px(p.left)};` +
-      ` --hf-frame-gap-${header ? 'b' : 't'}: ${px(f.gap)};` +
+      ` --hf-frame-gap-${header ? 'b' : 't'}: ${px(f.dynamic ? 0 : f.gap)};` +
       (bandPx == null ? '' : ` --hf-frame-min: ${Math.max(0, bandPx - cmToPx(f.gap))}px;`);
   }
   // A page's zone frame, filling the page's band.

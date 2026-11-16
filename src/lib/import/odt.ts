@@ -1328,7 +1328,8 @@ function hfFramesOf(resolver: StyleResolver, name: string | null, restPage: stri
       return {
         border: { top: side('top'), right: side('right'), bottom: side('bottom'), left: side('left') },
         padding: { top: pad('top'), right: pad('right'), bottom: pad('bottom'), left: pad('left') },
-        gap: el.getAttributeNS(NS.style, 'dynamic-spacing') === 'true' ? 0 : cm(lengthToCm(attr(`margin-${gapSide}`))),
+        gap: cm(lengthToCm(attr(`margin-${gapSide}`))),
+        ...(el.getAttributeNS(NS.style, 'dynamic-spacing') === 'true' ? { dynamic: true } : {}),
       };
     };
     const header = frame(props.header, 'bottom');

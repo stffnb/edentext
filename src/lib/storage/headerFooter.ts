@@ -57,11 +57,13 @@ export type HfSet = {
 
 // A zone's area as ODF's style:header-footer-properties draws it: per-side borders
 // (canonical '<W>pt <line> #RRGGBB'), padding inside them and the gap to the body
-// outside them, all cm. The area is at least its band less the gap.
+// outside them, all cm. The area is at least its band less the gap; a `dynamic` gap
+// (style:dynamic-spacing) shrinks as the area grows, so the band is max(band, area).
 export type HfFrame = {
   border: { top: string | null; right: string | null; bottom: string | null; left: string | null };
   padding: { top: number; right: number; bottom: number; left: number };
   gap: number;
+  dynamic?: boolean;
 };
 export type HfFrames = { header?: HfFrame | null; footer?: HfFrame | null };
 // Section 1's frames, which the app keeps beside its zones.
