@@ -79,6 +79,14 @@ describe('font pair rendering', () => {
     expect(decls).toContain('--font-asian: "SimHei"');
   });
 
+  it('gives a fixed-pitch family a fixed-pitch tail', () => {
+    for (const f of ['Liberation Mono', 'DejaVu Sans Mono', 'Courier New', 'Consolas', 'Lucida Console']) {
+      expect(textDeclarations({ fontFamily: f }), f).toContain('--font-tail: var(--font-mono)');
+    }
+    expect(textDeclarations({ fontFamily: 'Liberation Mono' })).toContain("--font-west: 'Liberation Mono', 'Courier New'");
+    expect(textDeclarations({ fontFamily: 'Monotype Corsiva' })).toContain('--font-tail: var(--font-serif)');
+  });
+
   it('strokes bold in a face without one and sets a Chinese face\'s quotes full width', () => {
     const song = textDeclarations({ fontFamily: 'FangSong', fontFamilyAsian: '宋体', bold: true });
     expect(song).toContain('--bold-stroke: 0.025em');

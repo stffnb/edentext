@@ -309,6 +309,8 @@
     /* Headings are sans, like LibreOffice's Heading style ('Arial' is the bundled
        Liberation Sans; see HEADING_FONT in export/odt.ts). */
     --font-heading: 'Arial', 'Liberation Sans', sans-serif;
+    /* A fixed-pitch family's fallback: 'Courier New' is the bundled Liberation Mono. */
+    --font-mono: 'Courier New', monospace;
     /* The logo's two colours (favicon.svg: the slate stem, the clay leaf), one source of truth for
        both chromes. The gradient is the app's signature (island hairline). */
     --brand-slate: #4c6c8a;

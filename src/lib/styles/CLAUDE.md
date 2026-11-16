@@ -25,6 +25,8 @@ per family: its CSS names, generic tail, single line height, Word's stroked bold
 without one (`fauxBold`) and full-width quotes from `EdenText Quotes` for a Chinese face.
 A family without a line height there takes Chromium's `line-height: normal` where installed
 (`singleLineHeight`), which matches Word's win-metric line for faces whose hhea agrees.
+A fixed-pitch family (a row's `mono`, or a name LibreOffice reads as one: `MONO_NAME`) falls
+back to `--font-mono`, the bundled Liberation Mono, as LibreOffice substitutes a mono face.
 A name with a weight, width, slant or vendor suffix (`Arial Bold`, `Arial-BoldMT`) falls back to its
 base family's stack and class (`baseProfile`), as LibreOffice strips the suffix and never applies its
 weight (probed). Limitation: Chromium on macOS resolves PostScript names itself, so `Arial-BoldMT`

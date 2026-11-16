@@ -276,7 +276,13 @@ export function screenFontName(family: string): string {
 export function cssFontFamily(name: string): string {
   if (name === 'Liberation Serif') return 'var(--font-serif)';
   if (name === 'Liberation Sans' || name === 'Arial') return 'var(--font-heading)';
-  return `"${cssString(name)}", var(${fontProfile(name).sans ? '--font-heading' : '--font-serif'})`;
+  return `"${cssString(name)}", ${genericTail(name)}`;
+}
+
+// A fixed-pitch family falls back to a fixed-pitch face, as LibreOffice substitutes one.
+function genericTail(name: string): string {
+  const p = fontProfile(name);
+  return `var(${p.mono ? '--font-mono' : p.sans ? '--font-heading' : '--font-serif'})`;
 }
 
 // What a family's substitute does differently, one row per family. `stack`: the names it
@@ -288,6 +294,7 @@ export function cssFontFamily(name: string): string {
 interface FontProfile {
   stack?: string;
   sans?: boolean;
+  mono?: boolean;
   singleLine?: number;
   noBold?: boolean;
   wideQuotes?: boolean;
@@ -311,14 +318,14 @@ const FONT_PROFILES: Record<string, FontProfile> = {
   'Segoe UI Black': SEGOE, Selawik: SEGOE,
   // Office faces often missing where the file is opened, as Word sets them: win ascent +
   // descent + the hhea gap they leave out, read from the fonts Word ships.
-  Cambria: line(1.1724), Caladea: line(1.1724), Aptos: line(1.2847), Consolas: line(1.1709),
+  Cambria: line(1.1724), Caladea: line(1.1724), Aptos: line(1.2847), Consolas: { singleLine: 1.1709, mono: true },
   Candara: line(1.2207), Constantia: line(1.2207), Corbel: line(1.2207), Tahoma: line(1.207),
   Verdana: line(1.2153), Georgia: line(1.1362), 'Trebuchet MS': line(1.1611),
   'Century Gothic': line(1.2261), Garamond: line(1.125), 'Book Antiqua': line(1.2427),
   'Palatino Linotype': line(1.3491), 'Lucida Sans Unicode': line(1.5366),
   'Microsoft YaHei': line(1.3198), 'Malgun Gothic': line(1.3301),
-  'Courier New': { singleLine: 1.1333 },
-  'Liberation Mono': { singleLine: 1.1333 },
+  'Courier New': { singleLine: 1.1333, mono: true },
+  'Liberation Mono': { stack: "'Liberation Mono', 'Courier New'", singleLine: 1.1333, mono: true },
   SimSun: SONG, 宋体: SONG, NSimSun: SONG, 新宋体: SONG, FangSong: SONG, 仿宋: SONG, 仿宋_GB2312: SONG,
   FangSong_GB2312: CJK_NO_BOLD, SimHei: CJK_NO_BOLD, 黑体: CJK_NO_BOLD, KaiTi: CJK_NO_BOLD,
   KaiTi_GB2312: CJK_NO_BOLD, 楷体: CJK_NO_BOLD, 楷体_GB2312: CJK_NO_BOLD, MingLiU: CJK_NO_BOLD,
@@ -336,10 +343,13 @@ function baseProfile(name: string): FontProfile {
   for (let next = base.replace(FACE_SUFFIX, ''); next && next !== base; next = base.replace(FACE_SUFFIX, '')) {
     base = next;
     const own = FONT_PROFILES[base] ?? FONT_PROFILES[PROFILE_KEYS.get(base.replace(/[\s_-]/g, '').toLowerCase()) ?? ''];
-    if (own) return { stack: own.stack, sans: own.sans };
+    if (own) return { stack: own.stack, sans: own.sans, mono: own.mono };
   }
-  return {};
+  return MONO_NAME.test(name) ? { mono: true } : {};
 }
+// The names LibreOffice substitutes a missing family by a fixed-pitch face for (probed;
+// not by the declared style:font-pitch, and not for Inconsolata or Source Code Pro).
+const MONO_NAME = /\bMono\b|Courier|Consolas|Console|Cousine|Typewriter/i;
 
 // A family named in Han is a Chinese face all the same.
 function fontProfile(name: string): FontProfile {
@@ -364,7 +374,7 @@ function westNames(name: string): string {
 export function fontPairDeclarations(west?: string | null, asian?: string | null): string[] {
   if (!west && !asian) return [];
   const out: string[] = [];
-  const tail = `var(${west && fontProfile(west).sans ? '--font-heading' : '--font-serif'})`;
+  const tail = west ? genericTail(west) : 'var(--font-serif)';
   if (west) out.push(`--font-west: ${westNames(west)}`, `--font-tail: ${tail}`);
   if (asian) {
     out.push(`--font-asian: "${cssString(asian)}"`);
