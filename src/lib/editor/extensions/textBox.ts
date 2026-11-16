@@ -1005,7 +1005,7 @@ class TextBoxView {
     } else if (a.wrap === 'left' || a.wrap === 'right') {
       d.style.float = a.wrap;
       d.style.margin = frameMargins(a.wrap, a.wrapOffset, this.wrapperWidth(), null, a.wrapDist);
-      unstackFloat(d, a.wrap, a.wrapOffset);
+      unstackFloat(d, a.wrap, a.wrapOffset, a.wrapDist);
     } else if (a.wrap === 'through') {
       // Behind the text, which is what a shape with no run-through of its own exports as
       // — and under a picture behind the text too (-1), which is the order LibreOffice

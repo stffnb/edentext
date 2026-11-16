@@ -680,6 +680,27 @@ try {
   check(Math.abs(floatsX[0] - 189) <= 1 && Math.abs(floatsX[1] - 19) <= 1,
     `two left floats in one paragraph sit at their own x (${floatsX.join(', ')}px)`);
 
+  // A float reaching down from an earlier block is overlapped at the next one's own x and
+  // line, not queued beside or below it; an x counts from the column, not a list's indent.
+  const item = (...content) => ({ type: 'listItem', content: [block(...content)] });
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
+    block(frame({ wrap: 'right', wrapOffset: 10, height: 80 }), words('head')),
+    { type: 'bulletList', content: [item(frame({ wrap: 'right', wrapOffset: 9, width: 200 }), words('right')),
+      item(frame({ wrap: 'left', wrapOffset: 1 }), words('left'))] },
+  ] });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
+  await settle(page, true);
+  const overlap = await page.evaluate(() => {
+    const col = document.querySelector('.tiptap-host .tiptap > p').getBoundingClientRect().left;
+    return Array.from(document.querySelectorAll('.tiptap-host .tiptap li > p'), (p) => {
+      const f = p.querySelector('.image-node').getBoundingClientRect();
+      return [Math.round(f.left - col), Math.round(f.top - p.getBoundingClientRect().top)];
+    });
+  });
+  check(Math.abs(overlap[0][0] - 340) <= 1 && Math.abs(overlap[0][1]) <= 1 && Math.abs(overlap[1][0] - 38) <= 1,
+    `side floats overlap an earlier block's at their own x from the column (${overlap.join(' | ')})`);
+
   // An index shows the rows it saved, as both word processors do, until it is updated.
   const heading = (t) => ({ type: 'heading', attrs: { level: 1 }, content: [words(t)] });
   await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [

@@ -5,6 +5,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import { COLUMNS_FIT_MARGIN_PX, headFitPx } from './columns';
 import { isLeftPage, printedPageNumber } from '../../storage/pageNumbering';
+import { PX_PER_CM } from '../../storage/pageMargins';
 import { RESYNC_NOTES, setNoteAnchorPages } from './notes';
 
 export type PageBreakDebugSnapshot = {
@@ -458,30 +459,109 @@ function columnLeft(view: EditorView, el: HTMLElement): number {
     + (parseFloat(getComputedStyle(block).getPropertyValue('--sec-inset-left')) || 0);
 }
 
-// A side float sunk below its anchor (image.ts) stops short of the next float on its
-// side: floats cannot overlap as LibreOffice lets them, and one pushed aside squeezes its
-// text. The room is known once the lines around both are laid out: every pass re-measures.
-export function sinkSideFloat(view: EditorView, el: HTMLElement): void {
-  const want = Number(el.dataset.sinkGap);
-  if (!el.isConnected || !(want > 0)) return;
-  const top = (e: HTMLElement) => {
-    let y = -(parseFloat(e.style.marginTop) || 0);
-    for (let n: HTMLElement | null = e; n && n !== view.dom; n = n.offsetParent as HTMLElement | null) y += n.offsetTop;
-    return y;
-  };
-  const floats = Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>(`[data-wrap="${el.dataset.wrap}"]`));
-  const next = floats[floats.indexOf(el) + 1];
-  const gap = next ? Math.min(want, Math.max(0, Math.floor(top(next) - top(el) - el.offsetHeight))) : want;
-  // Text runs beside the offset down to the frame's own gap above it.
+// A side float sunk below its anchor (image.ts): text runs beside the offset down to
+// the frame's own gap above it. It may reach over the next float on its side, which
+// shiftToOffset then sets at its own x, as LibreOffice lets two frames overlap.
+export function sinkSideFloat(el: HTMLElement): void {
+  const gap = Number(el.dataset.sinkGap);
+  if (!el.isConnected || !(gap > 0)) return;
   el.style.marginTop = `${gap}px`;
   el.style.shapeOutside = `inset(${Math.max(0, gap - (Number(el.dataset.gapTop) || 0))}px 0 0 0) margin-box`;
+}
+
+// CSS queues floats of one side behind each other, so a later frame would sit beside an
+// earlier one, or drop below it, rather than at its own x (`data-float-x`, cm, from the
+// column) — also one reaching down from an earlier block. Both word processors let the
+// two overlap: its outer edge goes against the earlier one's, its box at its own x.
+// Measured again on every pass, since pagination moves the blocks under them.
+export function shiftToOffset(el: HTMLElement): void {
+  const block = el.parentElement, side = el.style.float, offsetCm = Number(el.dataset.floatX);
+  if (!block || !el.isConnected || (side !== 'left' && side !== 'right') || !Number.isFinite(offsetCm)) return;
+  if (block.closest('[style*="column-count"]')) return;
+  const b = block.getBoundingClientRect();
+  const s = b.width / (block.offsetWidth || 1);
+  const cs = getComputedStyle(block);
+  const left = b.left + (parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth)) * s;
+  const right = b.right - (parseFloat(cs.paddingRight) + parseFloat(cs.borderRightWidth)) * s;
+  const col = floatColumn(el);
+  if (col == null) return;
+  const gap = Number(el.dataset.floatGap) || 0, w = el.offsetWidth;
+  const x0 = col + offsetCm * PX_PER_CM * s, x1 = x0 + w * s;   // the box, in the viewport
+  // Where the frame's line puts it with nothing beside it: a box of no width always fits.
+  const keep = [el.style.marginLeft, el.style.marginRight];
+  el.style.marginLeft = '0px';
+  el.style.marginRight = `${-w}px`;
+  const top = el.getBoundingClientRect().top - parseFloat(getComputedStyle(el).marginTop) * s;
+  [el.style.marginLeft, el.style.marginRight] = keep;
+  const before = queuedBehind(el, side, top, s);
+  // The outer edge it lines up against, and the near side's gap, cut at the block's edge.
+  if (side === 'right') {
+    const edge = before ? before.getBoundingClientRect().left - parseFloat(getComputedStyle(before).marginLeft) * s : right;
+    setFloatMargins(el, Math.max(0, Math.min(gap, (x0 - left) / s)), (edge - x1) / s);
+  } else {
+    const edge = before ? before.getBoundingClientRect().right + parseFloat(getComputedStyle(before).marginRight) * s : left;
+    setFloatMargins(el, (x0 - edge) / s, Math.max(0, Math.min(gap, (right - x1) / s)));
+  }
+}
+
+function setFloatMargins(el: HTMLElement, ml: number, mr: number): void {
+  const em = getComputedStyle(el);
+  if (Math.abs(ml - parseFloat(em.marginLeft)) < 0.5 && Math.abs(mr - parseFloat(em.marginRight)) < 0.5) return;
+  el.style.marginLeft = `${ml.toFixed(2)}px`;
+  el.style.marginRight = `${mr.toFixed(2)}px`;
+  el.dataset.unstack = `${el.style.float}${el.dataset.floatX}:${el.style.marginLeft}:${el.style.marginRight}`;
+}
+
+// The left edge, in the viewport, of the column a frame's x counts from: a cell's or a
+// text box's content, else the body column (columnLeft) — not the anchor's indent.
+function floatColumn(el: HTMLElement): number | null {
+  const box = el.parentElement?.closest<HTMLElement>('td, th, .textbox-content');
+  const root = el.closest<HTMLElement>('.tiptap');
+  const at = box ?? root;
+  if (!at) return null;
+  const r = at.getBoundingClientRect(), s = r.width / (at.offsetWidth || 1), c = getComputedStyle(at);
+  let inset = 0;
+  if (!box && root) {
+    let top: HTMLElement = el;
+    while (top.parentElement && top.parentElement !== root) top = top.parentElement;
+    inset = parseFloat(getComputedStyle(top).getPropertyValue('--sec-inset-left')) || 0;
+  }
+  return r.left + (parseFloat(c.borderLeftWidth) + parseFloat(c.paddingLeft) + inset) * s;
+}
+
+// The earlier float of that side in the same formatting context whose band the frame's
+// top falls in, and of those the one reaching furthest in: the one CSS lines it up behind.
+function queuedBehind(el: HTMLElement, side: 'left' | 'right', top: number, s: number): HTMLElement | null {
+  const root = floatContext(el);
+  let best: HTMLElement | null = null, reach = 0;
+  for (const f of root?.querySelectorAll<HTMLElement>(`[style*="float: ${side}"]`) ?? []) {
+    if (f === el || !(f.compareDocumentPosition(el) & globalThis.Node.DOCUMENT_POSITION_FOLLOWING)) continue;
+    if (f.contains(el) || el.contains(f) || floatContext(f) !== root) continue;
+    const p = f.getBoundingClientRect(), pm = getComputedStyle(f);
+    if (top < p.top - parseFloat(pm.marginTop) * s - 0.5 || top >= p.bottom + parseFloat(pm.marginBottom) * s - 0.5) continue;
+    const edge = side === 'left' ? p.right + parseFloat(pm.marginRight) * s : -(p.left - parseFloat(pm.marginLeft) * s);
+    if (!best || edge > reach) { best = f; reach = edge; }
+  }
+  return best;
+}
+
+// The block formatting context a float lives in: floats queue only within one.
+function floatContext(el: HTMLElement): HTMLElement | null {
+  for (let e = el.parentElement; e; e = e.parentElement) {
+    if (e.classList.contains('tiptap')) return e;
+    const c = getComputedStyle(e);
+    if (c.float !== 'none' || (c.position !== 'static' && c.position !== 'relative') || c.overflow !== 'visible'
+        || /^(flow-root|inline-block|table-cell|table-caption|flex|grid)$/.test(c.display)) return e;
+  }
+  return null;
 }
 
 // Pagination moves the page grid under those frames, so every pass re-places them.
 export function placePageFrames(view: EditorView, grid: PageGrid): void {
   for (const el of Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>('[data-sink-gap]'))) {
-    sinkSideFloat(view, el);
+    sinkSideFloat(el);
   }
+  for (const el of Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>('[data-float-x]'))) shiftToOffset(el);
   placeFrames(Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>(PLACED), (el) => [view, el]), grid);
 }
 

@@ -8,7 +8,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { dropCursor } from '@tiptap/pm/dropcursor';
 import { closeHistory } from '@tiptap/pm/history';
 import { cmToPx } from '../../storage/pageMargins';
-import { readVerticalMargins, placeFrameSoon, placeInColumn, freeDragX, sinkSideFloat } from './pageBreaks';
+import { readVerticalMargins, placeFrameSoon, placeInColumn, freeDragX, sinkSideFloat, shiftToOffset } from './pageBreaks';
 
 // Inline, as-character image, or a floating text-wrapped frame (wrap = flow mode);
 // width/height are doc px @96dpi, rotation CW degrees. Export → cm + ODF
@@ -150,38 +150,19 @@ export function frameMargins(wrap: WrapMode, offsetCm: unknown, boxWidthPx: numb
   return `0 ${far} ${bottom} ${gapPx(g.left)}px`;
 }
 
-// CSS queues floats of one side behind each other, so a later frame would sit beside an
-// earlier one, or below it where its x no longer fits, rather than at its own x. Once
-// laid out, its margins are set to reach that x from the earlier one's outer edge, the
-// gap beside it cut where it would cross the column's edge. Kept on the element, so a
-// re-applied wrap restores them at once instead of laying out again.
-export function unstackFloat(el: HTMLElement, side: 'left' | 'right', offsetCm: unknown): void {
+// A side float placed at an x of its own (see shiftToOffset), with the gap it keeps to
+// the text. The shift last measured is kept on the element, so a re-applied wrap restores
+// it at once instead of a frame late.
+export function unstackFloat(el: HTMLElement, side: 'left' | 'right', offsetCm: unknown, distCm?: unknown): void {
   const kept = el.dataset.unstack?.split(':');
   if (typeof offsetCm !== 'number' || kept?.[0] !== `${side}${offsetCm}`) delete el.dataset.unstack;
   else [el.style.marginLeft, el.style.marginRight] = [kept[1], kept[2]];
-  if (typeof offsetCm !== 'number') return;
+  if (typeof offsetCm !== 'number') { delete el.dataset.floatX; return; }
+  el.dataset.floatX = String(offsetCm);
+  const g = wrapGap(distCm);
+  el.dataset.floatGap = String(gapPx(side === 'right' ? g.left : g.right));
   // Deferred: a new node view is not in its paragraph yet, so its neighbours are unknown.
-  requestAnimationFrame(() => {
-    let before = el.previousElementSibling;
-    while (before && !(before instanceof HTMLElement && before.style.float === side)) before = before.previousElementSibling;
-    const block = el.parentElement;
-    if (!before || !block || !el.isConnected || el.style.float !== side) return;
-    const b = block.getBoundingClientRect(), p = before.getBoundingClientRect(), r = el.getBoundingClientRect();
-    const s = b.width / (block.offsetWidth || 1);
-    const cs = getComputedStyle(block), pm = getComputedStyle(before), em = getComputedStyle(el);
-    const top = r.top - parseFloat(em.marginTop) * s;
-    if (top < p.top - parseFloat(pm.marginTop) * s - 1 || top > p.bottom + 1) return; // not queued on its line
-    const left = b.left + (parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth)) * s;
-    const right = b.right - (parseFloat(cs.paddingRight) + parseFloat(cs.borderRightWidth)) * s;
-    const x = cmToPx(offsetCm), w = r.width / s, cw = (right - left) / s;
-    let ml = parseFloat(em.marginLeft), mr = parseFloat(em.marginRight);
-    if (side === 'left') { ml = x - ((p.right - left) / s + parseFloat(pm.marginRight)); mr = Math.min(mr, cw - x - w); }
-    else { mr = cw - x - w - ((right - p.left) / s + parseFloat(pm.marginLeft)); ml = Math.min(ml, x); }
-    if (Math.abs(ml - parseFloat(em.marginLeft)) < 0.5 && Math.abs(mr - parseFloat(em.marginRight)) < 0.5) return;
-    el.style.marginLeft = `${ml.toFixed(2)}px`;
-    el.style.marginRight = `${mr.toFixed(2)}px`;
-    el.dataset.unstack = `${side}${offsetCm}:${el.style.marginLeft}:${el.style.marginRight}`;
-  });
+  requestAnimationFrame(() => shiftToOffset(el));
 }
 
 // What picking a wrap mode by hand drops: the offsets belong to the mode that was set,
@@ -925,7 +906,7 @@ class ImageView {
     if (wrap === 'left' || wrap === 'right') {
       d.style.float = wrap;
       d.style.margin = frameMargins(wrap, a.wrapOffset, this.boxWidth(), null, a.wrapDist);
-      unstackFloat(d, wrap, a.wrapOffset);
+      unstackFloat(d, wrap, a.wrapOffset, a.wrapDist);
       this.sinkToOffset();
     } else if (wrap === 'topBottom' && (a.wrapAlign === 'left' || a.wrapAlign === 'right')) {
       // Sharing its band with the frame set against the other end (the importers only
@@ -975,7 +956,7 @@ class ImageView {
     if (gap === null || (wrap !== 'left' && wrap !== 'right')) return;
     this.dom.dataset.sinkGap = String(gap);
     this.dom.dataset.gapTop = String(top);
-    sinkSideFloat(this.view, this.dom);
+    sinkSideFloat(this.dom);
   }
 
   // Drag an image to re-anchor it live to the text position under the cursor (text
