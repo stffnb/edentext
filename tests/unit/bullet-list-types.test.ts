@@ -49,7 +49,12 @@ describe('bulletCharFromDocx (Word numbering.xml patterns)', () => {
     expect(bulletCharFromDocx('\uf0e8', 'Wingdings')).toBe('➔');
   });
 
-  it('maps the Symbol bullets', () => {
+  it("maps the Symbol bullets through the font's whole encoding", () => {
+    expect(bulletCharFromDocx('\uf02d', 'Symbol')).toBe('−');
+    expect(bulletCharFromDocx('\uf061', 'Symbol')).toBe('α');
+    expect(bulletCharFromDocx('\uf0e0', 'Symbol')).toBe('◊');
+    expect(bulletCharFromDocx('\uf09f', 'Wingdings')).toBe('•');
+    expect(bulletCharFromOdf('•', 'Symbol')).toBe('•');
     expect(bulletCharFromDocx('', 'Symbol')).toBe('•');
     expect(bulletCharFromDocx('', 'Symbol')).toBe('♦');
   });

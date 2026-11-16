@@ -2021,7 +2021,7 @@ function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
     const el = resolver.listStyle(odfName);
     if (!el) continue;
     const name = displayStyleName(odfName, resolver.listStyleDisplayName(odfName));
-    sheet.list[name] = listStyleFromOdf(name, el, sheet.list[name]?.builtin);
+    sheet.list[name] = listStyleFromOdf(name, el, sheet.list[name]?.builtin, resolver);
   }
   sheet.outline = outlineFromOdf(resolver.outlineStyle(), ctx);
   return sheet;
@@ -2094,7 +2094,7 @@ function outlineLevelGeometry(def: Element): { pos: Partial<OutlineLevel>; pad: 
 
 // A named <text:list-style> element → the registry's shape. Each level's indentCm is
 // its margin step past the level above minus the 1.27cm base (the export's inverse).
-function listStyleFromOdf(name: string, el: Element, builtin?: boolean): ListStyle {
+function listStyleFromOdf(name: string, el: Element, builtin?: boolean, resolver?: StyleResolver): ListStyle {
   const levels: ListLevelStyle[] = [];
   let multilevel = false;
   let prevMargin = 0;
@@ -2115,7 +2115,7 @@ function listStyleFromOdf(name: string, el: Element, builtin?: boolean): ListSty
       const sv = parseInt(def.getAttributeNS(NS.text, 'start-value') ?? '', 10);
       if (Number.isFinite(sv) && sv > 1) level.startAt = sv;
     } else {
-      const ch = bulletCharFromOdf(def.getAttributeNS(NS.text, 'bullet-char'), listLevelFontName(def));
+      const ch = bulletCharFromOdf(def.getAttributeNS(NS.text, 'bullet-char'), listLevelFontName(def, resolver));
       if (ch) level.bulletChar = ch;
     }
     levels.push(level);
@@ -3479,7 +3479,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
       if (depth === 1) attrs.listStyleName = displayStyleName(styleName!, ctx.resolver.listStyleDisplayName(styleName!));
     } else {
       const raw = levelDef?.getAttributeNS(NS.text, 'bullet-char') ?? null;
-      const bulletChar = bulletCharAttr(bulletCharFromOdf(raw, listLevelFontName(levelDef)), depth - 1);
+      const bulletChar = bulletCharAttr(bulletCharFromOdf(raw, listLevelFontName(levelDef, ctx.resolver)), depth - 1);
       if (bulletChar) attrs.bulletChar = bulletChar;
       if (indent != null) attrs.indent = indent;
       if (listLevelRightAligned(levelDef)) attrs.markerAlign = 'right';
@@ -3570,13 +3570,16 @@ function listLevelMarginLeftCm(levelDef: Element | null): number | null {
 
 // The level def's declared font (Word-written .odt puts Wingdings/Symbol here for
 // its private-use bullet chars; LibreOffice writes real Unicode chars instead).
-function listLevelFontName(levelDef: Element | null): string | null {
+// The label's font: the level's own text properties, else the text style it names.
+function listLevelFontName(levelDef: Element | null, resolver?: StyleResolver): string | null {
   if (!levelDef) return null;
   for (const props of Array.from(levelDef.children)) {
     if (props.namespaceURI !== NS.style || props.localName !== 'text-properties') continue;
-    return props.getAttributeNS(NS.style, 'font-name') ?? props.getAttributeNS(NS.fo, 'font-family');
+    const own = props.getAttributeNS(NS.style, 'font-name') ?? props.getAttributeNS(NS.fo, 'font-family');
+    if (own) return own;
   }
-  return null;
+  const label = levelDef.getAttributeNS(NS.text, 'style-name');
+  return (label && resolver?.fontFamilyOf(resolver.spanTextProps(label))) || null;
 }
 
 function listLevelDef(listStyle: Element | null, depth: number): Element | null {
