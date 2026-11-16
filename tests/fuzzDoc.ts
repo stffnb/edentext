@@ -413,7 +413,7 @@ function styledTable(r: Rng, name: string, cols: number, nRows: number): N {
       // that exact shade is HEADER_SHADE, whose bold is presentational
       if (maybe(r, 0.12)) attrs.backgroundColor = pick(r, ['#FFD700', '#E0F0E0']);
       else if (attrs.backgroundColor && maybe(r, 0.08)) delete attrs.backgroundColor; // cleared shading
-      if (maybe(r, 0.08)) attrs.borderBottom = pick(r, ['2pt solid #FF0000', 'none']);
+      if (maybe(r, 0.08)) attrs.borderBottom = pick(r, ['2pt solid #FF0000', '1.5pt double #FF0000', '1pt dashed #FF0000', 'none']);
       return { type: 'tableCell', attrs, content };
     }),
   }));

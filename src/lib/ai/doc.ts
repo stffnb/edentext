@@ -421,7 +421,7 @@ function documentSettings(): string[] {
   if (loadFoldMarks()) out.push('fold marks');
   const decor = loadPageDecor();
   if (decor.background) out.push(`background ${decor.background}`);
-  if (decor.border) out.push(`border ${decor.border.widthPt}pt solid ${decor.border.color}`);
+  if (decor.border) out.push(`border ${decor.border.widthPt}pt ${decor.border.line ?? 'solid'} ${decor.border.color}`);
   if (decor.watermark) out.push(`watermark ${JSON.stringify(decor.watermark.text)}`);
   const props = loadDocProperties();
   for (const k of ['title', 'subject', 'keywords'] as const) if (props[k]) out.push(`${k} ${JSON.stringify(props[k])}`);

@@ -56,6 +56,7 @@ import { DEFAULT_LINE_GRID, normalizeLineGrid, type LineGrid } from '../storage/
 import { clampColumnGap } from '../editor/extensions/columns';
 import { astToLatex } from '../math/latex';
 import { parseOmml, OMML_NS } from '../math/omml';
+import { borderValue, type BorderLine } from '../editor/extensions/tableCellBorders';
 
 // Warnings are the English catalog text; localizeImportMessage maps them at display time.
 const WARN = en.importWarn;
@@ -1986,15 +1987,30 @@ const PARA_BORDER_SIDES = [
   ['top', 'borderTop'], ['right', 'borderRight'], ['bottom', 'borderBottom'], ['left', 'borderLeft'],
 ] as const;
 
-// One w:pBdr side → the canonical '<W>pt solid #RRGGBB'. null when it draws nothing:
+// A drawn border side's line and total width. w:sz is one stroke in eighths of a point;
+// LibreOffice draws the multi-line kinds as a double line this wide in all (probed).
+export function docxBorderLine(el: Element): { line: BorderLine; widthPt: number } {
+  const val = el.getAttributeNS(W, 'val') ?? '';
+  const sz = intAttr(el, W, 'sz');
+  const s = sz != null ? sz / 8 : 0.5;
+  const w = (pt: number) => Math.round(pt * 100) / 100;
+  if (val === 'double' || val === 'triple') return { line: 'double', widthPt: w(3 * s) };
+  if (/SmallGap$/.test(val)) return { line: 'double', widthPt: w(s + 1.5) };
+  if (/MediumGap$/.test(val)) return { line: 'double', widthPt: w(2 * s) };
+  if (/LargeGap$/.test(val)) return { line: 'double', widthPt: w(s + 2.25) };
+  if (val === 'dotted') return { line: 'dotted', widthPt: w(s) };
+  if (/dash/i.test(val)) return { line: 'dashed', widthPt: w(s) };
+  return { line: 'solid', widthPt: w(s) };
+}
+
+// One w:pBdr side → the canonical '<W>pt <line> #RRGGBB'. null when it draws nothing:
 // unlike a table cell, a paragraph has no 0.5pt-black default to collapse against.
 function paraBorderAttr(b: Element | null): string | null {
   if (!b) return null;
   const val = b.getAttributeNS(W, 'val');
   if (!val || val === 'none' || val === 'nil') return null;
-  const sz = intAttr(b, W, 'sz'); // eighths of a point
-  const widthPt = sz != null ? Math.round((sz / 8) * 100) / 100 : 0.5;
-  return `${widthPt}pt solid ${hexColor(b.getAttributeNS(W, 'color')) ?? '#000000'}`;
+  const { line, widthPt } = docxBorderLine(b);
+  return borderValue(widthPt, hexColor(b.getAttributeNS(W, 'color')) ?? '#000000', line);
 }
 
 // Word's horizontal line (Insert ▸ Horizontal Line, or the `---` autoformat) is a VML
@@ -3496,17 +3512,16 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
 // ---- tables -----------------------------------------------------------------
 
 // A w:tcBorders/w:tblBorders side element → border attr value: null = the editor
-// default (0.5pt black), 'none', or '<W>pt solid #RRGGBB' (w:sz is eighth-points).
+// default (0.5pt black), 'none', or '<W>pt <line> #RRGGBB'.
 // undefined when the element is absent (side not declared at this level).
 function docxBorderAttr(el: Element | null): string | null | undefined {
   if (!el) return undefined;
   const val = el.getAttributeNS(W, 'val');
   if (!val || val === 'none' || val === 'nil') return 'none';
-  const sz = intAttr(el, W, 'sz');
-  const w = Math.round(((sz != null ? sz / 8 : 0.5)) * 100) / 100;
+  const { line, widthPt: w } = docxBorderLine(el);
   const c = (hexColor(el.getAttributeNS(W, 'color')) ?? '#000000').toUpperCase();
-  if (Math.abs(w - 0.5) < 0.11 && c === '#000000') return null;
-  return `${w}pt solid ${c}`;
+  if (Math.abs(w - 0.5) < 0.11 && c === '#000000' && line === 'solid') return null;
+  return borderValue(w, c, line);
 }
 
 // A conditional table-style area (w:tblStylePr) and the grid box it covers. A band's box
@@ -4040,12 +4055,13 @@ function docxPageDecor(
   const borders = fc(sectPr, 'pgBorders');
   const top = borders ? fc(borders, 'top') : null;
   const sz = top ? intAttr(top, W, 'sz') : null;
+  const line = top ? docxBorderLine(top) : null;
   const color = top?.getAttributeNS(W, 'color');
   return normalizePageDecor({
     background: bg && bg !== 'auto' ? `#${bg}` : null,
     // w:sz is eighths of a point, w:space whole points from the text.
-    border: sz && top && wVal(top) !== 'none'
-      ? { widthPt: Math.round((sz / 8) * 100) / 100,
+    border: sz && top && line && wVal(top) !== 'none'
+      ? { widthPt: line.widthPt, line: line.line,
           color: color && color !== 'auto' ? `#${color}` : '#000000',
           paddingCm: Math.round(((intAttr(top, W, 'space') ?? 0) / 72) * 2.54 * 100) / 100 }
       : null,

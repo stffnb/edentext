@@ -49,7 +49,7 @@ export type TableRegionProps = {
 };
 
 // Border values follow the cell attrs (tableCellBorders.ts): null = the table default
-// 0.5pt black, 'none' = no border, else the canonical '<W>pt solid #RRGGBB'.
+// 0.5pt black, 'none' = no border, else the canonical '<W>pt <line> #RRGGBB'.
 export type TableStyle = {
   name: string;
   builtin?: boolean;
@@ -302,9 +302,9 @@ export function previewCellCss(
   const side = (value: string | null): string => {
     if (value === 'none') return 'none';
     if (value === null) return '1px solid currentColor';
-    const m = /^([\d.]+)pt solid (#[0-9A-Fa-f]{6})$/.exec(value);
+    const m = /^([\d.]+)pt (solid|double|dotted|dashed) (#[0-9A-Fa-f]{6})$/.exec(value);
     if (!m) return 'none';
-    return `${parseFloat(m[1]) > 0.75 ? 2 : 1}px solid ${m[2]}`;
+    return m[2] === 'double' ? `3px double ${m[3]}` : `${parseFloat(m[1]) > 0.75 ? 2 : 1}px ${m[2]} ${m[3]}`;
   };
   const borders = (['Top', 'Right', 'Bottom', 'Left'] as const)
     .map(s => `border-${s.toLowerCase()}: ${side(paint.borders[`border${s}`])}`)

@@ -52,7 +52,7 @@
         style="top: {box.top + ring.top}px; left: {box.left + ring.left}px;
                width: {box.width - ring.left - ring.right}px;
                height: {box.height - ring.top - ring.bottom}px;
-               border: {decor.border.widthPt}pt solid {decor.border.color};"
+               border: {decor.border.line === 'double' ? Math.max(decor.border.widthPt, 2.25) : decor.border.widthPt}pt {decor.border.line ?? 'solid'} {decor.border.color};"
       ></div>
     {/if}
     {#if decor.watermark}

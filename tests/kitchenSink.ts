@@ -83,7 +83,7 @@ export function kitchenSinkDoc(): N {
     p([t('Blocksatz mit Einzügen und Abständen')],
       { textAlign: 'justify', indent: 1.25, indentFirst: -0.75, indentRight: 1.5, spaceBefore: 6, spaceAfter: 12 }),
     p([t('Absatzbox mit Schattierung und Linien')],
-      { backgroundColor: '#CCFFFF', borderBottom: '2pt solid #FF0000', borderTop: '1pt solid #00B050' }),
+      { backgroundColor: '#CCFFFF', borderBottom: '2pt solid #FF0000', borderTop: '1pt dotted #00B050' }),
     p([t('Tabulatoren'), { type: 'hardBreak' }, t('mit\tFüllzeichen\tund harter Zeile')],
       { tabStops: '3c.;9r_' }),
     p([t('Zusammenhalten, Zeilen halten, ohne Schusterjungen')],
@@ -135,7 +135,7 @@ export function kitchenSinkDoc(): N {
           content: [p([t('über zwei Zeilen')]), nestedTable(nestedTable(p([t('zwei Ebenen tief')]))), p([])] },
       ] },
       { type: 'tableRow', attrs: { rowHeight: 64 }, content: [
-        { type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: null, borderBottom: '2pt solid #FF0000' },
+        { type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: null, borderBottom: '1.5pt double #FF0000' },
           content: [p([t('42')])] },
         { type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: null, formula: 'A2*2', cellFormat: 'dec2' },
           content: [p([t('84')])] },

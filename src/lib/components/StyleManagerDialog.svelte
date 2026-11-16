@@ -22,7 +22,7 @@
     TABLE_REGIONS, previewCellCss, previewTextCss,
     type TableLook, type TableRegion, type TableRegionProps, type TableStyle,
   } from '../styles/tableStyles';
-  import { borderAttrValue, parseBorderAttr } from '../editor/extensions/tableCellBorders';
+  import { borderAttrValue, parseBorderAttr, type BorderLine } from '../editor/extensions/tableCellBorders';
   import { blockStyleName } from '../editor/extensions/paragraphStyle';
   import { activeCharacterStyle } from '../editor/extensions/characterStyle';
   import { activeTableStyle } from '../editor/extensions/tableStyle';
@@ -189,14 +189,19 @@
   // The manager edits the definition, not one table's options, so it shows every area.
   const ALL_AREAS = Object.fromEntries(TABLE_REGIONS.map(r => [r, true])) as TableLook;
 
-  // The border select and its color picker split one canonical '<W>pt solid #RRGGBB'.
+  // The border select and its color picker split one canonical '<W>pt <line> #RRGGBB';
+  // an edit keeps the side's line.
   function borderParts(value: string | null | undefined) {
     const b = parseBorderAttr(value ?? null);
     if (b === 'none') return { width: 'none', color: '#000000' };
     return b ? { width: String(b.widthPt), color: b.color } : { width: '0.5', color: '#000000' };
   }
-  const borderValue = (width: string, color: string) =>
-    width === 'none' ? 'none' : borderAttrValue({ widthPt: parseFloat(width), color });
+  const lineOf = (value: string | null | undefined) => {
+    const b = parseBorderAttr(value ?? null);
+    return b && b !== 'none' ? b.line : 'solid';
+  };
+  const borderValue = (width: string, color: string, line: BorderLine = 'solid') =>
+    width === 'none' ? 'none' : borderAttrValue({ widthPt: parseFloat(width), color, line });
 
   // A paragraph style's rules: none unless the style or a parent draws one.
   const PARA_BORDERS = [
@@ -210,7 +215,8 @@
   // 'none' only overrules a parent's rule; without one the style just has none.
   function paraBorder(key: ParaBorder, width: string, color: string) {
     const parentHas = !!style.parent && !!resolveStyle(sheet, style.parent, family).para[key];
-    edit({ para: { [key]: width === 'none' ? (parentHas ? 'none' : undefined) : `${parseFloat(width)}pt solid ${color.toUpperCase()}` } });
+    const line = lineOf(resolved.para[key]);
+    edit({ para: { [key]: width === 'none' ? (parentHas ? 'none' : undefined) : borderValue(width, color, line) } });
   }
 
   function depthOf(s: Style): number {
@@ -912,7 +918,7 @@
         <div class="row">
           {#each BORDER_FIELDS as { key, label }}
             {@render borderField(label(), key, borderParts(borderOf(key)),
-              (w, c) => editTable({ [key]: borderValue(w, c) }), () => editTable({ [key]: null }))}
+              (w, c) => editTable({ [key]: borderValue(w, c, lineOf(borderOf(key))) }), () => editTable({ [key]: null }))}
           {/each}
         </div>
         {/if}

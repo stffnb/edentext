@@ -24,7 +24,7 @@ formatting. Splitting a heading starts a body paragraph; clearing direct formatt
 named style and hyperlinks.
 
 `styleCss` projects resolved styles into document-scoped CSS. Heading fallbacks apply only to
-headings without a style name. A paragraph style's rules (`borderTop`…, `'<W>pt solid #RRGGBB'`)
+headings without a style name. A paragraph style's rules (`borderTop`…, `'<W>pt <line> #RRGGBB'`)
 draw only where set and not `'none'`, which overrules a parent's; `borderPadding` pads the ruled
 sides only. The style manager's paragraph tab edits all four and the padding.
 A ruled or shaded paragraph's box starts where a hanging first line does, as LibreOffice draws

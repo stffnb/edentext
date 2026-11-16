@@ -176,7 +176,10 @@ function genOptions(r: Rng, sheet: StyleSheet, nSections: number, carrier: boole
   if (maybe(r, 0.2)) notes.separator = { ...notes.separator, relWidthPercent: 60, weightPt: 1.5, align: 'center' };
   const decor: PageDecor = { ...EMPTY_PAGE_DECOR };
   if (maybe(r, 0.15)) decor.background = pick(r, ['#fffdf5', '#eef3f8']);
-  if (maybe(r, 0.15)) decor.border = { widthPt: pick(r, [0.5, 1, 2.25]), color: '#0046a0', paddingCm: pick(r, [0.05, 0.2, 0.5]) };
+  if (maybe(r, 0.15)) {
+    const widthPt = pick(r, [0.5, 1, 2.25]);
+    decor.border = { widthPt, color: '#0046a0', paddingCm: pick(r, [0.05, 0.2, 0.5]), ...(widthPt === 2.25 ? { line: pick(r, ['double', 'dotted'] as const) } : {}) };
+  }
   if (maybe(r, 0.15)) {
     decor.watermark = { text: pick(r, ['ENTWURF', 'DRAFT & <x>']), font: 'Liberation Sans',
       color: '#c0c0c0', angle: pick(r, [0, 45, -30, 135]), transparency: pick(r, [0, 50, 80]) };

@@ -5,7 +5,8 @@ import { selectedRect, isInTable } from '@tiptap/pm/tables';
 
 // Per-side border attrs (`borderTop/Right/Bottom/Left`) on table cells: `null` = the
 // table default (0.5pt solid black), `'none'` = no border, else the canonical
-// `'<W>pt solid #RRGGBB'`. Round-trips to ODF fo:border-* and DOCX w:tcBorders.
+// `'<W>pt <line> #RRGGBB'`, W the total width as in fo:border and CSS. Round-trips to
+// ODF fo:border-* and DOCX w:tcBorders.
 
 export const DEFAULT_BORDER_WIDTH_PT = 0.5;
 export const DEFAULT_BORDER_COLOR = '#000000';
@@ -13,8 +14,21 @@ export const DEFAULT_BORDER_COLOR = '#000000';
 export type BorderPreset =
   | 'all' | 'outer' | 'inner' | 'innerH' | 'innerV'
   | 'top' | 'bottom' | 'left' | 'right';
-// null = no border ('none').
-export type BorderSpec = { widthPt: number; color: string } | null;
+// The line styles both formats and CSS share; LibreOffice draws its others alike.
+export const BORDER_LINES = ['solid', 'double', 'dotted', 'dashed'] as const;
+export type BorderLine = (typeof BORDER_LINES)[number];
+// null = no border ('none'). line absent = solid.
+export type BorderSpec = { widthPt: number; color: string; line?: BorderLine } | null;
+
+// An ODF/CSS border style keyword's line: dash variants are dashed, the 3D kinds solid.
+export function borderLineOf(style: string | null | undefined): BorderLine {
+  return style === 'double' || style === 'dotted' ? style : style?.includes('dash') ? 'dashed' : 'solid';
+}
+
+// The canonical value of one drawn side.
+export function borderValue(widthPt: number, color: string, line: BorderLine = 'solid'): string {
+  return `${Math.round(widthPt * 100) / 100}pt ${line} ${color.toUpperCase()}`;
+}
 
 export const BORDER_SIDES = ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'] as const;
 export type BorderSide = (typeof BORDER_SIDES)[number];
@@ -32,19 +46,26 @@ export function borderAttrValue(spec: BorderSpec): string | null {
   if (!spec) return 'none';
   const w = Math.round(spec.widthPt * 100) / 100;
   const color = spec.color.toUpperCase();
-  if (w === DEFAULT_BORDER_WIDTH_PT && color === DEFAULT_BORDER_COLOR) return null;
-  return `${w}pt solid ${color}`;
+  const line = spec.line ?? 'solid';
+  if (w === DEFAULT_BORDER_WIDTH_PT && color === DEFAULT_BORDER_COLOR && line === 'solid') return null;
+  return borderValue(w, color, line);
 }
 
-// null = table default, 'none' = no border, else width/color of a custom border.
+// null = table default, 'none' = no border, else width/color/line of a custom border.
 export function parseBorderAttr(
   value: string | null | undefined,
-): { widthPt: number; color: string } | 'none' | null {
+): { widthPt: number; color: string; line: BorderLine } | 'none' | null {
   if (value == null) return null;
   if (value === 'none') return 'none';
-  const m = /^([\d.]+)pt solid (#[0-9A-Fa-f]{6})$/.exec(value);
+  const m = /^([\d.]+)pt (solid|double|dotted|dashed) (#[0-9A-Fa-f]{6})$/.exec(value);
   if (!m) return null;
-  return { widthPt: parseFloat(m[1]), color: m[2].toUpperCase() };
+  return { widthPt: parseFloat(m[1]), color: m[3].toUpperCase(), line: m[2] as BorderLine };
+}
+
+// Whole pixels a side paints: at least 1, and 3 for a double line, which a browser
+// draws as one solid stroke below that.
+function paintedPx(b: { widthPt: number; line: BorderLine }): number {
+  return Math.max(b.line === 'double' ? 3 : 1, Math.round((b.widthPt * 96) / 72));
 }
 
 // CSS value for a side. The default 0.5pt renders as 1px (editor.css); custom widths
@@ -53,8 +74,7 @@ export function cssBorder(value: string): string | null {
   const b = parseBorderAttr(value);
   if (b === null) return null;
   if (b === 'none') return 'none';
-  const px = Math.max(1, Math.round((b.widthPt * 96) / 72));
-  return `${px}px solid ${b.color}`;
+  return `${paintedPx(b)}px ${b.line} ${b.color}`;
 }
 
 // What the painted border costs the row beyond the width the file declares: Chromium
@@ -64,7 +84,7 @@ export function borderOvershootPx(value: string): number {
   const b = parseBorderAttr(value);
   if (b === null || b === 'none') return 0;
   const declared = (b.widthPt * 96) / 72;
-  return Math.round((Math.max(1, Math.round(declared)) - declared) * 1000) / 1000;
+  return Math.round((paintedPx(b) - declared) * 1000) / 1000;
 }
 
 const SIDE_META: Record<BorderSide, { data: string; css: string }> = {
@@ -160,7 +180,7 @@ export const BORDER_PRESETS: BorderPreset[] = [
 
 // What a boundary renders: the collapse winner of its two facing cell sides
 // (a border beats 'none', wider beats narrower; attr null = the table default).
-type EffectiveBorder = { widthPt: number; color: string } | 'none';
+type EffectiveBorder = { widthPt: number; color: string; line: BorderLine } | 'none';
 
 // Active states for the picker: a preset is active when every boundary it targets renders
 // exactly the pen border (width + color), so the default thin pen lights up a fresh table
@@ -175,7 +195,7 @@ export function activeBorderPresets(
   const sideEff = (pos: number | null, side: BorderSide): EffectiveBorder | null => {
     if (pos == null) return null;
     const b = parseBorderAttr(state.doc.nodeAt(rect.tableStart + pos)?.attrs[side] as string | null);
-    return b ?? { widthPt: DEFAULT_BORDER_WIDTH_PT, color: DEFAULT_BORDER_COLOR };
+    return b ?? { widthPt: DEFAULT_BORDER_WIDTH_PT, color: DEFAULT_BORDER_COLOR, line: 'solid' };
   };
   const boundaryEff = (aPos: number | null, aSide: BorderSide, bPos: number | null, bSide: BorderSide): EffectiveBorder => {
     let best: EffectiveBorder = 'none';
@@ -186,7 +206,8 @@ export function activeBorderPresets(
     return best;
   };
   const matchesPen = (v: EffectiveBorder) =>
-    v !== 'none' && Math.abs(v.widthPt - spec.widthPt) < 0.01 && v.color === spec.color.toUpperCase();
+    v !== 'none' && Math.abs(v.widthPt - spec.widthPt) < 0.01 && v.color === spec.color.toUpperCase()
+    && v.line === (spec.line ?? 'solid');
 
   const out = {} as Record<BorderPreset | 'none', boolean>;
   for (const preset of BORDER_PRESETS) {

@@ -40,7 +40,7 @@ import { indexKindOf, INDEX_TITLES, INDEX_COLUMN_GAP_CM, type IndexKind } from '
 import { citationText, DOCX_BIB_FIELD, DOCX_SOURCE_TYPE, type BibSource } from '../editor/extensions/bibliographyEntry';
 import { DOCX_STYLE_NAME, isCitationStyle, type CitationStyle } from '../utils/citationStyle';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
-import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
+import { parseBorderAttr, type BorderLine, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
 import { cellTextFlow } from '../editor/extensions/tableCellAlign';
 import { parseTabStops, type TabAlign } from '../editor/extensions/tabStops';
@@ -1415,7 +1415,7 @@ function txbxPPrXml(attrs: TiptapNode['attrs'], indentTwip: number, pt: number):
   const borders = paraBordersOf(attrs);
   if (borders) {
     const side = (name: string, b?: IBorderOptions) =>
-      b ? `<w:${name} w:val="single" w:sz="${b.size}" w:space="1" w:color="${b.color}"/>` : '';
+      b ? `<w:${name} w:val="${b.style}" w:sz="${b.size}" w:space="1" w:color="${b.color}"/>` : '';
     out.push(`<w:pBdr>${side('top', borders.top)}${side('left', borders.left)}${side('bottom', borders.bottom)}${side('right', borders.right)}</w:pBdr>`);
   }
   const shd = paraShadingOf(attrs);
@@ -2554,9 +2554,9 @@ function applyPageDecorDocx(bytes: Uint8Array, decor: PageDecor, widthPt: number
   if (decor.border) {
     const color = decor.border.color.replace('#', '').toUpperCase();
     // w:sz is eighths of a point, w:space whole points from the text.
-    const sz = Math.max(2, Math.round(decor.border.widthPt * 8));
+    const { style, size: sz } = docxLine({ widthPt: decor.border.widthPt, line: decor.border.line ?? 'solid' });
     const space = Math.min(31, Math.round((decor.border.paddingCm / 2.54) * 72));
-    const side = (name: string) => `<w:${name} w:val="single" w:sz="${sz}" w:space="${space}" w:color="${color}"/>`;
+    const side = (name: string) => `<w:${name} w:val="${style}" w:sz="${sz}" w:space="${space}" w:color="${color}"/>`;
     const borders = `<w:pgBorders w:display="allPages" w:offsetFrom="text">`
       + `${side('top')}${side('left')}${side('bottom')}${side('right')}</w:pgBorders>`;
     // w:sectPr has a fixed child order and pgBorders belongs after pgMar; put ahead of
@@ -2943,12 +2943,22 @@ function paraShadingOf(attrs: TiptapNode['attrs']) {
   return c ? { type: ShadingType.CLEAR, fill: c, color: 'auto' } : undefined;
 }
 
+// A drawn side's w:val and w:sz: a double line's w:sz is one of its three equal parts,
+// as LibreOffice writes it.
+const DOCX_LINE: Record<BorderLine, (typeof BorderStyle)[keyof typeof BorderStyle]> = {
+  solid: BorderStyle.SINGLE, double: BorderStyle.DOUBLE, dotted: BorderStyle.DOTTED, dashed: BorderStyle.DASHED,
+};
+function docxLine(b: { widthPt: number; line: BorderLine }): { style: (typeof BorderStyle)[keyof typeof BorderStyle]; size: number } {
+  const stroke = b.line === 'double' ? b.widthPt / 3 : b.widthPt;
+  return { style: DOCX_LINE[b.line], size: Math.max(2, Math.round(stroke * 8)) };
+}
+
 function paraBordersOf(attrs: TiptapNode['attrs']) {
   const out: { top?: IBorderOptions; left?: IBorderOptions; bottom?: IBorderOptions; right?: IBorderOptions } = {};
   for (const [attr, side] of [['borderTop', 'top'], ['borderLeft', 'left'], ['borderBottom', 'bottom'], ['borderRight', 'right']] as const) {
     const b = parseBorderAttr(attrs?.[attr] as string | null);
     // w:space is the gap to the rule in points; the editor draws none unless one is set.
-    if (b && b !== 'none') out[side] = { style: BorderStyle.SINGLE, size: Math.max(2, Math.round(b.widthPt * 8)), color: hexColor(b.color) ?? '000000', space: Number(attrs?.borderPadding) || 0 };
+    if (b && b !== 'none') out[side] = { ...docxLine(b), color: hexColor(b.color) ?? '000000', space: Number(attrs?.borderPadding) || 0 };
   }
   return Object.keys(out).length ? out : undefined;
 }
@@ -3124,7 +3134,7 @@ const noneBorder: IBorderOptions = { style: BorderStyle.NIL, size: 0, color: 'au
 function docxCellBorder(attrs: Record<string, unknown> | undefined, side: BorderSide, fallback: IBorderOptions = cellBorder): IBorderOptions {
   const b = parseBorderAttr(attrs?.[side] as string | null);
   if (b === 'none') return noneBorder;
-  if (b) return { style: BorderStyle.SINGLE, size: Math.max(2, Math.round(b.widthPt * 8)), color: hexColor(b.color) ?? '000000' };
+  if (b) return { ...docxLine(b), color: hexColor(b.color) ?? '000000' };
   return fallback;
 }
 

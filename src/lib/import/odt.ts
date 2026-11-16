@@ -55,7 +55,7 @@ import type { LineNumbering } from '../storage/lineNumbering';
 import type { LineGrid } from '../storage/lineGrid';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { cellPaddingAttr, DEFAULT_CELL_PADDING, parseCellPadding, type CellPadding } from '../editor/extensions/tableCellPadding';
-import { DEFAULT_BORDER_WIDTH_PT, parseBorderAttr } from '../editor/extensions/tableCellBorders';
+import { DEFAULT_BORDER_WIDTH_PT, borderLineOf, borderValue, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { fromWriterFormula } from '../utils/tableFormula';
 import { cellFormatFromSpec, type CellFormat, type FormatKind } from '../utils/cellFormat';
 import { TEXTBOX_PADDING_CM, boxTextWidthCm } from '../editor/extensions/textBox';
@@ -3608,9 +3608,9 @@ function listLevelDef(listStyle: Element | null, depth: number): Element | null 
 
 // ---- tables ------------------------------------------------------------------------
 
-// ODF border ("0.5pt solid #000000" / "none" / absent) → the canonical '<W>pt solid
-// #RRGGBB', 'none', or null; non-solid styles coerce to solid. treatDefaultAsNull folds
-// the 0.5pt-black default to null — cells inherit the table's, paragraph borders don't.
+// ODF border ("0.5pt solid #000000" / "none" / absent) → the canonical '<W>pt <line>
+// #RRGGBB', 'none', or null; dash variants read as dashed, other styles as solid.
+// treatDefaultAsNull folds the 0.5pt-black solid default to null (cells inherit the table's).
 export function borderAttrFromOdf(raw: string | null | undefined, treatDefaultAsNull = true): string | null {
   if (!raw || raw === 'none' || raw === 'hidden') return 'none';
   let widthPt: number | null = null;
@@ -3625,8 +3625,9 @@ export function borderAttrFromOdf(raw: string | null | undefined, treatDefaultAs
   if (widthPt != null && widthPt <= 0) return 'none';
   const w = Math.round((widthPt ?? 0.5) * 100) / 100;
   const c = (color ?? '#000000').toUpperCase();
-  if (treatDefaultAsNull && Math.abs(w - 0.5) < 0.11 && c === '#000000') return null;
-  return `${w}pt solid ${c}`;
+  const line = borderLineOf(styleTok);
+  if (treatDefaultAsNull && Math.abs(w - 0.5) < 0.11 && c === '#000000' && line === 'solid') return null;
+  return borderValue(w, c, line);
 }
 
 // A formula cell's number format: its style points at a data style, whose shape is

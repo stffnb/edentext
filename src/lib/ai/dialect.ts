@@ -45,12 +45,14 @@ export function borderAttr(css: string): string | null {
   if (!parts[0] || parts.some((p) => /^(none|hidden)$/i.test(p)) || parts.some((p) => toPt(p) === 0)) return 'none';
   let pt = 0.5;
   let color = '#000000';
+  let line = 'solid';
   for (const p of parts) {
     const w = toPt(p, 'none');
     if (w != null) pt = Math.max(0.25, round(w));
+    else if (/^(solid|double|dotted|dashed)$/i.test(p)) line = p.toLowerCase();
     else { const c = normalizeColor(p); if (c?.startsWith('#')) color = c; }
   }
-  return `${pt}pt solid ${color}`;
+  return `${pt}pt ${line} ${color}`;
 }
 
 const SIDES = ['top', 'right', 'bottom', 'left'] as const;

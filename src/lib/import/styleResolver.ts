@@ -3,6 +3,7 @@ import type { Orientation } from '../storage/pageOrientation';
 import { pageFormatOf, type PageFormat } from '../storage/pageFormat';
 import { ODF_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { normalizeLeader, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
+import { borderLineOf } from '../editor/extensions/tableCellBorders';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { DEFAULT_WATERMARK, normalizePageDecor, type PageDecor, type Watermark } from '../storage/pageDecor';
 import { DEFAULT_LINE_NUMBERING, normalizeLineNumbering, type LineNumbering } from '../storage/lineNumbering';
@@ -987,10 +988,11 @@ export class StyleResolver {
     // '<width> <style> <color>' — the same shorthand a paragraph border uses.
     const parts = border && border !== 'none' ? border.trim().split(/\s+/) : null;
     const widthPt = parts ? lengthToPt(parts[0]) : null;
+    const line = borderLineOf(parts?.[1]);
     return normalizePageDecor({
       background: bg && bg !== 'transparent' ? bg : null,
       border: parts && widthPt
-        ? { widthPt: Math.round(widthPt * 100) / 100, color: parts[2] ?? '#000000',
+        ? { widthPt: Math.round(widthPt * 100) / 100, color: parts[2] ?? '#000000', line,
             paddingCm: lengthToCm(props?.getAttributeNS(NS.fo, 'padding')) ?? 0 }
         : null,
       watermark: this.watermark(pageName),

@@ -1670,7 +1670,7 @@ type ParaStyle = {
   spaceAfter: number | null;
   lineHeight: number | string | null;
   // Paragraph background ("colored field") + per-side border ("rule line"). The border
-  // attr value ('<W>pt solid #RRGGBB') is already a valid ODF fo:border value.
+  // attr value ('<W>pt <line> #RRGGBB') is already a valid ODF fo:border value.
   background: string | null;
   borderTop: string | null;
   borderRight: string | null;
@@ -1826,7 +1826,7 @@ function paraStyleProps(style: ParaStyle): string[] {
   if (style.breakBefore) props.push('fo:break-before="page"');
   if (style.keepNext != null) props.push(`fo:keep-with-next="${style.keepNext ? 'always' : 'auto'}"`);
   if (style.background) props.push(`fo:background-color="${style.background}"`);
-  // The canonical border attr ('<W>pt solid #RRGGBB') is itself a valid fo:border value.
+  // The canonical border attr ('<W>pt <line> #RRGGBB') is itself a valid fo:border value.
   for (const [attr, side] of [
     ['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left'],
   ] as const) {
@@ -2410,7 +2410,7 @@ function applyEmptyLineFontSizes(odtBytes: Uint8Array): Uint8Array {
 }
 
 // A top-level paragraph's box spec for the PBX sentinel: bg|borderTop|Right|Bottom|Left,
-// each the raw value (canonical border '<W>pt solid #RRGGBB' is a valid fo:border) or '',
+// each the raw value (canonical border '<W>pt <line> #RRGGBB' is a valid fo:border) or '',
 // then a widow flag, the right indent, a keep-with-next flag, the writing mode, a
 // no-hyphenation flag, the paragraph's two language tags, an off-the-grid flag and the
 // first-line and left indents in characters, then the gap to the rules.
@@ -3918,7 +3918,7 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: ExportLanguage | null, pag
   // Page background and page border ride the page layout, exactly where LibreOffice
   // keeps them (probed). The border is offset from the text area by fo:padding.
   const decorProps = [
-    decor.border ? `fo:border="${round3(decor.border.widthPt)}pt solid ${decor.border.color}"` : '',
+    decor.border ? `fo:border="${round3(decor.border.widthPt)}pt ${decor.border.line ?? 'solid'} ${decor.border.color}"` : '',
     decor.border ? `fo:padding="${round3(decor.border.paddingCm)}cm"` : '',
     decor.background ? `fo:background-color="${decor.background}"` : '',
   ].filter(Boolean).join(' ');
@@ -4799,7 +4799,7 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
           for (const side of BORDER_SIDES) {
             const b = parseBorderAttr(cell.attrs?.[side] as string | null);
             if (b === 'none') opts[side] = 'none';
-            else if (b) opts[side] = `${b.widthPt}pt solid ${normalizeColor(b.color) ?? b.color}`;
+            else if (b) opts[side] = `${b.widthPt}pt ${b.line} ${normalizeColor(b.color) ?? b.color}`;
           }
           // Header cells and a table style's regions render bold/font via CSS
           // (presentational), so bake that onto the runs for Word/LibreOffice.

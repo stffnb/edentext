@@ -3,12 +3,12 @@ import type { CommandProps } from '@tiptap/core';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { cssBorder, parseBorderAttr, type BorderSpec } from './tableCellBorders';
+import { borderValue, cssBorder, parseBorderAttr, type BorderSpec } from './tableCellBorders';
 import { normalizeColor } from '../../utils/color';
 
 // Paragraph/heading background ("colored field") + borders ("rule line"), as in
 // Word/LibreOffice letterheads. Border attrs share table cells' canonical
-// `'<W>pt solid #RRGGBB'`, but here null/absent = no border (no 'none' sentinel).
+// `'<W>pt <line> #RRGGBB'`, but here null/absent = no border (no 'none' sentinel).
 
 export type ParaBorderPreset = 'all' | 'top' | 'bottom' | 'left' | 'right';
 export const PARA_BORDER_PRESETS: ParaBorderPreset[] = ['all', 'top', 'bottom', 'left', 'right'];
@@ -34,9 +34,7 @@ const PRESET_SIDES: Record<ParaBorderPreset, Side[]> = {
 // Canonical attr value for a paragraph border; null spec = remove the border. Unlike the
 // table version, the 0.5pt-black default is NOT collapsed (a chosen paragraph rule renders).
 export function paraBorderValue(spec: BorderSpec): string | null {
-  if (!spec) return null;
-  const w = Math.round(spec.widthPt * 100) / 100;
-  return `${w}pt solid ${spec.color.toUpperCase()}`;
+  return spec ? borderValue(spec.widthPt, spec.color, spec.line) : null;
 }
 
 declare module '@tiptap/core' {
@@ -246,7 +244,8 @@ export function activeParagraphBorderPresets(
 
   const matchesPen = (attrVal: unknown) => {
     const b = parseBorderAttr(attrVal as string | null);
-    return b !== null && b !== 'none' && Math.abs(b.widthPt - pen.widthPt) < 0.01 && b.color === pen.color.toUpperCase();
+    return b !== null && b !== 'none' && Math.abs(b.widthPt - pen.widthPt) < 0.01 && b.color === pen.color.toUpperCase()
+      && b.line === (pen.line ?? 'solid');
   };
   const sideEmpty = (attrVal: unknown) => {
     const b = parseBorderAttr(attrVal as string | null);

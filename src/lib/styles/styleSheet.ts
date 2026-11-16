@@ -473,7 +473,8 @@ function declarations(r: ResolvedStyle): string[] {
   for (const [key, side] of [['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left']] as const) {
     const b = parseBorderAttr(p[key]);
     drawn[side] = !!b && b !== 'none';
-    if (b && b !== 'none') out.push(`border-${side}: ${b.widthPt}pt solid ${b.color}`);
+    // A double line needs 3px (2.25pt) to show its two strokes.
+    if (b && b !== 'none') out.push(`border-${side}: ${b.line === 'double' ? Math.max(b.widthPt, 2.25) : b.widthPt}pt ${b.line} ${b.color}`);
   }
   const boxed = !!background || Object.values(drawn).some(Boolean);
   // The rule and shading start where a hanging first line does (editor.css --box-hang).

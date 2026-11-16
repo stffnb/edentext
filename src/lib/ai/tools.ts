@@ -14,7 +14,7 @@ import { applyFormat, FORMAT_MARKS, type FormatSpec } from '../editor/extensions
 import { comments } from '../editor/extensions/comment';
 import { putStyle, setOutline, styleSheet } from '../styles/sheet.svelte';
 import { decimalOutline, romanOutline } from '../styles/outlineNumbering';
-import { DEFAULT_BORDER_COLOR, DEFAULT_BORDER_WIDTH_PT } from '../editor/extensions/tableCellBorders';
+import { DEFAULT_BORDER_COLOR, DEFAULT_BORDER_WIDTH_PT, type BorderLine } from '../editor/extensions/tableCellBorders';
 import { normalizeColor } from '../utils/color';
 import { parseSize } from '../utils/fontSize';
 import { BOX_WRAP_GAP, PICTURE_WRAP_GAP, droppedFrameAttrs, restackFrame, wrapGap, wrapGapAttr, type WrapMode } from '../editor/extensions/image';
@@ -1048,7 +1048,9 @@ function run(ctx: TurnContext, call: ToolCall): ToolResult {
       if (a.background != null && a.background !== '') decor.background = colorArg(a.background, 'background') ?? null;
       if (typeof a.border === 'string' && a.border.trim()) {
         const b = borderAttr(a.border);
-        decor.border = !b || b === 'none' ? null : { ...DEFAULT_PAGE_BORDER, widthPt: parseFloat(b), color: b.split(' ')[2] };
+        const [, line, color] = b?.split(' ') ?? [];
+        decor.border = !b || b === 'none' ? null
+          : { ...DEFAULT_PAGE_BORDER, widthPt: parseFloat(b), color, ...(line !== 'solid' ? { line: line as BorderLine } : {}) };
       }
       if (typeof a.watermark === 'string') decor.watermark = a.watermark.trim() ? { ...DEFAULT_WATERMARK, text: a.watermark.trim() } : null;
       if (Object.keys(decor).length) setup.decor = decor;
