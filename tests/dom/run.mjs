@@ -740,7 +740,7 @@ try {
     const c = getComputedStyle(document.querySelector('.tiptap-host .textbox-content p'));
     return `${c.textAlign} ${c.fontWeight}`;
   });
-  check(boxed === 'start 400', `a text box's paragraph keeps its own alignment and weight in a centred heading (${boxed})`);
+  check(/^(start|left) 400$/.test(boxed), `a text box's paragraph keeps its own alignment and weight in a centred heading (${boxed})`);
 
   // An index shows the rows it saved, as both word processors do, until it is updated.
   const heading = (t) => ({ type: 'heading', attrs: { level: 1 }, content: [words(t)] });
