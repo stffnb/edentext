@@ -50,7 +50,7 @@ import { charStyleProps, listMarkerFormat } from '../editor/extensions/listMarke
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, orderedTypeDef, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { clampListLevels, DOCX_LIST_LEVELS, effectiveListLevel, listStyleMarginCm, listStyleOverridden, type ListStyle as ListStyleDef } from '../styles/listStyles';
 import { outlineIsEmpty, type OutlineNumbering } from '../styles/outlineNumbering';
-import { defaultBulletChar } from '../utils/bulletListTypes';
+import { defaultBulletChar, isSymbolFont, symbolFontChar } from '../utils/bulletListTypes';
 import { normalizeColor, GENERATOR, mergeJoinedParagraphsJson, twinFontName, frameRank, labelledItems, type HfExport } from './odt';
 import { MAX_HEADING_LEVEL } from '../styles/headings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
@@ -382,6 +382,20 @@ function markerRunProps(node: TiptapNode): Writable<IRunStylePropertiesOptions> 
   return props;
 }
 
+// A symbol font addresses its glyphs by private-use code: a label in one either writes
+// its char that way or, with no glyph mapped to it, leaves the font to the text's.
+function symbolBullet(char: string, run: Writable<IRunStylePropertiesOptions> | undefined) {
+  const font = typeof run?.font === 'string' ? run.font : undefined;
+  const code = isSymbolFont(font) ? symbolFontChar(char, font) : null;
+  return { text: code ?? char, run: code ? run : textMarkerRun(run) };
+}
+
+function textMarkerRun(run: Writable<IRunStylePropertiesOptions> | undefined) {
+  if (!run || typeof run.font !== 'string' || !isSymbolFont(run.font)) return run;
+  const { font: _font, ...rest } = run;
+  return Object.keys(rest).length ? rest : undefined;
+}
+
 // ---- numbering registry ----------------------------------------------------
 // docx needs every numbering definition up front, so the body is built first: one
 // reference per top-level list, each nesting level's format filled in when first met.
@@ -549,18 +563,19 @@ class Numbering {
           : `%${depth + 1}${def.numSuffix}`,
         alignment,
         start: typeof node.attrs?.start === 'number' ? node.attrs.start : eff.startAt ?? 1,
-        style: { paragraph: { indent }, run: markerRunProps(node) },
+        style: { paragraph: { indent }, run: textMarkerRun(markerRunProps(node)) },
         ...(suffix ? { suffix } : {}),
       });
     } else {
+      // The Unicode char goes into w:lvlText literally, or as its private-use code
+      // under a symbol font the label is set in.
+      const { text, run } = symbolBullet(bulletCharOf(node, depth, style), markerRunProps(node));
       levels.push({
         level: depth,
         format: LevelFormat.BULLET,
-        // The Unicode char goes into w:lvlText literally; Word renders it in the
-        // paragraph font (no Wingdings/Symbol rFonts needed).
-        text: bulletCharOf(node, depth, style),
+        text,
         alignment,
-        style: { paragraph: { indent }, run: markerRunProps(node) },
+        style: { paragraph: { indent }, run },
         ...(suffix ? { suffix } : {}),
       });
     }

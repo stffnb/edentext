@@ -68,6 +68,11 @@ describe('bulletCharFromDocx (Word numbering.xml patterns)', () => {
     expect(bulletCharFromDocx('-', undefined)).toBe('-');
   });
 
+  it('draws a soft hyphen label as the hyphen both word processors show', () => {
+    expect(bulletCharFromDocx('\u00ad', 'Courier New')).toBe('-');
+    expect(bulletCharFromOdf('\u00ad', null)).toBe('-');
+  });
+
   it('returns null for unmapped symbol glyphs and PUA chars in unknown fonts', () => {
     expect(bulletCharFromDocx('\uf021', 'Wingdings')).toBeNull();
     expect(bulletCharFromDocx('', 'SomeDingbats')).toBeNull();

@@ -136,13 +136,20 @@ describe('a font or bullet name a file can hold', () => {
 });
 
 // A level's own label formatting (w:lvl/w:rPr) colours and sizes the bullet whatever the
-// item's text says; a symbol font is left out.
+// item's text says; a symbol font's bullet is stored as Unicode and keeps its font, which
+// sets the label's height in the line.
 it("keeps a numbering level's own label formatting through import and both round trips", async () => {
   const doc = imported(numItem('one', NUM()) + numItem('two', NUM(), '<w:b/>'), { numbering: numbering(
-    '<w:numFmt w:val="bullet"/><w:lvlText w:val="▪"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>'
+    '<w:numFmt w:val="bullet"/><w:lvlText w:val="\uf0a8"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>'
     + '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/><w:b/><w:color w:val="006465"/><w:sz w:val="24"/></w:rPr>') }).content;
-  const want = { fontWeight: 'bold', fontSize: '12pt', color: '#006465' };
+  const want = { fontFamily: 'Symbol', fontWeight: 'bold', fontSize: '12pt', color: '#006465' };
   for (const d of [doc, ...await roundTrips(doc)]) expect(listOf(d).attrs?.markerFormat).toEqual(want);
+  // Both files address the glyph by its private-use code under the symbol font.
+  const numberingXml = strFromU8(unzipSync(await buildDocx(doc as never))['word/numbering.xml']);
+  expect(numberingXml).toMatch(/<w:lvlText w:val="\uf0a8"\/>[\s\S]*?w:ascii="Symbol"/);
+  const odt = unzipSync(await buildOdt(doc as never));
+  expect(strFromU8(odt['content.xml'])).toContain('text:bullet-char="\uf0a8"');
+  expect(strFromU8(odt['styles.xml'])).toContain('fo:font-family="Symbol"');
 });
 
 // A list item carries no style name, so the spacing its own paragraph style gives it

@@ -67,6 +67,16 @@ function symbolMapFor(font: string | null | undefined): Record<number, string> |
   return null;
 }
 
+export const isSymbolFont = (font: string | null | undefined): boolean => !!symbolMapFor(font);
+
+// A stored bullet back to the private-use code its symbol font addresses it by, as Word and
+// LibreOffice write it; null when that font has no glyph mapped to the char.
+export function symbolFontChar(char: string, font: string | null | undefined): string | null {
+  const map = symbolMapFor(font);
+  const code = map && Object.keys(map).find((k) => map[+k] === char);
+  return code ? String.fromCharCode(0xf000 | +code) : null;
+}
+
 // One marker char (+ its declared font) → the Unicode char to store, or null when
 // it can't be represented (unknown symbol glyph → default cycle).
 function mapSymbolChar(char: string, font: string | null | undefined): string | null {
@@ -78,7 +88,8 @@ function mapSymbolChar(char: string, font: string | null | undefined): string | 
     return map[code & 0xff] ?? null;
   }
   if (isPua) return null;
-  return char;
+  // A soft hyphen as the label is drawn as the hyphen it stands for, never hidden.
+  return char === '\u00ad' ? '-' : char;
 }
 
 // DOCX w:lvlText + the level's w:rFonts font → Unicode char (null = default).

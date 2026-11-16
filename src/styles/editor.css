@@ -895,10 +895,16 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
 
 /* A level sized apart from its text (listMarker.ts) sits in the line, whose first line
    then takes the label's own height — the larger bullet LibreOffice measures there. */
-.paper .tiptap li.marker-sized > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before {
+.paper .tiptap li:is(.marker-sized, .marker-font) > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before {
   float: none;
   display: inline-block;
   text-indent: 0;
+}
+/* A label in its own font adds that font's ascent and descent to the line (a Symbol bullet
+   under Arial: +0.23mm in LibreOffice), which its normal line height gives; a fixed line
+   spacing (--marker-line: 0) does not grow. */
+.paper .tiptap li.marker-font:not(.marker-sized) > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before {
+  line-height: var(--marker-line, normal);
 }
 
 /* A label set against the far end of the hanging indent grows into the margin instead
@@ -1060,6 +1066,12 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
 .paper .tiptap :is(ul, ol)[data-bullet] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before {
   content: var(--bullet) ' ';
   font-family: 'EdenText Symbols', var(--marker-family, var(--font-serif)), serif;
+}
+
+/* A level in its own font (listMarker.ts) sets its label in that font first: the line
+   takes the label's ascent and descent from it, not from the symbol shim. */
+.paper .tiptap :is(ul, ol) > li.marker-font > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before {
+  font-family: var(--marker-family), 'EdenText Symbols', serif;
 }
 
 /* The PDF clone (the .paper itself) replaces every marker with a real span (pdf.ts).

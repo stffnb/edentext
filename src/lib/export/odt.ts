@@ -46,7 +46,7 @@ import { stampBookmarkEdges, bookmarkEdgesOf } from '../editor/extensions/bookma
 import { indexKindOf, INDEX_TITLES, INDEX_COLUMN_GAP_CM, type IndexKind } from '../editor/extensions/tableOfContents';
 import { citationText, isBibType } from '../editor/extensions/bibliographyEntry';
 import { isCitationStyle, rowTemplate, type CitationStyle } from '../utils/citationStyle';
-import { defaultBulletChar } from '../utils/bulletListTypes';
+import { defaultBulletChar, isSymbolFont, symbolFontChar } from '../utils/bulletListTypes';
 import { CELL_FORMAT_SPECS, currencyParts, datePattern, isCellFormat, type CellFormat } from '../utils/cellFormat';
 import { findFormat, renderFormat, odfNumberStyle, toDateValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
 import { parseLatex } from '../math/latex';
@@ -3258,9 +3258,19 @@ function applyListMarkerFormats(odtBytes: Uint8Array, formats: (MarkerFormat | n
     const re = new RegExp(`(<text:list-style style:name="L${i + 1}">)([\\s\\S]*?)(</text:list-style>)`);
     content = content.replace(re, (_m, open: string, body: string, close: string) =>
       open +
-      body.replace(/<text:list-level-style-(number|bullet) text:level="(\d+)"/g, (match, kind: string, level: string) => {
-        const format = levels[Number(level) - 1];
-        return format ? `<text:list-level-style-${kind} text:level="${level}" text:style-name="${styleFor(format)}"` : match;
+      body.replace(/<text:list-level-style-(number|bullet) text:level="(\d+)"([^>]*)/g, (match, kind: string, level: string, rest: string) => {
+        let format = levels[Number(level) - 1];
+        if (!format) return match;
+        // A symbol font addresses the bullet by its private-use code; a label it has no
+        // glyph for is left in the text's font.
+        if (isSymbolFont(format.fontFamily)) {
+          const char = /text:bullet-char="([^"]*)"/.exec(rest)?.[1];
+          const code = kind === 'bullet' && char ? symbolFontChar(unescapeXml(char), format.fontFamily) : null;
+          if (code) rest = rest.replace(/text:bullet-char="[^"]*"/, `text:bullet-char="${code}"`);
+          else format = { ...format, fontFamily: null };
+          if (!Object.values(format).some(Boolean)) return match;
+        }
+        return `<text:list-level-style-${kind} text:level="${level}" text:style-name="${styleFor(format)}"${rest}`;
       }) +
       close,
     );

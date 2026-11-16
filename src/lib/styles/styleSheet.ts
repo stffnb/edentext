@@ -412,7 +412,9 @@ function measuredLine(name: string): number {
 // height in pt (Word's "exactly", ODF's fo:line-height length). Each clears the other,
 // so a paragraph's own spacing beats its style's of either kind.
 export function lineSpacingDeclarations(value: string): string[] {
-  return /pt$/.test(value) ? [`--line-fixed: ${value}`, '--line-factor: 1'] : [`--line-factor: ${value}`, '--line-fixed: initial'];
+  return /pt$/.test(value)
+    ? [`--line-fixed: ${value}`, '--line-factor: 1', '--marker-line: 0']
+    : [`--line-factor: ${value}`, '--line-fixed: initial', '--marker-line: initial'];
 }
 
 // The text half of a rule, shared with the table-style family (tableStyles.ts). A block

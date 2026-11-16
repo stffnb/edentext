@@ -163,6 +163,7 @@ describe('a list level sized apart from its text', () => {
   };
   it('puts its label in the line', () => expect(classOf({ fontSize: '12pt' })).toBe('marker-sized'));
   it('leaves a merely coloured one floated', () => expect(classOf({ color: '#006465' })).toBe(''));
+  it('puts a label in its own font in the line', () => expect(classOf({ fontFamily: 'Symbol' })).toBe('marker-font'));
 });
 
 // The decorations are rebuilt for an edit inside an item, since a marker takes its format
