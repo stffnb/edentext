@@ -1393,6 +1393,10 @@ function stylePara(ctx: Ctx, id: string | null): ParaProps {
     }
   }
   if (space) out.borderPadding = space;
+  // A style's w:between keeps each of its paragraphs a box of its own, as LibreOffice
+  // draws it and writes it to ODF (join-border="false", probed); nil lets them merge.
+  const between = ctx.styles.paragraphBorders(id).map((pBdr) => fc(pBdr, 'between')).find(Boolean);
+  if (space != null && between && paraBorderAttr(between)) out.borderJoin = false;
   return out;
 }
 

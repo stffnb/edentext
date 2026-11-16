@@ -1959,6 +1959,7 @@ function paraPropsFromOdf(props: PropMap): ParaProps {
     if (p) pad = Math.max(pad ?? 0, p);
   }
   if (pad) out.borderPadding = snapPt(pad);
+  if (props['style:join-border'] === 'false' && (out.borderTop || out.borderRight || out.borderBottom || out.borderLeft)) out.borderJoin = false;
   return out;
 }
 

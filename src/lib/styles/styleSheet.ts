@@ -42,6 +42,8 @@ export type ParaProps = {
   // pt between the text and its own rule lines (Word's w:pBdr w:space, ODF fo:padding).
   // Only the sides that draw a border take it.
   borderPadding?: number;
+  // false: like neighbours of the style keep a box each (ODF join-border, DOCX w:between).
+  borderJoin?: false;
 };
 
 export type TextProps = {
@@ -522,7 +524,7 @@ export function styleCss(sheet: StyleSheet): string {
     // Blocks of one ruled style in a row are one box (editor.css data-pjoin-*): the rule
     // and its gap are drawn above the first and below the last only.
     const p = resolved.para;
-    if ([p.borderTop, p.borderRight, p.borderBottom, p.borderLeft].some((b) => b && b !== 'none')) {
+    if (p.borderJoin !== false && [p.borderTop, p.borderRight, p.borderBottom, p.borderLeft].some((b) => b && b !== 'none')) {
       rules.push(`.paper .tiptap ${attr}:has(+ ${attr}) {\n  border-bottom-style: none;\n  padding-bottom: 0;\n}`,
         `.paper .tiptap ${attr} + ${attr} {\n  border-top-style: none;\n  padding-top: 0;\n}`);
     }

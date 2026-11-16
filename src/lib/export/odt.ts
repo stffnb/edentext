@@ -2536,6 +2536,7 @@ function ownStyleAttrs(style: { para: Record<string, unknown>; text: Record<stri
     para[`fo:border-${side}`] = String(v);
     // The gap to the rule, on the ruled sides only — fo:padding would ring the block.
     if (p.borderPadding != null) para[`fo:padding-${side}`] = `${p.borderPadding}pt`;
+    if (style.para.borderJoin === false) para['style:join-border'] = 'false';
   }
   const text: Record<string, string> = {};
   if (t.fontFamily) {

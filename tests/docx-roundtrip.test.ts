@@ -4,7 +4,7 @@ import { buildDocx } from '../src/lib/export/docx';
 import { importDocx } from '../src/lib/import/docx';
 import { buildOdt } from '../src/lib/export/odt';
 import { importOdt } from '../src/lib/import/odt';
-import { builtinStyleSheet, resolveStyle } from '../src/lib/styles/styleSheet';
+import { builtinStyleSheet, resolveStyle, styleCss } from '../src/lib/styles/styleSheet';
 import { HEADER_SHADE } from '../src/lib/editor/extensions/tableHeaderRow';
 import { effectUpdate } from '../src/lib/editor/extensions/textEffects';
 import { Editor } from '@tiptap/core';
@@ -808,6 +808,23 @@ describe('paragraph rules: w:between groups', () => {
     expectGroup(res.content as N);
     expectGroup(importDocx(await buildDocx(res.content as N)).content as N);
     expectGroup(importOdt(await buildOdt(res.content as N)).content as N);
+  });
+
+  // A style's own w:between keeps each of its paragraphs a full box (LibreOffice draws it
+  // so and writes join-border="false"); a style without one merges like neighbours.
+  it('keeps a paragraph style\'s between rule as unjoined boxes through both formats', async () => {
+    const stylesXml = `<?xml version="1.0"?><w:styles ${W}><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
+      <w:style w:type="paragraph" w:styleId="Boxed"><w:name w:val="Boxed"/><w:pPr><w:pBdr>${side('top', '000000')}${side('bottom', '000000')}${side('between', 'FF0000')}</w:pBdr></w:pPr></w:style>
+      <w:style w:type="paragraph" w:styleId="Ruled"><w:name w:val="Ruled"/><w:pPr><w:pBdr>${side('top', '000000')}${side('bottom', '000000')}</w:pBdr></w:pPr></w:style></w:styles>`;
+    const para = (st: string) => `<w:p><w:pPr><w:pStyle w:val="${st}"/></w:pPr><w:r><w:t>${st}</w:t></w:r></w:p>`;
+    const doc = importDocx(zipSync({ 'word/styles.xml': strToU8(stylesXml),
+      'word/document.xml': strToU8(`<?xml version="1.0"?><w:document ${W}><w:body>${para('Boxed')}${para('Boxed')}${para('Ruled')}<w:sectPr/></w:body></w:document>`) }));
+    const joins = (sheet: ReturnType<typeof builtinStyleSheet>) => [sheet.paragraph.Boxed.para.borderJoin, sheet.paragraph.Ruled.para.borderJoin];
+    expect(joins(doc.styles!)).toEqual([false, undefined]);
+    expect(styleCss(doc.styles!)).not.toMatch(/data-style="Boxed"\] \+/);
+    expect(styleCss(doc.styles!)).toMatch(/data-style="Ruled"\] \+/);
+    for (const back of [importDocx(await buildDocx(doc.content as N, undefined, undefined, undefined, undefined, 'A4', doc.styles)),
+      importOdt(await buildOdt(doc.content as N, undefined, undefined, undefined, undefined, 'A4', doc.styles))]) expect(joins(back.styles!)).toEqual([false, undefined]);
   });
 });
 
