@@ -46,7 +46,7 @@
   const fmt = (v: number) => (Math.round(v * 100) / 100).toString().replace('.', ',');
 </script>
 
-<dialog bind:this={dialogEl} onclose={() => (open = false)} onclick={(e) => e.target === dialogEl && (open = false)} aria-label={t().tabsDialog.title}>
+<dialog bind:this={dialogEl} onclose={() => !dialogEl?.open && (open = false)} onclick={(e) => e.target === dialogEl && (open = false)} aria-label={t().tabsDialog.title}>
   <div class="body">
     <h2>{t().tabsDialog.title}</h2>
 

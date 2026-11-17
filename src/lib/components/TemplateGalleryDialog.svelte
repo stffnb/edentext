@@ -18,7 +18,7 @@
   });
 
   function onClose() {
-    open = false;
+    if (!dialogEl?.open) open = false;
   }
 
   function onClick(e: MouseEvent) {

@@ -83,7 +83,7 @@
 
 <dialog
   bind:this={dialogEl}
-  onclose={() => (open = false)}
+  onclose={() => !dialogEl?.open && (open = false)}
   onclick={(e) => e.target === dialogEl && (open = false)}
   aria-label={t().thesaurus.title}
 >

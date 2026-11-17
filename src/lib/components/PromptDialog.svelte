@@ -14,15 +14,28 @@
 
   let dialogEl = $state<HTMLDialogElement | null>(null);
   let inputEl = $state<HTMLInputElement | null>(null);
+  let shown: typeof request = null;
+
+  function show(el: HTMLDialogElement) {
+    shown = request;
+    if (!el.open) el.showModal();
+    queueMicrotask(() => inputEl?.select());
+  }
 
   $effect(() => {
     const el = dialogEl;
     if (!el) return;
-    if (request && !el.open) {
-      el.showModal();
-      queueMicrotask(() => inputEl?.select());
-    } else if (!request && el.open) el.close();
+    if (request && !el.open) show(el);
+    else if (!request && el.open) el.close();
   });
+
+  // A close event arrives a task late: an Escape just before the next askText() must not
+  // cancel that newer request, so a dialog shown again ignores it and a newer one reopens.
+  function onClose() {
+    if (dialogEl?.open) return;
+    if (request && request !== shown) show(dialogEl!);
+    else finish(null);
+  }
 
   function finish(text: string | null) {
     const r = request;
@@ -33,7 +46,7 @@
 
 <dialog
   bind:this={dialogEl}
-  onclose={() => finish(null)}
+  onclose={onClose}
   onclick={(e) => e.target === dialogEl && finish(null)}
   aria-label={request?.label}
 >

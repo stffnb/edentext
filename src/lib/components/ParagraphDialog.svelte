@@ -130,7 +130,7 @@
   </select>
 {/snippet}
 
-<dialog bind:this={dialogEl} onclose={() => (open = false)} onclick={(e) => e.target === dialogEl && (open = false)} aria-label={t().paragraphDialog.title}>
+<dialog bind:this={dialogEl} onclose={() => !dialogEl?.open && (open = false)} onclick={(e) => e.target === dialogEl && (open = false)} aria-label={t().paragraphDialog.title}>
   <div class="body">
     <h2>{t().paragraphDialog.title}</h2>
 

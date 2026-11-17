@@ -16,7 +16,7 @@
   });
 </script>
 
-<dialog bind:this={dialogEl} class="dictation-consent" onclose={() => asking && answerDictationConsent(false)} aria-labelledby="dictation-consent-title">
+<dialog bind:this={dialogEl} class="dictation-consent" onclose={() => !dialogEl?.open && asking && answerDictationConsent(false)} aria-labelledby="dictation-consent-title">
   {#if asking}
     <div class="body">
       {#if asking === 'browser'}

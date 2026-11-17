@@ -124,7 +124,7 @@
 <dialog
   class="formula-dialog"
   bind:this={dialogEl}
-  onclose={() => (open = false)}
+  onclose={() => !dialogEl?.open && (open = false)}
   onclick={(e) => { if (e.target === dialogEl) open = false; }}
   aria-label={t().formula.title}
 >

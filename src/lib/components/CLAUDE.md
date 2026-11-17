@@ -27,7 +27,7 @@ Read the focused architecture document for ribbon, pagination, frames, tables, f
 formulas, or notes before changing those areas.
 - Every `<dialog>` and popover window gets its frame and the ribbon's `--w-*` palette from `styles/global.css`, wherever it is mounted; a component sets only size and layout.
 - Modal `<dialog>`s move by their `<h2>` title via `dragDialogs()` (`utils/dragWindow.ts`), modeless windows via `use:dragWindow`.
-- `PromptDialog.svelte`'s `askText()` stands in for `window.prompt()`, which Electron does not implement; never call `prompt()` directly.
+- `PromptDialog.svelte`'s `askText()` stands in for `window.prompt()`, which Electron does not implement; never call `prompt()` directly. A `<dialog>`'s `close` event lands a task late, so every dialog's `onclose` ignores it once the dialog is open again, and `askText()` reopens for a newer request instead of cancelling it.
 - `SaveFormatDialog.svelte` asks the first Save for a format; without a save picker (Firefox, Safari, Brave) it also asks the first Save and every Save As for the document name, since a download never reports the name it was saved under. A file chosen in a picker names the document instead.
 - `SettingsDialog.svelte` (the ribbon's gear) gathers app-wide settings in side-bar sections, each control writing through the store that owns it; on/off rows use `Toggle.svelte`, a checkbox with `role="switch"`.
 - `AiPane.svelte` (docked chat, also the selection's rewrites) mounts only while `aiEnabled()`; see `docs/architecture/ai.md`. The pane's inner edge (`PaneResize.svelte`, shared with the navigator) drags or arrow-keys its width (260 px to 60 % of the window, double-click resets), kept in `localStorage`.

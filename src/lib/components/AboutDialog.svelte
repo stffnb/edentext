@@ -17,7 +17,7 @@
 
   // The native close event (Escape, .close()) is the single source of truth.
   function onClose() {
-    open = false;
+    if (!dialogEl?.open) open = false;
   }
 
   // A click that lands on the dialog element itself is on the backdrop.
