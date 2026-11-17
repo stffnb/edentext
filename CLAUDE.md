@@ -8,15 +8,13 @@ Serverless, fully client-side rich-text editor that saves `.odt` and `.docx`; st
 ```bash
 npm run dev      # Vite dev server (hot-reload, --host)
 npm run build    # production build -> dist/; npm run preview serves it
-npm run check    # svelte-check type-check
-npm test         # Vitest once (tests/**/*.test.ts)
+npm run check; npm test  # svelte-check type-check; Vitest once (tests/**/*.test.ts)
 npm run test:lo      # LibreOffice round trip, fuzz re-read, ODT/DOCX consistency (needs soffice)
 npm run test:smoke   # headless dist boot; BROWSER=firefox|webkit
 npm run test:dom     # browser pagination and editing; same BROWSER
 npm run test:layout  # LibreOffice page counts, layout invariants and page starts
 npm run test:monkey  # random editing, undo/redo and save-read invariants
-npm run test:tabs    # two documents across reloads
-npm run test:npm     # npm packages installed into a fresh Vite project, in Chromium
+npm run test:tabs; npm run test:npm  # two documents across reloads; npm packages in a fresh Vite project
 npm run test:coverage  # Vitest V8 coverage -> coverage/index.html
 npm run test:parity  # render parity; see tests/render-parity/README.md
 node scripts/make-thesaurus.mjs; node scripts/make-shape-presets.mjs; node scripts/collect-licenses.mjs  # re-vendor thesaurus, shape presets, licenses
