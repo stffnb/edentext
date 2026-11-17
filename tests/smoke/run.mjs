@@ -153,15 +153,19 @@ try {
       out.push('leader crosses its own line');
     return { count: cards.length, out: [...new Set(out)] };
   });
-  // The stack settles on the next frame after a card is measured, so let it.
-  const settle = () => page.waitForTimeout(300);
+  // Judge the stack as a reader does, once it stands still: no card gliding and the same
+  // boxes on two polls. A slow runner may take far longer than the glide itself.
+  const settle = () => page.evaluate(() => { window.__balloonStack = null; }).then(() => page.waitForFunction(() => {
+    const cards = [...document.querySelectorAll('.balloon')];
+    const now = cards.map((e) => { const r = e.getBoundingClientRect(); return `${r.top},${r.height}`; }).join('|');
+    const still = now === window.__balloonStack && !document.querySelector('.review-margin-layer')?.getAnimations({ subtree: true }).length;
+    window.__balloonStack = now;
+    return still;
+  }, null, { timeout: 10_000, polling: 100 })).catch(() => {});
   await settle();
   const spill = await menuSpill();
   await page.click('.balloon .edit');
   await settle();
-  // The card grows at once, the ones below glide after it; a slow runner is still there.
-  await page.waitForFunction(() => [...document.querySelectorAll('.balloon')].map((e) => e.getBoundingClientRect())
-    .every((r, i, all) => !i || r.top >= all[i - 1].bottom - 0.5), null, { timeout: 3000 }).catch(() => {});
   const opened = await menuSpill();
   check(spill.count === 7 && spill.out.length === 0 && opened.out.length === 0,
     `margin balloons hold their content (${spill.count} balloons${[...spill.out, ...opened.out].length ? ': ' + [...spill.out, ...opened.out].join(', ') : ''})`);

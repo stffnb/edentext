@@ -62,6 +62,7 @@
   let balloons = $state<Balloon[]>([]);
   let colors = $state(new Map<string, string>());
   let heights = $state<number[]>([]);
+  let placed = $state(new Set<string>());
   // A clicked card and where every card was: the view scrolls by as much as it moves.
   let hold: { key: string; top: number; from: Map<string, number> } | null = null;
   // While that scroll runs, each card glides from where it was on the same curve.
@@ -106,6 +107,10 @@
     const ro = new ResizeObserver(() => { heights = read(); });
     for (const e of els.slice(0, list.length)) if (e) ro.observe(e);
     untrack(() => { heights = read(); });
+    // A new card appears where its measured height puts it; only later moves glide, since
+    // one from the unmeasured stack would cross the cards around it.
+    const keys = list.map((b) => b.key);
+    requestAnimationFrame(() => { placed = new Set(keys); });
     return () => ro.disconnect();
   });
 
@@ -291,6 +296,7 @@
       color: b.color,
       active: b.active || hovered === b.key,
       resolved: !!b.comment?.resolved,
+      fresh: !placed.has(b.key),
     };
   }));
 
@@ -335,6 +341,7 @@
       {#each leaders as l}
         <path
           d={l.d}
+          class:fresh={l.fresh}
           style:d={`path("${l.d}")`}
           fill="none"
           stroke={l.color}
@@ -353,6 +360,7 @@
       class:active={b.active}
       class:lifted={hovered === b.key && !b.active}
       class:resolved={!!b.comment?.resolved}
+      class:fresh={!placed.has(b.key)}
       class:on-deck={i > 0 && stack.reach[i - 1] < (heights[i - 1] ?? 0) && balloons[i - 1]?.page === b.page}
       style="top: {shown[i] ?? b.want}px; left: {b.left}px; width: {cmToPx(BALLOON_W_CM)}px; border-color: {b.color};"
     >
@@ -394,7 +402,9 @@
   }
 
   .layer-instant path,
-  .layer-instant .balloon {
+  .layer-instant .balloon,
+  path.fresh,
+  .balloon.fresh {
     transition: none;
   }
 

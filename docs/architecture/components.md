@@ -158,7 +158,7 @@ changes flow.
 
 Margin balloons sit beside `.paper`, inside the scaled canvas, so page content can remain the
 pagination width. Reserve their strip only when visible markup needs it. Group and stack cards
-per page using measured heights; a column too long for its page becomes a deck beside it
+per page using measured heights (a new card appears in place, never gliding in); a column too long for its page becomes a deck beside it
 (`deckHeights`): each card covers the one before it, the tallest cut first and none below its
 head (author, time), so the column never runs on past its page. Under the pointer a covered
 card rises whole, chosen by the strips the deck shows so the pointer walks down the heads, and
