@@ -36,6 +36,17 @@ other options are `user`, `locale`, `theme`, `chrome`, `name`, `accent` and `ai`
 Methods (`load`, `export`, `markSaved`, …) are on the element; `dirty`, `saveRequest`,
 `warning`, `ready` and `error` arrive as DOM events with the message in `detail`.
 
+Vue and Angular need to be told that `<eden-text>` is not one of their own components.
+In Vue that is a compiler option; a template `ref` then reaches the methods, and
+`@ready` or `@saveRequest` the events:
+
+```js
+// vite.config.js
+vue({ template: { compilerOptions: { isCustomElement: (tag) => tag === 'eden-text' } } })
+```
+
+In Angular, add `CUSTOM_ELEMENTS_SCHEMA` to the `schemas` of the component that uses it.
+
 ## React
 
 ```jsx
