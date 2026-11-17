@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Steffen Becker
 import type { Plugin } from 'vite';
 
 export interface EdenTextPluginOptions {

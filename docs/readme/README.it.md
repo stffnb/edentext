@@ -245,6 +245,8 @@ modalità incorporata ([NOTICE.md](../../NOTICE.md)). Per i casi d'uso a cui la 
 adatta è disponibile una [licenza commerciale](../../LICENSE.commercial.md). I caratteri e
 i dati linguistici inclusi mantengono le proprie licenze: vedi
 [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
+Lo script di supporto e gli strumenti npm sono sotto licenza MIT, quindi una pagina host
+può usarli qualunque sia la propria licenza ([NOTICE.md](../../NOTICE.md)).
 
 *EdenText è un progetto indipendente, non affiliato a Microsoft né a The Document
 Foundation. I formati `.docx` e `.odt` sono supportati per garantire l'interoperabilità.*

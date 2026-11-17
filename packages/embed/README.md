@@ -48,4 +48,7 @@ const ref = useRef(null);
 
 ## License
 
-AGPL-3.0-only with an additional term under section 7(b), see `NOTICE.md`.
+MIT, see `LICENSE`: use it in an application under any license. The editor it drives is
+a separate program under the AGPL-3.0-only with an additional term; showing it in your
+page does not put your own code under the AGPL. See the license section of
+[`@edentext/app`](https://www.npmjs.com/package/@edentext/app).

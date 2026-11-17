@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Steffen Becker
 // Types for embed.js, the EdenText embed helper; see docs/architecture/embed.md.
 
 /** Presets the AI provider; the same fields as `ai` in edentext.config.json. Never a key:

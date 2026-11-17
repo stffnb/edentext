@@ -1,4 +1,4 @@
-// AGPL-3.0-only with an additional term under section 7(b): see NOTICE.md.
+/*! EdenText embed helper | MIT License | Copyright (c) 2026 Steffen Becker */
 // EdenText embed helper: puts the editor in an iframe and drives it over postMessage.
 // Usage and messages: docs/architecture/embed.md. Load it as a module from the same
 // EdenText instance the iframe shows, e.g. import { EdenTextFrame } from '…/embed.js'.

@@ -150,6 +150,15 @@ publishes them once the repository variable `NPM_PUBLISH` is `true`.
   both load without a DOM, so server-side rendering can import them.
 - **`edentext`** holds the plain name and re-exports `@edentext/embed`.
 
+**Licenses.** What runs in a host's page or build is MIT (`packages/LICENSE`): the
+helper, the element, the React component, the copy tool and the Vite plugin, so a host
+under any license can import them. The editor stays under the AGPL with the attribution
+term, and `NOTICE.md` states that showing and driving it over messages leaves the
+host's own code outside the AGPL. Each helper file opens with a `/*!` notice; esbuild and
+terser keep that form, Vite 8 drops it, so a host that ships third-party notices lists the
+helper with its other MIT dependencies. `@edentext/app` declares
+AGPL-3.0-only, the license of its `dist/`, and carries the MIT text as `LICENSE.MIT`.
+
 A copy without a language works: a dictionary or thesaurus answered with a 404 or an
 HTML page counts as not shipped (`NotServed` in `utils/loadFailure.ts`), so the language
 goes unchecked without an alert. Grammar checking is English-only and its wasm stays.

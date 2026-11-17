@@ -248,6 +248,8 @@ Copyright © 2026 Steffen Becker · Made in Germany
 ([NOTICE.md](NOTICE.md)). A [commercial license](LICENSE.commercial.md) is available
 for use cases the AGPL does not fit. Bundled fonts and language data keep their
 own licenses — see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+The embed helper and the npm tooling are under the MIT License, so a host page can use
+them whatever its own license ([NOTICE.md](NOTICE.md)).
 
 *EdenText is an independent project, not affiliated with Microsoft or The
 Document Foundation. `.docx` and `.odt` are supported for interoperability.*

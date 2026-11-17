@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// AGPL-3.0-only with an additional term under section 7(b): see NOTICE.md.
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Steffen Becker
 import { parseArgs } from 'node:util';
 import { copyEditor, LANGUAGES } from './copy.mjs';
 

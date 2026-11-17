@@ -245,6 +245,8 @@ Copyright © 2026 Steffen Becker · Made in Germany
 [AGPL-3.0](../../LICENSE), mit einer Zusatzbedingung nach deren Abschnitt 7(b) für den Embed-Modus ([NOTICE.md](../../NOTICE.md)). Wo die AGPL nicht passt, gibt es eine
 [kommerzielle Lizenz](../../LICENSE.commercial.md). Mitgelieferte Schriften und Sprachdaten
 behalten ihre eigenen Lizenzen – siehe [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
+Das Hilfsskript und die npm-Werkzeuge stehen unter der MIT-Lizenz, eine Host-Seite kann
+sie also unabhängig von ihrer eigenen Lizenz nutzen ([NOTICE.md](../../NOTICE.md)).
 
 *EdenText ist ein unabhängiges Projekt und weder mit Microsoft noch mit The Document
 Foundation verbunden. `.docx` und `.odt` werden aus Gründen der Interoperabilität unterstützt.*

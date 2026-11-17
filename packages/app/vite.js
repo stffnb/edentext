@@ -1,4 +1,5 @@
-// AGPL-3.0-only with an additional term under section 7(b): see NOTICE.md.
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Steffen Becker
 // Serves the editor under `base` in the dev server and copies it into the build output.
 import { createReadStream, statSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';

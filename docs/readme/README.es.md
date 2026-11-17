@@ -246,6 +246,8 @@ Copyright © 2026 Steffen Becker · Hecho en Alemania
 
 [AGPL-3.0](../../LICENSE), con un término adicional según su sección 7(b) para el modo integrado ([NOTICE.md](../../NOTICE.md)). Si la AGPL no encaja, hay una [licencia comercial](../../LICENSE.commercial.md). Los tipos de letra y los datos lingüísticos incluidos conservan
 sus propias licencias: consulta [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
+El script auxiliar y las herramientas de npm están bajo la licencia MIT, así que una página
+anfitriona puede usarlos sea cual sea su propia licencia ([NOTICE.md](../../NOTICE.md)).
 
 *EdenText es un proyecto independiente, sin relación con Microsoft ni con The Document
 Foundation. `.docx` y `.odt` se admiten por interoperabilidad.*

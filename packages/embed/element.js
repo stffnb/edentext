@@ -1,4 +1,4 @@
-// AGPL-3.0-only with an additional term under section 7(b): see NOTICE.md.
+/*! EdenText embed helper | MIT License | Copyright (c) 2026 Steffen Becker */
 // <eden-text>: the editor as a custom element. Attributes are the options, the methods
 // sit on the element, and dirty, saveRequest, warning, ready and error are DOM events.
 import { EdenTextFrame } from './index.js';

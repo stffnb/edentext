@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Steffen Becker
 import type { ForwardRefExoticComponent, HTMLAttributes, RefAttributes } from 'react';
 import type { EdenTextFrame, EdenTextSettings } from './index.js';
 

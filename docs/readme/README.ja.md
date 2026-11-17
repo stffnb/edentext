@@ -236,6 +236,8 @@ Copyright © 2026 Steffen Becker · ドイツ製
 [AGPL-3.0](../../LICENSE)（埋め込みモードには第 7 条 (b) に基づく追加条項があります。[NOTICE.md](../../NOTICE.md)）。AGPL が合わない用途には[商用ライセンス](../../LICENSE.commercial.md)
 もあります。同梱のフォントと言語データにはそれぞれのライセンスが適用されます。詳しくは
 [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md) をご覧ください。
+ヘルパーと npm 用のツールは MIT ライセンスなので、ホスト側のページは自身のライセンスに
+かかわらず利用できます（[NOTICE.md](../../NOTICE.md)）。
 
 *EdenText は独立したプロジェクトで、Microsoft や The Document Foundation とは関係
 ありません。`.docx` と `.odt` には相互運用性のために対応しています。*

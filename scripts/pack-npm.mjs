@@ -9,8 +9,9 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const OUT = join(ROOT, 'dist-npm');
 const at = (...p) => join(ROOT, ...p);
 const root = JSON.parse(readFileSync(at('package.json'), 'utf8'));
-// The helper's license waits on a legal answer; until then it is the editor's.
-const EMBED_LICENSE = 'AGPL-3.0-only';
+// What runs in a host's page or build is MIT (NOTICE.md); only the editor is AGPL.
+const HOST_LICENSE = 'MIT';
+const MIT = at('packages/LICENSE');
 
 if (!existsSync(at('dist/index.html'))) throw new Error('no dist/: run npm run build first');
 const index = readFileSync(at('dist/index.html'), 'utf8');
@@ -47,6 +48,7 @@ cpSync(at('dist'), join(app, 'dist'), {
 for (const f of ['LICENSE', 'NOTICE.md']) cpSync(at(f), join(app, 'dist', f));
 for (const f of ['copy.mjs', 'bin.mjs', 'vite.js', 'vite.d.ts', 'README.md']) cpSync(at('packages/app', f), join(app, f));
 for (const f of legal) cpSync(at(f), join(app, f));
+cpSync(MIT, join(app, 'LICENSE.MIT'));
 write(app, 'package.json', {
   name: '@edentext/app',
   ...common,
@@ -82,12 +84,12 @@ const URL_DOC = '/** The EdenText instance, by default the one serving embed.js.
 if (!types.includes(URL_DOC)) throw new Error('public/embed.d.ts: the url comment changed; update pack-npm.mjs');
 write(embed, 'index.d.ts', types.replace(URL_DOC, "/** The EdenText instance, '/edentext/' by default. */"));
 for (const f of ['element.js', 'element.d.ts', 'react.js', 'react.d.ts', 'README.md']) cpSync(at('packages/embed', f), join(embed, f));
-for (const f of legal) cpSync(at(f), join(embed, f));
+cpSync(MIT, join(embed, 'LICENSE'));
 write(embed, 'package.json', {
   name: '@edentext/embed',
   ...common,
   description: 'Embed the EdenText editor in a page and drive it: load, export .odt/.docx/.pdf, save',
-  license: EMBED_LICENSE,
+  license: HOST_LICENSE,
   keywords: ['editor', 'word-processor', 'odt', 'docx', 'embed', 'iframe', 'react', 'web-component'],
   sideEffects: ['./element.js'],
   exports: {
@@ -107,12 +109,12 @@ write(plain, 'index.js', "export * from '@edentext/embed';\n");
 write(plain, 'index.d.ts', "export * from '@edentext/embed';\n");
 write(plain, 'README.md', '# edentext\n\nUse [`@edentext/embed`](https://www.npmjs.com/package/@edentext/embed) and '
   + '[`@edentext/app`](https://www.npmjs.com/package/@edentext/app); this package only re-exports the former.\n');
-cpSync(at('LICENSE'), join(plain, 'LICENSE'));
+cpSync(MIT, join(plain, 'LICENSE'));
 write(plain, 'package.json', {
   name: 'edentext',
   ...common,
   description: 'EdenText: use @edentext/embed and @edentext/app',
-  license: EMBED_LICENSE,
+  license: HOST_LICENSE,
   exports: { '.': { types: './index.d.ts', default: './index.js' } },
   dependencies: { '@edentext/embed': root.version },
 });

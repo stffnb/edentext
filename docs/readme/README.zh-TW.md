@@ -216,6 +216,7 @@ Copyright © 2026 Steffen Becker · 德國製造
 
 [AGPL-3.0](../../LICENSE)，嵌入模式另有依據其第 7(b) 條的附加條款（[NOTICE.md](../../NOTICE.md)）。如果 AGPL 不適合您的用途，可以選擇[商業授權](../../LICENSE.commercial.md)。
 隨附的字型和語言資料保留各自的授權——見 [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md)。
+輔助腳本和 npm 工具採用 MIT 授權，因此宿主頁面無論本身採用何種授權都可以使用（[NOTICE.md](../../NOTICE.md)）。
 
 *EdenText 是獨立專案，與 Microsoft 或 The Document Foundation 無關。支援 `.docx`
 和 `.odt` 是為了互通性。*

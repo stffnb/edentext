@@ -62,6 +62,20 @@ For confidential documents, pass `ai: false` to the helper.
 
 ## License
 
-AGPL-3.0-only with an additional term under section 7(b), see `NOTICE.md`: in embed mode
-the "Powered by EdenText" notice and the logo stay visible. A commercial license without
-this term is available; see the repository.
+The editor in `dist/` is under the AGPL-3.0-only with an additional term under section
+7(b), see `LICENSE` and `NOTICE.md`. The copy tool and the Vite plugin are MIT
+(`LICENSE.MIT`), like `@edentext/embed`.
+
+Your application is a separate work: showing the editor in an iframe and driving it does
+not put your own code under the AGPL, whatever its license (`NOTICE.md`, “Host
+applications”). For the copy of the editor you serve, three things hold:
+
+- Serve the copy as the tool wrote it. It carries `LICENSE`, `NOTICE.md`,
+  `licenses.txt` and the licenses of the fonts and language data; leave them in place.
+- The "Powered by EdenText" notice and the logo stay visible in embed mode.
+- If you change the editor itself, your version stays under the AGPL and offers its
+  source to its users. The source of the unchanged editor is the
+  [repository](https://github.com/stffnb/edentext) at this package's version tag.
+
+A commercial license without these terms is available; see `LICENSE.commercial.md` in
+the repository.

@@ -1,4 +1,5 @@
-// AGPL-3.0-only with an additional term under section 7(b): see NOTICE.md.
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Steffen Becker
 // Copies the built editor into a host's static files, minus the languages left out, and
 // writes embed.config.json, the list of pages allowed to drive it.
 import { cpSync, existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs';

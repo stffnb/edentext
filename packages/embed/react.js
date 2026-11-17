@@ -1,5 +1,5 @@
 'use client';
-// AGPL-3.0-only with an additional term under section 7(b): see NOTICE.md.
+/*! EdenText embed helper | MIT License | Copyright (c) 2026 Steffen Becker */
 // <EdenText>: the editor as a React component. Props are the options and the on…
 // handlers; a ref reaches the methods. Written without JSX, so it needs no build step.
 import { createElement, forwardRef, useEffect, useImperativeHandle, useRef } from 'react';

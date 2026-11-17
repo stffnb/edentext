@@ -58,6 +58,10 @@ run('npx edentext-copy public/trim --languages en', project);
 check(!existsSync(join(project, 'public/trim/dictionaries/de')) && existsSync(join(project, 'public/trim/dictionaries/en'))
   && JSON.parse(readFileSync(join(project, 'public/trim/embed.config.json'), 'utf8')).origins.join() === 'self',
 'edentext-copy keeps only the named languages and writes embed.config.json');
+const installed = (p) => join(project, 'node_modules/@edentext', p);
+check(JSON.parse(readFileSync(installed('embed/package.json'), 'utf8')).license === 'MIT' && /^MIT License/.test(readFileSync(installed('embed/LICENSE'), 'utf8'))
+  && ['LICENSE', 'NOTICE.md', 'licenses.txt', 'dictionaries/en/LICENSE'].every((f) => existsSync(join(project, 'public/trim', f))),
+'the helper is MIT and the copied editor carries its license files');
 let refused = '';
 mkdirSync(join(project, 'src'), { recursive: true });
 writeFileSync(join(project, 'src/app.js'), '');
