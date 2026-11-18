@@ -1472,7 +1472,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       return {
         pane, page, live: page <= numPages,
         left: Math.round((pane % gridCols) * pageStride * z),
-        top: Math.round(rowOfSlot(Math.floor(pane / gridCols)) * firstCycle * z),
+        // A slot past the last row is empty and stays on it: below the canvas it would
+        // lengthen the scroll by a row with no page in it.
+        top: Math.round(Math.min(rowOfSlot(Math.floor(pane / gridCols)), gridRows - 1) * firstCycle * z),
         width: Math.round((box?.width ?? paperWidth) * z),
         height: Math.round((box?.height ?? firstCycle - PAGE_GAP) * z),
         // Where the document sits inside the cell: its own page box, at the top left.
@@ -2084,6 +2086,12 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   .editor-panes :global(.editor.pane-below) {
     padding-top: 1.25rem;
     border-top: 1px solid var(--color-border);
+  }
+
+  /* The cells hold every page in its place, so the browser's scroll anchoring would
+     add a layout shift to the scroll that the cells have already taken up. */
+  .editor-panes.grid > .editor {
+    overflow-anchor: none;
   }
 
   /* A cell is a window of exactly one page onto its own view of the document. */
