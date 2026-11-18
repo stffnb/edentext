@@ -11,13 +11,18 @@ const SHELL = './';
 // place they are written down — so reading them out of it precaches the shell with no
 // build step. What the app loads later (the speller, a dictionary, a picture decoder)
 // is kept as it is asked for, which is from the **second** visit on: on the first the
-// worker is still installing while those requests go out.
-async function precache(cache) {
-  const response = await fetch(SHELL, { cache: 'reload' });
-  await cache.put(SHELL, response.clone());
-  const html = await response.text();
+// worker is still installing while those requests go out. The document is stored last,
+// so a cached one never names an asset the cache lacks.
+async function precache(cache, mode = 'reload') {
+  const response = await fetch(SHELL, { cache: mode });
+  if (!response.ok || response.type !== 'basic') throw new Error('no shell');
+  const html = await response.clone().text();
   const assets = [...html.matchAll(/(?:src|href)="(\.?\/assets\/[^"]+)"/g)].map((m) => m[1]);
-  await cache.addAll([...new Set(assets), './favicon.svg', './manifest.webmanifest']);
+  const wanted = [...new Set(assets), './favicon.svg', './manifest.webmanifest'];
+  const missing = [];
+  for (const url of wanted) if (!(await cache.match(url, { ignoreVary: true }))) missing.push(url);
+  await cache.addAll(missing);
+  await cache.put(SHELL, response);
 }
 
 self.addEventListener('install', (event) => {
@@ -40,16 +45,21 @@ const isShell = (url) => {
   return pathname === root || pathname === `${root}index.html`;
 };
 
-// The document is network-first: served from the cache it would keep naming the assets
-// of the build it was cached with, and a new one would never be fetched.
-async function documentFrom(request) {
+// The cached document answers at once, so a start waits for no network; the network's
+// copy and the assets it names are stored behind it, and a new release shows from the
+// start after. Without a cached one the network answers.
+async function documentFrom(event) {
+  const { request } = event;
+  const cached = await caches.match(SHELL, { ignoreVary: true });
+  if (cached) {
+    event.waitUntil(caches.open(CACHE).then((cache) => precache(cache, 'no-cache')).catch(() => {}));
+    return cached;
+  }
   try {
     const response = await fetch(request);
     if (response.ok && response.type === 'basic') (await caches.open(CACHE)).put(SHELL, response.clone());
     return response;
   } catch {
-    const cached = await caches.match(SHELL, { ignoreVary: true });
-    if (cached) return cached;
     throw new Error('offline and no cached shell');
   }
 }
@@ -82,5 +92,5 @@ self.addEventListener('fetch', (event) => {
   if (new URL(request.url).origin !== self.location.origin) return;
   // The installation's presets are never kept: a changed file holds from the next start.
   if (new URL(request.url).pathname.endsWith('/edentext.config.json')) return;
-  event.respondWith(request.mode === 'navigate' && isShell(request.url) ? documentFrom(request) : assetFrom(event));
+  event.respondWith(request.mode === 'navigate' && isShell(request.url) ? documentFrom(event) : assetFrom(event));
 });
