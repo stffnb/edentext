@@ -9,13 +9,13 @@ import { buildOdt } from '../../src/lib/export/odt';
 const MARGINS = { top: 2, bottom: 2, left: 2, right: 2 } as never;
 
 describe('index titles', () => {
-  it('names each kind in the current language', () => {
-    setLocale('zh-Hant');
+  it('names each kind in the current language', async () => {
+    await setLocale('zh-Hant');
     expect(indexTitle('toc')).toBe('目錄');
     expect(indexTitle('figures')).toBe('圖表目錄');
-    setLocale('de');
+    await setLocale('de');
     expect(indexTitle('toc')).toBe('Inhaltsverzeichnis');
-    setLocale('en');
+    await setLocale('en');
     expect(indexTitle('toc')).toBe('Table of contents');
   });
 

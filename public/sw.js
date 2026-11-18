@@ -17,7 +17,7 @@ async function precache(cache, mode = 'reload') {
   const response = await fetch(SHELL, { cache: mode });
   if (!response.ok || response.type !== 'basic') throw new Error('no shell');
   const html = await response.clone().text();
-  const assets = [...html.matchAll(/(?:src|href)="(\.?\/assets\/[^"]+)"/g)].map((m) => m[1]);
+  const assets = [...html.matchAll(/"(\.?\/assets\/[^"]+)"/g)].map((m) => m[1]);
   const wanted = [...new Set(assets), './favicon.svg', './manifest.webmanifest'];
   const missing = [];
   for (const url of wanted) if (!(await cache.match(url, { ignoreVary: true }))) missing.push(url);

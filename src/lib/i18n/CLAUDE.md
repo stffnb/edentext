@@ -5,12 +5,15 @@ The UI language. Distinct from the per-document spell-check language
 
 `locales/en.ts` is the source of truth: `type Messages = typeof en` is the contract every
 other catalog satisfies, so a missing key is a `npm run check` error, not a runtime blank.
-Interpolated and counted entries are functions. Catalogs are imported statically in
-`i18n.svelte.ts` and `catalogs` is a `Record<Locale, Messages>`, so a new locale cannot be
-half-added.
+Interpolated and counted entries are functions. English is in the app's module; every other
+catalog is a chunk of its own, named in `loaders` (`i18n.svelte.ts`), a
+`Record<Exclude<Locale, 'en'>, …>`, so a new locale cannot be half-added. `main.ts` mounts
+once the picked catalog is in, `setLocale()` switches once its catalog is (English stands in
+where the fetch fails), `index.html` preloads the picked one from the names the build writes
+into it (`localeChunks` in `vite.config.ts`), and the service worker keeps them all.
 
 **Adding one** — a file in `locales/`, its code in `LOCALES` and its endonym in
-`LOCALE_LABELS` (`config.ts`), the import and the `catalogs` entry, and a tag in
+`LOCALE_LABELS` (`config.ts`), its `loaders` entry, and a tag in
 `LOCALE_TAG` (`utils/dateTime.ts`) so `Intl` gets a region for date fields and the status
 bar, and the desktop app's dialog and menu texts (`TEXT` in `desktop/main.mjs`). `tests/unit/templates.test.ts` iterates `LOCALES` and covers the new catalog on its
 own; the `templates:` block is what the built-in templates read at call time.

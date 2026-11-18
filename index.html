@@ -34,6 +34,19 @@
           : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       } catch {}
       document.documentElement.classList.add('js');
+      // The picked language's catalog loads beside the app's module, not after it; the
+      // build fills in the files (vite.config.ts), the choice follows appLanguage.ts.
+      try {
+        const catalogs = /*LOCALE_CHUNKS*/{};
+        let l = localStorage.getItem('edentext-app-language');
+        if (!(l in catalogs)) {
+          const tag = (navigator.language || 'en').toLowerCase();
+          l = /^zh(-|$)/.test(tag) ? (/^zh-(hant|tw|hk|mo)\b/.test(tag) ? 'zh-Hant' : 'zh-Hans') : tag.slice(0, 2);
+        }
+        if (Object.hasOwn(catalogs, l)) {
+          document.head.append(Object.assign(document.createElement('link'), { rel: 'modulepreload', crossOrigin: '', href: catalogs[l] }));
+        }
+      } catch {}
       // The installation's presets are asked for now, while the app's module still loads,
       // so the start does not wait a round trip for them (hostConfig.svelte.ts reads it).
       if (/^https?:$/.test(location.protocol)) {

@@ -12,13 +12,13 @@ const schema = getSchema(extensions);
 const ALL = [...TEMPLATES, ...SHELVED];
 
 describe('built-in templates', () => {
-  it('has unique ids', () => {
+  it('has unique ids', async () => {
     expect(new Set(ALL.map((e) => e.id)).size).toBe(ALL.length);
   });
 
   for (const loc of LOCALES) {
-    it(`builds valid documents (${loc})`, () => {
-      setLocale(loc);
+    it(`builds valid documents (${loc})`, async () => {
+      await setLocale(loc);
       for (const entry of ALL) {
         expect(entry.name(), entry.id).toBeTruthy();
         expect(entry.description(), entry.id).toBeTruthy();
