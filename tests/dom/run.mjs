@@ -1719,6 +1719,10 @@ try {
       for (let p = row * cols + 1; p <= Math.min(total, row * cols + cols); p++)
         if (!pages.includes(p)) bad.push(`page ${p} on screen has no cell (${pages})`);
     }
+    // The scroll ends with the canvas, less the scroller's own padding: no empty row below it.
+    const el = document.querySelector('.editor-panes.grid > .editor'), sheet = document.querySelector('.grid-canvas');
+    const past = el.scrollHeight - sheet.offsetTop - sheet.offsetHeight;
+    if (past > pageH / 2) bad.push(`the grid scrolls ${Math.round(past)}px past its last row`);
     const cell = document.activeElement?.closest('.page-cell');
     const sel = getSelection();
     if (!cell || !sel.rangeCount) return [...bad, 'no cell has the focus'];
@@ -1825,13 +1829,19 @@ try {
   // a scroll range that got shorter under it.
   const gridScroll = () => page.evaluate(() => {
     const el = document.querySelector('.editor-panes.grid > .editor');
-    return { top: el.scrollTop, max: el.scrollHeight - el.clientHeight };
+    return { top: el.scrollTop, max: el.scrollHeight - el.clientHeight, pages: document.querySelector('.statusbar').textContent.match(/Page \d+ of \d+/)?.[0], zoom: document.querySelector('.statusbar').textContent.match(/\d+%/)?.[0] };
   });
   const relayout = (space) => page.evaluate((space) => {
     const ed = document.querySelector('.tiptap').editor;
     ed.view.dispatch(ed.state.tr.setNodeMarkup(0, undefined, { ...ed.state.doc.child(0).attrs, spaceAfter: space }));
   }, space);
-  const scrolledTo = await gridScroll();
+  // The wheel scrolls smoothly in Firefox, for longer than a grid step waits.
+  let scrolledTo = await gridScroll();
+  for (let was = NaN, i = 0; was !== scrolledTo.top && i < 20; i++) {
+    was = scrolledTo.top;
+    await page.waitForTimeout(150);
+    scrolledTo = await gridScroll();
+  }
   await relayout(40);
   await page.waitForTimeout(700);
   const afterLayout = await gridScroll();

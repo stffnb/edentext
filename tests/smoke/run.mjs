@@ -145,7 +145,9 @@ try {
       if (layer && (box.top < layer.top - 0.5 || box.bottom > layer.bottom + 0.5)) out.push('balloon hangs off the page');
     }
     const rects = cards.map((e) => e.getBoundingClientRect());
-    for (let i = 1; i < rects.length; i++) if (rects[i].top < rects[i - 1].bottom - 0.5) out.push(`balloon ${i} overlaps the one above`);
+    // With the stack as it stood, for a failure on an engine this machine cannot run.
+    const stood = () => cards.map((e, i) => `${Math.round(rects[i].top)}+${Math.round(rects[i].height)}${e.matches('.active') ? 'a' : ''}${e.matches('.fresh') ? 'f' : ''}${e.matches('.on-deck') ? 'd' : ''}`).join(' ');
+    for (let i = 1; i < rects.length; i++) if (rects[i].top < rects[i - 1].bottom - 0.5) out.push(`balloon ${i} overlaps the one above [${stood()}; ${window.__balloonStill ? 'still' : 'still moving'}]`);
     // The leader belongs in the gap under its line, never across the letters.
     const anchor = document.querySelector('[data-comment="c1"]')?.getBoundingClientRect();
     const first = document.querySelector('.review-margin-layer path')?.getAttribute('d');
@@ -160,7 +162,7 @@ try {
     const now = cards.map((e) => { const r = e.getBoundingClientRect(); return `${r.top},${r.height}`; }).join('|');
     const still = now === window.__balloonStack && !document.querySelector('.review-margin-layer')?.getAnimations({ subtree: true }).length;
     window.__balloonStack = now;
-    return still;
+    return (window.__balloonStill = still);
   }, null, { timeout: 10_000, polling: 100 })).catch(() => {});
   await settle();
   const spill = await menuSpill();
@@ -168,7 +170,7 @@ try {
   await settle();
   const opened = await menuSpill();
   check(spill.count === 7 && spill.out.length === 0 && opened.out.length === 0,
-    `margin balloons hold their content (${spill.count} balloons${[...spill.out, ...opened.out].length ? ': ' + [...spill.out, ...opened.out].join(', ') : ''})`);
+    `margin balloons hold their content (${spill.count} balloons${[...spill.out, ...opened.out].length ? ': ' + [...spill.out, ...opened.out.map((o) => `with a card open, ${o}`)].join(', ') : ''})`);
 
   // The display modes, through the ribbon: no markup takes bars and balloons off the
   // page, and the full view brings the same ones back.
