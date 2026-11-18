@@ -156,14 +156,19 @@ try {
     return { count: cards.length, out: [...new Set(out)] };
   });
   // Judge the stack as a reader does, once it stands still: no card gliding and the same
-  // boxes on two polls. A slow runner may take far longer than the glide itself.
-  const settle = () => page.evaluate(() => { window.__balloonStack = null; }).then(() => page.waitForFunction(() => {
-    const cards = [...document.querySelectorAll('.balloon')];
-    const now = cards.map((e) => { const r = e.getBoundingClientRect(); return `${r.top},${r.height}`; }).join('|');
-    const still = now === window.__balloonStack && !document.querySelector('.review-margin-layer')?.getAnimations({ subtree: true }).length;
-    window.__balloonStack = now;
-    return (window.__balloonStill = still);
-  }, null, { timeout: 10_000, polling: 100 })).catch(() => {});
+  // boxes on two samples with frames drawn between them. A card's new height reaches the
+  // stack with a frame, and a slow runner may draw none for longer than a sample apart.
+  const settle = () => page.evaluate(async () => {
+    const layer = document.querySelector('.review-margin-layer');
+    let was = null;
+    window.__balloonStill = false;
+    for (const until = performance.now() + 10_000; performance.now() < until;) {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 100))));
+      const now = [...document.querySelectorAll('.balloon')].map((e) => { const r = e.getBoundingClientRect(); return `${r.top},${r.height}`; }).join('|');
+      if (now === was && !layer?.getAnimations({ subtree: true }).length) { window.__balloonStill = true; return; }
+      was = now;
+    }
+  }).catch(() => {});
   await settle();
   const spill = await menuSpill();
   await page.click('.balloon .edit');
