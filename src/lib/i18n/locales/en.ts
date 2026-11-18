@@ -269,7 +269,7 @@ const en = {
     test: 'Test connection',
     testing: 'Testing…',
     testOk: 'Connected.',
-    serverConsentTitle: 'Send your dictation to another computer?',
+    serverConsentTitle: 'Dictate through this speech recognition server?',
     serverConsentText: (host: string) => `The speech recognition server ${host} is not on this computer: what you say goes there over the network and the text comes back. EdenText itself stores nothing.`,
     fromHost: 'Set up by the administrator',
     fromHostHint: (model: string, locked: boolean) => `Speech is recognized on the administrator’s server${model ? ` with ${model}` : ''}. ${locked ? 'Only the administrator can change this.' : 'To use another service, pick it under Dictation service.'}`,

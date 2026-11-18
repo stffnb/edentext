@@ -266,7 +266,7 @@ const pt: Messages = {
     test: 'Testar ligação',
     testing: 'A testar…',
     testOk: 'Ligado.',
-    serverConsentTitle: 'Enviar o ditado para outro computador?',
+    serverConsentTitle: 'Ditar através deste servidor de reconhecimento de voz?',
     serverConsentText: (host: string) => `O servidor de reconhecimento de voz ${host} não está neste computador: o que diz segue pela rede até ele e o texto volta. O EdenText não guarda nada.`,
     fromHost: 'Configurado pelo administrador',
     fromHostHint: (model: string, locked: boolean) => `A voz é reconhecida no servidor do administrador${model ? ` com ${model}` : ''}. ${locked ? 'Só o administrador pode alterar isto.' : 'Para usar outro serviço, escolha-o em Serviço de ditado.'}`,

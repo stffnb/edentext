@@ -266,7 +266,7 @@ const es: Messages = {
     test: 'Probar conexión',
     testing: 'Probando…',
     testOk: 'Conectado.',
-    serverConsentTitle: '¿Enviar el dictado a otro equipo?',
+    serverConsentTitle: '¿Dictar mediante este servidor de reconocimiento de voz?',
     serverConsentText: (host: string) => `El servidor de reconocimiento de voz ${host} no está en este equipo: lo que diga viaja por la red hasta él y el texto vuelve. EdenText no guarda nada.`,
     fromHost: 'Configurado por el administrador',
     fromHostHint: (model: string, locked: boolean) => `La voz se reconoce en el servidor del administrador${model ? ` con ${model}` : ''}. ${locked ? 'Solo el administrador puede cambiarlo.' : 'Para usar otro servicio, elíjalo en Servicio de dictado.'}`,

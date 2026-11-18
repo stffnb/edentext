@@ -266,7 +266,7 @@ const it: Messages = {
     test: 'Verifica connessione',
     testing: 'Verifica in corso…',
     testOk: 'Connesso.',
-    serverConsentTitle: 'Inviare la dettatura a un altro computer?',
+    serverConsentTitle: 'Dettare tramite questo server di riconoscimento vocale?',
     serverConsentText: (host: string) => `Il server di riconoscimento vocale ${host} non è su questo computer: ciò che dici gli arriva attraverso la rete e il testo torna indietro. EdenText non salva nulla.`,
     fromHost: 'Configurato dall’amministratore',
     fromHostHint: (model: string, locked: boolean) => `La voce viene riconosciuta sul server dell’amministratore${model ? ` con ${model}` : ''}. ${locked ? 'Solo l’amministratore può cambiarlo.' : 'Per usare un altro servizio, sceglilo in Servizio di dettatura.'}`,

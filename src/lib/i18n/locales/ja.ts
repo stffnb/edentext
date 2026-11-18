@@ -268,7 +268,7 @@ const ja: Messages = {
     test: '接続をテスト',
     testing: 'テスト中…',
     testOk: '接続しました。',
-    serverConsentTitle: '音声を別のコンピューターに送信しますか?',
+    serverConsentTitle: 'この音声認識サーバーで音声入力しますか?',
     serverConsentText: (host: string) => `音声認識サーバー ${host} はこのコンピューター上にありません。話した内容はネットワーク経由でそこへ送られ、テキストが返ってきます。EdenText 自体は何も保存しません。`,
     fromHost: '管理者が設定済み',
     fromHostHint: (model: string, locked: boolean) => `音声は管理者のサーバー${model ? `上の ${model} で` : 'で'}認識されます。${locked ? '変更できるのは管理者だけです。' : '別のサービスを使うには「音声入力サービス」で選んでください。'}`,

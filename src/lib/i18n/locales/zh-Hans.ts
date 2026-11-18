@@ -267,7 +267,7 @@ const zhHans: Messages = {
     test: '测试连接',
     testing: '正在测试…',
     testOk: '已连接。',
-    serverConsentTitle: '将听写发送到另一台电脑？',
+    serverConsentTitle: '通过此语音识别服务器进行听写？',
     serverConsentText: (host: string) => `语音识别服务器 ${host} 不在这台电脑上：你说的话会通过网络发送到那里，再取回文本。EdenText 本身不保存任何内容。`,
     fromHost: '由管理员配置',
     fromHostHint: (model: string, locked: boolean) => `语音在管理员的服务器上${model ? `由 ${model} ` : ''}识别。${locked ? '只有管理员可以更改。' : '如要使用其他服务，请在“听写服务”中选择。'}`,

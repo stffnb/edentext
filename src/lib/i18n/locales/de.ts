@@ -266,7 +266,7 @@ const de: Messages = {
     test: 'Verbindung testen',
     testing: 'Wird getestet…',
     testOk: 'Verbunden.',
-    serverConsentTitle: 'Diktat an einen anderen Computer schicken?',
+    serverConsentTitle: 'Über diesen Server für Spracherkennung diktieren?',
     serverConsentText: (host: string) => `Der Spracherkennungsserver ${host} läuft nicht auf diesem Computer. Das Gesprochene geht übers Netz dorthin, der Text kommt zurück. EdenText selbst speichert nichts.`,
     fromHost: 'Vom Administrator eingerichtet',
     fromHostHint: (model: string, locked: boolean) => `Die Sprache wird auf dem Server des Administrators ${model ? `mit ${model} ` : ''}erkannt. ${locked ? 'Das kann nur der Administrator ändern.' : 'Ein anderer Dienst lässt sich unter „Diktierdienst“ wählen.'}`,

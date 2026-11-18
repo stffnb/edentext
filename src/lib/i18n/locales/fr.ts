@@ -270,7 +270,7 @@ const fr: Messages = {
     test: 'Tester la connexion',
     testing: 'Test en cours…',
     testOk: 'Connecté.',
-    serverConsentTitle: 'Envoyer la dictée à un autre ordinateur ?',
+    serverConsentTitle: 'Dicter via ce serveur de reconnaissance vocale ?',
     serverConsentText: (host: string) => `Le serveur de reconnaissance vocale ${host} n’est pas sur cet ordinateur : ce que vous dites lui parvient par le réseau et le texte revient. EdenText lui-même n’enregistre rien.`,
     fromHost: 'Configuré par l’administrateur',
     fromHostHint: (model: string, locked: boolean) => `La parole est reconnue sur le serveur de l’administrateur${model ? ` avec ${model}` : ''}. ${locked ? 'Seul l’administrateur peut modifier ce réglage.' : 'Pour utiliser un autre service, choisissez-le sous Service de dictée.'}`,
