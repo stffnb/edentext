@@ -1689,6 +1689,9 @@ try {
     document.querySelector('.tiptap').editor.commands.setContent({ type: 'doc', content: Array.from({ length: 300 },
       (_, i) => ({ type: 'paragraph', content: [{ type: 'text', text: `${i + 1}. ${text.repeat(1 + (i % 4))}` }] })) });
   });
+  // The caret's page is followed a task after the content lands, behind the layout:
+  // a scroll written before that is one it undoes.
+  await settle(page, true);
   const gridPages = await settled();
   const gridState = (scrolledAway) => page.evaluate((scrolledAway) => {
     const bad = [];
@@ -1753,6 +1756,8 @@ try {
       faults = await gridState(scrolledAway);
     }
     for (const fault of faults) gridFaults.push(`${label}: ${fault}`);
+    // Keys typed with no cell focused go to the browser, where Backspace leaves the page.
+    if (faults.includes('no cell has the focus')) throw new Error(`the page grid lost the focus (${gridFaults.join('; ')})`);
   };
   const docEnd = process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End';
   const docStart = process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home';
@@ -1816,6 +1821,24 @@ try {
     await page.mouse.wheel(0, 600);
     await gridStep(`wheel ${i}`, true);
   }
+  // A layout pass with the caret unmoved leaves where the reader scrolled to, short of
+  // a scroll range that got shorter under it.
+  const gridScroll = () => page.evaluate(() => {
+    const el = document.querySelector('.editor-panes.grid > .editor');
+    return { top: el.scrollTop, max: el.scrollHeight - el.clientHeight };
+  });
+  const relayout = (space) => page.evaluate((space) => {
+    const ed = document.querySelector('.tiptap').editor;
+    ed.view.dispatch(ed.state.tr.setNodeMarkup(0, undefined, { ...ed.state.doc.child(0).attrs, spaceAfter: space }));
+  }, space);
+  const scrolledTo = await gridScroll();
+  await relayout(40);
+  await page.waitForTimeout(700);
+  const afterLayout = await gridScroll();
+  await relayout(null);
+  await page.waitForTimeout(700);
+  check(Math.abs(afterLayout.top - Math.min(scrolledTo.top, afterLayout.max)) < 2,
+    `a layout pass in the page grid keeps the reader's scroll (${JSON.stringify(scrolledTo)} -> ${JSON.stringify(afterLayout)})`);
   await page.keyboard.type('y');
   await gridStep('typing after scrolling away');
   await page.keyboard.press('PageUp');
