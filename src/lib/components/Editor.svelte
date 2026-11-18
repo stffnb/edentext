@@ -1207,8 +1207,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     // The document height changed → resize the scaled scroll footprint.
     recomputeScaledSize();
     updateCurrentPage();
-    // A new layout can move the caret onto another page with no selection change.
-    if (multiPage && gridFocused()) scheduleCaretPage();
+    // A new layout can move the caret onto another page with no selection change; the grid
+    // follows only if the reader has not scrolled since it last did, or a late pass undid it.
+    if (multiPage && gridFocused()) scheduleCaretPage(false);
     // Pagination spacers can shift a table's position — re-place the toolbar/bands.
     scheduleTableUi();
   }
@@ -1560,10 +1561,17 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // it would lay the whole document out before anything is painted — half a second on a
   // 460-page file, thrown away by the writes of the load that follow it.
   let caretPageTask: ReturnType<typeof setTimeout> | null = null;
-  function scheduleCaretPage(): void {
+  let caretPageScrolls = false;
+  // Where the last follow left the scroller; NaN until one has.
+  let followedAt = { top: NaN, left: NaN };
+  function scheduleCaretPage(scroll = true): void {
+    caretPageScrolls ||= scroll;
     if (caretPageTask !== null) return;
     caretPageTask = setTimeout(() => {
       caretPageTask = null;
+      const el = scrollers[0];
+      const scrolls = caretPageScrolls || (!!el && Math.abs(el.scrollTop - followedAt.top) < 1 && Math.abs(el.scrollLeft - followedAt.left) < 1);
+      caretPageScrolls = false;
       if (!editor || editor.isDestroyed) return;
       const view = paneView() ?? editor.view;
       const tiptap = view.dom as HTMLElement | null;
@@ -1575,18 +1583,19 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         const coords = caretCoords(view);
         const cursorInDoc = ((coords.top + coords.bottom) / 2 - tiptap.getBoundingClientRect().top) / (appliedZoom / 100);
         currentPage = pageAtY(cursorInDoc);
-        followCaret(currentPage, onPaper(coords));
+        followCaret(currentPage, onPaper(coords), scrolls);
+        if (scrolls && el) followedAt = { top: el.scrollTop, left: el.scrollLeft };
       } catch { /* ignore */ }
     }, 0);
   }
 
   // The caret is drawn by whichever view holds the focus, so it has to be the one
   // whose cell shows the caret's page — otherwise it blinks on a clipped page.
-  function followCaret(page: number, caret: { top: number; bottom: number; left: number }) {
+  function followCaret(page: number, caret: { top: number; bottom: number; left: number }, scroll = true) {
     if (!multiPage || hfActive) return;
-    showRowOf(page);
+    if (scroll) showRowOf(page);
     const focused = gridFocused();
-    if (focused) revealInGrid(page, caret);
+    if (focused && scroll) revealInGrid(page, caret);
     const pane = cells.find((c) => c.page === page)?.pane;
     if (!focused || pane === undefined || pane === activePane) return;
     activePane = pane;
