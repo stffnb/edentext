@@ -42,10 +42,12 @@ export async function loadHostConfig(): Promise<void> {
   if (!/^https?:$/.test(location.protocol)) return;
   let next: typeof file = { ai: {}, dictation: {} };
   try {
-    const res = await fetch(new URL('edentext.config.json', document.baseURI), { cache: 'no-cache', signal: AbortSignal.timeout(2000) });
-    if (res.ok) {
-      const raw: unknown = await res.json();
-      const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+    // index.html asks for the file before this module loads; a page without that script asks here.
+    const early = (window as { __edentextConfig?: Promise<unknown> }).__edentextConfig;
+    const raw: unknown = await (early ?? fetch(new URL('edentext.config.json', document.baseURI), { cache: 'no-cache', signal: AbortSignal.timeout(2000) })
+      .then((res) => (res.ok ? res.json() : null)));
+    if (raw && typeof raw === 'object') {
+      const obj = raw as Record<string, unknown>;
       next = { ai: section('ai', obj.ai), dictation: section('dictation', obj.dictation) };
     }
   } catch { /* no preset */ }

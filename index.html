@@ -34,6 +34,12 @@
           : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       } catch {}
       document.documentElement.classList.add('js');
+      // The installation's presets are asked for now, while the app's module still loads,
+      // so the start does not wait a round trip for them (hostConfig.svelte.ts reads it).
+      if (/^https?:$/.test(location.protocol)) {
+        window.__edentextConfig = fetch('edentext.config.json', { cache: 'no-cache', signal: AbortSignal.timeout(2000) })
+          .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      }
     </script>
     <style>
       html[data-theme='light'] { background: #e6e9eb; }
