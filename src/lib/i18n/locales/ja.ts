@@ -257,6 +257,7 @@ const ja: Messages = {
     consent: '確認せずにブラウザーの音声サービスへ送信',
     consentHint: 'ブラウザーがこのコンピューターで音声を認識できない場合、音声はブラウザーの音声サービスに送られます。オフにすると、次の音声入力の前に EdenText が確認します',
     unsupported: (app: boolean) => `${app ? 'このアプリ' : 'このブラウザー'}には音声認識がありません。代わりにシステムの音声入力を使用してください: Windows では Windows ロゴ キー + H、macOS では [編集] ▸ [音声入力を開始]`,
+    unsupportedServer: 'または、音声認識サーバーを使って音声入力できます。下にアドレスを入力してください',
     server: '音声認識サーバー',
     serverHint: 'OpenAI 互換の API を持つ独自の音声認識サーバー (例: http://localhost:8000)。入力すると、音声入力はこのサーバーを使います',
     service: '音声入力サービス',

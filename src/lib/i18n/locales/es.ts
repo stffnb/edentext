@@ -255,6 +255,7 @@ const es: Messages = {
     consent: 'Enviar al servicio de voz del navegador sin preguntar',
     consentHint: 'Si el navegador no reconoce la voz en este equipo, envía el audio a su servicio de voz. Si está desactivado, EdenText pregunta antes del próximo dictado',
     unsupported: (app: boolean) => `${app ? 'Esta aplicación' : 'Este navegador'} no tiene reconocimiento de voz. Use el dictado del sistema: tecla del logotipo de Windows + H en Windows, Edición ▸ Iniciar dictado en macOS`,
+    unsupportedServer: 'O dicte mediante un servidor de reconocimiento de voz: introduzca su dirección abajo',
     server: 'Servidor de reconocimiento de voz',
     serverHint: 'Su propio servidor de reconocimiento de voz con una API compatible con OpenAI, p. ej. http://localhost:8000. Una vez indicada la dirección, el dictado usa este servidor',
     service: 'Servicio de dictado',

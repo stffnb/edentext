@@ -258,6 +258,7 @@ const en = {
     consent: 'Send to the browser’s speech service without asking',
     consentHint: 'If the browser cannot recognize speech on this computer, it sends the audio to its speech service. When this is off, EdenText asks before the next dictation',
     unsupported: (app: boolean) => `${app ? 'This app' : 'This browser'} has no speech recognition. Use the system’s dictation instead: Windows logo key + H on Windows, Edit ▸ Start Dictation on macOS`,
+    unsupportedServer: 'Or dictate through a speech recognition server: enter its address below',
     server: 'Speech recognition server',
     serverHint: 'Your own speech recognition server with an OpenAI-compatible API, e.g. http://localhost:8000. Once an address is entered, dictation uses this server',
     service: 'Dictation service',

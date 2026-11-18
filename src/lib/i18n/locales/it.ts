@@ -255,6 +255,7 @@ const it: Messages = {
     consent: 'Invia al servizio vocale del browser senza chiedere',
     consentHint: 'Se il browser non riconosce la voce su questo computer, invia l’audio al suo servizio vocale. Se è disattivato, EdenText chiede conferma prima della prossima dettatura',
     unsupported: (app: boolean) => `${app ? 'Questa app' : 'Questo browser'} non ha il riconoscimento vocale. Usa la dettatura del sistema: tasto logo Windows + H su Windows, Modifica ▸ Avvia dettatura su macOS`,
+    unsupportedServer: 'Oppure detta tramite un server di riconoscimento vocale: inserisci l’indirizzo qui sotto',
     server: 'Server di riconoscimento vocale',
     serverHint: 'Il tuo server di riconoscimento vocale con un’API compatibile con OpenAI, ad es. http://localhost:8000. Una volta inserito l’indirizzo, la dettatura usa questo server',
     service: 'Servizio di dettatura',

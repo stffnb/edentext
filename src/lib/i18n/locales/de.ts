@@ -255,6 +255,7 @@ const de: Messages = {
     consent: 'Ohne Nachfrage an den Sprachdienst des Browsers senden',
     consentHint: 'Erkennt der Browser Sprache nicht selbst, schickt er den Ton an seinen Sprachdienst. Ist der Schalter aus, fragt EdenText vor dem nächsten Diktat nach',
     unsupported: (app: boolean) => `${app ? 'Diese App' : 'Dieser Browser'} hat keine Spracherkennung. Stattdessen das Diktat des Systems verwenden: Windows-Logo-Taste + H unter Windows, Bearbeiten ▸ Diktat starten unter macOS`,
+    unsupportedServer: 'Oder über einen Server für Spracherkennung diktieren: unten die Adresse eintragen',
     server: 'Spracherkennungsserver',
     serverHint: 'Ein eigener Server für Spracherkennung mit OpenAI-kompatibler Schnittstelle, z. B. http://localhost:8000. Ist eine Adresse eingetragen, läuft das Diktat über diesen Server',
     service: 'Diktierdienst',

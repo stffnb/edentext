@@ -257,6 +257,7 @@ const zhHant: Messages = {
     consent: '不再詢問，直接傳送到瀏覽器的語音服務',
     consentHint: '瀏覽器無法在本機辨識語音時，會把音訊傳送到其語音服務。關閉後，EdenText 會在下次聽寫前詢問',
     unsupported: (app: boolean) => `${app ? '這個應用程式' : '這個瀏覽器'}不支援語音辨識。請改用系統聽寫：Windows 上按 Windows 標誌鍵 + H，macOS 上選擇「編輯 ▸ 開始聽寫」`,
+    unsupportedServer: '也可以透過語音辨識伺服器聽寫：在下方填寫其位址',
     server: '語音辨識伺服器',
     serverHint: '你自己的語音辨識伺服器，需提供與 OpenAI 相容的介面，例如 http://localhost:8000。填寫後，聽寫將使用這台伺服器',
     service: '聽寫服務',

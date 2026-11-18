@@ -256,6 +256,7 @@ const zhHans: Messages = {
     consent: '不再询问，直接发送到浏览器的语音服务',
     consentHint: '浏览器无法在本机识别语音时，会把音频发送到其语音服务。关闭后，EdenText 会在下次听写前询问',
     unsupported: (app: boolean) => `${app ? '此应用' : '此浏览器'}不支持语音识别。请改用系统听写：Windows 上按 Windows 徽标键 + H，macOS 上选择“编辑 ▸ 开始听写”`,
+    unsupportedServer: '也可以通过语音识别服务器听写：在下方填写其地址',
     server: '语音识别服务器',
     serverHint: '你自己的语音识别服务器，需提供与 OpenAI 兼容的接口，例如 http://localhost:8000。填写后，听写将使用这台服务器',
     service: '听写服务',

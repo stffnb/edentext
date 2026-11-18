@@ -259,6 +259,7 @@ const fr: Messages = {
     consent: 'Envoyer au service vocal du navigateur sans demander',
     consentHint: 'Si le navigateur ne reconnaît pas la parole sur cet ordinateur, il envoie le son à son service vocal. Si l’option est désactivée, EdenText demande avant la prochaine dictée',
     unsupported: (app: boolean) => `${app ? 'Cette application' : 'Ce navigateur'} n’a pas de reconnaissance vocale. Utilisez la dictée du système : touche Windows + H sous Windows, Édition ▸ Démarrer Dictée sous macOS`,
+    unsupportedServer: 'Ou dictez via un serveur de reconnaissance vocale : saisissez son adresse ci-dessous',
     server: 'Serveur de reconnaissance vocale',
     serverHint: 'Votre propre serveur de reconnaissance vocale avec une API compatible OpenAI, par ex. http://localhost:8000. Une fois l’adresse saisie, la dictée passe par ce serveur',
     service: 'Service de dictée',
