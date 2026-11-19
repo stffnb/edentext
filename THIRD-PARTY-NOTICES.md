@@ -24,6 +24,7 @@ copied verbatim into the build, so the licenses ship wherever the fonts do.
 | Carlito | OFL-1.1 | (c) 2013 The Carlito Project Authors (Reserved Font Name "Carlito") |
 | Caladea | OFL-1.1 | (c) 2012 The Caladea Project Authors |
 | STIX Two Math | OFL-1.1 | (c) 2001–2021 The STIX Fonts Project Authors |
+| Noto Naskh Arabic | OFL-1.1 | (c) 2022 The Noto Project Authors |
 | `EdenSymbols.woff2` — bullet glyphs subset from DejaVu Sans | Bitstream Vera | (c) 2003 Bitstream, Inc. |
 
 > OFL-1.1 permits bundling the fonts in any software, **including commercial and

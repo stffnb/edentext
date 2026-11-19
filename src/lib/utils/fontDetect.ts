@@ -53,6 +53,11 @@ export const CANDIDATE_FONTS: readonly string[] = [
   'Superclarendon', 'Tamil Sangam MN',
   'Telugu Sangam MN', 'Thonburi', 'Trattatello', 'Zapf Dingbats', 'Zapfino',
 
+  // Arabic families of Windows, macOS and the open-source ones
+  'Traditional Arabic', 'Simplified Arabic', 'Arabic Typesetting', 'Sakkal Majalla',
+  'Aldhabi', 'Andalus', 'Urdu Typesetting', 'Geeza Pro', 'Al Nile', 'Al Bayan', 'Baghdad',
+  'Amiri', 'Scheherazade New', 'Noto Sans Arabic', 'Noto Kufi Arabic',
+
   // Common Linux / open-source families
   'DejaVu Sans', 'DejaVu Sans Mono', 'DejaVu Serif',
   'Liberation Mono', 'Liberation Sans', 'Liberation Serif',
@@ -114,7 +119,7 @@ export function detectAvailableFonts(candidates: readonly string[]): string[] {
 
 // Families the app always renders via bundled @font-face twins, plus CSS generics —
 // never flagged as missing. The bundled names must match the @font-face in global.css.
-const BUNDLED_FONTS = ['Liberation Serif', 'Times New Roman', 'Calibri', 'Arial', 'Cambria', 'Courier New'];
+const BUNDLED_FONTS = ['Liberation Serif', 'Times New Roman', 'Calibri', 'Arial', 'Cambria', 'Courier New', 'Noto Naskh Arabic'];
 const GENERIC_FAMILIES = ['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui'];
 
 // Of the given family names, those the browser can't render (so text declaring them is
