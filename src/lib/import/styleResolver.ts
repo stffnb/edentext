@@ -390,6 +390,25 @@ export class StyleResolver {
     return styleName ? this.merged('paragraph', styleName).text : (this.defaults.get('paragraph')?.text ?? {});
   }
 
+  // What start and end in fo:text-align resolve against, set by the importer: the page's
+  // direction, and whether the file's producer writes the two for the physical edges.
+  pageRtl = false;
+  physicalEdges = false;
+
+  // Whether a paragraph with these props runs right to left; "page" and unset inherit.
+  paraRtl(para: PropMap): boolean {
+    const wm = para['style:writing-mode'];
+    return wm === 'rl-tb' || (wm !== 'lr-tb' && this.pageRtl);
+  }
+
+  // fo:text-align as the physical edge the editor stores; null where the chain has none.
+  textAlign(para: PropMap): string | null {
+    const ta = para['fo:text-align'];
+    if (ta === 'center' || ta === 'justify' || ta === 'left' || ta === 'right') return ta;
+    if (ta !== 'start' && ta !== 'end') return null;
+    return (ta === 'start') !== (!this.physicalEdges && this.paraRtl(para)) ? 'left' : 'right';
+  }
+
   // Effective paragraph-layout props (alignment, margins, line-height).
   paraProps(styleName: string | null): PropMap {
     return styleName ? this.merged('paragraph', styleName).para : (this.defaults.get('paragraph')?.para ?? {});

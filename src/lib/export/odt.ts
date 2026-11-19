@@ -1772,8 +1772,13 @@ function paraStyleFromAttrs(attrs: TiptapNode['attrs'], withIndents = true): Par
     lineHeight = isNaN(lhNum) ? String(lh) : lhNum;
   }
   const border = (v: unknown) => (typeof v === 'string' && v && v !== 'none' ? v : null);
+  // A right-to-left block its styles leave unaligned names its edge: LibreOffice's default
+  // is the physical left in either direction, and reads start/end by the file's producer.
+  const named = typeof attrs?.styleName === 'string' && attrs.styleName ? attrs.styleName
+    : typeof attrs?.level === 'number' ? `Heading ${attrs.level}` : DEFAULT_STYLE;
+  const dirEdge = attrs?.dir === 'rtl' && !resolveStyle(exportSheet, named, 'paragraph').para.textAlign ? 'right' : null;
   return {
-    align: ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify' ? ta : null,
+    align: ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify' ? ta : dirEdge,
     spaceBefore: typeof sb === 'number' ? sb : null,
     spaceAfter: typeof sa === 'number' ? sa : null,
     lineHeight,
@@ -1843,8 +1848,6 @@ function paraStyleProps(style: ParaStyle): string[] {
   if (style.borderJoin === false) props.push('style:join-border="false"');
   const wm = writingModeOf(style.dir);
   if (wm) props.push(`style:writing-mode="${wm}"`);
-  // The pair LibreOffice writes: the mode alone leaves the block left-aligned (probed).
-  if (style.dir === 'rtl' && !style.align) props.push('fo:text-align="end"');
   if (style.noSnap) props.push('style:snap-to-layout-grid="false"');
   if (style.noWidow) props.push('fo:orphans="0"', 'fo:widows="0"');
   if (style.keepLines) props.push('fo:keep-together="always"');
@@ -2782,11 +2785,6 @@ function applyParagraphBoxes(odtBytes: Uint8Array): Uint8Array {
     // The language is a text property too; LibreOffice passes it on to the runs.
     const langs = langPairAttrs({ lang: spec.split('|')[11], langAsian: spec.split('|')[12] });
     if (Object.keys(langs).length) style = upsertProps(style, 'text', langs);
-    // An RTL block with no alignment of its own gets the fo:text-align="end" LibreOffice
-    // pairs with the mode — the mode alone leaves it left-aligned (probed).
-    if (spec.split('|')[9] === 'rl-tb' && !/fo:text-align=/.test(style)) {
-      style = upsertProps(style, 'paragraph', { 'fo:text-align': 'end' });
-    }
     minted.push(style);
     return name;
   };
@@ -6049,11 +6047,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
         const lhNum = Number(lhRaw);
         opts.lineHeight = isNaN(lhNum) ? lhRaw : lhNum;
       }
-      const ta = node.attrs?.textAlign;
-      if (ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify') {
-        opts.align = ta;
-      }
       const spacing = pairMargins(paraStyleFromAttrs(node.attrs), styleOf(node));
+      if (spacing.align) opts.align = spacing.align;
       if (spacing.spaceBefore != null) opts.spaceBefore = `${spacing.spaceBefore}pt`;
       if (spacing.spaceAfter != null) opts.spaceAfter = `${spacing.spaceAfter}pt`;
       // Left indent → fo:margin-left (odf-kit emits it natively from indentLeft).

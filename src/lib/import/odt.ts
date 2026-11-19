@@ -4,7 +4,7 @@ import en from '../i18n/locales/en';
 import { StyleResolver, NS, WATERMARK_NAME, lengthToPt, lengthToCm, layerTextProps, langTagsOfProps, type PropMap } from './styleResolver';
 import { cjkDocFont, odfFromTag, tagFromOdf } from '../storage/documentLanguage';
 import { ASIAN_SCRIPT_RE, COMPLEX_SCRIPT_RE } from '../utils/script';
-import { ODF_LOOK_ATTRS, normalizeColor, labelledItems } from '../export/odt';
+import { GENERATOR, ODF_LOOK_ATTRS, normalizeColor, labelledItems } from '../export/odt';
 import { AUTO_COLOR } from '../utils/color';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL } from '../styles/headings';
 import { isAllowedUri } from '@tiptap/extension-link';
@@ -1126,6 +1126,8 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   resolver.setDefaultMaster(masters.dominant);
   const first = resolver.hasMasterPage(masters.leading) ? masters.leading : null;
   const geo = resolver.pageGeometry(first) ?? resolver.pageGeometry();
+  resolver.pageRtl = geo?.rtl ?? false;
+  resolver.physicalEdges = odfPhysicalEdges(files);
   const contentWidthCm = contentWidthOf(geo);
   const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), listEnds: new Map(), warnings, seqRefNames: sequenceRefNames(body), files, imageCache: new Map(), convertedImages, contentWidthCm, docContentWidthCm: contentWidthCm, leftMarginCm: geo?.margins.left ?? 0, ...heightsOf(geo), pageRtl: geo?.rtl ?? false, breakDropsSpace: odfBreakDropsSpace(files), rowHeightInclBorder: /MinRowHeightInclBorder"[^>]*>true</.test(files['settings.xml'] ? strFromU8(files['settings.xml']) : ''), masterPages: [], leadingMaster: masters.leading ?? 'Standard', masterPageStarts: [], bodyBlocks: 0, openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentReplies: odfCommentReplies(body), revisions: odfRevisions(body), openInsertions: new Map(), openFormats: new Map(), notes: [], foldMarks: false };
   // Whole-document columns declared on the page layout instead of a
@@ -1439,6 +1441,17 @@ function odfDocProperties(files: Record<string, Uint8Array>): DocProperties {
       .map(k => k.textContent?.trim() ?? '').filter(Boolean).join(', '),
     description: text(NS.dc, 'description'),
   };
+}
+
+// LibreOffice before 26.2 and OpenOffice have no logical alignment and write the physical
+// left and right as start and end; so did this editor, which now writes neither.
+function odfPhysicalEdges(files: Record<string, Uint8Array>): boolean {
+  if (!files['meta.xml']) return false;
+  let gen: string;
+  try { gen = parseXml(strFromU8(files['meta.xml'])).getElementsByTagNameNS(NS.meta, 'generator')[0]?.textContent?.trim() ?? ''; } catch { return false; }
+  if (gen === GENERATOR || /^OpenOffice/.test(gen)) return true;
+  const lo = /^LibreOffice(?:Dev)?\/(\d+)\.(\d+)/.exec(gen);
+  return !!lo && (Number(lo[1]) < 26 || (Number(lo[1]) === 26 && Number(lo[2]) < 2));
 }
 
 function parseXml(xml: string): Document {
@@ -1848,14 +1861,6 @@ function lineSpacing(lh: string | undefined): string | null {
   return pt != null && pt > 0 ? `${snapPt(pt)}pt` : null;
 }
 
-// fo:text-align → the editor's four values (start/end read as an LTR page), or null.
-function odfTextAlign(ta: string | undefined): string | null {
-  if (ta === 'center' || ta === 'justify') return ta;
-  if (ta === 'right' || ta === 'end') return 'right';
-  if (ta === 'left' || ta === 'start') return 'left';
-  return null;
-}
-
 function blockDefaults(resolver: StyleResolver, named: string | null, headingLevel: number | null, boldByDefault: boolean): BlockDefaults {
   const hdef = headingLevel != null ? HEADING_DEFAULTS[headingLevel - 1] : null;
   const doc = resolver.documentLanguage();
@@ -1903,7 +1908,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     marginBottomPt: lengthToPt(para['fo:margin-bottom']) ?? 0,
     indentPt: lengthToPt(para['fo:margin-left']) ?? 0,
     lineHeight: lineSpacing(para['fo:line-height']) ?? '1',
-    textAlign: odfTextAlign(para['fo:text-align']),
+    textAlign: resolver.textAlign(para),
     keepNext: para['fo:keep-with-next'] === 'always',
     keepLines: para['fo:keep-together'] === 'always',
     boldByDefault: weight ? weight === 'bold' || parseInt(weight, 10) >= 600 : fallback.boldByDefault,
@@ -1933,12 +1938,10 @@ export function decodeStyleName(odfName: string): string {
   return odfName.replace(/_([0-9a-fA-F]{2,6})_/g, (_m, hex: string) => String.fromCodePoint(parseInt(hex, 16)));
 }
 
-function paraPropsFromOdf(props: PropMap): ParaProps {
+function paraPropsFromOdf(props: PropMap, resolver: StyleResolver): ParaProps {
   const out: ParaProps = {};
-  const ta = props['fo:text-align'];
-  if (ta === 'center' || ta === 'justify') out.textAlign = ta;
-  else if (ta === 'right' || ta === 'end') out.textAlign = 'right';
-  else if (ta === 'left' || ta === 'start') out.textAlign = 'left';
+  const ta = resolver.textAlign(props);
+  if (ta) out.textAlign = ta as ParaProps['textAlign'];
   const mt = lengthToPt(props['fo:margin-top']);
   const mb = lengthToPt(props['fo:margin-bottom']);
   const ml = lengthToCm(props['fo:margin-left']);
@@ -2053,7 +2056,7 @@ function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
       parent: parent && parent !== name ? parent : builtin?.parent ?? null,
       next: def.next ? displayStyleName(def.next, defs.get(def.next)?.display) : builtin?.next ?? null,
       builtin: builtin?.builtin,
-      para: ownProps(paraPropsFromOdf(resolver.paraProps(odfName)), paraPropsFromOdf(def.parent ? resolver.paraProps(def.parent) : {})),
+      para: ownProps(paraPropsFromOdf(resolver.paraProps(odfName), resolver), paraPropsFromOdf(def.parent ? resolver.paraProps(def.parent) : {}, resolver)),
       text: ownProps(textPropsFromOdf(resolver.paraTextProps(odfName), resolver), textPropsFromOdf(def.parent ? resolver.paraTextProps(def.parent) : {}, resolver)),
     };
     const level = /^Heading (\d+)$/.exec(name);
@@ -2257,7 +2260,7 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
     const geo = resolver.pageGeometry(master!);
     if (geo) { ctx.contentWidthCm = contentWidthOf(geo); ctx.leftMarginCm = geo.margins.left; Object.assign(ctx, heightsOf(geo)); }
   }
-  const attrs = blockAttrs(paraProps, baseTextProps, defaults, kind);
+  const attrs = blockAttrs(paraProps, baseTextProps, defaults, kind, resolver);
   // A paragraph breaking itself onto a page under LibreOffice's Word 2013 layout opens it
   // without its space above (probed; a master page or the first page keeps it). It always
   // sits there: a 0.
@@ -2410,15 +2413,14 @@ function withParagraphMarks(node: Node, ctx: Ctx, kind: BlockKind): Node {
 
 // textAlign / lineHeight / spaceBefore / spaceAfter from resolved paragraph
 // props, suppressing values that match the editor's defaults for this context.
-function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefaults, kind: BlockKind): Record<string, unknown> {
+function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefaults, kind: BlockKind, resolver: StyleResolver): Record<string, unknown> {
   const attrs: Record<string, unknown> = {};
 
   // Measured against the named style's own alignment: what the style supplies is not
-  // direct formatting, and a block overriding it back to left needs the attr to win.
-  // An RTL block renders right by default — LibreOffice pairs the mode with
-  // fo:text-align="end" for exactly that look, which is no direct formatting either.
-  const ta = odfTextAlign(paraProps['fo:text-align']);
-  const base = paraProps['style:writing-mode'] === 'rl-tb' ? 'right' : defaults.textAlign ?? 'left';
+  // direct formatting, and a block overriding it back needs the attr to win. Where the
+  // style has none, the edge the block's direction starts at is no formatting either.
+  const ta = resolver.textAlign(paraProps);
+  const base = defaults.textAlign ?? (resolver.paraRtl(paraProps) ? 'right' : 'left');
   if (ta !== null && ta !== base) attrs.textAlign = ta;
 
   // A header/footer's proportional spacing is left out: LibreOffice lays the band out at

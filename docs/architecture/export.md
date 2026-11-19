@@ -131,6 +131,27 @@ in a western document likewise. DOCX reads weight, slant, size and font of compl
 text from `w:bCs`, `w:iCs`, `w:szCs` and `w:rFonts w:cs`, as Word does; `w:rtl` is read as
 "this run is complex script" and not written.
 
+### Alignment and direction
+
+`textAlign` is the edge the reader sees (`left`/`right` are physical, as CSS renders them); an
+unset block sits at the edge its direction starts at. Both importers suppress that edge and
+keep the other, measured against the named style's alignment where it has one.
+
+- **ODF** writes `fo:text-align` `left`/`right` only, never `start`/`end`: LibreOffice reads
+  the two by the producer (physical in files of LibreOffice before 26.2, logical from 26.2
+  on and for any other generator), and its default alignment is the physical left in either
+  direction. So a right-to-left block its style chain leaves unaligned writes `right`
+  (`paraStyleFromAttrs`). The import resolves `start`/`end` against the paragraph's direction
+  (`StyleResolver.textAlign`), and as physical for the producers that wrote them so:
+  LibreOffice before 26.2, OpenOffice and this editor's own earlier files (`odfPhysicalEdges`).
+- **DOCX**: in a `w:bidi` paragraph Word reads `w:jc` `left`/`start` as the leading (right)
+  edge and `right`/`end` as the trailing one, and LibreOffice agrees. The docx package
+  mirrors the two on a `bidirectional` paragraph, a text box paragraph is mirrored by hand
+  (`txbxPPrXml`), and the import mirrors back by the paragraph's resolved `w:bidi` (direct,
+  style chain, document defaults; `DocxStyles.physicalJc`). A style has no direction of its
+  own, so a right-to-left block under a left- or right-aligned style carries that edge as
+  direct `w:jc` (`bidiAlignOf`).
+
 ### Font pair
 
 A run, a paragraph mark and a style carry a western font and an asian one (`fontFamily`,

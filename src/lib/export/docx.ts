@@ -1464,8 +1464,11 @@ function txbxPPrXml(attrs: TiptapNode['attrs'], indentTwip: number, pt: number):
   const chars = indentCharsPayload(attrs);
   if (chars) ind.push(...chars.split(' ').map((kv) => ` w:${kv.replace('=', '="')}"`));
   if (ind.length) out.push(`<w:ind${ind.join('')}/>`);
+  // In a w:bidi paragraph w:jc left and right are the leading and trailing edge.
   const ta = attrs?.textAlign;
-  const jc = ta === 'center' ? 'center' : ta === 'right' ? 'right' : ta === 'justify' ? 'both' : '';
+  const bidi = attrs?.dir === 'rtl';
+  const jc = ta === 'center' ? 'center' : ta === 'justify' ? 'both'
+    : ta === 'right' ? (bidi ? 'left' : 'right') : ta === 'left' && bidi ? 'right' : '';
   if (jc) out.push(`<w:jc w:val="${jc}"/>`);
   // w:rPr closes CT_PPr; it formats the paragraph mark and names the block's language.
   const font = fontPair(attrs?.fontFamily, attrs?.fontFamilyAsian, screenToDoc);
@@ -2910,16 +2913,25 @@ function paragraphStart(xml: string): number {
 }
 
 // ---- paragraphs ------------------------------------------------------------
-// w:jc names the physical edge, as LibreOffice reads it. docx mirrors left and right on a
-// `bidirectional` paragraph, so an rtl one passes the opposite edge to come out unchanged.
-function alignOf(attrs: TiptapNode['attrs'], rtl = false): (typeof AlignmentType)[keyof typeof AlignmentType] | undefined {
+// The physical edge. In a w:bidi paragraph Word reads w:jc left as the leading edge, the
+// right one; docx mirrors left and right on a `bidirectional` paragraph to match.
+function alignOf(attrs: TiptapNode['attrs']): (typeof AlignmentType)[keyof typeof AlignmentType] | undefined {
   switch (attrs?.textAlign) {
     case 'center': return AlignmentType.CENTER;
-    case 'right': return rtl ? AlignmentType.LEFT : AlignmentType.RIGHT;
+    case 'right': return AlignmentType.RIGHT;
     case 'justify': return AlignmentType.BOTH;
-    case 'left': return rtl ? AlignmentType.RIGHT : AlignmentType.LEFT;
+    case 'left': return AlignmentType.LEFT;
     default: return undefined;
   }
+}
+
+// A right-to-left block's alignment: its own, else the edge its style names, which Word
+// would read mirrored from the style of a w:bidi paragraph.
+function bidiAlignOf(node: TiptapNode): string | undefined {
+  const own = node.attrs?.textAlign as string | undefined;
+  if (own || node.attrs?.dir !== 'rtl') return own;
+  const ta = resolveStyle(exportSheet, styleOf(node)).para.textAlign;
+  return ta === 'left' || ta === 'right' ? ta : undefined;
 }
 
 // Word's table styles carry w:spacing after=0 and LibreOffice's Table Contents zeroes both,
@@ -3014,7 +3026,7 @@ function paragraphProps(node: TiptapNode, opts: ParaOpts): IParagraphPropertiesO
   const stops = parseTabStops(attrs.tabStops);
   return {
     style,
-    alignment: alignOf(attrs, attrs.dir === 'rtl'),
+    alignment: alignOf({ textAlign: bidiAlignOf(node) }),
     spacing: opts.inCell ? cellSpacingOf(attrs, node) : spacingOf(attrs),
     indent: Object.keys(indent).length ? indent : undefined,
     pageBreakBefore: attrs.breakBefore === 'page' || undefined,

@@ -1374,8 +1374,10 @@ function stylePara(ctx: Ctx, id: string | null): ParaProps {
   const jc = ctx.styles.paragraphAlign(id);
   if (jc === 'center') out.textAlign = 'center';
   else if (jc === 'both' || jc === 'distribute') out.textAlign = 'justify';
-  else if (jc === 'right' || jc === 'end') out.textAlign = 'right';
-  else if (jc === 'left' || jc === 'start') out.textAlign = 'left';
+  else {
+    const edge = DocxStyles.physicalJc(jc, ctx.styles.paragraphBidi(id) === true);
+    if (edge === 'right' || edge === 'left') out.textAlign = edge;
+  }
   const ind = ctx.styles.styleIndentTwip(id);
   if (ind != null) out.indent = round2(twipToCm(ind));
   const first = ctx.styles.styleFirstLineTwip(id);
@@ -1612,9 +1614,13 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // over the table style's w:pPr (probed: that ranks *below* the paragraph style). A
   // header/footer paragraph carries none either, and bakes its Header/Footer style in.
   const baked = kind === 'cell' || kind === 'zone';
-  const attrs = blockAttrs(ppr, kind, level, directJc || baked || kind === 'list' || mathJc ? jcVal : null,
+  // w:jc is an edge by the paragraph's own w:bidi (a formula's m:jc is not); one the style
+  // supplies lands at the other edge in a paragraph of the other direction, so it counts.
+  const physJc = mathJc ?? DocxStyles.physicalJc(jcVal, bidi === true);
+  const physStyleJc = DocxStyles.physicalJc(styleJc, ctx.styles.paragraphBidi(styleId) === true);
+  const attrs = blockAttrs(ppr, kind, level, directJc || baked || kind === 'list' || mathJc || physJc !== physStyleJc ? physJc : null,
     baked || kind === 'list' ? ctx.styles.paragraphSpacing(styleId, kind === 'cell' ? ctx.cellSpacing : undefined) : {},
-    bidi ?? ctx.pageRtl, kind === 'zone' ? null : styleJc);
+    bidi ?? ctx.pageRtl, kind === 'zone' ? null : physStyleJc);
   // A list item carries no style name either and renders the default style's spacing,
   // so its own style's spacing rides the block wherever the two differ.
   if (kind === 'list') {
@@ -1908,13 +1914,10 @@ function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number |
   if (jcVal === 'center') attrs.textAlign = 'center';
   else if (jcVal === 'both' || jcVal === 'distribute') attrs.textAlign = 'justify';
   else {
-    // start/end are physical like left/right: LibreOffice writes an rtl paragraph's
-    // physical left as w:jc="start" (probed). The direction's own edge stays unset
-    // unless it overrides a style that aligns otherwise.
-    const edge = (v: string | null) => v === 'right' || v === 'end' ? 'right'
-      : v === 'left' || v === 'start' ? 'left' : v;
-    const align = edge(jcVal) === 'right' || edge(jcVal) === 'left' ? edge(jcVal) : null;
-    if (align && (align !== (rtl ? 'right' : 'left') || (styleJc != null && edge(styleJc) !== align))) attrs.textAlign = align;
+    // The caller resolved the edge. The direction's own edge stays unset unless it
+    // overrides a style that aligns otherwise.
+    const align = jcVal === 'right' || jcVal === 'left' ? jcVal : null;
+    if (align && (align !== (rtl ? 'right' : 'left') || (styleJc != null && styleJc !== align))) attrs.textAlign = align;
   }
 
   const sp = ppr ? fc(ppr, 'spacing') : null;

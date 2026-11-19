@@ -64,30 +64,61 @@ describe('a right-to-left page', () => {
   });
 });
 
-// The alignment default follows the base direction: an unset rtl paragraph sits at the
-// right edge, so that edge is suppressed on import and the off-edge kept.
-describe('paragraph alignment under w:bidi', () => {
+// The model stores the edge the reader sees. An unset block sits at the edge its direction
+// starts at, so that edge is suppressed on import and the other one kept.
+describe('paragraph alignment and direction', () => {
   const P = (attrs: object) => ({ type: 'paragraph', attrs, content: [{ type: 'text', text: 'שלום' }] });
+  const formats = {
+    odt: async (d: any) => importOdt(await buildOdt(d)),
+    docx: async (d: any) => importDocx(await buildDocx(d)),
+  };
+  const seen = (b: any) => `${b.attrs?.dir ?? 'page'}/${b.attrs?.textAlign ?? 'unset'}`;
 
-  it('suppresses the rtl default edge, keeps the off-edge', async () => {
-    const doc: any = { type: 'doc', content: [
-      P({ dir: 'rtl', textAlign: 'right' }), P({ dir: 'rtl', textAlign: 'left' }), P({ textAlign: 'right' }),
-    ] };
-    const back = (importDocx(await buildDocx(doc)).content as any).content;
-    expect(back[0].attrs?.textAlign ?? null).toBeNull();
-    expect(back[0].attrs?.dir).toBe('rtl');
-    expect(back[1].attrs?.textAlign).toBe('left');
-    expect(back[2].attrs?.textAlign).toBe('right');
+  it.each(Object.keys(formats) as (keyof typeof formats)[])('round-trips every edge in both directions through %s', async (format) => {
+    const aligns = [null, 'left', 'right', 'center', 'justify'];
+    const blocks = ['rtl', null].flatMap((dir) => aligns.map((textAlign) => P({ ...(dir ? { dir } : {}), ...(textAlign ? { textAlign } : {}) })));
+    const back = ((await formats[format]({ type: 'doc', content: blocks })).content as any).content;
+    expect(back.map(seen)).toEqual([
+      'rtl/unset', 'rtl/left', 'rtl/unset', 'rtl/center', 'rtl/justify',
+      'page/unset', 'page/unset', 'page/right', 'page/center', 'page/justify',
+    ]);
   });
 
-  // LibreOffice spells an rtl paragraph's physical left as w:jc="start" (probed).
-  it('reads w:jc="start" as the physical left edge', async () => {
-    const doc: any = { type: 'doc', content: [P({ dir: 'rtl', textAlign: 'left' })] };
-    const files = unzipSync(await buildDocx(doc));
+  // In a w:bidi paragraph Word reads left/start as the leading (right) edge and right/end
+  // as the trailing (left) one; without w:bidi all four are physical.
+  it('reads w:jc by the paragraph\'s own w:bidi', async () => {
+    const files = unzipSync(await buildDocx({ type: 'doc', content: [P({})] } as any));
+    const body = (ppr: string) => `<w:p><w:pPr>${ppr}</w:pPr><w:r><w:t>x</w:t></w:r></w:p>`;
+    const cases: [string, string][] = [
+      ['<w:bidi/><w:jc w:val="left"/>', 'rtl/unset'], ['<w:bidi/><w:jc w:val="start"/>', 'rtl/unset'],
+      ['<w:bidi/><w:jc w:val="right"/>', 'rtl/left'], ['<w:bidi/><w:jc w:val="end"/>', 'rtl/left'],
+      ['<w:bidi/><w:jc w:val="both"/>', 'rtl/justify'], ['<w:bidi/>', 'rtl/unset'],
+      ['<w:jc w:val="end"/>', 'page/right'], ['<w:jc w:val="start"/>', 'page/unset'],
+    ];
     files['word/document.xml'] = strToU8(strFromU8(files['word/document.xml'])
-      .replace('<w:jc w:val="left"/>', '<w:jc w:val="start"/>'));
+      .replace(/<w:p>.*?<\/w:p>|<w:p [^>]*>.*?<\/w:p>/, cases.map(([ppr]) => body(ppr)).join('')));
     const back = (importDocx(zipSync(files)).content as any).content;
-    expect(back[0].attrs?.textAlign).toBe('left');
-    expect(back[0].attrs?.dir).toBe('rtl');
+    expect(back.map(seen)).toEqual(cases.map(([, want]) => want));
+  });
+
+  // fo:text-align start/end follow the direction. LibreOffice before 26.2 and this editor's
+  // earlier builds wrote the physical left and right under those names.
+  it('reads fo:text-align start/end by direction, or by an older producer as physical', async () => {
+    const files = unzipSync(await buildOdt({ type: 'doc', content: [P({ dir: 'rtl', textAlign: 'left' })] } as any));
+    const read = (align: string, generator: string) => {
+      const out = { ...files };
+      out['content.xml'] = strToU8(strFromU8(files['content.xml']).replace(/fo:text-align="left"/g, `fo:text-align="${align}"`));
+      out['meta.xml'] = strToU8(strFromU8(files['meta.xml']).replace(/<meta:generator>[^<]*/, `<meta:generator>${generator}`));
+      return seen((importOdt(zipSync(out)).content as any).content[0]);
+    };
+    expect(strFromU8(files['content.xml'])).toContain('fo:text-align="left"');
+    for (const logical of ['LibreOffice/26.2.3.2$MacOSX', 'Other Writer 1.0']) {
+      expect(read('end', logical)).toBe('rtl/left');
+      expect(read('start', logical)).toBe('rtl/unset');
+    }
+    for (const physical of ['LibreOffice/7.6.4.1$Linux_X86_64', 'EdenText']) {
+      expect(read('end', physical)).toBe('rtl/unset');
+      expect(read('start', physical)).toBe('rtl/left');
+    }
   });
 });

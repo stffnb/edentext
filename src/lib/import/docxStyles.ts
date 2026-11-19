@@ -260,6 +260,7 @@ export class DocxStyles {
   private ownKeepLines = new Map<string, boolean>(); // style's own w:pPr/w:keepLines
   private ownBreakBefore = new Map<string, boolean>(); // style's own w:pPr/w:pageBreakBefore
   private ownBidi = new Map<string, boolean>(); // style's own w:pPr/w:bidi
+  private defaultsBidi: boolean | null = null; // docDefaults w:pPrDefault/w:bidi
   private ownTabs = new Map<string, TabStop[]>(); // style's own w:pPr/w:tabs
   private ownCellMar = new Map<string, Element>(); // table style's own w:tblPr/w:tblCellMar
   private ownTblBorders = new Map<string, Element>(); // table style's own w:tblPr/w:tblBorders
@@ -309,6 +310,8 @@ export class DocxStyles {
       const pPr = defs.getElementsByTagNameNS(W, 'pPrDefault')[0]?.getElementsByTagNameNS(W, 'pPr')[0];
       const ddJc = pPr ? firstChild(pPr, 'jc') : null;
       if (ddJc) this.defaultsAlign = wVal(ddJc);
+      const ddBidi = pPr?.getElementsByTagNameNS(W, 'bidi')[0];
+      if (ddBidi) this.defaultsBidi = toggle(ddBidi);
       const ddSp = pPr ? firstChild(pPr, 'spacing') : null;
       if (ddSp) this.defaultsSpacing = readSpacing(ddSp);
       const ddWc = pPr ? firstChild(pPr, 'widowControl') : null;
@@ -643,13 +646,22 @@ export class DocxStyles {
     return this.paragraphKeepLines(this.basedOn.get(styleId) ?? null, seen);
   }
 
-  // w:bidi — the style's base direction. null = it declares none, so the section's holds.
+  // w:bidi — the style's base direction, the document defaults' where its chain has none.
+  // null = nothing declares one, so the section's holds.
   paragraphBidi(styleId: string | null | undefined, seen = new Set<string>()): boolean | null {
-    if (!styleId || seen.has(styleId)) return null;
+    if (!styleId || seen.has(styleId)) return this.defaultsBidi;
     seen.add(styleId);
     const own = this.ownBidi.get(styleId);
     if (own != null) return own;
     return this.paragraphBidi(this.basedOn.get(styleId) ?? null, seen);
+  }
+
+  // w:jc as the physical edge the editor stores. In a w:bidi paragraph Word reads left
+  // and start as the leading edge, the right one, and right and end as the left one.
+  static physicalJc(jc: string | null, bidi: boolean): string | null {
+    const edge = jc === 'right' || jc === 'end' ? 'right' : jc === 'left' || jc === 'start' ? 'left' : jc;
+    if (!bidi || (edge !== 'left' && edge !== 'right')) return edge;
+    return edge === 'left' ? 'right' : 'left';
   }
 
   private styleWidow(styleId: string | null | undefined, seen = new Set<string>()): boolean | null {
