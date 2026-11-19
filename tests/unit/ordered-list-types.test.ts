@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { orderedTypeDef, orderedTypeFromFormat, DEFAULT_ORDERED_TYPE, defaultOrderedType, orderedTypeAttr, effectiveOrderedDef, formatOrdinal, cycleSlotOf, childCycle, defaultOrderedTypeAt, ROOT_ORDERED_CYCLE } from '../../src/lib/utils/orderedListTypes';
+import { orderedTypeDef, orderedTypesFor, orderedTypeFromFormat, DEFAULT_ORDERED_TYPE, defaultOrderedType, orderedTypeAttr, effectiveOrderedDef, formatOrdinal, cycleSlotOf, childCycle, defaultOrderedTypeAt, ROOT_ORDERED_CYCLE } from '../../src/lib/utils/orderedListTypes';
 
 describe('orderedTypeDef', () => {
   it('returns the matching definition for a known key', () => {
@@ -147,5 +147,24 @@ describe('Japanese ordered list types', () => {
   it('reads the half-width ODF spellings as the full-width types', () => {
     expect(orderedTypeFromFormat('ｱ, ｲ, ｳ, ...', '.')).toBe('katakana');
     expect(orderedTypeFromFormat('ｲ, ﾛ, ﾊ, ...', null)).toBe('katakana-iroha');
+  });
+});
+
+describe('Arabic ordered list types', () => {
+  it('counts in Arabic-Indic digits and in both letter orders', () => {
+    expect([1, 10, 23].map((n) => formatOrdinal(n, '١, ٢, ٣, ...'))).toEqual(['١', '١٠', '٢٣']);
+    expect([1, 2, 3, 5].map((n) => formatOrdinal(n, 'أ, ب, ت, ...'))).toEqual(['أ', 'ب', 'ت', 'ج']);
+    expect([1, 2, 3, 5].map((n) => formatOrdinal(n, 'ا, ب, ج, ...'))).toEqual(['ا', 'ب', 'ج', 'ه']);
+  });
+
+  it('reads the ODF spellings back with their suffix', () => {
+    expect(orderedTypeFromFormat('أ, ب, ت, ...', '.')).toBe('arabic-alpha');
+    expect(orderedTypeFromFormat('ا, ب, ج, ...', ')')).toBe('arabic-abjad-paren');
+  });
+
+  it('is offered where the document or the interface is in Arabic script', () => {
+    const keys = (arabic: boolean) => orderedTypesFor({ cjk: false, cyrillic: false, arabic }).map((t) => t.key);
+    expect(keys(true)).toContain('arabic-indic');
+    expect(keys(false)).not.toContain('arabic-indic');
   });
 });

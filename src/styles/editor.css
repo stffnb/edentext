@@ -1026,6 +1026,26 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   suffix: "";
 }
 
+.paper .tiptap :is(ol, ul)[data-eff-list-style="arabic-indic"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, arabic-indic) ". "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="arabic-indic-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, arabic-indic) ") "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="arabic-alpha"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, edt-arabic-alpha) ". "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="arabic-alpha-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, edt-arabic-alpha) ") "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="arabic-abjad"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, edt-arabic-abjad) ". "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="arabic-abjad-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, edt-arabic-abjad) ") "; }
+
+/* The Arabic letters in alphabetical and in abjad order, as both word processors count. */
+@counter-style edt-arabic-alpha {
+  system: alphabetic;
+  symbols: "أ" "ب" "ت" "ث" "ج" "ح" "خ" "د" "ذ" "ر" "ز" "س" "ش" "ص" "ض" "ط" "ظ" "ع" "غ" "ف" "ق" "ك" "ل" "م" "ن" "ه" "و" "ي";
+  suffix: "";
+}
+
+@counter-style edt-arabic-abjad {
+  system: alphabetic;
+  symbols: "ا" "ب" "ج" "د" "ه" "و" "ز" "ح" "ط" "ي" "ك" "ل" "م" "ن" "س" "ع" "ف" "ص" "ق" "ر" "ش" "ت" "ث" "خ" "ذ" "ض" "ظ" "غ";
+  suffix: "";
+}
+
 @counter-style edt-cyrillic {
   system: alphabetic;
   symbols: "а" "б" "в" "г" "д" "е" "ж" "з" "и" "к" "л" "м" "н" "о" "п" "р" "с" "т" "у" "ф" "х" "ц" "ч" "ш" "щ" "ы" "э" "ю" "я";

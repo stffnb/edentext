@@ -16,6 +16,8 @@ export type OrderedListType =
   | 'upper-cyrillic-sync' | 'upper-cyrillic-sync-paren'
   | 'cjk-counting' | 'cjk-legal' | 'cjk-stem' | 'circled-decimal'
   | 'katakana'     | 'katakana-iroha'
+  | 'arabic-indic' | 'arabic-indic-paren' | 'arabic-alpha' | 'arabic-alpha-paren'
+  | 'arabic-abjad' | 'arabic-abjad-paren'
   | 'multilevel';
 
 export const DEFAULT_ORDERED_TYPE: OrderedListType = 'decimal';
@@ -32,6 +34,11 @@ export function defaultOrderedType(depth0: number): OrderedListType {
 export type CjkNumFormat = '一, 二, 三, ...' | '壹, 贰, 叁, ...' | '甲, 乙, 丙, ...' | '①, ②, ③, ...'
   | 'ア, イ, ウ, ...' | 'イ, ロ, ハ, ...';
 
+// The Arabic formats: the letters in alphabetical and in the older abjad order, spelled as
+// LibreOffice writes them (probed), and Word's Arabic-Indic digits (hindiNumbers), which
+// LibreOffice has no numbering for and counts 1, 2, 3.
+export type ArabicNumFormat = '١, ٢, ٣, ...' | 'أ, ب, ت, ...' | 'ا, ب, ج, ...';
+
 // LibreOffice's Russian letter formats, verbatim: the "аа, аб" ones count on like a, b, c,
 // the "аа, бб" ones repeat the letter, as `a` with style:num-letter-sync does.
 export type CyrillicNumFormat = 'а, б, .., аа, аб, ... (ru)' | 'А, Б, .., Аа, Аб, ... (ru)'
@@ -46,13 +53,13 @@ export interface OrderedTypeDef {
   preview: string; // a single marker shown in the dropdown, e.g. "1." or "a)"
   // ODF style:num-format. LibreOffice spells the CJK formats as the whole sequence,
   // not as one character — probed, it drops a bare '一' back to decimal.
-  numFormat: '1' | 'a' | 'A' | 'i' | 'I' | LetterSyncFormat | CyrillicNumFormat | CjkNumFormat;
+  numFormat: '1' | 'a' | 'A' | 'i' | 'I' | LetterSyncFormat | CyrillicNumFormat | CjkNumFormat | ArabicNumFormat;
   numSuffix: '.' | ')' | '、' | ''; // ODF style:num-suffix
   // Legal/outline numbering (1., 1.1., 1.2.1. …): each level shows the parent chain.
   // ODF text:display-levels, DOCX "%1.%2." lvlText, CSS counters() markers.
   multilevel?: boolean;
   // The menus offer it only where the UI or the document is in that script.
-  script?: 'cjk' | 'cyrillic';
+  script?: 'cjk' | 'cyrillic' | 'arabic';
   // Differs from its plain row only past the last letter: the list style dialog offers it,
   // the quick menus do not.
   rare?: true;
@@ -90,6 +97,12 @@ export const ORDERED_LIST_TYPES: OrderedTypeDef[] = [
   { key: 'circled-decimal',   label: '①, ②, ③',      preview: '①',    numFormat: '①, ②, ③, ...', numSuffix: '', script: 'cjk' },
   { key: 'katakana',          label: 'ア, イ, ウ',      preview: 'ア.',   numFormat: 'ア, イ, ウ, ...', numSuffix: '.', script: 'cjk' },
   { key: 'katakana-iroha',    label: 'イ, ロ, ハ',      preview: 'イ.',   numFormat: 'イ, ロ, ハ, ...', numSuffix: '.', script: 'cjk' },
+  { key: 'arabic-indic',       label: '١, ٢, ٣',  preview: '١.', numFormat: '١, ٢, ٣, ...', numSuffix: '.', script: 'arabic' },
+  { key: 'arabic-indic-paren', label: '١), ٢), ٣)', preview: '١)', numFormat: '١, ٢, ٣, ...', numSuffix: ')', script: 'arabic' },
+  { key: 'arabic-alpha',       label: 'أ, ب, ت',  preview: 'أ.', numFormat: 'أ, ب, ت, ...', numSuffix: '.', script: 'arabic' },
+  { key: 'arabic-alpha-paren', label: 'أ), ب), ت)', preview: 'أ)', numFormat: 'أ, ب, ت, ...', numSuffix: ')', script: 'arabic' },
+  { key: 'arabic-abjad',       label: 'ا, ب, ج',  preview: 'ا.', numFormat: 'ا, ب, ج, ...', numSuffix: '.', script: 'arabic' },
+  { key: 'arabic-abjad-paren', label: 'ا), ب), ج)', preview: 'ا)', numFormat: 'ا, ب, ج, ...', numSuffix: ')', script: 'arabic' },
 ];
 
 const BY_KEY = new Map<string, OrderedTypeDef>(ORDERED_LIST_TYPES.map(t => [t.key, t]));
@@ -221,6 +234,10 @@ const AIUEO = [...'アイウエオカキクケコサシスセソタチツテト�
 const IROHA = [...'イロハニホヘトチリヌルヲワカヨタレソツネナラムウヰノオクヤマケフコエテアサキユメミシヱヒモセスン'];
 const cyclic = (signs: string[], n: number) => (n < 1 ? String(n) : signs[(n - 1) % signs.length]);
 
+const ARABIC_INDIC = [...'٠١٢٣٤٥٦٧٨٩'];
+const ARABIC_ALPHA = [...'أبتثجحخدذرزسشصضطظعغفقكلمنهوي'];
+const ARABIC_ABJAD = [...'ابجدهوزحطيكلمنسعفصقرشتثخذضظغ'];
+
 // The ordinal body an item renders for a num-format (no suffix): 3/'a' → "c".
 // A list's `start` attr as a number: absent is 1, but 0 is a real start (both formats).
 export function listStart(start: unknown): number {
@@ -240,6 +257,9 @@ export function formatOrdinal(n: number, numFormat: OrderedTypeDef['numFormat'])
     case 'А, Б, .., Аа, Аб, ... (ru)': return capitalise(toLetters(n, RUSSIAN));
     case 'а, б, .., аа, бб, ... (ru)': return toLetters(n, RUSSIAN, true);
     case 'А, Б, .., Аа, Бб, ... (ru)': return capitalise(toLetters(n, RUSSIAN, true));
+    case '١, ٢, ٣, ...': return [...String(n)].map((c) => ARABIC_INDIC[Number(c)] ?? c).join('');
+    case 'أ, ب, ت, ...': return toLetters(n, ARABIC_ALPHA);
+    case 'ا, ب, ج, ...': return toLetters(n, ARABIC_ABJAD);
     case '一, 二, 三, ...': return toChinese(n, false);
     case '壹, 贰, 叁, ...': return toChinese(n, true);
     case '甲, 乙, 丙, ...': return HEAVENLY_STEMS[n - 1] ?? String(n);
@@ -291,6 +311,6 @@ export function odfNumFormatAttrs(numFormat: string): string {
 
 // The menu rows for the scripts the UI or the document is in, the rare ones only with
 // `rare`; the list's own always stays.
-export function orderedTypesFor(show: { cjk: boolean; cyrillic: boolean }, current?: string | null, rare = false): OrderedTypeDef[] {
+export function orderedTypesFor(show: { cjk: boolean; cyrillic: boolean; arabic?: boolean }, current?: string | null, rare = false): OrderedTypeDef[] {
   return ORDERED_LIST_TYPES.filter(t => t.key === current || ((!t.script || show[t.script]) && (rare || !t.rare)));
 }

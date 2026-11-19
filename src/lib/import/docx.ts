@@ -1161,6 +1161,9 @@ function wordFmtChar(fmt: string | undefined): string {
     case 'lowerRoman': return 'i';
     case 'upperRoman': return 'I';
     // LibreOffice reads these as the "аа, аб" kind; the letter-repeating kind writes them too.
+    case 'hindiNumbers': return '١, ٢, ٣, ...';
+    case 'arabicAlpha': return 'أ, ب, ت, ...';
+    case 'arabicAbjad': return 'ا, ب, ج, ...';
     case 'russianLower': return 'а, б, .., аа, аб, ... (ru)';
     case 'russianUpper': return 'А, Б, .., Аа, Аб, ... (ru)';
     // Several Word formats render as 一、二、三; LibreOffice folds them together too.

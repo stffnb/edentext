@@ -164,6 +164,9 @@ const ORDERED_FORMAT: Record<string, (typeof LevelFormat)[keyof typeof LevelForm
   // LibreOffice writes both of its counting modes to it.
   aa: LevelFormat.LOWER_LETTER,
   AA: LevelFormat.UPPER_LETTER,
+  '١, ٢, ٣, ...': LevelFormat.HINDI_NUMBERS,
+  'أ, ب, ت, ...': LevelFormat.ARABIC_ALPHA,
+  'ا, ب, ج, ...': LevelFormat.ARABIC_ABJAD,
   'а, б, .., аа, аб, ... (ru)': LevelFormat.RUSSIAN_LOWER,
   'а, б, .., аа, бб, ... (ru)': LevelFormat.RUSSIAN_LOWER,
   'А, Б, .., Аа, Аб, ... (ru)': LevelFormat.RUSSIAN_UPPER,

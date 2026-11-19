@@ -84,14 +84,19 @@ export function langSlot(tag: string): LangSlot {
   return isAsianTag(tag) ? 'asian' : isComplexTag(tag) ? 'complex' : 'west';
 }
 
+// Languages written in Arabic script, which number lists in its digits and letters.
+export function isArabicTag(tag: string): boolean {
+  return /^(ar|fa|ur|ps|sd|ug|ckb)\b/i.test(tag.trim());
+}
+
 export function isCyrillicTag(tag: string): boolean {
   return /^(ru|uk|be|bg|sr|mk)\b/i.test(tag.trim());
 }
 
 // The scripts whose list numbering the menus offer: the UI's and the document's.
-export function numberingScripts(main: DocumentLanguage, other: string | null, uiLocale: string): { cjk: boolean; cyrillic: boolean } {
+export function numberingScripts(main: DocumentLanguage, other: string | null, uiLocale: string): { cjk: boolean; cyrillic: boolean; arabic: boolean } {
   const tags = [tagForLanguage(main) ?? '', other ?? '', uiLocale];
-  return { cjk: tags.some(isAsianTag), cyrillic: tags.some(isCyrillicTag) };
+  return { cjk: tags.some(isAsianTag), cyrillic: tags.some(isCyrillicTag), arabic: tags.some(isArabicTag) };
 }
 
 // A tag's slot: a paragraph or a run carries a western and an asian language, and a tag
