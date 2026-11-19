@@ -167,8 +167,10 @@
   --sec-inset-end: var(--sec-inset-right, 0px);
 }
 /* An indent is before or after the text, so a right-to-left block takes the insets of
-   the sides its text starts and ends at. */
-.paper .tiptap > *:dir(rtl) {
+   the sides its text starts and ends at. By attribute, the block's own over the page's:
+   the build lowers :dir() to a list of languages, which is not the direction. */
+.paper .tiptap-host[dir='rtl'] .tiptap > :not([dir='ltr']),
+.paper .tiptap > [dir='rtl'] {
   --sec-inset-start: var(--sec-inset-right, 0px);
   --sec-inset-end: var(--sec-inset-left, 0px);
 }
