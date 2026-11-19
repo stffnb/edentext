@@ -2,7 +2,7 @@
   import type { Editor } from '@tiptap/core';
   import type { Snippet } from 'svelte';
   import { onDestroy, tick, untrack } from 'svelte';
-  import { t } from '../i18n/i18n.svelte';
+  import { t, startEdge, uiRtl } from '../i18n/i18n.svelte';
   import CustomColorPanel, { hsvToHex } from './CustomColorPanel.svelte';
 
   let {
@@ -83,7 +83,9 @@
   // `fixed`, and the floating table toolbar has one (it hangs itself above the table).
   const topLayer = (node: HTMLElement) => node.showPopover();
   let panel = $state<HTMLElement>();
+  // `left` runs from the window's start side (`startEdge`).
   let pos = $state({ top: 0, left: 0 });
+  const posSide = $derived(uiRtl() ? 'right' : 'left');
 
   async function placePanel() {
     const anchor = split?.getBoundingClientRect();
@@ -91,11 +93,11 @@
     // A ribbon panel drops below the whole band, or it would cover the controls
     // under it. The modern toolbar has no band, so this finds nothing there.
     const band = split?.closest('.ribbon-body')?.getBoundingClientRect();
-    pos = { top: Math.max(anchor.bottom, band?.bottom ?? 0) + 3, left: anchor.left };
+    pos = { top: Math.max(anchor.bottom, band?.bottom ?? 0) + 3, left: startEdge(anchor).offset };
     await tick();
     const box = panel?.getBoundingClientRect();
     if (!box) return;
-    const dx = Math.max(0, box.right + 8 - window.innerWidth);
+    const dx = Math.max(0, uiRtl() ? 8 - box.left : box.right + 8 - window.innerWidth);
     const dy = Math.max(0, box.bottom + 8 - window.innerHeight);
     if (dx || dy) pos = { top: Math.max(8, pos.top - dy), left: Math.max(8, pos.left - dx) };
   }
@@ -315,7 +317,7 @@
     </button>
   </div>
   {#if open && view === 'palette'}
-    <div class="color-dropdown" popover="manual" use:topLayer bind:this={panel} style="top: {pos.top}px; left: {pos.left}px">
+    <div class="color-dropdown" popover="manual" use:topLayer bind:this={panel} style="top: {pos.top}px; {posSide}: {pos.left}px">
       <div class="color-title">{title}</div>
       <button
         class="color-automatic"
@@ -362,7 +364,7 @@
   {#if open && view === 'custom'}
     <div class="color-window" role="dialog" aria-label={t().color.chooseColor}
       popover="manual" use:topLayer
-      bind:this={panel} style="top: {pos.top}px; left: {pos.left}px">
+      bind:this={panel} style="top: {pos.top}px; {posSide}: {pos.left}px">
       <CustomColorPanel color={customSeed} onConfirm={applyColor} onCancel={cancelMoreColors} />
     </div>
   {/if}

@@ -1,6 +1,8 @@
 // One open menu at a time, keyed by a string id. Opening any ribbon menu closes
 // whichever was open, so no control has to know about its siblings.
 
+import { uiRtl } from '../../i18n/i18n.svelte';
+
 let current = $state<string | null>(null);
 
 export function openMenu(): string | null {
@@ -34,6 +36,22 @@ function dropBelow(anchor: DOMRect, panel: HTMLElement): void {
   panel.style.overflowY = 'auto';
 }
 
+// Pins a panel's start edge to its anchor's (`right`: the end edges), kept inside the
+// window. Start is the left edge, or the right one in a right-to-left interface.
+function pinInline(anchor: DOMRect, panel: HTMLElement, align: 'left' | 'right' = 'left'): void {
+  const rtl = uiRtl();
+  const [start, end] = rtl ? (['right', 'left'] as const) : (['left', 'right'] as const);
+  const startGap = rtl ? window.innerWidth - anchor.right : anchor.left;
+  const endGap = rtl ? anchor.left : window.innerWidth - anchor.right;
+  if (align === 'right') {
+    panel.style[start] = 'auto';
+    panel.style[end] = `${Math.max(8, endGap)}px`;
+  } else {
+    panel.style[end] = 'auto';
+    panel.style[start] = `${Math.max(8, Math.min(startGap, window.innerWidth - panel.offsetWidth - 8))}px`;
+  }
+}
+
 // The ribbon band clips its own overflow, so a panel inside it has to leave the
 // flow: this pins the menu under its wrapper in viewport coordinates and keeps it
 // inside the window. Attach to the panel; its parent is the anchor.
@@ -44,13 +62,7 @@ export function anchored(node: HTMLElement, align: 'left' | 'right' = 'left') {
     const r = anchor.getBoundingClientRect();
     node.style.position = 'fixed';
     dropBelow(r, node);
-    if (align === 'right') {
-      node.style.left = 'auto';
-      node.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
-    } else {
-      node.style.right = 'auto';
-      node.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - node.offsetWidth - 8))}px`;
-    }
+    pinInline(r, node, align);
   }
   place();
   window.addEventListener('resize', place);
@@ -74,9 +86,8 @@ export function pinPanels(node: HTMLElement) {
     if (!panel || !anchor) return void (panel = null);
     const r = anchor.getBoundingClientRect();
     panel.style.position = 'fixed';
-    panel.style.right = 'auto';
     dropBelow(r, panel);
-    panel.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - panel.offsetWidth - 8))}px`;
+    pinInline(r, panel);
   }
 
   // Only what a picker just mounted, so a permanently absolute element in the

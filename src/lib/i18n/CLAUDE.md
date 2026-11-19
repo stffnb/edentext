@@ -27,6 +27,15 @@ and the body host and every header/footer zone state the document's own directio
 Unicode isolates under a right-to-left UI only; markup takes `dir="ltr"` (document name, ruler,
 font, size, address, code and formula fields, previews of document formatting), and
 `global.css` turns number, decimal, address and password fields.
+Script-placed parts ask `uiRtl()` (`i18n.svelte.ts`): a panel starts at its anchor's start edge
+(`startEdge`, the ribbon's `pinInline`), a menu and its submenus open towards the end side and the
+arrow key pointing there opens them, and the island's toolbar offset runs from the start. A glyph
+that shows reading direction or sequence mirrors (`MIRRORED` in `ribbon/icons.ts`, `.icon-flip` on
+an inline one, digits kept by `.icon-keep`); one naming a physical side (alignment, borders, wrap,
+table columns, the direction buttons) does not. The page area stays physical: `.paper-scaler` is
+`direction: ltr`, an interface part inside it takes `.ui-dir`, and a label quoting document text
+takes `dir="auto"` with `.doc-quote` (font and file names sit in `<bdi>`). A pane's dock side is a
+physical choice; unset, it is the interface's end side (`dockSide`, `storage/panes.svelte.ts`).
 
 **Codes are full BCP-47 tags, not always two letters.** Chinese ships as `zh-Hans` and
 `zh-Hant`: the written standard is one language, the scripts are two, and the terminology

@@ -472,6 +472,22 @@
   animation: menu-in 0.14s ease;
 }
 
+/* A glyph that shows reading direction or sequence mirrors in a right-to-left interface
+   (`MIRRORED` in ribbon/icons.ts, `.icon-flip` on an inline one). `scale` rather than
+   `transform`, so a glyph that is already rotated keeps its rotation. */
+html[dir='rtl'] .icon-flip { scale: -1 1; }
+html[dir='rtl'] span.icon-flip { display: inline-block; }
+/* Digits inside a mirrored glyph turn back in place. */
+html[dir='rtl'] .icon-flip .icon-keep { transform: scaleX(-1); transform-box: fill-box; transform-origin: center; }
+
+/* An interface part mounted inside the page area, which is always left to right. */
+html[dir='rtl'] .ui-dir { direction: rtl; }
+
+/* A label quoting document text takes that text's direction (`dir="auto"`), so it is cut
+   at its end, yet stays on the interface's start side. */
+html .doc-quote[dir='auto'] { text-align: left; }
+html[dir='rtl'] .doc-quote[dir='auto'] { text-align: right; }
+
 /* The ribbon's dropdown panel and its rows. Global because the panel renders its
    contents from a caller's snippet, which Svelte scopes to that caller. */
 /* `anchored` (menu.svelte.ts) switches this to position: fixed and pins it under
@@ -481,7 +497,7 @@
 .ribbon-menu {
   position: absolute;
   top: calc(100% + 3px);
-  left: 0;
+  inset-inline-start: 0;
   z-index: 300;
   display: flex;
   flex-direction: column;
@@ -499,7 +515,7 @@
   max-width: calc(100vw - 16px);
 }
 
-.ribbon-menu.right { left: auto; right: 0; }
+.ribbon-menu.right { inset-inline: auto 0; }
 
 .ribbon-menu button {
   display: flex;
@@ -748,7 +764,7 @@
 .island-menu {
   position: absolute;
   top: calc(100% + 3px);
-  left: 0;
+  inset-inline-start: 0;
   z-index: 300;
   display: flex;
   flex-direction: column;
@@ -768,7 +784,7 @@
   pointer-events: auto;
 }
 
-.island-menu.right { left: auto; right: 0; }
+.island-menu.right { inset-inline: auto 0; }
 
 .island-menu button {
   display: flex;

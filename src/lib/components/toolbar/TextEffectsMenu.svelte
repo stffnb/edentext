@@ -4,12 +4,12 @@
     effectCss, GLOW_RADIUS_PT, OUTLINE_WIDTH_PT, presetAttrs, TEXT_EFFECT_PRESETS,
     type TextEffectAttrs, type TextGlow, type TextOutline, type TextShadow,
   } from '../../editor/extensions/textEffects';
-  import { t } from '../../i18n/i18n.svelte';
+  import { t, uiRtl } from '../../i18n/i18n.svelte';
   import CustomColorPanel from '../CustomColorPanel.svelte';
   import BorderWidthBox from '../BorderWidthBox.svelte';
 
   // The text effects panel of both chromes: a gallery of combinations, then one page each
-  // for outline, shadow, glow and relief, opened in place (→ or a click) and left with ←.
+  // for outline, shadow, glow and relief, opened in place (a click, or the arrow key towards the end side) and left with the other.
   let { editor, tick, onDone }: { editor: Editor | null; tick: number; onDone: () => void } = $props();
 
   type Page = 'main' | 'outline' | 'shadow' | 'glow' | 'relief' | 'color';
@@ -79,11 +79,12 @@
     open('color');
   }
 
-  // Arrow keys move through the page's controls, → opens a page and ← leaves it.
+  // Arrow keys move through the page's controls; the one towards the end side opens a page.
   function onKeydown(e: KeyboardEvent) {
     const focused = document.activeElement as HTMLElement | null;
-    if (e.key === 'ArrowRight' && focused?.dataset.page) { e.preventDefault(); open(focused.dataset.page as Page); return; }
-    if ((e.key === 'ArrowLeft' || e.key === 'Backspace') && page !== 'main' && focused?.tagName !== 'INPUT' && focused?.tagName !== 'SELECT') { e.preventDefault(); back(); return; }
+    const [into, out] = uiRtl() ? ['ArrowLeft', 'ArrowRight'] : ['ArrowRight', 'ArrowLeft'];
+    if (e.key === into && focused?.dataset.page) { e.preventDefault(); open(focused.dataset.page as Page); return; }
+    if ((e.key === out || e.key === 'Backspace') && page !== 'main' && focused?.tagName !== 'INPUT' && focused?.tagName !== 'SELECT') { e.preventDefault(); back(); return; }
     if ((e.key !== 'ArrowDown' && e.key !== 'ArrowUp') || focused?.tagName === 'SELECT') return;
     e.preventDefault();
     const items = Array.from(root?.querySelectorAll<HTMLElement>('button, input') ?? []);
@@ -120,13 +121,13 @@
     </div>
     {#each [['outline', L.outline, !!(fx.textOutline || fx.outline)], ['shadow', L.shadow, !!(fx.textShadow || fx.shadow)], ['glow', L.glow, !!fx.textGlow], ['relief', L.relief, fx.relief === 'embossed' || fx.relief === 'engraved']] as const as [key, label, on]}
       <button class="fx-row" class:selected={on} data-page={key} data-cmd={`textEffects-${key}`} aria-haspopup="menu" onclick={() => open(key)}>
-        {label}<span class="menu-sub"><svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M2.5 1l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span>
+        {label}<span class="menu-sub"><svg class="icon-flip" width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M2.5 1l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span>
       </button>
     {/each}
     <button class="fx-row" data-cmd="textEffects-clear" onclick={() => act((c) => c.unsetTextEffects(), true)}>{L.clear}</button>
   {:else}
     <button class="fx-row fx-back" onclick={back}>
-      <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M5.5 1l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+      <svg class="icon-flip" width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M5.5 1l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
       {page === 'outline' ? L.outline : page === 'shadow' ? L.shadow : page === 'glow' ? L.glow : page === 'color' ? t().color.moreColors : L.relief}
     </button>
     {#if page === 'color' && mix}

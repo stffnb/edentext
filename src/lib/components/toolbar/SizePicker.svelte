@@ -190,7 +190,7 @@
   .size-dropdown {
     position: absolute;
     top: calc(100% + 3px);
-    left: 0;
+    inset-inline-start: 0;
     min-width: 100%;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -225,7 +225,7 @@
     color: var(--color-text);
     font-size: 0.85rem;
     font-family: var(--font-sans);
-    text-align: left;
+    text-align: start;
     cursor: pointer;
     white-space: nowrap;
     transition: background 0.1s;

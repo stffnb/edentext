@@ -1,6 +1,6 @@
 <script lang="ts">
   import { SHAPES, shapePath, linePaths, isLineKind, type ShapeKind } from '../utils/shapes';
-  import { t } from '../i18n/i18n.svelte';
+  import { t, startEdge, uiRtl } from '../i18n/i18n.svelte';
 
   // The shape gallery, shared by the floating box toolbar and the ribbon's Shape tab.
   // Every tile is drawn from the same preset the editor and both exports use, so a
@@ -17,6 +17,7 @@
   let btn = $state<HTMLElement | null>(null);
   // The ribbon band clips its overflow and the floating box toolbar stacks above it,
   // so the menu is placed from the button's rect and shown in the top layer.
+  // `left` runs from the window's start side (`startEdge`).
   let pos = $state({ top: 0, left: 0 });
   const topLayer = (node: HTMLElement) => node.showPopover();
 
@@ -24,7 +25,7 @@
     const r = btn?.getBoundingClientRect();
     if (!r) return;
     const band = host?.closest('.ribbon-body')?.getBoundingClientRect();
-    const left = Math.min(r.left, window.innerWidth - 220);
+    const left = Math.min(startEdge(r).offset, window.innerWidth - 220);
     pos = { top: Math.max(r.bottom, band?.bottom ?? 0) + 4, left: Math.max(8, left) };
   }
 
@@ -55,7 +56,7 @@
   </button>
 
   {#if open}
-    <div class="shape-menu" role="menu" popover="manual" use:topLayer style="top: {pos.top}px; left: {pos.left}px">
+    <div class="shape-menu" role="menu" popover="manual" use:topLayer style="top: {pos.top}px; {uiRtl() ? 'right' : 'left'}: {pos.left}px">
       {#each KINDS as k}
         <button
           class="shape-tile"

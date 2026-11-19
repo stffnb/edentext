@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { t } from '../i18n/i18n.svelte';
+  import { t, startEdge, uiRtl } from '../i18n/i18n.svelte';
 
   // A line width in pt as the font size box offers one: the presets in a list, or a
   // typed value. With `none`, 'none' (an empty field or 0) draws no line; without it a
@@ -53,7 +53,7 @@
   async function show() {
     const r = box?.getBoundingClientRect();
     if (!r) return;
-    pos = { top: r.bottom + 3, left: r.left, width: r.width };
+    pos = { top: r.bottom + 3, left: startEdge(r).offset, width: r.width };
     open = true;
     await tick();
   }
@@ -100,7 +100,7 @@
   </div>
   {#if open}
     <div class="ribbon-menu bw-menu" role="menu" popover="manual" use:topLayer
-      style="top: {pos.top}px; left: {pos.left}px; min-width: {pos.width}px">
+      style="top: {pos.top}px; {uiRtl() ? 'right' : 'left'}: {pos.left}px; min-width: {pos.width}px">
       {#each [...(none ? ['none'] : []), ...presets.map(String)] as w}
         <!-- mousedown keeps the input's focus, so its blur can't commit the typed text first. -->
         <button class:selected={w === shown} onmousedown={(e) => e.preventDefault()} onclick={() => commit(w)}>

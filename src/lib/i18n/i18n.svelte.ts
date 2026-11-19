@@ -3,7 +3,7 @@
 
 import en, { type Messages } from './locales/en';
 import { loadAppLanguage, saveAppLanguage } from '../storage/appLanguage';
-import { reflectLocale, type Locale } from './config';
+import { isRtlLocale, reflectLocale, type Locale } from './config';
 
 // English is the contract and the stand-in; every other catalog is a chunk of its own,
 // fetched when its language is picked, so a start carries one language, not twelve.
@@ -53,6 +53,17 @@ export function locale(): Locale {
 }
 
 /** Switches once the catalog is in; resolves when the language is the active one. */
+/** The interface runs right to left; script-placed parts mirror by it. */
+export function uiRtl(): boolean {
+  return isRtlLocale(current);
+}
+
+/** Where a script-placed panel starts under its anchor: the CSS side to set and the
+ *  anchor's distance from that side of the window. */
+export function startEdge(anchor: DOMRect): { side: 'left' | 'right'; offset: number } {
+  return uiRtl() ? { side: 'right', offset: window.innerWidth - anchor.right } : { side: 'left', offset: anchor.left };
+}
+
 export async function setLocale(next: Locale, keep = true): Promise<void> {
   wanted = next;
   if (keep) saveAppLanguage(next);

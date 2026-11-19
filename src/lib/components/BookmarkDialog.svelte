@@ -109,7 +109,8 @@
   .bm {
     position: fixed;
     /* The popover's own inset: 0 would stretch it between top and bottom. */
-    inset: 9rem 2rem auto auto;
+    inset-block: 9rem auto;
+    inset-inline: auto 2rem;
     margin: 0;
     z-index: 300;
     width: 18rem;
