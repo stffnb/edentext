@@ -27,7 +27,8 @@
     align-items: center;
     gap: 12px;
     max-width: calc(100vw - 32px);
-    padding: 8px 8px 8px 14px;
+    padding-block: 8px;
+    padding-inline: 14px 8px;
     background: var(--w-surface);
     color: var(--w-text);
     border: 1px solid var(--w-border-strong);

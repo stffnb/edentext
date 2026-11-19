@@ -256,7 +256,7 @@
     display: inline-block;
     width: 14px;
     height: 14px;
-    margin-right: 8px;
+    margin-inline-end: 8px;
     border-radius: 50%;
     background: conic-gradient(#e0483e, #e0b43e, #4caf50, #3ea6e0, #6a5ae0, #e03ea6, #e0483e);
   }

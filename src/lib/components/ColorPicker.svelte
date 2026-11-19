@@ -436,7 +436,7 @@
     height: 100%;
     padding: 0;
     border: none;
-    border-left: 1px solid var(--color-border);
+    border-inline-start: 1px solid var(--color-border);
     border-radius: 0;
     background: transparent;
     color: var(--color-text);

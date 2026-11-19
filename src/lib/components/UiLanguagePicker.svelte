@@ -77,7 +77,7 @@
   .lang-dropdown {
     position: absolute;
     top: calc(100% + 3px);
-    right: 0;
+    inset-inline-end: 0;
     min-width: 130px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -111,7 +111,7 @@
     color: var(--color-text);
     font-size: 0.85rem;
     font-family: var(--font-sans);
-    text-align: left;
+    text-align: start;
     cursor: pointer;
     white-space: nowrap;
     transition: background 0.1s;

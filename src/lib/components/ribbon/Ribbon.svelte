@@ -506,7 +506,7 @@
 
   .ribbon :global(.color-chevron) {
     width: 13px;
-    border-left: none;
+    border-inline-start: none;
     color: var(--w-text-dim);
   }
 
@@ -586,7 +586,7 @@
     justify-content: center;
     width: 26px;
     height: 26px;
-    margin-left: 6px;
+    margin-inline-start: 6px;
     padding: 0;
     border: none;
     background: none;
@@ -602,7 +602,7 @@
     color: #fff;
     border-radius: 4px;
     padding: 5px 14px;
-    margin-right: 6px;
+    margin-inline-end: 6px;
     font-family: inherit;
     font-size: 13px;
     font-weight: 600;
@@ -678,7 +678,11 @@
   .doc-name-input:focus { outline: none; border-color: var(--w-accent); color: var(--w-text); }
 
   .doc-name-ext { margin-right: 6px; }
-  .doc-dirty { margin: 0 6px 0 -4px; white-space: nowrap; font-size: 11px; color: var(--w-text-dim); }
+  /* The name box reads left to right in any interface, so its gap to the next item
+     goes on its outer side when that item lies to its left. */
+  :global(html[dir='rtl']) .doc-name { margin-left: 6px; }
+  :global(html[dir='rtl']) .doc-name-ext { margin-right: 0; }
+  .doc-dirty { margin-block: 0; margin-inline: -4px 6px; white-space: nowrap; font-size: 11px; color: var(--w-text-dim); }
 
   .ribbon-body {
     display: flex;
@@ -693,5 +697,5 @@
   }
 
   .ribbon-body::-webkit-scrollbar { display: none; }
-  .rb-ai { display: flex; margin-left: auto; }
+  .rb-ai { display: flex; margin-inline-start: auto; }
 </style>

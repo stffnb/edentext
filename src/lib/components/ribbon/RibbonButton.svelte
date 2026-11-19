@@ -215,7 +215,9 @@
     width: 13px;
     border: none;
     background: none;
-    border-radius: 0 3px 3px 0;
+    border-radius: 0;
+    border-start-end-radius: 3px;
+    border-end-end-radius: 3px;
     color: var(--w-text-dim);
     cursor: pointer;
   }
@@ -226,10 +228,10 @@
   .caret-primary .rb-caret { width: 16px; color: var(--w-text); }
   .caret-primary .rb-caret :global(svg) { transform: scale(1.15); }
 
-  /* That command half keeps only a hair of right padding, so the arrow sits against
+  /* That command half keeps only a hair of end padding, so the arrow sits against
      the label rather than at the far edge of a button the label does not fill. */
-  .caret-primary .rb-big { padding-right: 4px; }
-  .caret-primary .rb-big .rb-face { margin-right: 0; }
+  .caret-primary .rb-big { padding-inline-end: 4px; }
+  .caret-primary .rb-big .rb-face { margin-inline-end: 0; }
 
   .rb-caret:hover:not(:disabled) { background: var(--w-pressed); }
   .rb-caret:disabled { opacity: 0.4; cursor: default; }

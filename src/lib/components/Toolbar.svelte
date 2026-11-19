@@ -713,13 +713,14 @@
   }
 
   .ol-split:hover .ol-chevron {
-    border-left-color: var(--color-border);
+    border-inline-start-color: var(--color-border);
   }
 
   .ol-main {
     min-width: unset;
     height: 100%;
-    padding: 0 0.2rem 0 0.3rem;
+    padding-block: 0;
+    padding-inline: 0.3rem 0.2rem;
     border-radius: 0;
   }
 
@@ -728,7 +729,7 @@
     width: 1rem;
     height: 100%;
     padding: 0;
-    border-left: 1px solid transparent;
+    border-inline-start: 1px solid transparent;
     border-radius: 0;
     transition: background 0.15s, border-color 0.15s;
   }
@@ -736,7 +737,7 @@
   .ol-dropdown {
     position: absolute;
     top: calc(100% + 3px);
-    left: 0;
+    inset-inline-start: 0;
     min-width: 170px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -790,7 +791,7 @@
     padding: 0.35rem 0.6rem;
     border-radius: calc(var(--radius) - 2px);
     justify-content: flex-start;
-    text-align: left;
+    text-align: start;
   }
 
   .ol-option:hover {

@@ -144,7 +144,7 @@
   }
 
   .history-control:hover:not(:has(:disabled)) .history-caret {
-    border-left-color: var(--color-border);
+    border-inline-start-color: var(--color-border);
   }
 
   .history-main,
@@ -171,7 +171,7 @@
   .history-caret {
     min-width: 1.1rem;
     padding: 0 0.2rem;
-    border-left: 1px solid transparent;
+    border-inline-start: 1px solid transparent;
     border-radius: 0;
   }
 
@@ -190,7 +190,7 @@
   .history-dropdown {
     position: absolute;
     top: calc(100% + 3px);
-    left: 0;
+    inset-inline-start: 0;
     min-width: 190px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -230,7 +230,7 @@
     color: var(--color-text);
     font-size: 0.82rem;
     font-family: var(--font-sans);
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
 

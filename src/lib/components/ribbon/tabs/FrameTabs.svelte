@@ -250,7 +250,7 @@
 
   .field input:focus { outline: none; border-color: var(--w-accent); }
 
-  .alt input { width: 200px; text-align: left; }
+  .alt input { width: 200px; text-align: start; }
   /* One grid, so both columns' boxes share their rows and line up on each column's right edge. */
   .gap-grid { display: grid; grid-template-columns: auto auto; align-content: center; gap: 3px 12px; }
   .gap-grid .field > span { flex: 1; }

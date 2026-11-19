@@ -513,7 +513,7 @@
   color: var(--w-text);
   font-family: var(--w-font);
   font-size: 13px;
-  text-align: left;
+  text-align: start;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -526,7 +526,7 @@
 /* Both trail the row's label: the shortcut hint and the secondary description
    Word puts at the right edge of a menu entry. */
 .ribbon-menu .menu-key,
-.ribbon-menu .menu-sub { margin-left: auto; padding-left: 16px; color: var(--w-text-dim); }
+.ribbon-menu .menu-sub { margin-inline-start: auto; padding-inline-start: 16px; color: var(--w-text-dim); }
 .ribbon-menu .menu-key { font-size: 12px; }
 
 /* A checkable row keeps the slot whether it is checked or not, so the labels line up. */
@@ -536,7 +536,7 @@
   color: var(--w-accent);
 }
 /* Wraps only when the menu hits its max-width; otherwise it sizes to the unwrapped text. */
-.ribbon-menu .menu-sub { font-size: 11px; white-space: normal; text-align: right; }
+.ribbon-menu .menu-sub { font-size: 11px; white-space: normal; text-align: end; }
 
 /* Section label above a run of rows: a ruled heading pinned while its rows scroll, so it
    never reads as one more row that cannot be picked. Below the list, the sticky action row. */
@@ -716,7 +716,7 @@
   justify-content: center;
   width: 18px;
   border: none;
-  border-left: 1px solid var(--w-border);
+  border-inline-start: 1px solid var(--w-border);
   background: none;
   color: var(--w-text-dim);
   cursor: pointer;
@@ -784,7 +784,7 @@
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: 0.85rem;
-  text-align: left;
+  text-align: start;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -797,12 +797,12 @@
 /* The shortcut hint and the secondary description at a row's right edge. */
 .island-menu .menu-key,
 .island-menu .menu-sub {
-  margin-left: auto;
-  padding-left: 16px;
+  margin-inline-start: auto;
+  padding-inline-start: 16px;
   font-size: 0.72rem;
   color: var(--color-text-muted);
 }
-.island-menu .menu-sub { white-space: normal; text-align: right; }
+.island-menu .menu-sub { white-space: normal; text-align: end; }
 .island-menu button.selected :is(.menu-key, .menu-sub) { color: inherit; opacity: 0.85; }
 .island-menu .menu-check { flex: none; width: 14px; color: var(--color-primary); }
 

@@ -67,7 +67,7 @@
   .hint {
     position: absolute;
     top: calc(100% + 4px);
-    right: 0;
+    inset-inline-end: 0;
     z-index: 30;
     width: max-content;
     max-width: 240px;

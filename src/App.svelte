@@ -2630,7 +2630,8 @@
     justify-content: center;
     height: var(--toolbar-btn-size);
     padding: 0 0.4rem;
-    margin: 0 0.25rem 0 1.4rem;
+    margin-block: 0;
+    margin-inline: 1.4rem 0.25rem;
     border: 1px solid transparent;
     border-radius: var(--radius);
     background: transparent;
@@ -2655,8 +2656,8 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-left: auto;
-    margin-right: 1rem;
+    margin-inline-start: auto;
+    margin-inline-end: 1rem;
   }
 
   .file-actions {
@@ -2674,7 +2675,7 @@
     align-items: center;
     gap: 0.3rem;
     padding: 0 0.4rem;
-    margin-right: 0.25rem;
+    margin-inline-end: 0.25rem;
     height: var(--toolbar-btn-size);
     border-radius: var(--radius);
     color: var(--color-text-muted);
@@ -2819,13 +2820,14 @@
   }
 
   .save-control:hover:not(:has(:disabled)) .save-chevron {
-    border-left-color: var(--color-border);
+    border-inline-start-color: var(--color-border);
   }
 
   .save-main {
     width: auto;
     height: 100%;
-    padding: 0 0.2rem 0 0.5rem;
+    padding-block: 0;
+    padding-inline: 0.5rem 0.2rem;
     border-radius: 0;
   }
 
@@ -2837,7 +2839,7 @@
     height: 100%;
     padding: 0;
     border: none;
-    border-left: 1px solid transparent;
+    border-inline-start: 1px solid transparent;
     border-radius: 0;
     background: transparent;
     color: var(--color-text);
@@ -2983,7 +2985,7 @@
   .theme-dropdown {
     position: absolute;
     top: calc(100% + 0.4rem);
-    right: 0;
+    inset-inline-end: 0;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -3019,7 +3021,7 @@
     font-size: 0.85rem;
     font-family: var(--font-sans);
     cursor: pointer;
-    text-align: left;
+    text-align: start;
     transition: background 0.1s;
   }
 
@@ -3122,7 +3124,7 @@
   .wordcount-popup {
     position: absolute;
     bottom: calc(100% + 6px);
-    left: 0;
+    inset-inline-start: 0;
     min-width: 220px;
     padding: 0 0 0.35rem;
     background: var(--color-surface);
@@ -3268,7 +3270,7 @@
     color: var(--color-text);
     font-family: var(--font-sans);
     font-size: 0.75rem;
-    text-align: right;
+    text-align: end;
     cursor: pointer;
     border-radius: 2px;
     transition: background 0.1s;
