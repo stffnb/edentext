@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadModule, type Hunspell } from 'hunspell-asm';
@@ -240,5 +240,33 @@ describe('British spell-check (hunspell-asm)', () => {
   it('flags a genuine misspelling and suggests the correction', () => {
     expect(gb.spell('recieve')).toBe(false);
     expect(gb.suggest('recieve')).toContain('receive');
+  });
+});
+
+// A document in Arabic keeps a western language beside it: each word is checked in the
+// language of its own script, and a script without a language is left alone.
+describe('spell-check language by script', () => {
+  it('sends Latin words to the western language and Arabic ones to the Arabic', async () => {
+    const asked: [string, string][] = [];
+    vi.resetModules();
+    vi.doMock('../../src/lib/spell/dictionary', () => ({
+      loadChecker: async (code: string) => ({ correct: (w: string) => { asked.push([code, w]); return false; }, suggest: () => [], add: () => {} }),
+    }));
+    const { spellController } = await import('../../src/lib/spell/controller');
+    const settle = () => new Promise((r) => setTimeout(r, 0));
+
+    await spellController.setLanguage('ar', 'en');
+    spellController.check('hello'); // loads the western dictionary
+    await settle();
+    asked.length = 0;
+    expect(spellController.check('hello')).toBe(false);
+    expect(spellController.check('كتاب')).toBe(false);
+    expect(asked).toEqual([['en', 'hello'], ['ar', 'كتاب']]);
+
+    await spellController.setLanguage('ar', null);
+    expect(spellController.check('hello')).toBe(true);
+    await spellController.setLanguage('en', null);
+    expect(spellController.check('كتاب')).toBe(true);
+    vi.doUnmock('../../src/lib/spell/dictionary');
   });
 });

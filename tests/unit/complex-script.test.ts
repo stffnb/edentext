@@ -253,6 +253,68 @@ describe('western/asian language pair', () => {
   });
 });
 
+// Arabic and Hebrew are the third slot of both formats: language, weight, slant and size
+// of such text are read from it alone, by Word and by LibreOffice.
+describe('complex-script language and run formatting', () => {
+  const ARABIC = 'هذا نص عربي طويل';
+  const AR_EN = { language: 'ar', country: 'SA', other: 'en-US' };
+  const EN_AR = { language: 'en', country: 'US', other: 'ar-SA' };
+  const para = (...content: unknown[]) => ({ type: 'doc', content: [{ type: 'paragraph', attrs: {}, content }] });
+  const arDoc = para({ type: 'text', text: ARABIC }, { type: 'text', text: ' ok', marks: [{ type: 'italic' }] });
+  const both = async (doc: unknown, lang?: unknown) => [
+    await importOdt(await buildOdt(doc as never, MARGINS, 'portrait', undefined, lang as never)),
+    importDocx(await buildDocx(doc as never, MARGINS, 'portrait', undefined, lang as never)),
+  ];
+
+  it('writes an Arabic document default into the complex slot, the western beside it', async () => {
+    const docx = strFromU8(unzipSync(await buildDocx(arDoc as never, MARGINS, 'portrait', undefined, AR_EN))['word/styles.xml']);
+    expect(docx).toMatch(/<w:lang w:val="en-US"[^>]*w:bidi="ar-SA"/);
+    const odt = strFromU8(unzipSync(await buildOdt(arDoc as never, MARGINS, 'portrait', undefined, AR_EN))['styles.xml']);
+    expect(odt).toContain('style:language-complex="ar"');
+    expect(odt).toContain('fo:language="en"');
+  });
+
+  it('reads the document back as Arabic, its runs without a language of their own', async () => {
+    for (const back of await both(arDoc, AR_EN)) {
+      expect([back.language, back.languageOther]).toEqual(['ar', 'en-US']);
+      expect(runs(back.content as Doc).map(textStyle).filter((t) => t.lang)).toEqual([]);
+    }
+  });
+
+  it('keeps a western document western beside the complex default of its Arabic passage', async () => {
+    const quote = para({ type: 'text', text: `An English sentence that quotes ${ARABIC.slice(0, 6)}` });
+    for (const back of await both(quote, EN_AR)) expect([back.language, back.languageOther]).toEqual(['en', 'ar-SA']);
+  });
+
+  it('keeps the language of a complex-script run', async () => {
+    const persian = para({ type: 'text', text: 'word ' }, { type: 'text', text: ARABIC, marks: [{ type: 'textStyle', attrs: { lang: 'fa-IR' } }] });
+    for (const back of await both(persian, EN_AR)) {
+      expect(runs(back.content as Doc).map((r) => textStyle(r).lang)).toEqual([undefined, 'fa-IR']);
+    }
+  });
+
+  it('keeps bold and size of Arabic text through both formats', async () => {
+    const bold = para({ type: 'text', text: ARABIC, marks: [{ type: 'bold' }, { type: 'textStyle', attrs: { fontSize: '18pt' } }] });
+    for (const back of await both(bold, AR_EN)) {
+      const [run] = runs(back.content as Doc);
+      expect(run.marks?.some((m) => m.type === 'bold')).toBe(true);
+      expect(textStyle(run).fontSize).toBe('18pt');
+    }
+  });
+
+  // Word sets Arabic text from w:bCs and w:szCs: the western pair beside them is unread.
+  it('reads a DOCX run of Arabic text from its complex set alone', async () => {
+    const bold = para({ type: 'text', text: ARABIC, marks: [{ type: 'bold' }, { type: 'textStyle', attrs: { fontSize: '18pt' } }] });
+    const files = unzipSync(await buildDocx(bold as never, MARGINS, 'portrait', undefined, AR_EN));
+    const xml = strFromU8(files['word/document.xml']);
+    expect(xml).toContain('<w:bCs/>');
+    const western = xml.replace('<w:bCs/>', '').replace(/<w:szCs w:val="36"\/>/, '<w:szCs w:val="28"/>');
+    const [run] = runs(importDocx(zipSync({ ...files, 'word/document.xml': strToU8(western) })).content as Doc);
+    expect(run.marks?.some((m) => m.type === 'bold')).toBe(false);
+    expect(textStyle(run).fontSize).toBe('14pt');
+  });
+});
+
 // The pair itself: each half goes to its own slot and comes back as itself, and a run
 // naming one half leaves the other to its paragraph.
 const pairDoc = (attrs: Record<string, string>) => ({

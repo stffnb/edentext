@@ -8,8 +8,8 @@ import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSett
 import { DEFAULT_WATERMARK, normalizePageDecor, type PageDecor, type Watermark } from '../storage/pageDecor';
 import { DEFAULT_LINE_NUMBERING, normalizeLineNumbering, type LineNumbering } from '../storage/lineNumbering';
 import { DEFAULT_LINE_GRID, normalizeLineGrid, type LineGrid } from '../storage/lineGrid';
-import { mainOfPair, tagFromOdf } from '../storage/documentLanguage';
-import { mostlyAsian } from '../utils/script';
+import { mainOfSlots, tagFromOdf } from '../storage/documentLanguage';
+import { ASIAN_SCRIPT_RE, COMPLEX_SCRIPT_RE, dominantScript } from '../utils/script';
 
 // LibreOffice's (and Word's) name for the watermark shape — what tells it apart from an
 // ordinary drawing in the header.
@@ -173,11 +173,13 @@ function entryFromStyleElement(el: Element): StyleEntry {
 // style:leader-style, for a file that names the line kind but no leader text.
 const ODF_LEADER: Record<string, string> = { dotted: '.', dash: '-', solid: '_' };
 
-// A style's or a run's western and asian language, each slot on its own; 'none' is none.
-export function langTagsOfProps(props: PropMap): { west: string | null; asian: string | null } {
+// A style's or a run's western, asian and complex language, each slot on its own; 'none' is none.
+export function langTagsOfProps(props: PropMap): { west: string | null; asian: string | null; complex: string | null } {
   const tag = (l: string | undefined, c: string | undefined) => (l && l !== 'none' ? tagFromOdf(l, c) : null);
-  return { west: tag(props['fo:language'], props['fo:country']), asian: tag(props['style:language-asian'], props['style:country-asian']) };
+  return { west: tag(props['fo:language'], props['fo:country']), asian: tag(props['style:language-asian'], props['style:country-asian']), complex: tag(props['style:language-complex'], props['style:country-complex']) };
 }
+
+type DocLangs = { main: string | null; other: string | null; west: string | null; asian: string | null; complex: string | null };
 
 export class StyleResolver {
   // (family + '\0' + name) → entry; later registrations win (content.xml
@@ -431,18 +433,18 @@ export class StyleResolver {
     return styleName ? this.merged('graphic', styleName).para : {};
   }
 
-  // The document's two default languages, read from the base Standard paragraph style
+  // The document's three default languages, read from the base Standard paragraph style
   // (falls back to the paragraph default-style), and which of them is its main one
-  // (mainOfPair). Tags, null where unset.
-  documentLanguage(): { main: string | null; other: string | null; west: string | null; asian: string | null } {
+  // (mainOfSlots). Tags, null where unset.
+  documentLanguage(): DocLangs {
     if (!this.docLangs) {
-      const { west, asian } = langTagsOfProps(this.merged('paragraph', 'Standard').text);
-      const body = this.contentDoc.getElementsByTagNameNS(NS.office, 'text')[0];
-      this.docLangs = { ...mainOfPair(west, asian, mostlyAsian(body?.textContent ?? '')), west, asian };
+      const langs = langTagsOfProps(this.merged('paragraph', 'Standard').text);
+      const text = this.contentDoc.getElementsByTagNameNS(NS.office, 'text')[0]?.textContent ?? '';
+      this.docLangs = { ...mainOfSlots(langs, dominantScript(text), COMPLEX_SCRIPT_RE.test(text) && !ASIAN_SCRIPT_RE.test(text)), ...langs };
     }
     return this.docLangs;
   }
-  private docLangs: { main: string | null; other: string | null; west: string | null; asian: string | null } | null = null;
+  private docLangs: DocLangs | null = null;
 
   // Automatic hyphenation, from the same style — ODF counts it a text property, and
   // LibreOffice keeps it there rather than document-wide, so that style's value is

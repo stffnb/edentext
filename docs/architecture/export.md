@@ -114,11 +114,22 @@ paragraph and the document therefore carry a western and an asian language (`lan
 (`w:rFonts w:eastAsia`, `style:font-name-asian`) the one that applies. The document keeps a main
 language (spell check, dates, number formats) and the other slot's tag (`documentLanguageOther`);
 the spell check reads the western one, so a Chinese document checks its Latin words. Both word
-processors write an asian default (`zh-CN`) into every file whatever it is written in, so on
-import that slot leads only where the body has more East Asian characters than Latin letters
-(`mainOfPair`); a Chinese document re-saved by LibreOffice, which adds its own western default,
-still reads as Chinese. LibreOffice lifts a run language spanning its paragraph onto the
-paragraph.
+processors write an asian and a complex default (`zh-CN`, `ar-SA`, `hi-IN`) into every file
+whatever it is written in, so on import such a slot leads only where the body has more
+characters of its script than Latin letters (`mainOfSlots`, `dominantScript`); a Chinese
+document re-saved by LibreOffice, which adds its own western default, still reads as Chinese.
+LibreOffice lifts a run language spanning its paragraph onto the paragraph.
+
+The **complex** slot (`w:lang w:bidi`, `style:language-complex`) is where Arabic, Hebrew,
+Indic and Thai text has its language. The model has no attribute of its own for it: such a tag
+sits in `lang` and `langSlot` sends it to the complex slot on export. On import a text node of
+complex script reads its language from that slot and is measured against the slot's default
+(`BlockDefaults.langComplex`), so an Arabic document's runs carry no mark. The spell check
+routes each word by its script (`SpellController.checkerOfScript`): Latin words in an Arabic
+document go to its western language (`documentLanguageOther`) or stay unchecked, Arabic words
+in a western document likewise. DOCX reads weight, slant, size and font of complex-script
+text from `w:bCs`, `w:iCs`, `w:szCs` and `w:rFonts w:cs`, as Word does; `w:rtl` is read as
+"this run is complex script" and not written.
 
 ### Font pair
 

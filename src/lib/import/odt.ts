@@ -3,7 +3,7 @@ import { markerFormatFromText, pruneImportedMarkers, type MarkerFormat } from '.
 import en from '../i18n/locales/en';
 import { StyleResolver, NS, WATERMARK_NAME, lengthToPt, lengthToCm, layerTextProps, langTagsOfProps, type PropMap } from './styleResolver';
 import { cjkDocFont, odfFromTag, tagFromOdf } from '../storage/documentLanguage';
-import { ASIAN_SCRIPT_RE } from '../utils/script';
+import { ASIAN_SCRIPT_RE, COMPLEX_SCRIPT_RE } from '../utils/script';
 import { ODF_LOOK_ATTRS, normalizeColor, labelledItems } from '../export/odt';
 import { AUTO_COLOR } from '../utils/color';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL } from '../styles/headings';
@@ -1805,6 +1805,7 @@ type BlockDefaults = {
   // The languages in force for the block's runs — its own, else the document's.
   lang: string | null;
   langAsian: string | null;
+  langComplex: string | null;
   // The style's own paragraph background and rule lines (paraBoxAttrs).
   box: Record<string, string | number | boolean>;
 };
@@ -1885,6 +1886,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     relief: null,
     lang: doc.west,
     langAsian: doc.asian,
+    langComplex: doc.complex,
     box: {},
   };
   if (!named) return fallback;
@@ -1916,6 +1918,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     ...effectDefaults(text, fallback),
     lang: langs.west ?? doc.west,
     langAsian: langs.asian ?? doc.asian,
+    langComplex: langs.complex ?? doc.complex,
     box: paraBoxAttrs(para),
   };
 }
@@ -2282,12 +2285,16 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   const ownLangs = langTagsOfProps(baseTextProps);
   const blockLang = ownLangs.west ?? defaults.lang;
   const blockLangAsian = ownLangs.asian ?? defaults.langAsian;
+  // A block in a complex-script language says so in that slot alone, or beside a western
+  // default every block repeats; its runs are measured against the block's.
+  const blockLangComplex = ownLangs.complex ?? defaults.langComplex;
   const runDefaults = {
     ...(markSizePt != null && Math.abs(markSizePt - defaults.fontSizePt) > 0.05
       ? { ...defaults, fontSizePt: markSizePt }
       : defaults),
     lang: blockLang,
     langAsian: blockLangAsian,
+    langComplex: blockLangComplex,
   };
   const content = convertInline(el, ctx, baseTextProps, runDefaults);
 
@@ -2791,7 +2798,7 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
     }
     if (!clean) return;
     const marks = marksFor(scriptProps(clean, props), ctx.resolver,
-      charStyle ? charDefaults(ctx, defaults, charStyle) : defaults);
+      scriptDefaults(clean, charStyle ? charDefaults(ctx, defaults, charStyle) : defaults));
     if (charStyle) {
       const display = ctx.charStyleNames.get(charStyle) ?? charStyle;
       ctx.usedCharStyles.add(charStyle);
@@ -3257,7 +3264,6 @@ function effectDefaults(props: PropMap, base: Pick<BlockDefaults, 'outline' | 's
 // Hebrew, Arabic, Indic, Thai and CJK: a style carries western, asian and complex-script
 // fonts side by side, and text is set from the set its own script belongs to. A file that
 // leaves them at the defaults sets Hebrew at 12pt Times, not the 16pt the style declares.
-const COMPLEX_SCRIPT_RE = /[֐-ࣿऀ-෿฀-๿ក-៿יִ-﷿ﹰ-ﻼ]/;
 
 
 // The three property sets differ only by suffix; the western one has none.
@@ -3288,7 +3294,19 @@ function scriptProps(text: string, props: PropMap): PropMap {
     const value = props[`${stem}${suffix}`];
     if (value) out[western] = value;
   }
+  // Complex-script text is in the complex language, never in the western one beside it.
+  if (suffix === '-complex') {
+    delete out['fo:language'];
+    delete out['fo:country'];
+    if (props['style:language-complex']) out['fo:language'] = props['style:language-complex'];
+    if (props['style:country-complex']) out['fo:country'] = props['style:country-complex'];
+  }
   return out;
+}
+
+// What a text node's language is measured against: the default of its own script's slot.
+function scriptDefaults(text: string, defaults: BlockDefaults): BlockDefaults {
+  return COMPLEX_SCRIPT_RE.test(text) ? { ...defaults, lang: defaults.langComplex } : defaults;
 }
 
 function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaults): Mark[] {

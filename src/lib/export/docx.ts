@@ -24,7 +24,7 @@ import { TEXTBOX_PADDING_CM, boxTextWidthCm, type TextVAlign } from '../editor/e
 import { colorModeOf, cropOf, wrapGap, wrapGapAttr, type ColorMode, type Crop, type WrapGap } from '../editor/extensions/image';
 import { SHAPES, boxHeads, isShapeKind, isLineKind, drawingMlPath, asShapePreset, asTextArea, type PathHeads, type ShapeKind, type DrawingMlPreset, type TextArea } from '../utils/shapes';
 import { cellFormatCode, isCellFormat } from '../utils/cellFormat';
-import { cjkDocFont, isAsianTag, type ExportLanguage } from '../storage/documentLanguage';
+import { cjkDocFont, langSlot, type ExportLanguage } from '../storage/documentLanguage';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import type { RecordLock } from '../storage/trackChanges.svelte';
@@ -102,19 +102,21 @@ function fontPair(west: unknown, asian: unknown, map: (f: string) => string): IF
 }
 const screenToDoc = (f: string) => (f === SCREEN_FONT ? DOC_FONT : f);
 
-// Word keeps three languages per run; Chinese, Japanese and Korean text is read from the
-// east-asian one alone, so each tag goes to the slot of its script and w:val stays free
-// for the Latin words among it. A later tag wins its slot: the run's over the block's.
-function langProp(...tags: unknown[]): { value?: string; eastAsia?: string } | undefined {
-  const out: { value?: string; eastAsia?: string } = {};
-  for (const tag of tags) if (typeof tag === 'string' && tag) out[isAsianTag(tag) ? 'eastAsia' : 'value'] = tag;
-  return out.value || out.eastAsia ? out : undefined;
+// Word keeps three languages per run and reads text from the one of its script alone:
+// Chinese, Japanese and Korean from w:eastAsia, Arabic and Hebrew from w:bidi, the rest
+// from w:val. Each tag goes to its slot; a later tag wins it: the run's over the block's.
+type LangProp = { value?: string; eastAsia?: string; bidirectional?: string };
+const LANG_SLOT_KEY = { west: 'value', asian: 'eastAsia', complex: 'bidirectional' } as const;
+function langProp(...tags: unknown[]): LangProp | undefined {
+  const out: LangProp = {};
+  for (const tag of tags) if (typeof tag === 'string' && tag) out[LANG_SLOT_KEY[langSlot(tag)]] = tag;
+  return Object.keys(out).length ? out : undefined;
 }
-
 function langXml(...tags: unknown[]): string {
   const p = langProp(...tags);
   if (!p) return '';
-  return `<w:lang${p.value ? ` w:val="${escapeXml(p.value)}"` : ''}${p.eastAsia ? ` w:eastAsia="${escapeXml(p.eastAsia)}"` : ''}/>`;
+  const attr = (name: string, v?: string) => (v ? ` w:${name}="${escapeXml(v)}"` : '');
+  return `<w:lang${attr('val', p.value)}${attr('eastAsia', p.eastAsia)}${attr('bidi', p.bidirectional)}/>`;
 }
 
 // Effective bullet glyph of a list node: its bulletChar attr, else its named list
@@ -1330,9 +1332,9 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLangs: unknown[] 
     if (s === 'normal' || s === '400') bold = false;
     else if (s === 'bold' || /^[5-9]\d\d$/.test(s)) bold = true;
   }
-  if (bold) parts.push('<w:b/>');
-  if (markPresent(marks, 'italic')) parts.push('<w:i/>');
-  else if (ts?.attrs?.fontStyle === 'normal') parts.push('<w:i w:val="0"/>');
+  if (bold) parts.push('<w:b/><w:bCs/>');
+  if (markPresent(marks, 'italic')) parts.push('<w:i/><w:iCs/>');
+  else if (ts?.attrs?.fontStyle === 'normal') parts.push('<w:i w:val="0"/><w:iCs w:val="0"/>');
   const st = marks.find((m) => m.type === 'strike');
   if (st) parts.push(st.attrs?.lineStyle === 'double' ? '<w:dstrike/>' : '<w:strike/>');
   const caps = ts?.attrs?.caps;

@@ -57,6 +57,13 @@ export type RunProps = {
   textFxRaw?: W14El[];       // the w14 elements the editor does not draw, one per name
   lang?: string;           // w:lang w:val, the run's western language tag
   langEastAsia?: string;   // w:lang w:eastAsia, its asian one
+  // The complex-script set, which Hebrew, Arabic, Indic and Thai text is set from.
+  boldCs?: boolean;        // w:bCs
+  italicCs?: boolean;      // w:iCs
+  sizeCsHalfPt?: number;   // w:szCs
+  fontCs?: string;         // w:rFonts w:cs
+  langBidi?: string;       // w:lang w:bidi
+  complex?: boolean;       // w:rtl / w:cs: the run is complex script whatever its characters
 };
 
 // A numbering level definition (numbering.xml w:lvl). bulletFont is the level's
@@ -139,6 +146,10 @@ export function parseRunProps(rPr: Element | null | undefined, colorOf?: (holder
     switch (child.localName) {
       case 'b': p.bold = toggle(child); break;
       case 'i': p.italic = toggle(child); break;
+      case 'bCs': p.boldCs = toggle(child); break;
+      case 'iCs': p.italicCs = toggle(child); break;
+      case 'szCs': { const n = parseInt(wVal(child) ?? '', 10); if (Number.isFinite(n)) p.sizeCsHalfPt = n; break; }
+      case 'rtl': case 'cs': p.complex = toggle(child) || !!p.complex; break;
       case 'strike': p.strike = toggle(child); break;
       case 'u': {
         const v = wVal(child);
@@ -167,8 +178,10 @@ export function parseRunProps(rPr: Element | null | undefined, colorOf?: (holder
       case 'lang': {
         const v = wVal(child);
         const ea = child.getAttributeNS(W, 'eastAsia');
+        const bidi = child.getAttributeNS(W, 'bidi');
         if (v) p.lang = v;
         if (ea) p.langEastAsia = ea;
+        if (bidi) p.langBidi = bidi;
         break;
       }
       case 'sz': { const n = parseInt(wVal(child) ?? '', 10); if (Number.isFinite(n)) p.sizeHalfPt = n; break; }
@@ -178,6 +191,8 @@ export function parseRunProps(rPr: Element | null | undefined, colorOf?: (holder
       case 'rFonts': {
         const ea = child.getAttributeNS(W, 'eastAsia');
         if (ea) p.fontEastAsia = ea;
+        const cs = child.getAttributeNS(W, 'cs');
+        if (cs) p.fontCs = cs;
         const f = child.getAttributeNS(W, 'ascii') ?? child.getAttributeNS(W, 'hAnsi');
         if (f) { p.font = f; break; }
         // Word's default fonts are theme references (minorHAnsi = body, majorHAnsi = headings).

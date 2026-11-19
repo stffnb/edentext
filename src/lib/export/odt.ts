@@ -14,7 +14,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor, type Watermark } from '../storage/pag
 import { FOLD_MARK_MM, PUNCH_MARK_MM, MARK_START_MM, FOLD_MARK_LEN_MM, PUNCH_MARK_LEN_MM, FOLD_MARK_NAME } from '../storage/foldMarks';
 import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbering';
 import { DEFAULT_LINE_GRID, type LineGrid } from '../storage/lineGrid';
-import { asianLang, cjkDocFont, isAsianTag, odfFromTag, tagFromOdf, westLang, type ExportLanguage } from '../storage/documentLanguage';
+import { asianLang, cjkDocFont, langSlot, odfFromTag, tagFromOdf, westLang, type ExportLanguage } from '../storage/documentLanguage';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps, type ParaProps } from '../styles/styleSheet';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { HEADING_STYLE_OVERRIDES, HEADING_FONT, HEADING_LEVELS, MAX_HEADING_LEVEL } from '../styles/headings';
@@ -3992,7 +3992,7 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: ExportLanguage | null, pag
   // other slot's.
   if (lang) {
     const main = tagFromOdf(lang.language, lang.country);
-    const attrs = Object.entries(langPairAttrs({ lang: westLang(main) ?? westLang(lang.other), langAsian: asianLang(main) ?? asianLang(lang.other) }))
+    const attrs = Object.entries(langPairAttrs({ lang: lang.other, langAsian: main }))
       .map(([k, v]) => `${k}="${v}"`).join(' ');
     styles = styles.replace(
       /(<style:style style:name="Standard"[\s\S]*?<style:text-properties\b[^>]*?)\/>/,
@@ -4157,17 +4157,20 @@ function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []
 }
 
 // ODF splits a language tag over two attributes; a tag with no region writes only the first.
-// An East Asian language belongs in the asian slot: that is the only one LibreOffice and
-// Word read Chinese, Japanese or Korean text from — fo:language would say it unread.
+// An East Asian or a complex-script language belongs in its own slot: that is the only one
+// LibreOffice and Word read such text from — fo:language would say it unread.
+const LANG_SLOT_ATTRS = {
+  west: ['fo:language', 'fo:country'],
+  asian: ['style:language-asian', 'style:country-asian'],
+  complex: ['style:language-complex', 'style:country-complex'],
+} as const;
 function langAttrs(odf: { language: string; country: string }): Record<string, string> {
-  const [lang, ctry] = isAsianTag(odf.language)
-    ? ['style:language-asian', 'style:country-asian']
-    : ['fo:language', 'fo:country'];
+  const [lang, ctry] = LANG_SLOT_ATTRS[langSlot(odf.language)];
   return odf.country ? { [lang]: odf.language, [ctry]: odf.country } : { [lang]: odf.language };
 }
 
-// A block's or a run's western and asian language, each in the slot of its script; the
-// asian attribute comes last, so it wins over an older document's asian `lang`.
+// A block's or a run's languages, each in the slot of its script; the later tag wins
+// its slot, so `langAsian` outranks an older document's asian `lang`.
 function langPairAttrs(attrs: { lang?: unknown; langAsian?: unknown } | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   for (const tag of [attrs?.lang, attrs?.langAsian]) {

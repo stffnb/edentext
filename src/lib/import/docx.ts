@@ -2,7 +2,7 @@ import { UNFORMATTED_MARKS, blockFormat, type RevMark } from '../editor/extensio
 import { strFromU8 } from 'fflate';
 import en from '../i18n/locales/en';
 import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readSpacing, readTabStops, toggle as onOff, wVal, W, R, WP, A, B, WPS, WPG, MC, VML, O, W10, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
-import { mostlyAsian } from '../utils/script';
+import { ASIAN_SCRIPT_RE, COMPLEX_SCRIPT_RE, dominantScript } from '../utils/script';
 import { AUTO_COLOR } from '../utils/color';
 import { W14 } from '../utils/w14Effects';
 import { lengthToPt, WATERMARK_NAME } from './styleResolver';
@@ -34,7 +34,7 @@ import type { Orientation } from '../storage/pageOrientation';
 import type { RecordLock } from '../storage/trackChanges.svelte';
 import { pageFormatOf, type PageFormat } from '../storage/pageFormat';
 import { clampTabInterval, DOCX_IMPLIED_TAB_CM } from '../storage/tabInterval';
-import { languageFromOdf, mainOfPair, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
+import { languageFromOdf, mainOfSlots, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import { EMPTY_HF_SET, HF_DISTANCE_CM, hfIsEmpty, type HfDistances, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
@@ -74,7 +74,7 @@ type Ctx = {
   styles: DocxStyles;
   // A page break ending a body run of blocks with nothing after it to move (convertBlocks).
   breakCarry?: boolean;
-  // The document's main language tag (mainOfPair).
+  // The document's main language tag (mainOfSlots).
   mainLang: string | null;
   // Word styleId → registry name, and the ids blocks actually reference.
   styleNames: Map<string, string>;
@@ -514,9 +514,11 @@ function parseRels(bytes: Uint8Array | undefined): Map<string, RelInfo> {
   return map;
 }
 
-// The default style's two languages (docDefaults included), and which is the main one.
+// The default style's three languages (docDefaults included), and which is the main one.
 function documentLanguage(run: RunProps, body: Element, warnings: Set<string>): { language: DocumentLanguage | null; main: string | null; other: string | null } {
-  const { main, other } = mainOfPair(run.lang ?? null, run.langEastAsia ?? null, mostlyAsian(body.textContent ?? ''));
+  const text = body.textContent ?? '';
+  const { main, other } = mainOfSlots({ west: run.lang ?? null, asian: run.langEastAsia ?? null, complex: run.langBidi ?? null },
+    dominantScript(text), COMPLEX_SCRIPT_RE.test(text) && !ASIAN_SCRIPT_RE.test(text));
   if (!main) return { language: null, main, other };
   const [language, country] = main.split('-');
   const code = languageFromOdf(language, country);
@@ -1243,6 +1245,7 @@ type BlockDefaults = {
   // The languages the style chain (docDefaults included) already gives the runs.
   lang: string | null;
   langAsian: string | null;
+  langComplex: string | null;
 };
 
 const FONT_TWINS: Record<string, string[]> = {
@@ -1281,6 +1284,7 @@ function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDef
     w14: Object.fromEntries(W14_KEYS.filter((k) => baseRun[k]).map((k) => [k, baseRun[k]])),
     lang: baseRun.lang ?? null,
     langAsian: baseRun.langEastAsia ?? null,
+    langComplex: baseRun.langBidi ?? null,
   };
 }
 
@@ -2205,7 +2209,7 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     // The block's language survives the character style's yardstick — only a style that
     // names one of its own replaces it.
     const runDefaults = charName
-      ? { ...blockDefaults(mergeRunProps(baseRun, styleRun), null, defaults.boldByDefault), lang: styleRun.lang ?? defaults.lang, langAsian: styleRun.langEastAsia ?? defaults.langAsian }
+      ? { ...blockDefaults(mergeRunProps(baseRun, styleRun), null, defaults.boldByDefault), lang: styleRun.lang ?? defaults.lang, langAsian: styleRun.langEastAsia ?? defaults.langAsian, langComplex: styleRun.langBidi ?? defaults.langComplex }
       : defaults;
     const props = mergeRunProps(mergeRunProps(baseRun, styleRun), own);
     // A run's language is inherited unless its own properties name one: the document
@@ -2221,7 +2225,14 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     // Only our exporter's blue is an editor link, drawn underlined by CSS; any other link
     // is plain and keeps its own underline and colour as marks.
     const ours = !!linkHref && hexColor(props.color)?.toUpperCase() === LINK_BLUE;
-    const marks = marksFor(props, runDefaults, ours);
+    // Complex-script text is set from Word's complex set (w:bCs, w:iCs, w:szCs, the cs
+    // font, the bidi language), a slot left out being Word's default and not the western one.
+    const complex = props.complex || COMPLEX_SCRIPT_RE.test(r.textContent ?? '');
+    const langBidi = own.langBidi ?? styleRun.langBidi ?? runDefaults.langComplex ?? undefined;
+    const marks = complex
+      ? marksFor({ ...props, bold: props.boldCs ?? false, italic: props.italicCs ?? false, sizeHalfPt: props.sizeCsHalfPt ?? 20, font: props.fontCs ?? props.font, lang: langBidi },
+        { ...runDefaults, lang: runDefaults.langComplex }, ours)
+      : marksFor(props, runDefaults, ours);
     if (charName) {
       ctx.usedCharStyles.add(charId!);
       marks.push({ type: 'charStyle', attrs: { name: charName } });
