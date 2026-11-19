@@ -69,6 +69,13 @@ describe('synonyms', () => {
     expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe('/thesaurus/fr/fr.txt');
   });
 
+  it('finds an Arabic word whether or not it is written with vowel marks', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(readFileSync('public/thesaurus/ar/ar.txt'), { status: 200 })));
+
+    expect((await synonyms('ar', 'جميل')).flat()).toContain('حسن');
+    expect(await synonyms('ar', 'جَمِيل')).toEqual(await synonyms('ar', 'جميل'));
+  });
+
   it('loads Portuguese data and preserves accented synonyms', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(readFileSync('public/thesaurus/pt/pt.txt'), { status: 200 })));
 

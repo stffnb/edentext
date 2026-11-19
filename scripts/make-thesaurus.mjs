@@ -14,10 +14,12 @@ const SOURCES = [
   { code: 'ru', dat: 'ru_RU/th_ru_RU_M_aot_and_v2.dat', license: 'ru_RU/README_thes_ru_RU_M_aot_and_v2.txt' },
   { code: 'uk', dat: 'uk_UA/th_uk_UA.dat', license: 'uk_UA/README_th_uk_UA.txt' },
   { code: 'id', dat: 'id/th_id_ID_v2.dat', license: 'id/README-thes' },
+  { code: 'ar', dat: 'ar/th_ar.dat', license: 'ar/COPYING.txt' },
 ];
 
-// "(noun)", "(ugs.)", "(generic term)" — a label to read, not a word to insert.
-const clean = (word) => word.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+// "(noun)", "(ugs.)", "(generic term)" — a label to read, not a word to insert. Arabic
+// vowel marks go too: running text is written without them, and so is the word looked up.
+const clean = (word) => word.replace(/\([^)]*\)/g, ' ').replace(/[\u064B-\u0652\u0670]/g, '').replace(/\s+/g, ' ').trim();
 
 // An antonym, as a sense line's tag (id "[ant]", ru) or a word's label (en, es): not a synonym.
 const ANTONYM = /\((antonym|антоним|ant[oó]nimo)\)|^\[ant\]/i;

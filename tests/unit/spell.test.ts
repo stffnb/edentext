@@ -185,6 +185,26 @@ describe('Indonesian spell-check (hunspell-asm)', () => {
   });
 });
 
+describe('Arabic spell-check (hunspell-asm)', () => {
+  let ar: Hunspell;
+  beforeAll(async () => {
+    ar = await makeChecker('ar');
+  });
+
+  // Article, conjunction, preposition and pronoun attach to the word; vowel marks and
+  // the tatweel that stretches a word are optional in writing.
+  it('accepts attached particles, vowelled and stretched words', () => {
+    for (const w of ['كتاب', 'الكتاب', 'والكتاب', 'بالكتاب', 'كتابها', 'يكتبون', 'المدارس', 'كِتَابٌ', 'العـــربية']) {
+      expect(ar.spell(w), w).toBe(true);
+    }
+  });
+
+  it('flags a genuine misspelling and suggests the correction', () => {
+    expect(ar.spell('مدرصة')).toBe(false);
+    expect(ar.suggest('مدرصة')).toContain('مدرسة');
+  });
+});
+
 describe('Italian spell-check (hunspell-asm)', () => {
   let it_: Checker;
   beforeAll(async () => {

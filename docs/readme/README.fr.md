@@ -71,7 +71,7 @@ EdenText est un traitement de texte puissant qui s’utilise dans le navigateur,
 - **Outils de révision** – suivi des modifications et fils de commentaires dans des bulles
   en marge, comparaison et fusion avec un autre fichier, marques de révision imprimables,
   vérification orthographique (anglais, allemand, espagnol, français, italien, portugais,
-  grec, russe, ukrainien et indonésien), synonymes (toutes ces langues sauf le grec), vérification
+  grec, russe, ukrainien, indonésien et arabe), synonymes (toutes ces langues sauf le grec), vérification
   grammaticale (anglais)
 - **Assistant IA facultatif** – avec le fournisseur de votre choix ou un modèle local ; il
   répond aux questions sur le document et le modifie sous forme de modifications suivies. Il

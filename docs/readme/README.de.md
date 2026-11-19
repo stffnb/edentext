@@ -70,7 +70,7 @@ EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von de
 - **Überarbeiten** – Änderungsverfolgung und Kommentar-Threads in Sprechblasen am Rand,
   Vergleichen und Zusammenführen mit einer anderen Datei,
   druckbares Markup, Rechtschreibprüfung (Englisch, Deutsch, Spanisch, Französisch, Italienisch,
-  Portugiesisch, Griechisch, Russisch, Ukrainisch und Indonesisch), Synonyme (dieselben Sprachen
+  Portugiesisch, Griechisch, Russisch, Ukrainisch, Indonesisch und Arabisch), Synonyme (dieselben Sprachen
   ohne Griechisch), Grammatikprüfung (Englisch)
 - **Optionaler KI-Assistent** – mit einem frei wählbaren Anbieter oder einem lokalen Modell;
   beantwortet Fragen zum Dokument und bearbeitet es mit Änderungsverfolgung. Lässt sich

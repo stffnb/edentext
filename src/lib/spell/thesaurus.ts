@@ -44,7 +44,8 @@ const escapeRe = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // that group is about it — which is the order LibreOffice lists the senses in.
 export async function synonyms(code: DocumentLanguage, word: string): Promise<string[][]> {
   const text = await loadThesaurus(code);
-  const term = word.trim();
+  // Arabic vowel marks are optional in writing; the groups are stored without them.
+  const term = word.trim().replace(/[\u064B-\u0652\u0670]/g, '');
   if (!text || !term) return [];
   const lower = term.toLowerCase();
   const re = new RegExp(`(^|;)${escapeRe(term)}(;|$)`, 'gim');
