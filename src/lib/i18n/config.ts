@@ -21,6 +21,20 @@ export const LOCALE_LABELS: Record<Locale, string> = {
   'zh-Hant': '繁體中文',
 };
 
+// Languages written right to left: the interface mirrors for them. The page does not —
+// a document's direction is its own (`pageRtl`, a block's `dir`).
+export const RTL_LOCALES: readonly Locale[] = ['ar'];
+
+export function isRtlLocale(locale: string): boolean {
+  return (RTL_LOCALES as readonly string[]).includes(locale);
+}
+
+/** Names the UI language and its direction on `<html>`. */
+export function reflectLocale(locale: Locale): void {
+  document.documentElement.lang = locale;
+  document.documentElement.dir = isRtlLocale(locale) ? 'rtl' : 'ltr';
+}
+
 export function isLocale(value: string | null): value is Locale {
   return !!value && (LOCALES as readonly string[]).includes(value);
 }

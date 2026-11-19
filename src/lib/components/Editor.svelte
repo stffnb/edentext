@@ -1677,10 +1677,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     return true;
   }
 
-  // A `dir` in markup makes Svelte rewrite it whenever the element's other attributes
-  // change, and Chrome rebuilds the whole view's layout tree for that; set on change only.
+  // The page states its direction either way: the interface's (<html dir>) is not its own.
+  // In markup Svelte would rewrite `dir` with the element's other attributes, and Chrome
+  // rebuilds the whole view's layout tree for that; set on change only.
   function pageDir(node: HTMLElement, rtl: boolean) {
-    const set = (on: boolean) => (on ? node.setAttribute('dir', 'rtl') : node.removeAttribute('dir'));
+    const set = (on: boolean) => node.setAttribute('dir', on ? 'rtl' : 'ltr');
     set(rtl);
     return { update: set };
   }
@@ -2065,7 +2066,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   <!-- The grid has one scroller, so its hint is placed there whichever cell it is over. -->
   {#if linkTip && (multiPage || linkTip.pane === i)}
     <div class="link-tooltip" style="top: {linkTip.top}px; left: {linkTip.left}px;">
-      {#if linkTip.href}<span class="link-tooltip-url">{linkTip.href}</span>{/if}
+      {#if linkTip.href}<span class="link-tooltip-url" dir="ltr">{linkTip.href}</span>{/if}
       <span class="link-tooltip-hint">
         {linkTip.href ? t().link.openHint(withShortcut('Ctrl')) : t().bookmark.openHint(withShortcut('Ctrl'))}
       </span>

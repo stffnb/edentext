@@ -68,6 +68,7 @@
     <input
       class="rb-combo-input"
       type="text"
+      dir="ltr"
       bind:value
       placeholder={current === '' ? '—' : ''}
       title={t().toolbarExpanded.fontName}

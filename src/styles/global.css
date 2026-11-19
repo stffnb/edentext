@@ -946,6 +946,19 @@ select:not([multiple], [size], .bare) {
   background-repeat: no-repeat !important;
   background-position: right 7px center !important;
 }
+html[dir='rtl'] select:not([multiple], [size], .bare) {
+  background-position: left 7px center !important;
+}
+
+/* A number, an address and code read left to right in a right-to-left interface too
+   (a minus sign would otherwise trail its number). No specificity, so a component's
+   own alignment stands. */
+:where(html[dir='rtl']) :where(input[type='number'], input[inputmode='decimal'], input[type='url'], input[type='email'], input[type='password'], code, kbd) {
+  direction: ltr;
+}
+:where(html[dir='rtl']) :where(input[type='number'], input[inputmode='decimal'], input[type='url'], input[type='email'], input[type='password']) {
+  text-align: right;
+}
 
 /* Some systems draw the open list in their own scheme (dark under a dark GTK theme),
    so a select that leaves its colours transparent or system-picked turns illegible. */

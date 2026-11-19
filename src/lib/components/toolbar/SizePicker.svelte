@@ -107,6 +107,7 @@
   <div class="size-trigger-wrap">
     <input
       type="text"
+      dir="ltr"
       class="size-input"
       bind:value={inputValue}
       onfocus={onFocus}

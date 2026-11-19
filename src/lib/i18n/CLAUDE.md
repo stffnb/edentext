@@ -18,6 +18,16 @@ into it (`localeChunks` in `vite.config.ts`), and the service worker keeps them 
 bar, and the desktop app's dialog and menu texts (`TEXT` in `desktop/main.mjs`). `tests/unit/templates.test.ts` iterates `LOCALES` and covers the new catalog on its
 own; the `templates:` block is what the built-in templates read at call time.
 
+**Direction** — `RTL_LOCALES` (`config.ts`) names the languages written right to left;
+`reflectLocale` puts `lang` and `dir` on `<html>` at start and on `setLocale`, and `index.html`
+sets `dir` for the first frame. The page is not the interface: `.paper` is `direction: ltr`,
+and the body host and every header/footer zone state the document's own direction (`pageDir`:
+`ltr` or `rtl`, never absent). What reads left to right in any language is an island:
+`withShortcut` and `ltrIsland` (`shortcut.ts`) wrap a key combination, file name or version in
+Unicode isolates under a right-to-left UI only; markup takes `dir="ltr"` (document name, ruler,
+font, size, address, code and formula fields, previews of document formatting), and
+`global.css` turns number, decimal, address and password fields.
+
 **Codes are full BCP-47 tags, not always two letters.** Chinese ships as `zh-Hans` and
 `zh-Hant`: the written standard is one language, the scripts are two, and the terminology
 goes with the script (檔案/文件, 列印/打印, and a table row is 列 in Taiwan but 行 on the

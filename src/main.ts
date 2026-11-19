@@ -3,6 +3,7 @@ import App from './App.svelte';
 import './styles/global.css';
 import { loadTheme, applyTheme, loadAccent, applyAccent } from './lib/storage/theme';
 import { loadCatalog, locale } from './lib/i18n/i18n.svelte';
+import { reflectLocale } from './lib/i18n/config';
 import { startTabPresence, pruneOldDocuments } from './lib/storage/docScope';
 import { dragDialogs } from './lib/utils/dragWindow';
 import { embedded } from './lib/embed/mode';
@@ -25,8 +26,8 @@ const presets = loadHostConfig();
 applyTheme(loadTheme());
 applyAccent(loadAccent());
 
-// Resolve the UI locale before mount and reflect it on <html lang> (chrome a11y)
-document.documentElement.lang = locale();
+// Resolve the UI locale before mount and reflect it on <html lang dir> (chrome a11y)
+reflectLocale(locale());
 
 // Keep 'auto' in sync when system theme changes
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {

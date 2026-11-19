@@ -269,7 +269,7 @@ function measure(view: EditorView): TabLayout {
   const ltr: Origin = { x: tipRect.left + parseFloat(tipStyle.paddingLeft || '0') * scale, rtl: false };
   const rtl: Origin = { x: tipRect.right - parseFloat(tipStyle.paddingRight || '0') * scale, rtl: true };
   // Only a document that names a direction pays for reading each block's.
-  const mixed = !!dom.closest('[dir]') || !!dom.querySelector('[dir]');
+  const mixed = dom.closest('[dir]')?.getAttribute('dir') === 'rtl' || !!dom.querySelector('[dir]');
   const out: TabWidth[] = [];
   const breaks: number[] = [];
 

@@ -158,6 +158,7 @@
       <textarea
         bind:this={input}
         bind:value={latex}
+        dir="ltr"
         rows="3"
         spellcheck="false"
         autocomplete="off"

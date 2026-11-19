@@ -337,7 +337,7 @@
 
     <CommandSearch commands={searchable} onRun={runCommand} onCancel={() => editor?.commands.focus()} />
 
-    <div class="doc-name">
+    <div class="doc-name" dir="ltr">
       <span class="doc-name-sizer" aria-hidden="true" bind:clientWidth={docNameSizerWidth}>{documentName || namePlaceholder}</span>
       <input
         class="doc-name-input"

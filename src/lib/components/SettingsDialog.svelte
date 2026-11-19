@@ -252,7 +252,7 @@
               {/each}
               <button class="custom" class:on={isCustomAccent(accent)} style:background={isCustomAccent(accent) ? accent : null} bind:this={customBtn} aria-expanded={mixingFrom !== null} title={t().settings.accents.custom} aria-label={t().settings.accents.custom} onclick={() => (mixingFrom === null ? (mixingFrom = accent) : closeMixer(false))}></button>
               {#if isCustomAccent(accent)}
-                <input class="field accent-hex" type="text" maxlength="7" spellcheck="false" value={accent} aria-label={t().settings.accentHex} oninput={typeAccentHex} onblur={(e) => (e.currentTarget.value = accent)} />
+                <input class="field accent-hex" type="text" dir="ltr" maxlength="7" spellcheck="false" value={accent} aria-label={t().settings.accentHex} oninput={typeAccentHex} onblur={(e) => (e.currentTarget.value = accent)} />
               {/if}
             </div>
             {#if mixingFrom !== null}
@@ -356,7 +356,7 @@
           {#if service === 'own'}
             <div class="row sub" class:dim={off}>
               <div class="info"><div class="name">{t().dictation.serverModel}</div><div class="desc">{t().dictation.serverModelHint}</div></div>
-              <input class="field" type="text" spellcheck="false" value={dictationSettings().model} disabled={off}
+              <input class="field" type="text" dir="ltr" spellcheck="false" value={dictationSettings().model} disabled={off}
                 onchange={(e) => { setDictation({ model: e.currentTarget.value.trim() }); speechTest = null; }} />
             </div>
           {/if}
@@ -449,7 +449,7 @@
           </div>
           <div class="row sub" class:dim={!ai.enabled}>
             <div class="info"><div class="name">{t().ai.model}</div><div class="desc">{t().ai.modelHint}</div></div>
-            <input class="field" type="text" spellcheck="false" value={aiLocked ? aiUse.model : ai.model} disabled={!ai.enabled || aiLocked}
+            <input class="field" type="text" dir="ltr" spellcheck="false" value={aiLocked ? aiUse.model : ai.model} disabled={!ai.enabled || aiLocked}
               placeholder={aiHost ? hostAi().model ?? '' : ''} onchange={(e) => { setAi({ model: e.currentTarget.value.trim() }); aiTest = null; }} />
           </div>
           <div class="row sub" class:dim={!ai.enabled}>
@@ -571,7 +571,7 @@
   .close {
     position: absolute;
     top: 14px;
-    right: 14px;
+    inset-inline-end: 14px;
     z-index: 1;
     display: grid;
     place-items: center;

@@ -3,7 +3,7 @@
 
 import en, { type Messages } from './locales/en';
 import { loadAppLanguage, saveAppLanguage } from '../storage/appLanguage';
-import type { Locale } from './config';
+import { reflectLocale, type Locale } from './config';
 
 // English is the contract and the stand-in; every other catalog is a chunk of its own,
 // fetched when its language is picked, so a start carries one language, not twelve.
@@ -59,6 +59,6 @@ export async function setLocale(next: Locale, keep = true): Promise<void> {
   await loadCatalog(next);
   if (wanted !== next) return;
   current = next;
-  // <html lang> = UI locale (chrome a11y); document content language is separate.
-  document.documentElement.lang = next;
+  // <html lang dir> = UI locale (chrome a11y); document content language is separate.
+  reflectLocale(next);
 }

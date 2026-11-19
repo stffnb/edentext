@@ -275,7 +275,7 @@
   // A zone lies outside the body's host, so it takes the page's direction itself; set
   // on change only, as the host's is (Editor.svelte pageDir).
   function pageDir(node: HTMLElement, rtl: boolean) {
-    const set = (on: boolean) => (on ? node.setAttribute('dir', 'rtl') : node.removeAttribute('dir'));
+    const set = (on: boolean) => node.setAttribute('dir', on ? 'rtl' : 'ltr');
     set(rtl);
     return { update: set };
   }

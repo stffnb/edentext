@@ -607,7 +607,7 @@
       <div class="fields">
         {#if outlineTab}
           <!-- Each level's label as the headings show it, from the definition's start values. -->
-          <div class="preview list-preview">
+          <div class="preview list-preview" dir="ltr">
             {#each Array(MAX_OUTLINE_LEVELS) as _, i}
               {#if outlineLabelAt(i + 1)}
                 <div class="lp-line" style="margin-left: {i * 0.6}rem">
@@ -659,7 +659,7 @@
           </div>
         {:else if isList}
           <!-- One sample line per defined level; the box scrolls past six of them. -->
-          <div class="preview list-preview">
+          <div class="preview list-preview" dir="ltr">
             {#each lStyle.levels as _, d}
               <div class="lp-line" style="margin-left: {Math.max(0, listStyleMarginCm(lStyle, d + 1)) * 0.28}rem">
                 <span class="lp-marker" class:right={lStyle.levels[d]?.markerAlign === 'right'}>{levelMarker(lStyle, d + 1)}</span>
@@ -750,7 +750,7 @@
         {:else}
         {#if isTable}
           <!-- The same grid the toolbar gallery shows, from the same resolver. -->
-          <div class="preview table-preview">
+          <div class="preview table-preview" dir="ltr">
             <table aria-hidden="true">
               <tbody>
                 {#each Array(PREVIEW_ROWS) as _, r}
@@ -799,7 +799,7 @@
         {:else}
         <!-- Fallbacks are the page's own defaults, not `inherit`: an inline `inherit`
              would beat the .preview rule and pull in the dialog's UI text color. -->
-        <div class="preview" style="
+        <div class="preview" dir="ltr" style="
           font-family: {resolved.text.fontFamily ?? 'var(--font-serif)'};
           font-size: {Math.min(24, resolved.text.fontSizePt ?? 12)}pt;
           font-weight: {resolved.text.bold ? 700 : 400};

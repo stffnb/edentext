@@ -39,10 +39,12 @@
       try {
         const catalogs = /*LOCALE_CHUNKS*/{};
         let l = localStorage.getItem('edentext-app-language');
-        if (!(l in catalogs)) {
+        if (l !== 'en' && !(l in catalogs)) {
           const tag = (navigator.language || 'en').toLowerCase();
           l = /^zh(-|$)/.test(tag) ? (/^zh-(hant|tw|hk|mo)\b/.test(tag) ? 'zh-Hant' : 'zh-Hans') : tag.slice(0, 2);
         }
+        // The first frame already runs the way the language is written (RTL_LOCALES, config.ts).
+        document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
         if (Object.hasOwn(catalogs, l)) {
           document.head.append(Object.assign(document.createElement('link'), { rel: 'modulepreload', crossOrigin: '', href: catalogs[l] }));
         }

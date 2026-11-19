@@ -155,7 +155,7 @@
 
 <!-- The strip beside the page is reserved here too, so the auto margins centre the
      ruler over the same footprint as .paper-scaler and it stays above the page. -->
-<div class="ruler" style="width: {width + gutter}px; padding-right: {gutter}px">
+<div class="ruler" dir="ltr" style="width: {width + gutter}px; padding-right: {gutter}px">
   <button
     class="tab-type"
     onpointerdown={(e) => e.preventDefault()}

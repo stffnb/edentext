@@ -70,6 +70,7 @@
       bind:this={input}
       bind:value={url}
       type="text"
+      dir="ltr"
       placeholder="https://example.com"
       spellcheck="false"
       autocomplete="off"

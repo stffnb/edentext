@@ -91,7 +91,7 @@
             aria-pressed={current === style.name}
             onclick={() => apply(style.name)}
           >
-            <table class="tsp-preview" aria-hidden="true">
+            <table class="tsp-preview" dir="ltr" aria-hidden="true">
               <tbody>
                 {#each Array(ROWS) as _, r}
                   <tr>

@@ -148,6 +148,7 @@
   <div class="font-trigger-wrap">
     <input
       type="text"
+      dir="ltr"
       class="font-input"
       style={currentFont ? `font-family: ${currentFont}` : ''}
       bind:value={inputValue}

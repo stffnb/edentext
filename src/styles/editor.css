@@ -41,6 +41,9 @@
   /* Zoom is a `transform: scale()` set inline (Editor.svelte); pin the origin so the
      page scales down/right from the top-left of its reserved footprint. */
   transform-origin: top left;
+  /* The sheet is not part of the interface: its layers are placed physically, and the
+     host and each zone name the page's own direction (pageDir). */
+  direction: ltr;
   /* Positioning context for the table page-break overlay (.band-layer in
      Editor.svelte), which lives inside .paper so the same transform scales it
      identically to the .tiptap page background. */

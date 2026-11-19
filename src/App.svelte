@@ -112,7 +112,7 @@
   import { t, locale, setLocale } from './lib/i18n/i18n.svelte';
   import { isLocale } from './lib/i18n/config';
   import { fnv1a } from './lib/utils/hash';
-  import { withShortcut } from './lib/i18n/shortcut';
+  import { ltrIsland, withShortcut } from './lib/i18n/shortcut';
   import { DEFAULT_SHORTCUTS, matchesEvent, shortcutHint } from './lib/editor/shortcuts';
   import { localizeImportMessage } from './lib/i18n/importMessages';
   import { unavailableFonts } from './lib/utils/fontDetect';
@@ -1989,7 +1989,7 @@
           <rect x="4.75" y="8.75" width="6.5" height="4.75" rx="0.5" stroke="currentColor" stroke-width="1.3"/>
         </svg>
       {/snippet}
-      <div class="doc-name" class:has-value={documentName.trim().length > 0}>
+      <div class="doc-name" dir="ltr" class:has-value={documentName.trim().length > 0}>
         <!-- Document with lines -->
         <svg class="doc-name-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M9 1.75H4.5A1.25 1.25 0 0 0 3.25 3v10A1.25 1.25 0 0 0 4.5 14.25h7A1.25 1.25 0 0 0 12.75 13V5.5L9 1.75z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
@@ -2097,7 +2097,7 @@
                 <div class="theme-heading">{t().app.recentFiles}</div>
                 {#each menuRecentFiles as f (f.id)}
                   <button class="theme-option" onclick={() => handleOpenRecent(f)} role="menuitem">
-                    <span class="recent-name">{f.name}</span>
+                    <span class="recent-name">{ltrIsland(f.name)}</span>
                   </button>
                 {/each}
                 <button class="theme-option" onclick={handleForgetRecent} role="menuitem">
@@ -2902,8 +2902,8 @@
     height: var(--toolbar-btn-size);
     padding: 0 0.45rem;
     position: absolute;
-    /* Clear of the island's rounded bottom-left corner. */
-    left: 1.35rem;
+    /* Clear of the island's rounded bottom corner at the side the bar starts. */
+    inset-inline-start: 1.35rem;
     top: 0;
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -2929,10 +2929,11 @@
      language) and the extended toolbar starts right after it, never overlapping. */
   .toolbar-secondary.expanded .expand-toggle {
     position: relative;
-    left: auto;
+    inset-inline-start: auto;
     top: auto;
     flex: none;
-    margin: 0 0.6rem 0 0.35rem;
+    margin: 0;
+    margin-inline: 0.35rem 0.6rem;
   }
 
   .expand-toggle:hover {

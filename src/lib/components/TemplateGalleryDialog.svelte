@@ -46,7 +46,7 @@
           <button class="tpl" onclick={() => pick(entry)}>
             <!-- A stylized page per template: letters get an address block, the CV and
                  minutes a heading, the invoice and minutes a small table sketch. -->
-            <span class="thumb" aria-hidden="true">
+            <span class="thumb" dir="ltr" aria-hidden="true">
               {#if entry.id === 'cv'}
                 <span class="h1"></span>
                 <span class="sect s1"></span>
@@ -124,7 +124,7 @@
   .close {
     position: absolute;
     top: 8px;
-    right: 8px;
+    inset-inline-end: 8px;
     z-index: 1;
     display: inline-flex;
     align-items: center;
