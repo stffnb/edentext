@@ -15,9 +15,9 @@
   import { searchMatches } from '../editor/extensions/searchReplace';
   import type { PageBox } from '../utils/pageStrip';
   import PaneOptions, { layoutItems } from './PaneOptions.svelte';
-  import { t } from '../i18n/i18n.svelte';
+  import { t, uiRtl } from '../i18n/i18n.svelte';
   import { navigatorSettings, setNavigator, NAVIGATOR_TABS, NAVIGATOR_WIDTH, type NavigatorTab } from '../storage/navigator.svelte';
-  import { clampPaneWidth } from '../storage/panes.svelte';
+  import { clampPaneWidth, dockSide } from '../storage/panes.svelte';
 
   // LibreOffice's Navigator and Word's Navigation pane: the chapters of the document as a
   // tree to fold, click to jump, and the chapter operations beside them and on a right
@@ -33,7 +33,7 @@
   } = $props();
 
   const settings = $derived(navigatorSettings());
-  const left = $derived(settings.side === 'left');
+  const left = $derived(dockSide(settings.side) === 'left');
 
   const MIN_WIDTH = 180;
   const width = $derived(clampPaneWidth(settings.width, MIN_WIDTH));
@@ -228,18 +228,20 @@
 
   function rowKey(e: KeyboardEvent, r: Row) {
     const i = visible.findIndex((v) => v.key === r.key);
+    // The arrow pointing the way the tree indents unfolds a row.
+    const [unfold, fold] = uiRtl() ? ['ArrowLeft', 'ArrowRight'] : ['ArrowRight', 'ArrowLeft'];
     if (e.key === 'ArrowDown') focusRow(visible[i + 1]);
     else if (e.key === 'ArrowUp') focusRow(visible[i - 1]);
     else if (e.key === 'Home') focusRow(visible[0]);
     else if (e.key === 'End') focusRow(visible[visible.length - 1]);
-    else if (e.key === 'ArrowRight') { if (isFolded(r)) toggle(r, true); else if (r.parent) focusRow(visible[i + 1]); }
-    else if (e.key === 'ArrowLeft') {
+    else if (e.key === unfold) { if (isFolded(r)) toggle(r, true); else if (r.parent) focusRow(visible[i + 1]); }
+    else if (e.key === fold) {
       if (r.parent && !isFolded(r)) toggle(r, false);
       else focusRow(visible.slice(0, i).reverse().find((v) => v.level < r.level));
     } else if (e.key === 'Enter' || e.key === ' ') jumpTo(r.pos);
     else if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
       const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      openMenu(chapterMenu(r), box.left + 16, box.bottom, e.currentTarget as HTMLElement);
+      openMenu(chapterMenu(r), uiRtl() ? box.right - 16 : box.left + 16, box.bottom, e.currentTarget as HTMLElement);
     } else return;
     e.preventDefault();
   }
@@ -345,14 +347,14 @@
               <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
               <span class="twisty" class:hidden={!r.parent} onclick={(e) => { e.stopPropagation(); toggle(r); }}
                 title={isFolded(r) ? t().navigator.expand : t().navigator.collapse}>
-                <svg width="8" height="8" viewBox="0 0 8 8" class:folded={isFolded(r)} aria-hidden="true"><path d="M1 2.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <svg width="8" height="8" viewBox="0 0 8 8" class="icon-flip" class:folded={isFolded(r)} aria-hidden="true"><path d="M1 2.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </span>
-              <span class="label">{#if r.num}<span class="num">{r.num}</span>{/if}{r.text || t().navigator.untitled}</span>
+              <span class="label doc-quote" dir="auto">{#if r.num}<span class="num">{r.num}</span>{/if}{r.text || t().navigator.untitled}</span>
               <span class="ops">
                 <button tabindex="-1" onclick={(e) => { e.stopPropagation(); move(r, -1); }} title={t().navigator.moveUp} aria-label={t().navigator.moveUp}>↑</button>
                 <button tabindex="-1" onclick={(e) => { e.stopPropagation(); move(r, 1); }} title={t().navigator.moveDown} aria-label={t().navigator.moveDown}>↓</button>
-                <button tabindex="-1" onclick={(e) => { e.stopPropagation(); shift(r, -1); }} title={t().navigator.promote} aria-label={t().navigator.promote}>←</button>
-                <button tabindex="-1" onclick={(e) => { e.stopPropagation(); shift(r, 1); }} title={t().navigator.demote} aria-label={t().navigator.demote}>→</button>
+                <button class="icon-flip" tabindex="-1" onclick={(e) => { e.stopPropagation(); shift(r, -1); }} title={t().navigator.promote} aria-label={t().navigator.promote}>←</button>
+                <button class="icon-flip" tabindex="-1" onclick={(e) => { e.stopPropagation(); shift(r, 1); }} title={t().navigator.demote} aria-label={t().navigator.demote}>→</button>
               </span>
             </li>
           {/each}
@@ -366,7 +368,7 @@
       {:else}
         <ul class="hits" bind:this={hitList}>
           {#each hitRows as h, i (i)}
-            <li><button class="jump hit" class:current={i === currentHit} data-hit={i} onclick={() => editor?.commands.goToMatch(i)}>
+            <li><button class="jump hit doc-quote" dir="auto" class:current={i === currentHit} data-hit={i} onclick={() => editor?.commands.goToMatch(i)}>
               {h.before}<mark>{h.text}</mark>{h.after}
             </button></li>
           {/each}
@@ -405,7 +407,7 @@
           <div class="group">{group.label}</div>
           <ul>
             {#each group.items as o, i (i)}
-              <li><button class="jump" onclick={() => jumpTo(o.pos)} title={o.title ?? o.label}>{o.label}</button></li>
+              <li><button class="jump doc-quote" dir="auto" onclick={() => jumpTo(o.pos)} title={o.title ?? o.label}>{o.label}</button></li>
             {/each}
           </ul>
         {/if}

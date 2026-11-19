@@ -109,7 +109,7 @@
   import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
   import NoteOptionsDialog from './lib/components/NoteOptionsDialog.svelte';
   import SaveFormatDialog from './lib/components/SaveFormatDialog.svelte';
-  import { t, locale, setLocale } from './lib/i18n/i18n.svelte';
+  import { t, locale, setLocale, uiRtl } from './lib/i18n/i18n.svelte';
   import { isLocale } from './lib/i18n/config';
   import { fnv1a } from './lib/utils/hash';
   import { ltrIsland, withShortcut } from './lib/i18n/shortcut';
@@ -667,7 +667,9 @@
   const TRACK_EDGE = 20;     // track inset from the island's side edges
   let toolbarStackWidth = $state(0); // full content width of the stack
   let toolbarViewWidth = $state(0);  // visible (clipped) width
-  let tbScroll = $state(0);          // current left offset in px
+  let tbScroll = $state(0);          // offset from the stack's start edge in px
+  // The stack overflows towards the end side, so its offsets run that way too.
+  const tbSign = $derived(uiRtl() ? -1 : 1);
   let tbOverflow = $derived(Math.max(0, toolbarStackWidth - toolbarViewWidth));
   let tbTrackW = $derived(Math.max(0, toolbarViewWidth - 2 * (STACK_PAD_PX + TRACK_EDGE)));
   // Thumb: proportional, but capped short (25% of the track) so it reads clearly.
@@ -707,7 +709,7 @@
       return;
     }
     if (tbOverflow <= 0) return;
-    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX * tbSign : e.deltaY;
     if (delta === 0) return;
     e.preventDefault();
     tbScroll = Math.min(tbOverflow, Math.max(0, tbScroll + delta));
@@ -726,7 +728,8 @@
     const thumb = track.querySelector('.toolbar-scrollbar-thumb');
     if (!thumb?.contains(e.target as Node)) {
       const rect = track.getBoundingClientRect();
-      tbScroll = Math.min(tbOverflow, Math.max(0, ((e.clientX - rect.left - thumbWidth / 2) / thumbTravel) * tbOverflow));
+      const fromStart = uiRtl() ? rect.right - e.clientX : e.clientX - rect.left;
+      tbScroll = Math.min(tbOverflow, Math.max(0, ((fromStart - thumbWidth / 2) / thumbTravel) * tbOverflow));
     }
     tbDragging = true;
     tbDragX = e.clientX;
@@ -735,7 +738,7 @@
   }
   function onScrollbarPointerMove(e: PointerEvent) {
     if (!tbDragging || thumbTravel <= 0) return;
-    const delta = ((e.clientX - tbDragX) / thumbTravel) * tbOverflow;
+    const delta = (((e.clientX - tbDragX) * tbSign) / thumbTravel) * tbOverflow;
     tbScroll = Math.min(tbOverflow, Math.max(0, tbDragScroll + delta));
   }
   function onScrollbarPointerUp(e: PointerEvent) {
@@ -745,8 +748,8 @@
   function onScrollbarKeydown(e: KeyboardEvent) {
     if (thumbTravel <= 0) return;
     let next = tbScroll;
-    if (e.key === 'ArrowLeft') next -= 40;
-    else if (e.key === 'ArrowRight') next += 40;
+    if (e.key === 'ArrowLeft') next -= 40 * tbSign;
+    else if (e.key === 'ArrowRight') next += 40 * tbSign;
     else if (e.key === 'Home') next = 0;
     else if (e.key === 'End') next = tbOverflow;
     else return;
@@ -1880,7 +1883,7 @@
     {#if tbOverflow > 0}
       <div
         class="toolbar-scrollbar"
-        style="width: {tbTrackW}px; transform: translateX({tbScroll + TRACK_EDGE}px);"
+        style="width: {tbTrackW}px; transform: translateX({tbSign * (tbScroll + TRACK_EDGE)}px);"
         role="scrollbar"
         tabindex={0}
         aria-orientation="horizontal"
@@ -1893,7 +1896,7 @@
         onpointerup={onScrollbarPointerUp}
         onkeydown={onScrollbarKeydown}
       >
-        <div class="toolbar-scrollbar-thumb" style="width: {thumbWidth}px; transform: translateX({thumbLeft}px);"></div>
+        <div class="toolbar-scrollbar-thumb" style="width: {thumbWidth}px; transform: translateX({tbSign * thumbLeft}px);"></div>
       </div>
     {/if}
   {/snippet}
@@ -1971,7 +1974,7 @@
   {:else}
   <div class="toolbar-region" bind:clientHeight={toolbarRegionH}>
     <div class="toolbar-clip" id="primary-toolbar" bind:this={toolbarClipEl} onwheel={onToolbarWheel}>
-      <div class="toolbar-stack" bind:this={toolbarStackEl} style="transform: translateX(-{tbScroll}px);">
+      <div class="toolbar-stack" bind:this={toolbarStackEl} style="transform: translateX({-tbSign * tbScroll}px);">
   <header class:expanded={toolbarExpanded}>
     {#if !whiteLabel}
     <button class="logo-btn" data-cmd="about" onclick={() => (aboutOpen = true)} aria-label={t().about.label} title={t().about.label}>
@@ -2503,11 +2506,14 @@
     position: relative;
   }
 
+  /* A pane's dock side is a physical one, so the row keeps its left-to-right order. */
+  :global(html[dir='rtl']) .editor-row { flex-direction: row-reverse; }
+
   /* Find & Replace bar: floats at the top-right of the editing area, just under the
      toolbar (top is set inline from the toolbar height). Below the toolbar's z-index. */
   .find-bar-anchor {
     position: fixed;
-    right: 1.5rem;
+    inset-inline-end: 1.5rem;
     z-index: 190;
   }
 
@@ -2556,7 +2562,7 @@
      below the dropdowns (z ≥ 200 in the same stacking context). */
   .toolbar-scrollbar {
     position: absolute;
-    left: 0;
+    inset-inline-start: 0;
     bottom: 4px;
     height: 3px;
     z-index: 1;
@@ -2569,7 +2575,7 @@
   .toolbar-scrollbar-thumb {
     position: absolute;
     top: 0;
-    left: 0;
+    inset-inline-start: 0;
     height: 100%;
     border-radius: 2px;
     background: var(--scrollbar-thumb, var(--color-btn-hover));

@@ -798,7 +798,7 @@
     {@const index = sectionOf(editingPage)}
     {@const variant = variantFor(editingPage, index)}
     <div class="hf-zone hf-{hfActive} hf-active" class:hf-clipped={clipOf(hfActive, editingPage) !== null} style={boxStyle(box) + pageVar(box, editingPage) + pageFrameVars(hfActive, editingPage) + ` --hf-tb-offset: ${-activeTrailingPx}px;`} use:pageDir={pageRtl} bind:this={liveMount}></div>
-    <div class="hf-tag" style="top: {box.top}px; left: {box.left}px;">
+    <div class="hf-tag ui-dir" style="top: {box.top}px; left: {box.left}px;">
       {hfActive === 'header'
         ? (variant === 'first' ? t().hf.firstPageHeader : variant === 'even' ? t().hf.evenPageHeader : t().hf.headerLabel)
         : (variant === 'first' ? t().hf.firstPageFooter : variant === 'even' ? t().hf.evenPageFooter : t().hf.footerLabel)}{sets.length >
@@ -806,7 +806,7 @@
         ? ` · ${t().hf.section} ${index + 1}`
         : ''}
     </div>
-    <div class="hf-bar" style="top: {box.top}px; left: {box.left + box.width}px;">
+    <div class="hf-bar ui-dir" style="top: {box.top}px; left: {box.left + box.width}px;">
       <span class="hf-bar-label">{t().hf.insert}</span>
       <button class="hf-bar-btn" title={t().hf.pageNumberTitle} onmousedown={(e) => e.preventDefault()} onclick={() => insertField('pageNumber')}>{t().hf.pageNumber}</button>
       <button class="hf-bar-btn" data-cmd="hfPageCount" title={t().hf.pageCountTitle} onmousedown={(e) => e.preventDefault()} onclick={() => insertField('pageCount')}>{t().hf.pageCount}</button>

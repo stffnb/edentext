@@ -25,6 +25,9 @@
 .paper-scaler {
   position: relative;
   margin: 0 auto;
+  /* The sheet scales from this box's left edge, so it must start there in a
+     right-to-left interface too; interface parts inside take `.ui-dir`. */
+  direction: ltr;
 }
 
 /* A4 paper container (794px = 210mm at 96dpi by default; --user-page-width is

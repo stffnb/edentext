@@ -330,7 +330,7 @@
 </script>
 
 <div
-  class="review-margin-layer"
+  class="review-margin-layer ui-dir"
   class:layer-instant={!!glide}
   bind:this={host}
   use:hover

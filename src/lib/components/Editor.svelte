@@ -697,7 +697,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     const cRect = container.getBoundingClientRect();
     ctxMenu = {
       top: event.clientY - cRect.top + container.scrollTop,
-      left: event.clientX - cRect.left + container.scrollLeft,
+      left: event.clientX - cRect.left - container.clientLeft + container.scrollLeft,
       items: buildContextMenu(ed, { spell, grammar }),
     };
   }
@@ -748,7 +748,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     const cRect = container.getBoundingClientRect();
     linkTip = {
       top: rect.top - cRect.top + container.scrollTop,
-      left: rect.left - cRect.left + container.scrollLeft,
+      left: rect.left - cRect.left - container.clientLeft + container.scrollLeft,
       href: el.getAttribute('href') ?? '',
       pane,
     };
@@ -856,7 +856,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     // aligned across zoom; the toolbar is a non-zoomed sibling, rendered constant-size.
     const tRect = dom.getBoundingClientRect();
     const cRect = container.getBoundingClientRect();
-    const left = tRect.left - cRect.left + container.scrollLeft;
+    const left = tRect.left - cRect.left - container.clientLeft + container.scrollLeft;
     // Default: anchor just above the table's top-left corner.
     let top = tRect.top - cRect.top + container.scrollTop;
 
@@ -915,7 +915,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     imageUi = {
       visible: true,
       top: toolbarAnchorTop(dom, r) - cRect.top + container.scrollTop,
-      left: r.left - cRect.left + container.scrollLeft,
+      left: r.left - cRect.left - container.clientLeft + container.scrollLeft,
       wrap: ((sel as NodeSelection).node.attrs.wrap as WrapMode) || 'inline',
       inFront: (sel as NodeSelection).node.attrs.inFront === true,
       wrapDist: (sel as NodeSelection).node.attrs.wrapDist ?? null,
@@ -948,7 +948,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     textBoxUi = {
       visible: true,
       top: toolbarAnchorTop(dom, r) - cRect.top + container!.scrollTop,
-      left: r.left - cRect.left + container!.scrollLeft,
+      left: r.left - cRect.left - container!.clientLeft + container!.scrollLeft,
       wrap: (a.wrap as WrapMode) || 'inline',
       inFront: a.inFront === true,
       wrapAlign: (a.wrapAlign as string | null) ?? null,

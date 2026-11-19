@@ -13,7 +13,7 @@ export type AiMode = 'chat' | 'edit';
 /** A saved prompt the chat runs as `/name`. */
 export type CustomCommand = { name: string; prompt: string };
 /** `commands`: the user's own slash commands. */
-export type AiSettings = { enabled: boolean; provider: AiProvider; endpoint: string; apiKey: string; model: string; contextTokens: number; mode: AiMode; side: 'left' | 'right'; commands: CustomCommand[] };
+export type AiSettings = { enabled: boolean; provider: AiProvider; endpoint: string; apiKey: string; model: string; contextTokens: number; mode: AiMode; side?: 'left' | 'right'; commands: CustomCommand[] };
 export type AiConfig = Omit<AiSettings, 'enabled'>;
 
 const KEY = 'edentext-ai';
@@ -27,7 +27,7 @@ export const AI_COMMENT_EVENT = 'edentext-ai-comment';
 export const aiAnswering = new SvelteMap<string, string>();
 
 export const DEFAULT_CONTEXT_TOKENS = 32_000;
-const DEFAULTS: AiSettings = { enabled: true, provider: 'openai', endpoint: '', apiKey: '', model: '', contextTokens: DEFAULT_CONTEXT_TOKENS, mode: 'edit', side: 'right', commands: [] };
+const DEFAULTS: AiSettings = { enabled: true, provider: 'openai', endpoint: '', apiKey: '', model: '', contextTokens: DEFAULT_CONTEXT_TOKENS, mode: 'edit', commands: [] };
 
 /** The characters of document a request may carry: half the context, at about four a token. */
 export function docBudget(cfg: Pick<AiConfig, 'contextTokens'>): number {
@@ -40,7 +40,7 @@ const validCommands = (v: unknown): CustomCommand[] =>
 function load(): AiSettings {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null');
-    return raw && typeof raw === 'object' ? { ...DEFAULTS, ...raw, enabled: raw.enabled !== false, mode: raw.mode === 'chat' ? 'chat' : 'edit', side: raw.side === 'left' ? 'left' : 'right', commands: validCommands(raw.commands) } : { ...DEFAULTS };
+    return raw && typeof raw === 'object' ? { ...DEFAULTS, ...raw, enabled: raw.enabled !== false, mode: raw.mode === 'chat' ? 'chat' : 'edit', side: raw.side === 'left' || raw.side === 'right' ? raw.side : undefined, commands: validCommands(raw.commands) } : { ...DEFAULTS };
   } catch {
     return { ...DEFAULTS };
   }

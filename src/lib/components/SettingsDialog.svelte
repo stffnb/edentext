@@ -20,6 +20,7 @@
   } from '../storage/markup.svelte';
   import { ACCENTS, loadAccent, saveAccent, applyAccent, isCustomAccent, parseAccentHex, type Accent, type ChromeMode, type ThemeMode } from '../storage/theme';
   import { LOCALES, LOCALE_LABELS, isLocale } from '../i18n/config';
+  import { dockSide } from '../storage/panes.svelte';
   import { t, locale, setLocale } from '../i18n/i18n.svelte';
   import { DATE_FORMATS, dateFormat, formatMoment, setDateFormat, type DateFormat } from '../storage/dateFormat.svelte';
   import { localeTag } from '../utils/dateTime';
@@ -424,7 +425,7 @@
           </div>
           <div class="row sub" class:dim={!ai.enabled}>
             <div class="info"><div class="name">{t().ai.side}</div><div class="desc">{t().ai.sideHint}</div></div>
-            <select value={ai.side} disabled={!ai.enabled} onchange={(e) => setAi({ side: e.currentTarget.value === 'left' ? 'left' : 'right' })}>
+            <select value={dockSide(ai.side)} disabled={!ai.enabled} onchange={(e) => setAi({ side: e.currentTarget.value === 'left' ? 'left' : 'right' })}>
               <option value="right">{t().ai.sideRight}</option>
               <option value="left">{t().ai.sideLeft}</option>
             </select>

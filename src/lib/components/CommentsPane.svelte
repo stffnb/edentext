@@ -8,7 +8,7 @@
   import PaneResize from './PaneResize.svelte';
   import PaneOptions, { layoutItems } from './PaneOptions.svelte';
   import { t } from '../i18n/i18n.svelte';
-  import { clampPaneWidth, paneLayout, setPaneLayout, REVIEW_PANE_WIDTH, type PaneLayout } from '../storage/panes.svelte';
+  import { clampPaneWidth, paneLayout, setPaneLayout, REVIEW_PANE_WIDTH, type PaneLayout, dockSide } from '../storage/panes.svelte';
 
   // Word's Reviewing Pane: every comment in document order, click to jump to the text it
   // annotates. The balloons beside the page are the other view (ReviewMarginLayer); both
@@ -23,7 +23,7 @@
   // Docked either side at the width and text size the reader set, as the navigator is.
   const MIN_WIDTH = 200;
   const layout = $derived(paneLayout('comments'));
-  const left = $derived(layout.side === 'left');
+  const left = $derived(dockSide(layout.side) === 'left');
   const width = $derived(clampPaneWidth(layout.width, MIN_WIDTH));
   const setLayout = (patch: Partial<PaneLayout>) => setPaneLayout('comments', patch);
   const setWidth = (w: number) => setLayout({ width: clampPaneWidth(w, MIN_WIDTH) });

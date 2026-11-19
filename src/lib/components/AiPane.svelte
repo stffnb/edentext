@@ -1,4 +1,5 @@
 <script module lang="ts">
+  import { dockSide } from '../storage/panes.svelte';
   import type { ChatMessage } from '../ai/client';
   import type { Command, Target } from '../ai/commands';
   import { loadAiChat, saveAiChat } from '../storage/aiChat';
@@ -78,7 +79,7 @@
     if (!busy) saveAiChat({ entries: snapshot, history });
   });
   // Settings ▸ AI can dock the pane left of the pages; the editor row orders it first.
-  let left = $derived(aiSettings().side === 'left');
+  let left = $derived(dockSide(aiSettings().side) === 'left');
   // The selection goes with every question (serializeDoc); the chip shows that it does.
   let selected = $state('');
 
