@@ -288,7 +288,7 @@
             <hr />
             {#each recentFiles as f (f.id)}
               <button onclick={() => { closeMenu(); onOpenRecent?.(f.id); }}>
-                <Icon name="folder" size={16} />{f.name}
+                <Icon name="folder" size={16} /><bdi>{f.name}</bdi>
               </button>
             {/each}
             <button onclick={() => run(onForgetRecent)}>

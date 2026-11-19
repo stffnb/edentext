@@ -91,7 +91,7 @@
 </div>
 {#if !folded}
   <button class="card" onclick={onSelect}>
-    <div class="quote" style:border-color={authorColor(colors, c.author)}>{c.quote}</div>
+    <div class="quote doc-quote" dir="auto" style:border-color={authorColor(colors, c.author)}>{c.quote}</div>
   </button>
 {/if}
 {#if editing}
@@ -107,7 +107,7 @@
     <button class="primary" onclick={commit}>{t().common.ok}</button>
   </div>
 {:else if full}
-  <p class="body">{c.text}</p>
+  <p class="body doc-quote" dir="auto">{c.text}</p>
 {:else}
   <!-- Cut to a few lines; a click opens the card, as clicking its text does. -->
   <button class="card body clamp" class:line={folded} onclick={onSelect}>{c.text}</button>
@@ -117,12 +117,12 @@
   {#each c.replies as r, i (i)}
     <div class="reply">
       <div class="meta"><b style:color={authorColor(colors, r.author)}>{r.author || t().revisions.unknownAuthor}</b><span>{formatMoment(r.date)}</span></div>
-      <p class="body">{r.text}</p>
+      <p class="body doc-quote" dir="auto">{r.text}</p>
     </div>
   {/each}
 {:else if c.replies.length}
   <button class="card replies" aria-expanded="false" onclick={onSelect}>
-    <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+    <svg class="icon-flip" width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
       <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>{t().comments.replies(c.replies.length)}
   </button>

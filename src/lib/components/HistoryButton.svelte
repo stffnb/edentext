@@ -76,7 +76,7 @@
       disabled={!canRun}
       title={`${direction === 'undo' ? t().history.undo : t().history.redo} (${withShortcut(direction === 'undo' ? 'Ctrl+Z' : 'Ctrl+Shift+Z')})`}
     >
-      {direction === 'undo' ? '↩' : '↪'}
+      <span class="icon-flip">{direction === 'undo' ? '↩' : '↪'}</span>
     </button>
     <button
       class="history-caret"

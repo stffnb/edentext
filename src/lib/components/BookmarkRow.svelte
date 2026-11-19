@@ -53,7 +53,7 @@
       onblur={() => (editing = false)}
     />
   {:else}
-    <button class="bm-name" onclick={onGoTo} title={t().bookmark.goTo}>{name}</button>
+    <button class="bm-name doc-quote" dir="auto" onclick={onGoTo} title={t().bookmark.goTo}>{name}</button>
     <button class="bm-op" onclick={startRename} aria-label={`${t().bookmark.rename} ${name}`} title={t().bookmark.rename}>
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 10l.6-2.4L8.2 2a1 1 0 0 1 1.4 0l.4.4a1 1 0 0 1 0 1.4L4.4 9.4 2 10z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
     </button>

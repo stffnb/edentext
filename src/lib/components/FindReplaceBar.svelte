@@ -88,7 +88,7 @@
 
 <div class="find-bar" role="dialog" aria-label={t().findReplace.dialogLabel}>
   <button class="fb-expand" onclick={() => (showReplace = !showReplace)} title={showReplace ? t().findReplace.hideReplace : t().findReplace.showReplace} aria-label={t().findReplace.toggleReplace}>
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style="transform: rotate({showReplace ? 90 : 0}deg)">
+    <svg class="icon-flip" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style="transform: rotate({showReplace ? 90 : 0}deg)">
       <path d="M3 1.5l3.5 3.5L3 8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>

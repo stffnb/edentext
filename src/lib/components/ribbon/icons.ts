@@ -204,3 +204,15 @@ export function pinnedStroke(size: number): number {
   const painted = size >= 20 ? 1.5 : size >= 13 ? 1.25 : 1.1;
   return (painted * 16) / size;
 }
+
+// Glyphs that show reading direction or sequence (back/forward, undo/redo, indent, lists,
+// lines of text) and so mirror in a right-to-left interface. One that names a physical
+// side of the page or an object (alignment, borders, wrap, a table's columns) stays.
+export const MIRRORED: ReadonlySet<IconName> = new Set<IconName>([
+  'chevronRight', 'chevronLeft', 'undo', 'redo', 'bulletList', 'orderedList', 'indentMore', 'indentLess',
+  'lineSpacing', 'toc', 'tocLevels', 'headingNumbering', 'crossRef', 'trackChanges', 'wordCount',
+  'hyphenation', 'quickParts', 'caption', 'footnote', 'endnote', 'header', 'footer',
+]);
+
+// Paths of a mirrored glyph that keep their own handedness, as digits must.
+export const UPRIGHT: Partial<Record<IconName, readonly number[]>> = { orderedList: [1, 2, 3] };

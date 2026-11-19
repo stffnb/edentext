@@ -50,7 +50,7 @@
   <div class="row">
     <button class="fold" onclick={() => (showReplace = !showReplace)} aria-expanded={showReplace}
       title={showReplace ? t().findReplace.hideReplace : t().findReplace.showReplace} aria-label={t().findReplace.toggleReplace}>
-      <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true" style:transform="rotate({showReplace ? 0 : -90}deg)"><path d="M1 2.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg class="icon-flip" width="8" height="8" viewBox="0 0 8 8" aria-hidden="true" style:transform="rotate({showReplace ? 0 : -90}deg)"><path d="M1 2.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <input type="search" bind:value={term} oninput={apply} onkeydown={keydown} placeholder={t().navigator.searchDocument}
       aria-label={t().navigator.searchDocument} spellcheck="false" autocomplete="off" />

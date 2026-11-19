@@ -49,7 +49,7 @@
     <span>{formatMoment(r.date)}</span>
   </div>
   <div class="kind">{[place, kind].filter(Boolean).join(' · ')}</div>
-  <div class="quote" class:struck={r.kind === 'deletion'} style:color={color}>{r.text.replace(/\n/g, '¶') || (r.table ? t().revisions[r.table === 'row' ? 'tableRow' : 'tableColumn'] : '¶')}</div>
+  <div class="quote doc-quote" dir="auto" class:struck={r.kind === 'deletion'} style:color={color}>{r.text.replace(/\n/g, '¶') || (r.table ? t().revisions[r.table === 'row' ? 'tableRow' : 'tableColumn'] : '¶')}</div>
 </button>
 {#if editing}
   <!-- svelte-ignore a11y_autofocus -->
