@@ -38,7 +38,7 @@
         <input type="checkbox" checked={autoCorrect()[key]} onchange={(e) => toggle(key, e.currentTarget.checked)} />
         <span>
           {t().autoCorrect[key]}
-          <em>{t().autoCorrect.examples[key]}</em>
+          <em dir="ltr">{t().autoCorrect.examples[key]}</em>
         </span>
       </label>
     {/each}
@@ -51,7 +51,7 @@
         disabled={volatile}
         onchange={(e) => setWordCompletion({ ...wordCompletion(), enabled: e.currentTarget.checked })}
       />
-      <span>{t().wordCompletion.enabled}<em>{volatile ? t().wordCompletion.offUnstored : t().wordCompletion.hint}</em></span>
+      <span>{t().wordCompletion.enabled} <em>{volatile ? t().wordCompletion.offUnstored : t().wordCompletion.hint}</em></span>
     </label>
     <label class="row">
       <input

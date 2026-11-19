@@ -148,7 +148,7 @@
         <div class="char-section-label">{t().special.recent}</div>
         <div class="char-grid">
           {#each recentChars as c (c)}
-            <button class="char-cell" title={titleOf(c)} onclick={() => pick(c)}>{c}</button>
+            <button class="char-cell" dir="ltr" title={titleOf(c)} onclick={() => pick(c)}>{c}</button>
           {/each}
         </div>
       {/if}
@@ -170,7 +170,7 @@
       {#if displayed.length > 0}
         <div class="char-grid main">
           {#each displayed as entry (entry.char)}
-            <button class="char-cell" title={titleOf(entry.char)} onclick={() => pick(entry.char)}>{entry.char}</button>
+            <button class="char-cell" dir="ltr" title={titleOf(entry.char)} onclick={() => pick(entry.char)}>{entry.char}</button>
           {/each}
         </div>
       {:else}

@@ -16,7 +16,7 @@
   import { clipboardCommand, readClipboard } from '../../../editor/contextMenuItems';
   import { LINE_STYLES, changeIndent as stepIndent, setLineStyle as applyLineStyle } from '../../formatCommands';
   import { BULLET_TYPES } from '../../../utils/bulletListTypes';
-  import { formatOrdinal, orderedTypeDef, orderedTypesFor, type OrderedListType } from '../../../utils/orderedListTypes';
+  import { formatOrdinal, orderedTypeDef, orderedTypesFor, sampleDir, type OrderedListType } from '../../../utils/orderedListTypes';
   import { effectiveOrderedTypeAt, inChapterHeading } from '../../../editor/extensions/orderedList';
   import { outlineIsEmpty } from '../../../styles/outlineNumbering';
   import { listStyleNameAt } from '../../../editor/extensions/listStyle';
@@ -367,7 +367,7 @@
             <div class="rb-menu-label">{t().toolbar.numbering}</div>
             {#each orderedTypesFor(scripts, currentOrderedType) as o}
               <button class:selected={currentOrderedType === o.key} onclick={() => applyOrderedType(o.key)}>
-                <span class="marker">{o.preview}</span>{o.label}
+                <span class="marker" dir={sampleDir(o)}>{o.preview}</span><span dir={sampleDir(o)}>{o.label}</span>
               </button>
             {/each}
             {#if orderedListStyles.length}

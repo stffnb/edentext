@@ -111,6 +111,12 @@ export function orderedTypeDef(key: string | null | undefined): OrderedTypeDef {
   return BY_KEY.get(key ?? DEFAULT_ORDERED_TYPE) ?? BY_KEY.get(DEFAULT_ORDERED_TYPE)!;
 }
 
+// A menu's sample of a numbering ("1, 2, 3", "a)") reads in its own script's direction,
+// so a right-to-left interface does not reorder its digits and brackets.
+export function sampleDir(type: Pick<OrderedTypeDef, 'script'>): 'ltr' | 'rtl' {
+  return type.script === 'arabic' ? 'rtl' : 'ltr';
+}
+
 // The def a list with this attr renders at this 0-based depth (null = depth cycle).
 export function effectiveOrderedDef(key: string | null | undefined, depth0: number): OrderedTypeDef {
   return orderedTypeDef(key ?? defaultOrderedType(depth0));

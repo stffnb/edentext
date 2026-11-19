@@ -16,7 +16,8 @@
   } from '../styles/outlineNumbering';
   import { listStyleMarginCm, MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
   import { listStyleNameAt } from '../editor/extensions/listStyle';
-  import { formatOrdinal, orderedTypeDef, orderedTypesFor } from '../utils/orderedListTypes';
+  import { formatOrdinal, orderedTypeDef, orderedTypesFor, sampleDir } from '../utils/orderedListTypes';
+  import { ltrIsland } from '../i18n/shortcut';
   import { BULLET_TYPES } from '../utils/bulletListTypes';
   import {
     TABLE_REGIONS, previewCellCss, previewTextCss,
@@ -715,7 +716,7 @@
                   onchange={(e) => editLevel({ numType: e.currentTarget.value as ListLevelStyle['numType'] })}
                 >
                   {#each orderedTypesFor(scripts, lLevel.numType, true).filter((o) => !o.multilevel) as o}
-                    <option value={o.key}>{o.preview} — {o.label}</option>
+                    <option value={o.key}>{sampleDir(o) === 'ltr' ? `${ltrIsland(o.preview)} — ${ltrIsland(o.label)}` : `${o.preview} — ${o.label}`}</option>
                   {/each}
                 </select>
               </label>

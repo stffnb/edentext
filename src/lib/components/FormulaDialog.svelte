@@ -138,7 +138,7 @@
       </button>
     </header>
 
-    <div class="formula-preview">{@html preview}</div>
+    <div class="formula-preview" dir="ltr">{@html preview}</div>
 
     <div class="palette">
       {#each GROUPS as group (group.key)}
@@ -146,7 +146,7 @@
           <span class="palette-label">{t().formula.groups[group.key]}</span>
           <div class="palette-items">
             {#each group.items as item (item.snip)}
-              <button type="button" title={item.snip.trim()} onclick={() => insert(item.snip)}>{item.label}</button>
+              <button type="button" dir="ltr" title={item.snip.trim()} onclick={() => insert(item.snip)}>{item.label}</button>
             {/each}
           </div>
         </div>

@@ -6,6 +6,7 @@
   import ColorPicker from './ColorPicker.svelte';
   import { styleSheet } from '../styles/sheet.svelte';
   import { formatOrdinal } from '../utils/orderedListTypes';
+  import { ltrIsland } from '../i18n/shortcut';
   import { styleLabel, t } from '../i18n/i18n.svelte';
 
   // LibreOffice's Tools ▸ Footnotes and Endnotes. Everything here round-trips to ODF's
@@ -29,7 +30,7 @@
   const cls = $derived(noteSettings()[kind]);
   const sep = $derived(noteSettings().separator);
   // Three running values, so a format reads as a sequence rather than a letter.
-  const preview = (f: NoteNumFormat) => [0, 1, 2].map((i) => formatOrdinal(i + 1, f)).join(', ');
+  const preview = (f: NoteNumFormat) => ltrIsland([0, 1, 2].map((i) => formatOrdinal(i + 1, f)).join(', '));
 
   function patch(next: Partial<NoteSettings[NoteKind]>) {
     const s = noteSettings();

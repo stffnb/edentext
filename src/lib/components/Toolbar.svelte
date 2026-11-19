@@ -7,7 +7,7 @@
   import { effectiveOrderedTypeAt, inChapterHeading } from '../editor/extensions/orderedList';
   import { outlineIsEmpty } from '../styles/outlineNumbering';
   import { listStyleNameAt } from '../editor/extensions/listStyle';
-  import { formatOrdinal, orderedTypeDef } from '../utils/orderedListTypes';
+  import { formatOrdinal, orderedTypeDef, sampleDir } from '../utils/orderedListTypes';
   import type { ListStyle } from '../styles/listStyles';
   import { isInHeaderCell } from '../editor/extensions/tableHeaderRow';
   import { cellRegionText } from '../editor/extensions/tableStyle';
@@ -512,8 +512,8 @@
                 role="menuitemradio"
                 aria-checked={currentOrderedType === o.key}
               >
-                <span class="ol-option-preview">{o.preview}</span>
-                <span class="ol-option-label">{o.label}</span>
+                <span class="ol-option-preview" dir={sampleDir(o)}>{o.preview}</span>
+                <span class="ol-option-label" dir={sampleDir(o)}>{o.label}</span>
               </button>
             {/each}
             {#if orderedListStyles.length}

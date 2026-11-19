@@ -239,7 +239,7 @@
     <div class="im-label">{t().ribbon.pageNumberFormat}</div>
     {#each PAGE_NUM_FORMATS as f}
       <button class:selected={pageNumbering.format === f} onclick={() => (pageNumbering = { ...pageNumbering, format: f })}>
-        {[1, 2, 3].map((n) => formatOrdinal(n, f)).join(', ')}
+        <span dir="ltr">{[1, 2, 3].map((n) => formatOrdinal(n, f)).join(', ')}</span>
       </button>
     {/each}
     <label class="im-row">

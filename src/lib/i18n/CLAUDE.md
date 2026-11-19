@@ -32,7 +32,10 @@ Script-placed parts ask `uiRtl()` (`i18n.svelte.ts`): a panel starts at its anch
 arrow key pointing there opens them, and the island's toolbar offset runs from the start. A glyph
 that shows reading direction or sequence mirrors (`MIRRORED` in `ribbon/icons.ts`, `.icon-flip` on
 an inline one, digits kept by `.icon-keep`); one naming a physical side (alignment, borders, wrap,
-table columns, the direction buttons) does not. The page area stays physical: `.paper-scaler` is
+table columns, the direction buttons) does not. Undo and redo mirror as Microsoft Office's do
+(its Fluent `arrow_undo`/`arrow_redo` assets are flagged flippable); LibreOffice keeps them.
+A sample that must not reorder or mirror takes its own `dir`: numbering formats (`sampleDir`),
+symbol and formula palette cells, autocorrect examples. The page area stays physical: `.paper-scaler` is
 `direction: ltr`, an interface part inside it takes `.ui-dir`, and a label quoting document text
 takes `dir="auto"` with `.doc-quote` (font and file names sit in `<bdi>`). A pane's dock side is a
 physical choice; unset, it is the interface's end side (`dockSide`, `storage/panes.svelte.ts`).

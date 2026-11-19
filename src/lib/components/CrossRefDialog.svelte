@@ -154,7 +154,7 @@
       <span class="xr-label">{t().crossRef.target}</span>
       <select class="xr-list" size={8} bind:value={picked}>
         {#each targets as target, i (i)}
-          <option value={i}>{target.label}</option>
+          <option class="doc-quote" dir="auto" value={i}>{target.label}</option>
         {/each}
       </select>
     {/if}
