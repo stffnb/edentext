@@ -243,6 +243,7 @@ const SCHEMA: Record<string, Entry> = {
   'table.repeatHeader': check(table('repeat_header', { value: 'on' }), attr('table', 'repeatHeader', true), TABLE),
   'table.marginLeft': IMPORT,
   'table.marginRight': IMPORT,
+  'table.dir': IMPORT,
   'table.marginTop': IMPORT,
   'table.marginBottom': IMPORT,
   'table.cellPadding': check(table('css', { value: 'padding: 0.3cm' }), (d) => JSON.stringify(first(d, 'tableCell')!.attrs.cellPadding) === '[0.3,0.3,0.3,0.3]', TABLE),

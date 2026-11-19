@@ -1207,6 +1207,9 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   padding-top: calc(max(0px, calc(var(--row-pad-t, var(--cell-pad-t, 0px))
     - max(0px, var(--border-over, var(--border-over-default)) - var(--row-pad-b, var(--cell-pad-b, 0px)))))
     + var(--edge-pad-t, 0px));
+  /* The side borders again, for a mirrored table to swap; never a cell's around it. */
+  --cell-b-l: initial;
+  --cell-b-r: initial;
   vertical-align: top;
   /* A repeating header row is a <th>, and no word processor centres or bolds its text
      for that reason — drop the two UA defaults so the cell follows its own style. */
@@ -1237,8 +1240,25 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
    text (its PDF centres a line in exactly width − margins); the collapsed border puts half
    a painted pixel inside each side. ponytail: assumes 1px lines, a thick one still costs. */
 .paper[data-spacing-model='max'] .tiptap :is(td, th) {
+  --cell-pad-trim: 0.5px;
   padding-left: calc(var(--cell-pad-l, 0.19cm) - 0.5px);
   padding-right: calc(var(--cell-pad-r, 0.19cm) - 0.5px);
+}
+
+/* A table's columns run the page's way unless it names its own direction (w:bidiVisual,
+   style:writing-mode); the text in its cells keeps the page's either way. */
+.tiptap-host, .hf-zone { --page-dir: ltr; }
+.tiptap-host[dir='rtl'], .hf-zone[dir='rtl'] { --page-dir: rtl; }
+.paper .tiptap table:not([dir]) { direction: var(--page-dir); }
+.paper .tiptap table[dir] > tbody > tr > :is(td, th) { direction: var(--page-dir); }
+/* A cell's left is the side facing the column before it, so a right-to-left table draws
+   left borders and margins on the right. By attribute, as :dir() is lowered to languages. */
+.paper .tiptap table[dir='rtl'] > tbody > tr > :is(td, th),
+:is(.tiptap-host, .hf-zone)[dir='rtl'] .tiptap table:not([dir]) > tbody > tr > :is(td, th) {
+  border-left: var(--cell-b-r, 1px solid #000) !important;
+  border-right: var(--cell-b-l, 1px solid #000) !important;
+  padding-left: calc(var(--cell-pad-r, 0.19cm) - var(--cell-pad-trim, 0px));
+  padding-right: calc(var(--cell-pad-l, 0.19cm) - var(--cell-pad-trim, 0px));
 }
 
 /* No space below a cell paragraph that names no style: LibreOffice's Table Contents and
@@ -1339,6 +1359,16 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
 .paper .tiptap .column-resize-handle.left {
   left: -2px;
   right: auto;
+}
+.paper .tiptap table[dir='rtl'] > tbody > tr > :is(td, th) > .column-resize-handle,
+:is(.tiptap-host, .hf-zone)[dir='rtl'] .tiptap table:not([dir]) > tbody > tr > :is(td, th) > .column-resize-handle {
+  left: -2px;
+  right: auto;
+}
+.paper .tiptap table[dir='rtl'] > tbody > tr > :is(td, th) > .column-resize-handle.left,
+:is(.tiptap-host, .hf-zone)[dir='rtl'] .tiptap table:not([dir]) > tbody > tr > :is(td, th) > .column-resize-handle.left {
+  left: auto;
+  right: -2px;
 }
 
 .paper .tiptap .column-resize-dragging {

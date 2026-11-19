@@ -2,6 +2,7 @@
   import type { Editor, ChainedCommands } from '@tiptap/core';
   import { isHeaderStyled } from '../editor/extensions/tableHeaderRow';
   import type { CellPadding } from '../editor/extensions/tableCellPadding';
+  import { selectionTableRtl } from '../editor/extensions/tableView';
   import IslandMenu from './toolbar/IslandMenu.svelte';
   import CaptionDialog from './CaptionDialog.svelte';
   import Icon from './ribbon/Icon.svelte';
@@ -30,6 +31,12 @@
   // Run a table command without disturbing the cell selection: preventDefault on
   // mousedown keeps focus/selection in the editor, then .focus() in the chain
   // re-anchors to that selection so the row/column lands at the active cell.
+  // Left and right are what the reader sees; a right-to-left table's columns run mirrored.
+  const mirrored = () => !!editor && selectionTableRtl(editor.view);
+
+  // A cell's margins are stored top, right, bottom, left, the sides being the grid's.
+  const sideIndex = (i: number) => (i % 2 === 1 && mirrored() ? 4 - i : i);
+
   function run(cmd: (chain: ChainedCommands) => ChainedCommands) {
     if (!editor) return;
     cmd(editor.chain().focus()).run();
@@ -112,7 +119,7 @@
     title={t().table.insertColumnLeft}
     data-cmd="insertLeft"
     aria-label={t().table.insertColumnLeft}
-    onclick={() => run((c) => c.addColumnBefore())}
+    onclick={() => run((c) => (mirrored() ? c.addColumnAfter() : c.addColumnBefore()))}
   >
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <rect x="9.5" y="1.5" width="7" height="15" rx="1" stroke="currentColor" stroke-width="1.3"/>
@@ -126,7 +133,7 @@
     title={t().table.insertColumnRight}
     data-cmd="insertRight"
     aria-label={t().table.insertColumnRight}
-    onclick={() => run((c) => c.addColumnAfter())}
+    onclick={() => run((c) => (mirrored() ? c.addColumnBefore() : c.addColumnAfter()))}
   >
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <rect x="1.5" y="1.5" width="7" height="15" rx="1" stroke="currentColor" stroke-width="1.3"/>
@@ -362,7 +369,7 @@
         {#each (['top', 'right', 'bottom', 'left'] as const) as edge, i}
           <label class="im-field">
             <span>{t().toolbarExpanded.margins[edge]}</span>
-            <input type="text" inputmode="decimal" value={padding[i]} onchange={(e) => setPaddingEdge(i, e.currentTarget.value)} />
+            <input type="text" inputmode="decimal" value={padding[sideIndex(i)]} onchange={(e) => setPaddingEdge(sideIndex(i), e.currentTarget.value)} />
           </label>
         {/each}
       </div>

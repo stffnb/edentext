@@ -178,6 +178,8 @@ type Ctx = {
   docContentWidthCm: number;
   // Text width (cm) of the cell being converted: what a table nested in it measures against.
   cellWidthCm?: number;
+  // The direction of the table being converted, which one nested in it runs in too.
+  tableRtl?: boolean;
   // The columns of the section being walked: a table there fills one column.
   sectionCols?: { count: number; gapCm: number } | null;
   // The section's left page margin: a frame placed against the page is kept against the
@@ -3854,6 +3856,10 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
     }
   }
 
+  // The table's own mode, else that of the table or page around it. ODF's sides are the
+  // drawn ones; a cell's left faces the column before it, so a right-to-left table swaps.
+  const mode = ctx.resolver.tableProps(el.getAttributeNS(NS.table, 'style-name'))['style:writing-mode'];
+  const rtl = mode === 'rl-tb' ? true : mode === 'lr-tb' ? false : ctx.tableRtl ?? ctx.pageRtl;
   const margins = tableMargins(el, ctx);
   const tableCm = ctx.contentWidthCm - (margins?.marginLeft ?? 0) - (margins?.marginRight ?? 0);
   const rows: Node[] = [];
@@ -3884,7 +3890,8 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       // ODF has no table-level cell margin: it sits on each cell's style, and fo:padding
       // defaults to 0, so a side nobody declares really is zero — left open, the cell
       // would take Word's implicit 0.19cm instead (probed).
-      const padSides = ctx.resolver.cellPadding(cellStyleName).map((v) => v ?? 0);
+      const drawnPad = ctx.resolver.cellPadding(cellStyleName).map((v) => v ?? 0);
+      const padSides = rtl ? [drawnPad[0], drawnPad[3], drawnPad[2], drawnPad[1]] : drawnPad;
       if (cellPad === undefined) cellPad = cellPaddingAttr(padSides);
       const ownPad = cellPaddingAttr(padSides, cellPad ?? DEFAULT_CELL_PADDING);
       const verticalAlign = ctx.resolver.cellVerticalAlign(cellStyleName);
@@ -3898,7 +3905,7 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       for (const [attr, side] of [
         ['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left'],
       ] as const) {
-        const v = borderAttrFromOdf(rawBorders[side]);
+        const v = borderAttrFromOdf(rawBorders[rtl && side === 'left' ? 'right' : rtl && side === 'right' ? 'left' : side]);
         if (v !== null) borders[attr] = v;
       }
       // Header-shaded cells and a bold region render bold by default (CSS); convert their
@@ -3910,12 +3917,14 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       const share = weights ? weights.slice(colIndex, colIndex + colspan).reduce((a, b) => a + b, 0)
         / weights.reduce((a, b) => a + b, 0) : colspan / Math.max(1, gridCols);
       const outerCellCm = ctx.cellWidthCm;
+      const outerRtl = ctx.tableRtl;
       ctx.cellWidthCm = tableCm * share - padSides[1] - padSides[3];
+      ctx.tableRtl = rtl;
       let blocks: Node[];
       try {
         blocks = convertBlocks(Array.from(cellEl.children), ctx, 'cell',
           backgroundColor === HEADER_SHADE || paint?.text.bold === true);
-      } finally { ctx.cellWidthCm = outerCellCm; }
+      } finally { ctx.cellWidthCm = outerCellCm; ctx.tableRtl = outerRtl; }
       if (paint?.text.color) unbakeRegionColor(blocks, paint.text.color);
       // LibreOffice writes the formula in its own language behind an `ooow:` prefix;
       // the cached result is the cell's text and needs nothing here.
@@ -3977,6 +3986,7 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
   }
   const attrs: Record<string, unknown> = { ...(margins ?? {}), ...tableSpacing(el, ctx) };
   if (cellPad) attrs.cellPadding = cellPad;
+  if (rtl !== ctx.pageRtl) attrs.dir = rtl ? 'rtl' : 'ltr';
   // The default is to allow a break, so only the explicit "no" is worth an attr.
   const tableProps = ctx.resolver.tableProps(el.getAttributeNS(NS.table, 'style-name'));
   if (tableProps['style:may-break-between-rows'] === 'false') attrs.keepRows = true;

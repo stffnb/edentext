@@ -169,4 +169,87 @@ describe('paragraph alignment and direction', () => {
       expect(read('start', physical)).toBe('rtl/left');
     }
   });
+  // A table's columns run the page's way unless it has a `dir` of its own. A cell's left
+  // faces the column before it: w:left in a w:bidiVisual table, the drawn right in ODF.
+  describe('a table', () => {
+    const cell = (text: string, attrs: Record<string, unknown> = {}) =>
+      ({ type: 'tableCell', attrs: { colspan: 1, rowspan: 1, ...attrs }, content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] });
+    const table = (dir: string | null) => ({ type: 'doc', content: [{
+      type: 'table', attrs: { marginLeft: 1, marginRight: 2, cellPadding: [0, 0.1, 0, 0.5], ...(dir ? { dir } : {}) },
+      content: [
+        { type: 'tableRow', content: [
+          cell('A1', { colwidth: [1000], borderLeft: '3pt solid #FF0000' }), cell('B1', { colwidth: [2000] }),
+          cell('C1', { colwidth: [3000], borderRight: '2pt solid #0000FF', cellPadding: [0, 0.8, 0, 0.3] })] },
+        { type: 'tableRow', content: [cell('A2', { colspan: 2, colwidth: [1000, 2000] }), cell('C2', { colwidth: [3000] })] },
+      ],
+    }, { type: 'paragraph' }] }) as any;
+    const shape = (doc: any) => {
+      const t = doc.content.find((n: any) => n.type === 'table');
+      const cells = t.content.flatMap((r: any) => r.content);
+      const width = (c: any) => c.attrs.colwidth.reduce((n: number, w: number) => n + w, 0);
+      const total = t.content[0].content.reduce((n: number, c: any) => n + width(c), 0);
+      const cm = (v: number | undefined) => Math.round((v ?? 0) * 100) / 100;
+      return {
+        dir: t.attrs.dir ?? null, margins: [cm(t.attrs.marginLeft), cm(t.attrs.marginRight)], pad: t.attrs.cellPadding,
+        cells: cells.map((c: any, i: number) => [c.attrs.colspan, i < 3 ? Math.round(6 * width(c) / total) : 0, c.attrs.borderLeft ?? null,
+          c.attrs.borderRight ?? null, c.attrs.cellPadding ?? null]),
+      };
+    };
+    const docx = (doc: any, rtl: boolean) => buildDocx(doc, margins, 'portrait', undefined, null, 'A4', undefined, undefined, undefined, rtl);
+    const odtOf = (doc: any, rtl: boolean) => buildOdt(doc, margins, 'portrait', undefined, null, 'A4', undefined, undefined, 'add', rtl);
+    const cases: [boolean, string | null][] = [[true, null], [true, 'ltr'], [false, 'rtl'], [false, null]];
+
+    it.each(cases)('round-trips on a page rtl=%s with dir %s', async (rtl, dir) => {
+      const want = shape(table(dir));
+      expect(shape(importDocx(await docx(table(dir), rtl)).content)).toEqual(want);
+      expect(shape(importOdt(await odtOf(table(dir), rtl)).content)).toEqual(want);
+    });
+
+    it('writes the direction and the leading sides Word reads', async () => {
+      const xml = async (rtl: boolean, dir: string | null) => strFromU8(unzipSync(await docx(table(dir), rtl))['word/document.xml']);
+      expect(await xml(false, null)).not.toContain('bidiVisual');
+      const mirrored = await xml(true, null);
+      expect(mirrored).toMatch(/<w:bidiVisual\/>/);
+      expect(await xml(false, 'rtl')).toMatch(/<w:bidiVisual\/>/);
+      expect(await xml(true, 'ltr')).toMatch(/<w:bidiVisual w:val="(off|0|false)"\/>/);
+      // The indent is the leading edge's: the right margin of a right-to-left table.
+      expect(mirrored).toMatch(/<w:tblInd [^>]*w:w="1134"/);
+      expect(await xml(false, null)).toMatch(/<w:tblInd [^>]*w:w="567"/);
+      // ODF draws the first column's leading border on the right.
+      const content = strFromU8(unzipSync(await odtOf(table(null), true))['content.xml']);
+      expect(content).toMatch(/fo:border-right="[^"]*#ff0000"/i);
+      expect(content).not.toMatch(/fo:border-left="[^"]*#ff0000"/i);
+    });
+
+    // Before tables wrote w:bidiVisual the sides went out as drawn and the section alone
+    // carried the direction: such a file still shows what it showed.
+    it('reads this editor\'s earlier right-to-left files as they were drawn', async () => {
+      const files = unzipSync(await docx(table(null), true));
+      files['word/styles.xml'] = strToU8(strFromU8(files['word/styles.xml']).replace(/(<w:pPrDefault><w:pPr>)<w:bidi\/>/, '$1'));
+      files['word/document.xml'] = strToU8(strFromU8(files['word/document.xml']).replace('<w:bidiVisual/>', ''));
+      const old = shape(importDocx(zipSync(files)).content);
+      expect(old.dir).toBe(null);
+      expect(old.cells[0].slice(2, 4)).toEqual([null, '3pt solid #FF0000']);
+      expect(old.pad).toEqual([0, 0.5, 0, 0.1]);
+      expect(old.margins).toEqual([2, 1]);
+      // Any other producer's table without w:bidiVisual runs left to right, as in Word.
+      files['docProps/app.xml'] = strToU8(strFromU8(files['docProps/app.xml']).replace(/\/>\s*$/, '><Application>Microsoft Office Word</Application></Properties>'));
+      expect(shape(importDocx(zipSync(files)).content).dir).toBe('ltr');
+    });
+
+    // w:jc places a table narrower than the text; in a w:bidiVisual one its edges mirror.
+    it('reads a table\'s w:jc', async () => {
+      const files = unzipSync(await docx(table(null), false));
+      const read = (tblPr: string) => {
+        const out = { ...files };
+        out['word/document.xml'] = strToU8(strFromU8(files['word/document.xml'])
+          .replace(/<w:tblInd [^>]*\/>/, '').replace('<w:tblPr>', `<w:tblPr>${tblPr}`));
+        return shape(importDocx(zipSync(out)).content).margins;
+      };
+      expect(read('<w:jc w:val="right"/>')).toEqual([3, 0]);
+      expect(read('<w:jc w:val="center"/>')).toEqual([1.5, 1.5]);
+      expect(read('<w:bidiVisual/><w:jc w:val="left"/>')).toEqual([3, 0]);
+      expect(read('<w:bidiVisual/><w:jc w:val="end"/>')).toEqual([0, 3]);
+    });
+  });
 });

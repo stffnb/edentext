@@ -3954,13 +3954,17 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
         ...areas.map((a) => ({ els: [fc(fc(a.el, 'tcPr'), 'tcBorders')], box: a.box, band: bandAxis(a.el) })),
         { els: [tcBorders], box },
       ];
+      // The leading and trailing sides are w:left/w:right, or w:start/w:end as the
+      // strict schema and LibreOffice name them.
+      const sideEl = (el: Element | null, name: string) =>
+        fc(el, name) ?? (name === 'left' ? fc(el, 'start') : name === 'right' ? fc(el, 'end') : null);
       const resolve = (side: 'top' | 'bottom' | 'left' | 'right') => {
         let v: string | null | undefined;
         for (const layer of layers) {
           const name = areaSide(layer.box, box, side);
           const own = layer.band === (side === 'top' || side === 'bottom' ? 'h' : 'v') && name !== side;
           for (const el of layer.els) {
-            const got = (own ? docxBorderAttr(fc(el, side)) : undefined) ?? docxBorderAttr(fc(el, name));
+            const got = (own ? docxBorderAttr(sideEl(el, side)) : undefined) ?? docxBorderAttr(sideEl(el, name));
             if (got !== undefined) { v = got; break; }
           }
         }
@@ -4000,8 +4004,17 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
     rows.push(row);
   }
   if (rows.length === 0) return null;
-  const attrs: Record<string, unknown> = { ...(tableMargins(tbl, useWeights, ctx, padBase[3]) ?? {}) };
+  // Word mirrors a table by its own w:bidiVisual alone, and w:left then names the
+  // leading side, which is what a cell's left is here. This editor's earlier files
+  // carried the direction on the section only and wrote the sides as drawn.
+  const bidiVisual = fc(fc(tbl, 'tblPr'), 'bidiVisual');
+  const drawnSides = !bidiVisual && ctx.sectionDir && ctx.pageRtl;
+  const rtl = bidiVisual ? onOff(bidiVisual) : drawnSides;
+  if (drawnSides) for (const row of rows) for (const cell of row.content ?? []) swapCellSides(cell.attrs!);
+  const attrs: Record<string, unknown> = { ...(tableMargins(tbl, useWeights, ctx, padBase[3], rtl && !drawnSides) ?? {}) };
   if (pad) attrs.cellPadding = pad;
+  if (drawnSides) swapCellSides(attrs);
+  if (rtl !== ctx.pageRtl) attrs.dir = rtl ? 'rtl' : 'ltr';
   // w:tblHeader on the first row: Word repeats it at the top of every page the table
   // continues on. Only a leading run of rows can carry it, so the first one decides.
   const firstTrPr = fc(fcAll(tbl, 'tr')[0] ?? null, 'trPr');
@@ -4018,6 +4031,16 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
   return Object.keys(attrs).length ? { type: 'table', attrs, content: rows } : { type: 'table', content: rows };
 }
 
+// A cell's (or table's) left and right borders and margins change places.
+function swapCellSides(attrs: Record<string, unknown>): void {
+  const { borderLeft, borderRight, cellPadding: p } = attrs;
+  delete attrs.borderLeft;
+  delete attrs.borderRight;
+  if (borderRight != null) attrs.borderLeft = borderRight;
+  if (borderLeft != null) attrs.borderRight = borderLeft;
+  if (Array.isArray(p)) attrs.cellPadding = [p[0], p[3], p[2], p[1]];
+}
+
 // Word's w:tblLook → the editor's tableLook attr (its band flags are inverted).
 // null when the file declares none, so the default look applies.
 function docxTableLook(tblPr: Element | null): string | null {
@@ -4029,15 +4052,16 @@ function docxTableLook(tblPr: Element | null): string | null {
   });
 }
 
-// A table narrower than the text width: w:tblInd is its left indent, the grid (or
-// w:tblW) its width — the rest becomes the editor's right margin. Under the older
-// compatibility mode the indent is measured to the cell's *text*, so the table hangs its
-// left cell margin into the page margin (compatMode below 15).
-function tableMargins(tbl: Element, weights: number[] | null, ctx: Ctx, leftPadCm: number): { marginLeft?: number; marginRight?: number } | null {
+// A table narrower than the text: w:tblInd indents its leading edge (the right one when
+// `mirrored`) unless w:jc centres it or sets it at the trailing edge; the width is the grid
+// or w:tblW. Below compatMode 15 the indent is to the cell's text (tblIndIsToText).
+function tableMargins(tbl: Element, weights: number[] | null, ctx: Ctx, leftPadCm: number, mirrored = false): { marginLeft?: number; marginRight?: number } | null {
   const tblPr = fc(tbl, 'tblPr');
   const content = ctx.contentWidthCm;
   const dxa = (el: Element | null) => (el?.getAttributeNS(W, 'type') ?? 'dxa') === 'dxa' ? intAttr(el, W, 'w') : null;
-  const left = twipToCm(dxa(fc(tblPr, 'tblInd')) ?? 0) - (ctx.compatMode < 15 ? leftPadCm : 0);
+  const indent = twipToCm(dxa(fc(tblPr, 'tblInd')) ?? 0) - (ctx.compatMode < 15 ? leftPadCm : 0);
+  const jcEl = fc(tblPr, 'jc');
+  const jc = jcEl ? wVal(jcEl) : null;
   const declared = dxa(fc(tblPr, 'tblW'));
   const pct = tblWidthFraction(fc(tblPr, 'tblW'));
   const width = pct != null
@@ -4045,6 +4069,9 @@ function tableMargins(tbl: Element, weights: number[] | null, ctx: Ctx, leftPadC
     : declared && declared > 0
       ? twipToCm(declared)
       : weights ? twipToCm(weights.reduce((a, b) => a + b, 0)) : null;
+  const left = width == null ? indent
+    : jc === 'center' ? (content - width) / 2
+    : jc === 'right' || jc === 'end' ? content - width : indent;
   const right = width != null ? content - left - width : 0;
 
   if (Math.abs(left) < 0.05 && Math.abs(right) < 0.05) return null;
@@ -4055,7 +4082,8 @@ function tableMargins(tbl: Element, weights: number[] | null, ctx: Ctx, leftPadC
   const snap = (cm: number) => (Math.abs(cm - round2(cm)) <= slack ? round2(cm) : cm);
   const l = twipCm(Math.round((left / 2.54) * 1440)), r = snap(twipCm(Math.round((right / 2.54) * 1440)));
   // A zero side is the attr's default (null); rounding may also leave a -0 behind.
-  return { ...(Math.abs(l) >= 0.005 ? { marginLeft: l } : {}), ...(Math.abs(r) >= 0.005 ? { marginRight: r } : {}) };
+  const [ml, mr] = mirrored ? [r, l] : [l, r];
+  return { ...(Math.abs(ml) >= 0.005 ? { marginLeft: ml } : {}), ...(Math.abs(mr) >= 0.005 ? { marginRight: mr } : {}) };
 }
 
 // A text box's blocks: no cell around them any more, whatever the box sits in. A table

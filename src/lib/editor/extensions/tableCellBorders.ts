@@ -308,8 +308,12 @@ export const TableCellBorders = Extension.create({
                 // Only the bottom one: with border-collapse a boundary draws a single
                 // line, so compensating both sides of it would take the excess twice.
                 // Always set, since the CSS fallback is the default line's excess.
+                // The side borders ride a custom property too: a right-to-left table draws
+                // a cell's left on the right (editor.css).
                 const style = `${SIDE_META[side].css}: ${css}` +
-                  (side === 'borderBottom' ? `; --border-over: ${borderOvershootPx(v)}px` : '');
+                  (side === 'borderBottom' ? `; --border-over: ${borderOvershootPx(v)}px`
+                    : side === 'borderLeft' ? `; --cell-b-l: ${css}`
+                    : side === 'borderRight' ? `; --cell-b-r: ${css}` : '');
                 return { [SIDE_META[side].data]: v, style };
               },
             },

@@ -1871,7 +1871,9 @@ type CellBlock =
 type TableProps = { ml: number; mr: number; mt: number; mb: number; keepRows: boolean; keepNext: boolean; repeatHeader: boolean;
   // A table can open a section and break the page in front of it like a paragraph:
   // fo:break-before on its own style, style:master-page-name for the section it opens.
-  breakBefore: boolean; sectionIndex: number | null; widthCm: number };
+  breakBefore: boolean; sectionIndex: number | null; widthCm: number;
+  // style:writing-mode of a table running against what it stands in (physicalTables).
+  mode: string | null };
 
 // Collect the alignment + paragraph spacing of each listItem's first paragraph, and in
 // `extras` the same for its further blocks, in DFS order — matching the order odf-kit
@@ -2034,7 +2036,7 @@ function applyTableProps(odtBytes: Uint8Array, margins: (TableProps | null)[]): 
       ? ` style:width="${width}cm" fo:margin-left="${m.ml}cm" fo:margin-right="${m.mr}cm"` : '';
     const vert = `${m.mt ? ` fo:margin-top="${m.mt}cm"` : ''}${m.mb ? ` fo:margin-bottom="${m.mb}cm"` : ''}`;
     const keep = (m.keepRows ? ' style:may-break-between-rows="false"' : '') + (m.keepNext ? ' fo:keep-with-next="always"' : '');
-    const brk = m.breakBefore ? ' fo:break-before="page"' : '';
+    const brk = (m.breakBefore ? ' fo:break-before="page"' : '') + (m.mode ? ` style:writing-mode="${m.mode}"` : '');
     content = content.replace(
       new RegExp(`(<style:style[^>]*style:name="Table${i + 1}"[^>]*>\\s*<style:table-properties)`),
       `$1${horiz}${vert}${keep}${brk}`,
@@ -4609,8 +4611,30 @@ function tablePropsOf(node: TiptapNode, contentWidthCm: number): TableProps | nu
   const si = Number(node.attrs?.sectionIndex);
   const sectionIndex = Number.isInteger(si) && si > 0 ? si : null;
   if (ml + mr > contentWidthCm - 1) ml = mr = 0;
-  if (!ml && !mr && !mt && !mb && !keepRows && !keepNext && !repeatHeader && !breakBefore && sectionIndex == null) return null;
-  return { ml: round3(ml), mr: round3(mr), mt: round3(mt), mb: round3(mb), keepRows, keepNext, repeatHeader, breakBefore, sectionIndex, widthCm: contentWidthCm };
+  const mode = typeof node.attrs?.odtWritingMode === 'string' ? node.attrs.odtWritingMode : null;
+  if (!ml && !mr && !mt && !mb && !keepRows && !keepNext && !repeatHeader && !breakBefore && sectionIndex == null && !mode) return null;
+  return { ml: round3(ml), mr: round3(mr), mt: round3(mt), mb: round3(mb), keepRows, keepNext, repeatHeader, breakBefore, sectionIndex, widthCm: contentWidthCm, mode };
+}
+
+// ODF's sides are the drawn ones, where a cell's left faces the column before it: a
+// right-to-left table swaps them. LibreOffice runs a table the way of the table or page
+// around it, so one running the other way names its mode.
+function physicalTables(node: TiptapNode, around = exportPageRtl): TiptapNode {
+  if (!node.content) return node;
+  if (node.type !== 'table') return { ...node, content: node.content.map((c) => physicalTables(c, around)) };
+  const rtl = node.attrs?.dir === 'rtl' || (node.attrs?.dir !== 'ltr' && exportPageRtl);
+  const swapped = (attrs: TiptapNode['attrs']): TiptapNode['attrs'] => {
+    if (!rtl || !attrs) return attrs;
+    const p = parseCellPadding(attrs.cellPadding);
+    return { ...attrs, borderLeft: attrs.borderRight, borderRight: attrs.borderLeft, ...(p ? { cellPadding: [p[0], p[3], p[2], p[1]] } : {}) };
+  };
+  return {
+    ...node,
+    attrs: { ...swapped(node.attrs), ...(rtl !== around ? { odtWritingMode: rtl ? 'rl-tb' : 'lr-tb' } : {}) },
+    content: node.content.map((row) => ({ ...row, content: (row.content ?? []).map((cell) => ({
+      ...cell, attrs: swapped(cell.attrs), content: (cell.content ?? []).map((c) => physicalTables(c, rtl)),
+    })) })),
+  };
 }
 
 // A formula cell as ODF writes it: LibreOffice's own formula language behind its
@@ -5969,7 +5993,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const pageWidthCm = pageDimsCm(pageFormat, orientation).w;
   const contentWidthCm = pageWidthCm - margins.left - margins.right;
 
-  const withZones: TiptapNode = splitNestedLists(clampListLevels(zoneBlocks.length ? { ...docJson, content: [...(docJson.content ?? []), ...zoneBlocks] } : docJson, MAX_LIST_LEVELS));
+  const withZones: TiptapNode = physicalTables(splitNestedLists(clampListLevels(zoneBlocks.length ? { ...docJson, content: [...(docJson.content ?? []), ...zoneBlocks] } : docJson, MAX_LIST_LEVELS)));
   const sentinels = replaceRuby(replaceBibEntries(replaceIndexEntries(replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replacePlaceholderFields(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replaceNestedTables(replacePageBreaks(replaceTableOfContents(replacePageFields(withZones, hf?.pageCount ?? 1), tocs)), contentWidthCm), textBoxes), columns), notes)))), images), dateFields), placeholderLabels), formulas), crossRefs), commentList), seqFields, seqAnchors), revisionList), indexMarks), bibMarks), rubies);
   const unmerged = markTextEffects(bakeListCharStyles(sentinels, styles), DEFAULT_FONT_SIZE_PT, styles);
   const raw = mergeListItemBlocks(unmerged);

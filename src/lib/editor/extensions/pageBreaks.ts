@@ -1143,7 +1143,7 @@ export const PageBreaks = Extension.create({
           if (!first) return null;
           const colgroup = tableEl.querySelector('colgroup');
           return {
-            html: `<table style="width:100%;table-layout:fixed;border-collapse:collapse">`
+            html: `<table${tableEl.dir ? ` dir="${tableEl.dir}"` : ''} style="width:100%;table-layout:fixed;border-collapse:collapse">`
               + (colgroup?.outerHTML ?? '')
               + `<tbody>${first.outerHTML}</tbody></table>`,
             height: first.offsetHeight,

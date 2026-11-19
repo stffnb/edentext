@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import { activeBorderPresets, type BorderPreset } from '../editor/extensions/tableCellBorders';
+  import { selectionTableRtl } from '../editor/extensions/tableView';
   import { t } from '../i18n/i18n.svelte';
   import ColorPicker from './ColorPicker.svelte';
   import BorderWidthBox from './BorderWidthBox.svelte';
@@ -39,14 +40,19 @@
   const active = $derived(
     tick >= 0 && editor ? activeBorderPresets(editor.state, { widthPt, color }) : null,
   );
+  // The buttons name the side the reader sees; a cell's left faces the column before it,
+  // which a right-to-left table draws on the right.
+  const mirrored = $derived(tick >= 0 && !!editor && selectionTableRtl(editor.view));
+  const sideOf = (id: BorderPreset): BorderPreset =>
+    mirrored && id === 'left' ? 'right' : mirrored && id === 'right' ? 'left' : id;
 
   // Clicking an inactive preset applies the pen; clicking an active one toggles those
   // borders off. The panel stays open so the states visibly update.
   function apply(id: BorderPreset | 'none') {
     if (!editor) return;
     if (id === 'none') editor.chain().focus().setTableBorders('all', null).run();
-    else if (active?.[id]) editor.chain().focus().setTableBorders(id, null).run();
-    else editor.chain().focus().setTableBorders(id, { widthPt, color }).run();
+    else if (active?.[sideOf(id)]) editor.chain().focus().setTableBorders(sideOf(id), null).run();
+    else editor.chain().focus().setTableBorders(sideOf(id), { widthPt, color }).run();
   }
 
   function clickOutside(node: HTMLElement) {
@@ -84,10 +90,10 @@
         {#each PRESETS as preset}
           <button
             class="bp-preset"
-            class:active={!!active?.[preset.id]}
+            class:active={!!active?.[preset.id === 'none' ? preset.id : sideOf(preset.id)]}
             title={t().borders[preset.id]}
             aria-label={t().borders[preset.id]}
-            aria-pressed={!!active?.[preset.id]}
+            aria-pressed={!!active?.[preset.id === 'none' ? preset.id : sideOf(preset.id)]}
             onclick={() => apply(preset.id)}
           >
             {#if preset.id === 'none'}

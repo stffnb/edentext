@@ -76,3 +76,35 @@ header/footer, notes and text boxes all inherit the default.
   Word and LibreOffice name theirs) and no `w:bidi` in the defaults (`sectionDirOnly`).
 - A display formula's `m:jc` is the paragraph's physical edge, the direction's where it has
   none (`alignDisplayFormulas`).
+
+### Table direction
+
+A table's columns run the page's way; a table running the other way carries `dir` on the
+table node (no UI, it comes from a file). `editor.css` gives every table without one the
+page's direction (`--page-dir`), whatever `dir` context it stands in, and the text in a
+table's cells keeps the page's. A cell's `borderLeft`/`borderRight` and the left and right of
+`cellPadding` are **grid sides**: left faces the column before it, so presets, table styles
+and "first column" need no direction, and a right-to-left table draws left on the right
+(`--cell-b-l`/`--cell-b-r`, swapped paddings). The table's `marginLeft`/`marginRight` are the
+drawn ones. Controls naming a drawn side mirror by the table's computed direction
+(`selectionTableRtl`: border presets, insert column left/right, cell margins, column drag).
+
+- **DOCX**: Word mirrors a table by `w:bidiVisual` in its own `w:tblPr` alone, and then reads
+  `w:left`/`w:start` of `w:tcBorders`, `w:tblBorders`, `w:tcMar`, `w:tblCellMar` as the leading
+  (right) side, `w:tblInd` from the right edge and `w:jc` mirrored (ECMA-376 §17.4; grid
+  order, `w:gridSpan`, `w:gridBefore`, `w:tblLook` first column are logical anyway). So the
+  export writes `w:bidiVisual` for a right-to-left table (`w:val="off"` for a left-to-right one
+  on a right-to-left page, which LibreOffice would mirror by the section), `w:tblInd` from
+  `marginRight`, and the cell sides unchanged. The import reads the flag, `w:tblInd` and `w:jc`
+  (`center`/`right`, also for left-to-right tables) the same way, `w:start`/`w:end` borders
+  as left/right, and sets `dir` where the table runs against the page. A file of this editor
+  from before (`sectionDirOnly`, no `w:bidiVisual`) wrote the sides as drawn: its tables
+  follow the page and swap their sides. LibreOffice 26.2 differs from the standard (probed):
+  it also mirrors by the section, but reads and writes every side and the indent as drawn,
+  so a table with unequal sides shows them swapped there; Word could not be probed.
+- **ODF** sides are the drawn ones, so both directions swap the cells' left and right for a
+  right-to-left table (`physicalTables`, `convertTable`); margins need none. The table's own
+  `style:writing-mode` (`rl-tb`/`lr-tb`, LibreOffice's `page` inherits) is written where it runs
+  against the table or page around it, since LibreOffice hands a nested table its parent's
+  direction, and read back the same way. LibreOffice sets a right-to-left paragraph in such a
+  cell against the swapped paddings (probed, a left-to-right one against the drawn ones).

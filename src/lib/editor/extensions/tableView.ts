@@ -1,6 +1,6 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { CELL_PAD_VARS, DEFAULT_CELL_PADDING, parseCellPadding } from './tableCellPadding';
-import type { ViewMutationRecord } from '@tiptap/pm/view';
+import type { EditorView, ViewMutationRecord } from '@tiptap/pm/view';
 
 // Custom table node view: <colgroup> uses percentage widths and the table stays at
 // width:100%, so it's always full text width (matching the export) and responsive
@@ -35,6 +35,14 @@ export function columnPercents(weights: (number | null)[]): number[] {
   const filled = weights.map((w) => (w != null && w > 0 ? w : avg));
   const total = filled.reduce((a, b) => a + b, 0);
   return filled.map((w) => (w / total) * 100);
+}
+
+// Whether the table at the selection draws its columns right to left (its own `dir`,
+// else the page's): what a control naming a physical side has to mirror by.
+export function selectionTableRtl(view: EditorView): boolean {
+  const at = view.domAtPos(view.state.selection.from).node;
+  const table = (at instanceof Element ? at : at.parentElement)?.closest('table');
+  return !!table && getComputedStyle(table).direction === 'rtl';
 }
 
 // The table's own margins (cm) go on the wrapper; the table stays 100% of it, so a
@@ -76,6 +84,10 @@ function applyTableStyleAttr(node: PMNode, table: HTMLElement): void {
   else delete table.dataset.pageBreakBefore;
   if (node.attrs.sectionBreak === true) table.dataset.sectionBreak = 'true';
   else delete table.dataset.sectionBreak;
+  // The columns' own direction where it is not the page's; editor.css mirrors by it.
+  const dir = node.attrs.dir as string | null;
+  if (dir === 'rtl' || dir === 'ltr') table.setAttribute('dir', dir);
+  else table.removeAttribute('dir');
 }
 
 // Also bypassed by the node view: the cell margins editor.css reads off the table.

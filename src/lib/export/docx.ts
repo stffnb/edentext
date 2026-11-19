@@ -3303,7 +3303,12 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
     });
   });
 
+  // Word mirrors a table by w:bidiVisual alone, LibreOffice also by the section, so a
+  // table running against a right-to-left page says so too. Cell sides need no swap:
+  // w:left is the leading side there, as a cell's left faces the column before it.
+  const rtl = isRtl(node.attrs);
   return new Table({
+    ...(rtl !== exportPageRtl || rtl ? { visuallyRightToLeft: rtl } : {}),
     ...(float ? { float } : {}),
     ...(tableStyle ? {
       style: docxStyleId(tableStyle.name),
@@ -3317,9 +3322,10 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
     rows: tableRows,
     columnWidths: colsTwip,
     width: { size: totalTwip, type: WidthType.DXA },
-    // The table's own edge, negative where it hangs into the page margin: what we write
-    // declares Word 2013 compatibility, where w:tblInd means exactly that.
-    indent: ml ? { size: cmToTwip(ml), type: WidthType.DXA } : undefined,
+    // The table's own leading edge (the right one of a right-to-left table), negative
+    // where it hangs into the page margin: what we write declares Word 2013
+    // compatibility, where w:tblInd means exactly that.
+    indent: (rtl ? mr : ml) ? { size: cmToTwip(rtl ? mr : ml), type: WidthType.DXA } : undefined,
     layout: TableLayoutType.FIXED,
     margins: { marginUnitType: WidthType.DXA, top: cmToTwip(pad[0]), right: cmToTwip(pad[1]), bottom: cmToTwip(pad[2]), left: cmToTwip(pad[3]) },
     borders: {
