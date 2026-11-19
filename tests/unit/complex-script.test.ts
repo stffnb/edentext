@@ -81,6 +81,55 @@ describe('script-dependent run properties', () => {
   });
 });
 
+// Bold and italic have the three slots too. A style whose slots disagree is read per run;
+// the editor keeps one value, so what it writes says the same in all three.
+describe('script-dependent weight and slant', () => {
+  const slotted = (props: string) => {
+    const styles = `<?xml version="1.0"?><office:document-styles ${NS}><office:styles>
+     <style:style style:name="Standard" style:family="paragraph"/>
+     <style:style style:name="Chapter" style:family="paragraph" style:parent-style-name="Standard">
+      <style:text-properties ${props}/></style:style>
+    </office:styles></office:document-styles>`;
+    const content = `<?xml version="1.0"?><office:document-content ${NS}><office:body><office:text>
+     <text:p text:style-name="Chapter">${HEBREW}<text:span>latin</text:span></text:p>
+    </office:text></office:body></office:document-content>`;
+    return runs(importOdt(zipSync({ 'content.xml': strToU8(content), 'styles.xml': strToU8(styles) })).content);
+  };
+  const has = (r: Run, type: string) => !!r.marks?.some((m) => m.type === type);
+
+  it('reads a style bold in the western slot only as upright Hebrew', () => {
+    const [hebrew, latin] = slotted('fo:font-weight="bold" style:font-weight-complex="normal" fo:font-style="italic" style:font-style-complex="normal"');
+    expect(textStyle(hebrew)).toMatchObject({ fontWeight: 'normal', fontStyle: 'normal' });
+    expect(latin.marks).toBeUndefined();
+  });
+
+  it('reads a style bold in the complex slot only as bold Hebrew', () => {
+    const [hebrew, latin] = slotted('style:font-weight-complex="bold" style:font-style-complex="italic"');
+    expect(has(hebrew, 'bold') && has(hebrew, 'italic')).toBe(true);
+    expect(latin.marks).toBeUndefined();
+  });
+
+  it('writes every size, weight and slant into all three slots', async () => {
+    const para = (text: string, marks?: unknown[]) => ({ type: 'paragraph', attrs: {}, content: [{ type: 'text', text, ...(marks ? { marks } : {}) }] });
+    const doc = { type: 'doc', content: [
+      { type: 'tableOfContents', attrs: {} },
+      { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: HEBREW }] },
+      { type: 'heading', attrs: { level: 4 }, content: [{ type: 'text', text: CHINESE }] },
+      para(HEBREW, [{ type: 'bold' }, { type: 'italic' }, { type: 'textStyle', attrs: { fontSize: '15pt' } }]),
+      { type: 'orderedList', attrs: {}, content: [{ type: 'listItem', content: [para(HEBREW, [{ type: 'bold' }])] }] },
+    ] };
+    const files = unzipSync(await buildOdt(doc as never));
+    const blocks = ['styles.xml', 'content.xml'].flatMap((name) => strFromU8(files[name]).match(/<style:text-properties\b[^>]*>/g) ?? []);
+    const value = (block: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(block)?.[1];
+    const uneven = blocks.filter((block) => ['size', 'weight', 'style'].some((prop) => {
+      const western = value(block, `fo:font-${prop}`);
+      return western != null && ['asian', 'complex'].some((slot) => value(block, `style:font-${prop}-${slot}`) !== western);
+    }));
+    expect(blocks.some((block) => value(block, 'fo:font-weight') === 'bold')).toBe(true);
+    expect(uneven).toEqual([]);
+  });
+});
+
 // DOCX carries the asian font alone (w:rFonts w:eastAsia); the format has no asian size
 // or weight, and the choice is per w:r rather than per text node.
 const WNS = `xmlns:w="${W}"`;

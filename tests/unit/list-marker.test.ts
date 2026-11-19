@@ -144,8 +144,10 @@ describe('list marker formatting', () => {
     it('points the ODF level definition at a named character style', () => {
       expect(content).toMatch(/<text:list-level-style-number text:level="1" text:style-name="MK1"/);
       expect(styles).toContain('<style:style style:name="MK1" style:family="text">');
-      expect(styles).toContain('<style:text-properties fo:font-family="Arial" fo:font-weight="bold"'
-        + ' fo:font-style="italic" fo:font-size="18pt" fo:color="#FF0000"/>');
+      const props = /<style:style style:name="MK1" style:family="text"><style:text-properties ([^>]*)\/>/.exec(styles)?.[1] ?? '';
+      for (const attr of ['fo:font-family="Arial"', 'fo:font-weight="bold"', 'fo:font-style="italic"', 'fo:font-size="18pt"', 'fo:color="#FF0000"']) {
+        expect(props).toContain(attr);
+      }
       expect(content).not.toContain('style:name="MK1"');
     });
   });

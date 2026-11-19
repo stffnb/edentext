@@ -3712,6 +3712,38 @@ function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
   return zipSync(out);
 }
 
+// A character property has a western, an asian and a complex-script slot, and text is set
+// from the slot of its own script. The editor keeps one value, so every text-properties
+// block says it in all three; a block naming its own asian or complex value keeps that.
+const SCRIPT_SLOTS: [western: string, stem: string, asian: boolean][] = [
+  ['fo:font-size', 'style:font-size', true],
+  ['fo:font-weight', 'style:font-weight', true],
+  ['fo:font-style', 'style:font-style', true],
+  ['fo:font-family', 'style:font-family', false],
+  ['style:font-name', 'style:font-name', false],
+];
+function fillScriptSlots(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  for (const name of ['content.xml', 'styles.xml']) {
+    const xml = files[name] && strFromU8(files[name]);
+    if (!xml) continue;
+    const filled = xml.replace(/<style:text-properties\b[^>]*?(?=\/?>)/g, (tag) => {
+      let out = tag;
+      const complexFont = /\sstyle:font-(?:name|family)-complex=/.test(tag);
+      for (const [western, stem, asian] of SCRIPT_SLOTS) {
+        const value = new RegExp(`\\s${western}="([^"]*)"`).exec(tag)?.[1];
+        if (value == null) continue;
+        const font = !asian;
+        if (asian && !tag.includes(` ${stem}-asian=`)) out += ` ${stem}-asian="${value}"`;
+        if (font ? !complexFont : !tag.includes(` ${stem}-complex=`)) out += ` ${stem}-complex="${value}"`;
+      }
+      return out;
+    });
+    if (filled !== xml) files[name] = strToU8(filled);
+  }
+  return rezipOdt(files);
+}
+
 // The returned .odt: mimetype first and stored (ODF requirement), already-compressed
 // picture formats stored (svg/bmp still deflate well), everything else deflated once.
 function zipFinal(odtBytes: Uint8Array): Uint8Array {
@@ -6235,7 +6267,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
     { header: docZones.header, footer: docZones.footer }, { header: headerDist, footer: footerDist }, borderInsetCm(decor), tableMargins);
   const withWatermark = applyFoldMarksOdf(applyWatermarkOdf(withSections, decor.watermark), foldMarks);
   const withFonts = applyEmbeddedFontsOdf(declareReferencedFonts(withWatermark), fonts);
-  return zipFinal(declareLoext(applyOdfVersion(applyDocProperties(applyPageNumberStart(applySpacingModel(withFonts, spacingModel, spacingAtPageStart, balanceSpaces, recordLock?.key, rowHeights.some((r) => r?.includes('row-height='))), pageNumbering.start), props))));
+  return zipFinal(fillScriptSlots(declareLoext(applyOdfVersion(applyDocProperties(applyPageNumberStart(applySpacingModel(withFonts, spacingModel, spacingAtPageStart, balanceSpaces, recordLock?.key, rowHeights.some((r) => r?.includes('row-height='))), pageNumbering.start), props)))));
 }
 
 // A pass that writes a loext: attribute (a character indent) or a drawooo: one (a shape's

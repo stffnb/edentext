@@ -129,7 +129,11 @@ routes each word by its script (`SpellController.checkerOfScript`): Latin words 
 document go to its western language (`documentLanguageOther`) or stay unchecked, Arabic words
 in a western document likewise. DOCX reads weight, slant, size and font of complex-script
 text from `w:bCs`, `w:iCs`, `w:szCs` and `w:rFonts w:cs`, as Word does; `w:rtl` is read as
-"this run is complex script" and not written.
+"this run is complex script" and not written. ODF has the three slots for size, weight and
+slant as well: `fillScriptSlots`, the last ODT pass, repeats each western value of a
+`style:text-properties` block (named and default styles, list labels, index templates, notes)
+in the asian and complex slots it leaves open, and a font in the complex one. On import a slot
+a style leaves open falls back to the western value.
 
 ### Alignment and direction
 
