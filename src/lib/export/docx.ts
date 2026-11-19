@@ -2114,7 +2114,7 @@ function applyRubyDocx(bytes: Uint8Array, rubies: RubyDocx[]): Uint8Array {
         `<w:r>${size ? `<w:rPr><w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr>` : ''}`
         + `<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
       return '<w:r><w:ruby><w:rubyPr><w:rubyAlign w:val="center"/><w:hps w:val="12"/>'
-        + `<w:hpsRaise w:val="24"/><w:hpsBaseText w:val="24"/><w:lid w:val="${docLangTag}"/></w:rubyPr>`
+        + `<w:hpsRaise w:val="24"/><w:hpsBaseText w:val="24"/><w:lid w:val="${docLangTag.split('-u-')[0]}"/></w:rubyPr>`
         + `<w:rt>${run(r.text, 12)}</w:rt><w:rubyBase>${run(r.base)}</w:rubyBase></w:ruby></w:r>`;
     },
   );

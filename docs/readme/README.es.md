@@ -33,7 +33,7 @@
 
 ---
 
-EdenText es un potente procesador de textos que funciona en el navegador y sirve para todo: desde notas rápidas hasta libros completos. Sin servidor ni cuenta: todo se procesa en local y tus documentos nunca salen de tu equipo. Basta con abrir el enlace, o instalar EdenText como app y usarlo sin conexión. En la mayoría de los idiomas, la primera descarga ocupa unos 2 MB; los diccionarios y los tipos de letra se cargan cuando hacen falta[^1]. La interfaz está disponible en inglés, alemán, español, francés, italiano, portugués, griego, ruso, ucraniano, indonesio, japonés y chino (simplificado y tradicional).
+EdenText es un potente procesador de textos que funciona en el navegador y sirve para todo: desde notas rápidas hasta libros completos. Sin servidor ni cuenta: todo se procesa en local y tus documentos nunca salen de tu equipo. Basta con abrir el enlace, o instalar EdenText como app y usarlo sin conexión. En la mayoría de los idiomas, la primera descarga ocupa unos 2 MB; los diccionarios y los tipos de letra se cargan cuando hacen falta[^1]. La interfaz está disponible en inglés, alemán, español, francés, italiano, portugués, griego, ruso, ucraniano, indonesio, árabe, japonés y chino (simplificado y tradicional).
 
 > [!NOTE]
 > EdenText todavía está en **beta** y en pleno desarrollo. Las pruebas y las

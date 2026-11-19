@@ -102,7 +102,7 @@ gets them without further setup.
 |---|---|
 | `url` | the EdenText instance (constructor only); by default the one serving `embed.js`, `/edentext/` in `@edentext/embed` |
 | `user` | the name on comments and recorded changes |
-| `locale` | a UI language: `en`, `de`, `es`, `fr`, `it`, `pt`, `el`, `ru`, `uk`, `ja`, `zh-Hans` or `zh-Hant` |
+| `locale` | a UI language: `en`, `de`, `es`, `fr`, `it`, `pt`, `el`, `ru`, `uk`, `id`, `ar`, `ja`, `zh-Hans` or `zh-Hant` |
 | `theme` | `light`, `dark`, `allBlack` or `auto` (follows the system) |
 | `chrome` | `ribbon` or `modern` (the floating toolbar) |
 | `name` | the host's file name, shown in the title field |

@@ -33,7 +33,7 @@
 
 ---
 
-EdenText è un elaboratore di testi potente che funziona nel browser, adatto a tutto: dagli appunti veloci ai libri interi. Niente server, niente account: l'elaborazione avviene in locale e i tuoi documenti non lasciano mai il computer. Basta aprire il link, oppure installarlo come app e lavorare offline. Per la maggior parte delle lingue il primo download è di circa 2 MB; dizionari e caratteri vengono caricati quando servono[^1]. L'interfaccia è disponibile in inglese, tedesco, spagnolo, francese, italiano, portoghese, greco, russo, ucraino, indonesiano, giapponese e cinese (semplificato e tradizionale).
+EdenText è un elaboratore di testi potente che funziona nel browser, adatto a tutto: dagli appunti veloci ai libri interi. Niente server, niente account: l'elaborazione avviene in locale e i tuoi documenti non lasciano mai il computer. Basta aprire il link, oppure installarlo come app e lavorare offline. Per la maggior parte delle lingue il primo download è di circa 2 MB; dizionari e caratteri vengono caricati quando servono[^1]. L'interfaccia è disponibile in inglese, tedesco, spagnolo, francese, italiano, portoghese, greco, russo, ucraino, indonesiano, arabo, giapponese e cinese (semplificato e tradizionale).
 
 > [!NOTE]
 > EdenText è ancora in **beta** ed è in pieno sviluppo. Test automatici e prove di
