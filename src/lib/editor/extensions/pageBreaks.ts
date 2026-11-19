@@ -7,6 +7,7 @@ import { COLUMNS_FIT_MARGIN_PX, headFitPx } from './columns';
 import { isLeftPage, printedPageNumber } from '../../storage/pageNumbering';
 import { PX_PER_CM } from '../../storage/pageMargins';
 import { RESYNC_NOTES, setNoteAnchorPages } from './notes';
+import { coordsAt } from './overlay';
 
 export type PageBreakDebugSnapshot = {
   timestamp: string;
@@ -1344,7 +1345,7 @@ export const PageBreaks = Extension.create({
             const mid = (lo + hi) >> 1;
             let midTop: number;
             try {
-              midTop = editorView.coordsAtPos(mid).top;
+              midTop = coordsAt(editorView, mid).top;
             } catch {
               lo = mid + 1;
               continue;

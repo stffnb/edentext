@@ -7,6 +7,7 @@ import { FORCE_PAGE_RECALC, LAYOUT_ANSWER, isSplitPane, pageBreakKey } from './p
 import { PX_PER_CM } from '../../storage/pageMargins';
 import { blockFontSize } from '../../utils/fontSize';
 import { firstLineCm, leftCm, rightCm } from './indent';
+import { coordsAt } from './overlay';
 
 // Per-paragraph tab stops. CSS only has the fixed `tab-size` grid, so a tab that
 // resolves to a stop is measured and given the exact advance as an inline margin.
@@ -180,7 +181,7 @@ function tabPenCm(view: EditorView, tabPos: number, origin: Origin, scale: numbe
   const carried = el ? parseFloat(el.style.marginLeft || '0') || 0 : 0;
   const left = carried
     ? (el as HTMLElement).getBoundingClientRect().left - carried * scale
-    : view.coordsAtPos(tabPos, -1).left;
+    : coordsAt(view, tabPos, -1).left;
   return cmFrom(origin, left, scale);
 }
 
@@ -191,7 +192,7 @@ function rtlPenX(view: EditorView, tabPos: number, el: HTMLElement | null, scale
     return rtlTabBox(el).right + (parseFloat(el.style.marginRight || '0') || 0) * scale;
   }
   const { node, offset } = view.domAtPos(tabPos, 1);
-  if (!(node instanceof Text)) return view.coordsAtPos(tabPos, -1).right;
+  if (!(node instanceof Text)) return coordsAt(view, tabPos, -1).right;
   const range = document.createRange();
   range.setStart(node, offset);
   range.setEnd(node, Math.min(offset + 1, node.length));
@@ -296,7 +297,7 @@ function measure(view: EditorView): TabLayout {
       const tabPos = tabs[t];
       // Side -1 measures at the end of the content BEFORE the tab. A new line — a hard
       // break, or a wrap — starts the pen over at what the DOM shows there.
-      const start = view.coordsAtPos(tabPos, -1);
+      const start = coordsAt(view, tabPos, -1);
       if (pen == null || Math.abs(start.top - lineTop) > 1) pen = tabPenCm(view, tabPos, origin, scale);
       lineTop = start.top;
       // Custom stops replace the default grid to their left; past the last one the CSS

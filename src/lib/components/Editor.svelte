@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { caretBeside, coordsAt } from '../editor/extensions/overlay';
   import { onMount, onDestroy, untrack, flushSync } from 'svelte';
   import { Editor } from '@tiptap/core';
   import { extensions } from '../editor/extensions';
@@ -869,7 +870,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         const z = appliedZoom / 100;
         const tiptapRect = tiptap.getBoundingClientRect();
         const tableTopDoc = (tRect.top - tiptapRect.top) / z;
-        const coords = view.coordsAtPos(ed.state.selection.head);
+        const coords = coordsAt(view, ed.state.selection.head);
         const cursorDoc = ((coords.top + coords.bottom) / 2 - tiptapRect.top) / z;
         const tableStartPage = pageAtY(tableTopDoc);
         const cursorPage = pageAtY(cursorDoc);
@@ -1181,7 +1182,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     const zoomFactor = appliedZoom / 100;
     if (editor && view) {
       try {
-        const coords = view.coordsAtPos(editor.state.selection.head);
+        const coords = coordsAt(view, editor.state.selection.head);
         const cursorMidY = (coords.top + coords.bottom) / 2;
         if (cursorMidY >= editorRect.top && cursorMidY <= editorRect.bottom) {
           const cursorInDoc = (cursorMidY - tiptapRect.top) / zoomFactor;
@@ -1545,7 +1546,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     const sel = view.dom.ownerDocument.getSelection();
     let node = sel?.focusNode ?? null;
     let offset = sel?.focusOffset ?? 0;
-    if (!node || !view.hasFocus() || !view.dom.contains(node)) return view.coordsAtPos(view.state.selection.head);
+    if (!node || !view.hasFocus() || !view.dom.contains(node)) return coordsAt(view, view.state.selection.head);
     const widget = (n: Node | undefined) => n instanceof HTMLElement && n.contentEditable === 'false';
     while (node.nodeType === Node.ELEMENT_NODE && node.childNodes.length) {
       const kids: NodeListOf<ChildNode> = node.childNodes;
@@ -1557,8 +1558,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     range.setStart(node, offset);
     const rect = range.getClientRects()[0];
     if (rect && (rect.top || rect.bottom)) return rect;
+    // WebKit has no rect at the end of right-to-left text: the character beside it has.
+    const beside = node instanceof Text ? caretBeside(node, offset, true) ?? caretBeside(node, offset, false) : null;
+    if (beside) return beside;
     const el = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
-    return el?.getBoundingClientRect() ?? view.coordsAtPos(view.state.selection.head);
+    return el?.getBoundingClientRect() ?? coordsAt(view, view.state.selection.head);
   }
 
   // The page the caret sits on, read one task later: called straight from the selection

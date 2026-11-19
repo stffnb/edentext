@@ -71,3 +71,4 @@ next measurement.
 On a change (the caret in it, or a selection touching it) the menu starts with Accept and Reject.
 In an ordered list it adds Continue/Restart Numbering on the outermost list (`outerOrderedListAt`,
 `listStyle.ts`): `continueNumbering` counts on from the ordered list before it in the same parent.
+Screen coordinates of a document position go through `coordsAt` (`extensions/overlay.ts`), never `view.coordsAtPos`: WebKit answers 0,0 at the end of a text node of right-to-left text in a right-to-left block, and `coordsAt` takes the caret's place from the character beside it (`caretBeside`).

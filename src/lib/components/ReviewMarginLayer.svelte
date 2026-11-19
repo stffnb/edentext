@@ -1,4 +1,5 @@
 <script lang="ts" module>
+  import { coordsAt } from '../editor/extensions/overlay';
   // Page edge → balloon, and the balloon itself: the strip Editor.svelte reserves beside
   // the page for this layer.
   export const BALLOON_GAP_CM = 0.5;
@@ -192,7 +193,7 @@
   // Where a card's line is. An empty block or a table has no line at its position, but a
   // box of its own, unless the view hides it.
   function anchorBox(view: EditorView, pos: number, side = 1): { top: number; bottom: number; left: number } | null {
-    const line = view.coordsAtPos(pos, side);
+    const line = coordsAt(view, pos, side);
     if (line.bottom - line.top >= 1) return line;
     const { node, offset } = view.domAtPos(pos), child = node.childNodes[offset];
     const el = child instanceof HTMLElement && !child.matches('br, img.ProseMirror-separator') ? child : node instanceof HTMLElement ? node : node.parentElement;
@@ -238,7 +239,7 @@
         // on hidden text has no box; its card would stack at the top of the page.
         const a = anchorBox(view, from) ?? (part.revision ? anchorBox(view, from, -1) ?? anchorBox(view, to) ?? shownAround(view, from) : null);
         if (!a) return;
-        const end = view.coordsAtPos(to, -1), b = end.bottom - end.top >= 1 ? end : a;
+        const end = coordsAt(view, to, -1), b = end.bottom - end.top >= 1 ? end : a;
         want = (a.top - rect.top) / scale;
         anchorX = (b.left - rect.left) / scale;
         // The bottom of the line box, not its middle: both word processors run the leader

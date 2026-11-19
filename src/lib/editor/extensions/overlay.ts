@@ -4,10 +4,45 @@ import type { EditorView } from '@tiptap/pm/view';
 // line breaking. They live in the view's host, in its offset parent's unscaled coordinates,
 // which the zoom transform scales along with the text.
 
+type Coords = { left: number; right: number; top: number; bottom: number };
+
+const RTL_CHAR = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFC]/;
+
+/** The caret's place at `offset` in a text node, from the character before or after it. */
+export function caretBeside(node: Text, offset: number, before: boolean): Coords | null {
+  if (before ? offset < 1 : offset >= node.length) return null;
+  const range = document.createRange();
+  range.setStart(node, before ? offset - 1 : offset);
+  range.setEnd(node, before ? offset : offset + 1);
+  const box = range.getBoundingClientRect();
+  if (!box.height) return null;
+  // It stands on the character's far side, far being the way that character runs.
+  const char = range.toString();
+  const rtl = /\p{N}/u.test(char) ? false : RTL_CHAR.test(char) ? true
+    : /\p{L}/u.test(char) ? false : !!node.parentElement && getComputedStyle(node.parentElement).direction === 'rtl';
+  const x = before !== rtl ? box.right : box.left;
+  return { left: x, right: x, top: box.top, bottom: box.bottom };
+}
+
+/**
+ * `view.coordsAtPos`, completed where WebKit has no rect: at the end of a text node of
+ * right-to-left text in a right-to-left block it answers 0,0.
+ */
+export function coordsAt(view: EditorView, pos: number, side = 1): Coords {
+  const at = view.coordsAtPos(pos, side);
+  if (at.top || at.bottom || at.left || at.right) return at;
+  for (const before of [true, false]) {
+    const { node, offset } = view.domAtPos(pos, before ? -1 : 1);
+    const beside = node instanceof Text ? caretBeside(node, offset, before) : null;
+    if (beside) return beside;
+  }
+  return at;
+}
+
 /** Places `el` over the text at `pos` (a line-high box at its left edge); false when it cannot. */
 export function placeAt(view: EditorView, el: HTMLElement, pos: number, side = -1): boolean {
   let at: { left: number; top: number; bottom: number };
-  try { at = view.coordsAtPos(pos, side); } catch { return false; }
+  try { at = coordsAt(view, pos, side); } catch { return false; }
   if (!placeOver(view, el, { left: at.left, top: at.top, bottom: at.bottom })) return false;
   el.style.lineHeight = el.style.height;
   return true;

@@ -5,7 +5,7 @@ import { isWordChar, suggestCompletion, wordBefore } from '../../utils/wordCompl
 import { rememberWord, wordCompletion } from '../../storage/wordCompletion.svelte';
 import { volatile } from '../../storage/docScope';
 import { typedText } from './trackChanges';
-import { matchRunFont, placeAt } from './overlay';
+import { matchRunFont, placeAt, coordsAt } from './overlay';
 
 // LibreOffice's Word Completion: the words this document has used are offered back
 // while typing, Enter takes the offer. It is drawn as grey text after the caret
@@ -31,7 +31,7 @@ function endsLine(view: EditorView, pos: number): boolean {
   });
   if (next === null || next < 0) return true;
   try {
-    const at = view.coordsAtPos(pos, -1), after = view.coordsAtPos(next, 1);
+    const at = coordsAt(view, pos, -1), after = coordsAt(view, next, 1);
     return after.top >= at.bottom - 1 || after.bottom <= at.top + 1;
   } catch { return false; }
 }

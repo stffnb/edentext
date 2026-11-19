@@ -9,6 +9,7 @@ import { dropCursor } from '@tiptap/pm/dropcursor';
 import { closeHistory } from '@tiptap/pm/history';
 import { cmToPx } from '../../storage/pageMargins';
 import { readVerticalMargins, placeFrameSoon, placeInColumn, freeDragX, sinkSideFloat, shiftToOffset } from './pageBreaks';
+import { coordsAt } from './overlay';
 
 // Inline, as-character image, or a floating text-wrapped frame (wrap = flow mode);
 // width/height are doc px @96dpi, rotation CW degrees. Export → cm + ODF
@@ -984,7 +985,7 @@ class ImageView {
     let lastY = event.clientY;
 
     const lineTop = (pos: number): number | null => {
-      try { return view.coordsAtPos(pos).top; } catch { return null; }
+      try { return coordsAt(view, pos).top; } catch { return null; }
     };
 
     // Re-anchor the image at the exact text position under the cursor (so it follows
