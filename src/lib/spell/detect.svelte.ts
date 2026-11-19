@@ -15,7 +15,7 @@ function readEnabled(): boolean {
 }
 
 // franc names ISO 639-3 codes; only languages we have a dictionary for are candidates.
-const ISO3: Record<string, string> = { eng: 'en', deu: 'de', spa: 'es', fra: 'fr', ita: 'it', por: 'pt', ell: 'el', rus: 'ru', ukr: 'uk' };
+const ISO3: Record<string, string> = { eng: 'en', deu: 'de', spa: 'es', fra: 'fr', ita: 'it', por: 'pt', ell: 'el', rus: 'ru', ukr: 'uk', ind: 'id' };
 const ONLY = Object.keys(ISO3).filter((k) => LANGUAGES.some((l) => l.odf.language === ISO3[k] && hasDictionary(l.code)));
 
 // Shorter text is guessed too often wrong; longer text says nothing more and costs time.

@@ -36,6 +36,7 @@ export const LANGUAGES: LanguageDef[] = [
   { code: 'el', label: 'Ελληνικά', odf: { language: 'el', country: 'GR' } },
   { code: 'ru', label: 'Русский', odf: { language: 'ru', country: 'RU' } },
   { code: 'uk', label: 'Українська', odf: { language: 'uk', country: 'UA' } },
+  { code: 'id', label: 'Bahasa Indonesia', odf: { language: 'id', country: 'ID' } },
   { code: 'ja-JP', label: '日本語', odf: { language: 'ja', country: 'JP' }, noDict: true },
   { code: 'zh-CN', label: '中文（简体）', odf: { language: 'zh', country: 'CN' }, noDict: true },
   { code: 'zh-TW', label: '中文（繁體）', odf: { language: 'zh', country: 'TW' }, noDict: true },

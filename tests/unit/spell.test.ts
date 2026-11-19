@@ -166,6 +166,25 @@ describe('Ukrainian spell-check (hunspell-asm)', () => {
   });
 });
 
+describe('Indonesian spell-check (hunspell-asm)', () => {
+  let id: Hunspell;
+  beforeAll(async () => {
+    id = await makeChecker('id');
+  });
+
+  // The word list holds roots; prefixes, suffixes and circumfixes come from the .aff.
+  it('accepts affixed and reduplicated forms', () => {
+    for (const w of ['membaca', 'dipelajari', 'perpustakaan', 'mempertanggungjawabkan', 'bukunya', 'buku-buku']) {
+      expect(id.spell(w), w).toBe(true);
+    }
+  });
+
+  it('flags a genuine misspelling and suggests the correction', () => {
+    expect(id.spell('perpustakan')).toBe(false);
+    expect(id.suggest('perpustakan')).toContain('perpustakaan');
+  });
+});
+
 describe('Italian spell-check (hunspell-asm)', () => {
   let it_: Checker;
   beforeAll(async () => {

@@ -70,7 +70,7 @@ O EdenText é um processador de texto poderoso que funciona no navegador, das no
 - **Revisão** — registo de alterações e conversas de comentários em balões na margem,
   comparação e união com outro ficheiro,
   marcações imprimíveis, verificação ortográfica (inglês, alemão, espanhol, francês, italiano,
-  português, grego, russo e ucraniano), sinónimos (os mesmos idiomas, exceto o grego),
+  português, grego, russo, ucraniano e indonésio), sinónimos (os mesmos idiomas, exceto o grego),
   verificação gramatical (inglês)
 - **Assistente de IA opcional** — com um fornecedor à escolha ou um modelo local; responde
   a perguntas sobre o documento e edita-o através de alterações registadas. Pode ser desligado;
