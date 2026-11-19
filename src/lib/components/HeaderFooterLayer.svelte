@@ -47,6 +47,7 @@
     extraHfSections = $bindable([]),
     sectionStartPages = [],
     blankPages = [],
+    pageRtl = false,
     chapterStarts = [],
     pageNumbering = DEFAULT_PAGE_NUMBERING,
     zoneHeights = $bindable([]),
@@ -83,6 +84,7 @@
     sectionStartPages?: number[];
     // Pages a section's start side leaves blank: LibreOffice draws no zone there.
     blankPages?: number[];
+    pageRtl?: boolean;
     chapterStarts?: ChapterStart[];
     /** Rendered height (px) of each set's six zones, in HF_ZONE_KEYS order — read back
      *  by Editor.svelte, whose margins have to clear the band the zone really needs. */
@@ -270,6 +272,14 @@
     dom.style.overflowAnchor = 'none';
     return dom;
   }
+  // A zone lies outside the body's host, so it takes the page's direction itself; set
+  // on change only, as the host's is (Editor.svelte pageDir).
+  function pageDir(node: HTMLElement, rtl: boolean) {
+    const set = (on: boolean) => (on ? node.setAttribute('dir', 'rtl') : node.removeAttribute('dir'));
+    set(rtl);
+    return { update: set };
+  }
+
   function staticZone(node: HTMLElement, [id, doc]: [string, HfDoc]) {
     const ed = new Editor({ element: { mount: scrollFree(node) }, editable: false, extensions: renderExts, content: doc as Content });
     stored.add(ed);
@@ -727,7 +737,7 @@
 <div class="hf-measure" aria-hidden="true" bind:this={measureRoot}>
   {#each sets as set, i}
     {#each HF_ZONE_KEYS as key}
-      <div class="hf-zone hf-measure-box" style="width: {contentWidthOf(sectionFirstPage(i))}px;{frameVars(frameOf(i, key), key.startsWith('header'))}">
+      <div class="hf-zone hf-measure-box" use:pageDir={pageRtl} style="width: {contentWidthOf(sectionFirstPage(i))}px;{frameVars(frameOf(i, key), key.startsWith('header'))}">
         {#if setSig[i]?.[key]}
           <div use:staticZone={[`${i}:${key}`, set[key]]}></div>
         {/if}
@@ -749,6 +759,7 @@
           class="hf-zone hf-zone-bg hf-{zone}"
           class:hf-clipped={clipOf(zone, p) !== null}
           style={boxStyle(zb) + pageVar(zb, p) + pageFrameVars(zone, p)}
+          use:pageDir={pageRtl}
           use:fillZone={[p, sig.includes('"pageCount"') ? numPages : 0, sources[id], sig.includes('"chapterField"') ? chapterStarts : null, zone, pageLabel(p), sourceVersion]}
         ></div>
       {/if}
@@ -775,6 +786,7 @@
           ondblclick={() => interactive && startEdit(zone, p)}
           role="button"
           tabindex="-1"
+          use:pageDir={pageRtl}
           use:fillZone={[p, total, src, chapters, zone, pageLabel(p), sourceVersion]}
         ></div>
       {/if}
@@ -785,7 +797,7 @@
     {@const box = activeZoneBox(hfActive, editingPage)}
     {@const index = sectionOf(editingPage)}
     {@const variant = variantFor(editingPage, index)}
-    <div class="hf-zone hf-{hfActive} hf-active" class:hf-clipped={clipOf(hfActive, editingPage) !== null} style={boxStyle(box) + pageVar(box, editingPage) + pageFrameVars(hfActive, editingPage) + ` --hf-tb-offset: ${-activeTrailingPx}px;`} bind:this={liveMount}></div>
+    <div class="hf-zone hf-{hfActive} hf-active" class:hf-clipped={clipOf(hfActive, editingPage) !== null} style={boxStyle(box) + pageVar(box, editingPage) + pageFrameVars(hfActive, editingPage) + ` --hf-tb-offset: ${-activeTrailingPx}px;`} use:pageDir={pageRtl} bind:this={liveMount}></div>
     <div class="hf-tag" style="top: {box.top}px; left: {box.left}px;">
       {hfActive === 'header'
         ? (variant === 'first' ? t().hf.firstPageHeader : variant === 'even' ? t().hf.evenPageHeader : t().hf.headerLabel)

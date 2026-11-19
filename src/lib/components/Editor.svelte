@@ -1973,6 +1973,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         bind:extraHfSections
         {sectionStartPages}
         {blankPages}
+        {pageRtl}
         {chapterStarts}
         {pageNumbering}
         bind:zoneHeights={hfZoneHeights}
