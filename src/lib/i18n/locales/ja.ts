@@ -1467,6 +1467,7 @@ const ja: Messages = {
     foldMarksHint: '左余白の折り目マークとパンチマーク (DIN 5008)',
     foldMarksA4Hint: '折り目マークとパンチマークは A4 縦でのみ使えます (DIN 5008)',
     hyphenationHint: '自動的にハイフネーションする',
+    pageRtlHint: 'ページを右から左に組む',
     debugDump: 'ダンプ',
     cellMargins: 'セルの余白',
     altText: '代替テキスト',

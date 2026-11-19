@@ -1462,6 +1462,7 @@ const id: Messages = {
     foldMarksHint: 'Tanda lipat dan tanda lubang di margin kiri (DIN 5008)',
     foldMarksA4Hint: 'Tanda lipat dan tanda lubang hanya sesuai untuk A4 potret (DIN 5008)',
     hyphenationHint: 'Memenggal kata secara otomatis',
+    pageRtlHint: 'Halaman kanan-ke-kiri',
     debugDump: 'Dump',
     cellMargins: 'Margin sel',
     altText: 'Teks alternatif',

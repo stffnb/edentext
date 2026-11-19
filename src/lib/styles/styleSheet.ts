@@ -483,7 +483,7 @@ function declarations(r: ResolvedStyle): string[] {
   // The rule and shading start where a hanging first line does (editor.css --box-hang).
   if (boxed) out.push('--box-hang: min(0px, var(--indent-first, 0px))');
   // Plus the section inset, which .tiptap's own padding can't draw (editor.css).
-  if (p.indent != null || boxed) out.push('margin-left: calc(var(--sec-inset-left, 0px) + var(--ind, 0px) + var(--box-hang, 0px))');
+  if (p.indent != null || boxed) out.push('margin-inline-start: calc(var(--sec-inset-start, 0px) + var(--ind, 0px) + var(--box-hang, 0px))');
   // The gap the file puts between the text and its rule, on the ruled sides only —
   // a bottom rule must not indent the paragraph or push its first line down.
   const left = 'calc(var(--pad-left, 0px) - var(--box-hang, 0px))';

@@ -163,6 +163,14 @@
 .paper .tiptap > * {
   margin-left: var(--sec-inset-left, 0px);
   margin-right: var(--sec-inset-right, 0px);
+  --sec-inset-start: var(--sec-inset-left, 0px);
+  --sec-inset-end: var(--sec-inset-right, 0px);
+}
+/* An indent is before or after the text, so a right-to-left block takes the insets of
+   the sides its text starts and ends at. */
+.paper .tiptap > *:dir(rtl) {
+  --sec-inset-start: var(--sec-inset-right, 0px);
+  --sec-inset-end: var(--sec-inset-left, 0px);
 }
 /* A later part of a block on a page of other sides (pageBreaks.ts placeSides), moved out of
    the flow. Lowest specificity, so a frame that positions itself keeps its own place. */
@@ -173,6 +181,8 @@
 .paper .tiptap > * * {
   --sec-inset-left: 0px;
   --sec-inset-right: 0px;
+  --sec-inset-start: 0px;
+  --sec-inset-end: 0px;
   --ind: 0px;
   --indent-first: 0px;
   --box-hang: 0px;
@@ -184,7 +194,7 @@
    sources set --ind and --indent-first; a style that draws a box does this itself. */
 .paper .tiptap :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10):is([data-bg], [data-pborder-top], [data-pborder-right], [data-pborder-bottom], [data-pborder-left]) {
   --box-hang: min(0px, var(--indent-first, 0px));
-  margin-left: calc(var(--sec-inset-left, 0px) + var(--ind, 0px) + var(--box-hang));
+  margin-inline-start: calc(var(--sec-inset-start, 0px) + var(--ind, 0px) + var(--box-hang));
   padding-left: calc(var(--pad-left, 0px) - var(--box-hang));
 }
 
@@ -318,10 +328,10 @@
 }
 /* One level = 0.5cm, the indent LibreOffice's own Contents 1…5 styles carry — the
    fallback for an index whose file names no per-level style (that one brings its own). */
-.paper .tiptap .toc-level-2:not([data-style]) { padding-left: 0.5cm; }
-.paper .tiptap .toc-level-3:not([data-style]) { padding-left: 1cm; }
-.paper .tiptap .toc-level-4:not([data-style]) { padding-left: 1.5cm; }
-.paper .tiptap .toc-level-5:not([data-style]) { padding-left: 2cm; }
+.paper .tiptap .toc-level-2:not([data-style]) { padding-inline-start: 0.5cm; }
+.paper .tiptap .toc-level-3:not([data-style]) { padding-inline-start: 1cm; }
+.paper .tiptap .toc-level-4:not([data-style]) { padding-inline-start: 1.5cm; }
+.paper .tiptap .toc-level-5:not([data-style]) { padding-inline-start: 2cm; }
 /* An entry longer than the row wraps and the leader follows its last line, which is
    where `align-items: last baseline` puts it — a word processor never truncates one. */
 .paper .tiptap .toc-text {
@@ -371,7 +381,7 @@
    text width, which is what the separator's 25% is measured against. LibreOffice's own
    Footnote style, and only for a note whose file names none of its own. */
 .paper .tiptap .note {
-  padding-left: 0.6cm;
+  padding-inline-start: 0.6cm;
   text-indent: -0.6cm;
 }
 .paper .tiptap .note:not([data-style]) {
@@ -856,7 +866,7 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
 .paper .tiptap ol {
   /* One level = LIST_LEFT_STEP_CM (export/docx.ts, and the 1.27cm base the ODT list
      styles use), so the on-screen item text sits where both exports place it. */
-  padding-left: 1.27cm;
+  padding-inline-start: 1.27cm;
   margin-top: 0;
   /* Matches the exported List_20_* styles, which inherit Standard's zeroed margin. */
   margin-bottom: 0;
@@ -888,9 +898,9 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
    pixel, which cost a fixture a page) yet a label wider than the hanging indent pushes
    the first line right instead of printing under it, as both word processors do. */
 .paper .tiptap li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before {
-  float: left;
+  float: inline-start;
   min-width: max(0cm, var(--list-hang));
-  margin-left: calc(-1 * var(--list-hang));
+  margin-inline-start: calc(-1 * var(--list-hang));
   white-space: pre;
   line-height: inherit;
   /* The marker follows the item's first text portion (listMarker.ts sets the custom
@@ -924,8 +934,8 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   position: absolute;
   top: 0;
   min-width: 0;
-  margin-left: 0;
-  right: calc(100% + var(--list-hang));
+  margin-inline-start: 0;
+  inset-inline-end: calc(100% + var(--list-hang));
   white-space: nowrap;
 }
 /* A label followed by a space or nothing has no tab to run to: the text follows it. */

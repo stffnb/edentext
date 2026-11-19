@@ -1466,6 +1466,7 @@ const zhHant: Messages = {
     foldMarksHint: '左邊界上的摺線與打孔標記（DIN 5008）',
     foldMarksA4Hint: '摺線與打孔標記僅適用於 A4 直向（DIN 5008）',
     hyphenationHint: '自動斷字',
+    pageRtlHint: '頁面由右至左',
     debugDump: '傾印',
     cellMargins: '儲存格邊界',
     altText: '替代文字',

@@ -1463,6 +1463,7 @@ const it: Messages = {
     foldMarksHint: 'Segni di piegatura e foratura nel margine sinistro (DIN 5008)',
     foldMarksA4Hint: 'I segni di piegatura e foratura sono previsti solo per A4 verticale (DIN 5008)',
     hyphenationHint: 'Sillaba automaticamente',
+    pageRtlHint: 'Pagina da destra a sinistra',
     debugDump: 'Dump',
     cellMargins: 'Margini cella',
     altText: 'Testo alternativo',

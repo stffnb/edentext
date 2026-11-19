@@ -160,7 +160,7 @@ export function outlineCss(
     // under itself — plus the section inset, which .tiptap's padding can't draw.
     const indent = own.indentCm ?? 0;
     const first = own.firstIndentCm ?? 0;
-    if (indent) block.push(`margin-left: calc(var(--sec-inset-left, 0px) + ${cm(indent)} + var(--box-hang, 0px))`, `--ind: ${cm(indent)}`);
+    if (indent) block.push(`margin-inline-start: calc(var(--sec-inset-start, 0px) + ${cm(indent)} + var(--box-hang, 0px))`, `--ind: ${cm(indent)}`);
     if (first) block.push(`text-indent: ${cm(first)}`, `--indent-first: ${cm(first)}`);
     rules.push(`${head} {\n  ${block.join(';\n  ')};\n}`);
 

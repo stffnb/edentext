@@ -1466,6 +1466,7 @@ const es: Messages = {
     foldMarksHint: 'Marcas de plegado y perforación en el margen izquierdo (DIN 5008)',
     foldMarksA4Hint: 'Las marcas de plegado y perforación solo caben en A4 vertical (DIN 5008)',
     hyphenationHint: 'Dividir las palabras automáticamente',
+    pageRtlHint: 'Página de derecha a izquierda',
     debugDump: 'Volcado',
     cellMargins: 'Márgenes de celda',
     altText: 'Texto alternativo',

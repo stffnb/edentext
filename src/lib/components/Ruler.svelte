@@ -5,16 +5,18 @@
   import { t } from '../i18n/i18n.svelte';
 
   // Horizontal ruler: the tab stops and indents of the block the cursor is in.
-  // Positions are cm from the left text margin, the attr's own origin.
+  // Positions are cm from the text margin the block starts at, the attr's own origin:
+  // the left one, or the right one of a right-to-left block, where the ruler runs mirrored.
   // A section on other paper than the widest is centred on the sheet, so `page` places the
   // measured page on it: unscaled px from the sheet's left edge, its width and own margins.
-  let { editor, tick, zoom, width, page, gutter = 0 }: {
+  let { editor, tick, zoom, width, page, gutter = 0, pageRtl = false }: {
     editor: Editor | null;
     tick: number;
     zoom: number;
     width: number; // the sheet's SCALED width in px (.paper-scaler's)
     page: { left: number; width: number; margins: PageMargins };
     gutter?: number; // the balloon strip .paper-scaler reserves beside the page
+    pageRtl?: boolean;
   } = $props();
 
   const TYPES: TabAlign[] = ['left', 'center', 'right', 'decimal'];
@@ -33,15 +35,25 @@
   // The block under the cursor; `tick` re-evaluates it on every transaction.
   const info = $derived(tick >= 0 && editor ? activeTabStops(editor.state) : null);
 
-  // cm from the left text margin → px within the strip, and back.
-  const px = (cm: number) => (offsetCm + margins.left + cm) * PX_PER_CM * scale;
+  // The block's own direction, else the page's.
+  const rtl = $derived.by(() => {
+    const dir = tick >= 0 ? editor?.state.selection.$from.parent.attrs.dir : null;
+    return dir ? dir === 'rtl' : pageRtl;
+  });
+  // The margin the text starts at, and where it lies on the sheet.
+  const startMargin = $derived(rtl ? margins.right : margins.left);
+  const originCm = $derived(rtl ? offsetCm + pageCm - margins.right : offsetCm + margins.left);
+  const sign = $derived(rtl ? -1 : 1);
+
+  // cm from the starting text margin → px within the strip, and back.
+  const px = (cm: number) => (originCm + sign * cm) * PX_PER_CM * scale;
   const cmAt = (clientX: number) =>
-    Math.round(((clientX - strip.getBoundingClientRect().left) / scale / PX_PER_CM - offsetCm - margins.left) / SNAP_CM) * SNAP_CM;
+    Math.round((sign * ((clientX - strip.getBoundingClientRect().left) / scale / PX_PER_CM - originCm)) / SNAP_CM) * SNAP_CM;
   // Marks stay on the page; the sheet beside a narrower page is shaded as margin.
-  const onPage = (cm: number) => cm >= -margins.left && cm <= pageCm - margins.left;
+  const onPage = (cm: number) => cm >= -startMargin && cm <= pageCm - startMargin;
 
   const textCm = $derived(Math.max(0, pageCm - margins.left - margins.right));
-  const ticks = $derived(Array.from({ length: Math.ceil(pageCm) + 1 }, (_, i) => i - Math.floor(margins.left)));
+  const ticks = $derived(Array.from({ length: Math.ceil(pageCm) + 1 }, (_, i) => i - Math.floor(startMargin)));
   // Between the cm marks: quarters, else halves, else none, whichever the zoom leaves room for.
   const subStep = $derived([0.25, 0.5].find((step) => step * PX_PER_CM * scale >= SUB_TICK_GAP_PX) ?? 0);
   const subTicks = $derived(subStep ? ticks.flatMap((cm) =>
@@ -162,8 +174,8 @@
     onpointercancel={end}
     role="presentation"
   >
-    <div class="margin" style="left: 0; width: {px(0)}px"></div>
-    <div class="margin" style="left: {px(textCm)}px"></div>
+    <div class="margin" style="left: 0; width: {Math.min(px(0), px(textCm))}px"></div>
+    <div class="margin" style="left: {Math.max(px(0), px(textCm))}px"></div>
 
     {#each ticks as cm (cm)}
       {#if onPage(cm)}
@@ -188,7 +200,7 @@
           role="presentation"
           title={t().ruler.tabType[stop.align]}
         >
-          <svg viewBox="0 0 10 10"><path d={MARK[stop.align]} /><circle cx="7.8" cy="6.6" r="1.1" class:hide={stop.align !== 'decimal'} /></svg>
+          <svg viewBox="0 0 10 10" class:mirrored={rtl}><path d={MARK[stop.align]} /><circle cx="7.8" cy="6.6" r="1.1" class:hide={stop.align !== 'decimal'} /></svg>
         </div>
       {/each}
 
@@ -325,6 +337,10 @@
     /* Above the indent handles: a stop dragged to the text edge sits on the right
        indent's handle, which would otherwise take every grab and keep it undeletable. */
     z-index: 1;
+  }
+  /* A stop's foot points the way the text runs from it. */
+  .stop svg.mirrored {
+    transform: scaleX(-1);
   }
 
   .stop.dragging {

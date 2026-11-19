@@ -101,6 +101,7 @@ export const RIBBON_COMMANDS: RibbonCommand[] = [
   c('layout', 'breaks', (m) => m.ribbon.breaks),
   c('layout', 'sectionBreak', (m) => m.ribbon.sectionBreak, 'breaks'),
   c('layout', 'hyphenation', (m) => m.ribbon.hyphenation),
+  c('layout', 'pageRtl', (m) => m.ribbon.pageRtlHint),
   c('layout', 'pageNumberFormat', (m) => m.ribbon.pageNumberFormat),
   c('layout', 'lineNumbers', (m) => m.ribbon.lineNumbers),
   c('layout', 'pageDecor', (m) => m.ribbon.pageDecor),

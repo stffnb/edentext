@@ -1480,6 +1480,7 @@ const uk: Messages = {
     foldMarksHint: 'Позначки згину й перфорації на лівому полі (DIN 5008)',
     foldMarksA4Hint: 'Позначки згину й перфорації підходять лише для A4 книжкової орієнтації (DIN 5008)',
     hyphenationHint: 'Переносити слова автоматично',
+    pageRtlHint: 'Сторінка справа наліво',
     debugDump: 'Дамп',
     cellMargins: 'Поля клітинки',
     altText: 'Текст заміщення',

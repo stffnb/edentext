@@ -1471,6 +1471,7 @@ const de: Messages = {
     foldMarksHint: 'Falz- und Lochmarken am linken Rand (DIN 5008)',
     foldMarksA4Hint: 'Falz- und Lochmarken gibt es nur bei A4 im Hochformat (DIN 5008)',
     hyphenationHint: 'Automatisch trennen',
+    pageRtlHint: 'Seite von rechts nach links',
     debugDump: 'Dump',
     cellMargins: 'Zellenränder',
     altText: 'Alternativtext',

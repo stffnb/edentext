@@ -27,6 +27,7 @@
     pageFormat = $bindable<PageFormat>('A4'),
     extraHfSections = $bindable<HfSet[]>([]),
     hyphenate = $bindable(false),
+    pageRtl = $bindable(false),
     pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
     pageDecor = $bindable(EMPTY_PAGE_DECOR),
     lineNumbering = $bindable(DEFAULT_LINE_NUMBERING),
@@ -41,6 +42,7 @@
     pageFormat?: PageFormat;
     extraHfSections?: HfSet[];
     hyphenate?: boolean;
+    pageRtl?: boolean;
     pageNumbering?: PageNumbering;
     pageDecor?: PageDecor;
     lineNumbering?: LineNumbering;
@@ -232,6 +234,7 @@
 
 <div class="toolbar-group">
   <IslandButton icon="hyphenation" cmd="hyphenation" title={t().ribbon.hyphenationHint} active={hyphenate} onclick={() => (hyphenate = !hyphenate)} />
+  <IslandButton icon="pageRtl" cmd="pageRtl" title={t().ribbon.pageRtlHint} active={pageRtl} onclick={() => (pageRtl = !pageRtl)} />
   <IslandMenu id="pageNum" icon="pageNumber" cmd="pageNumberFormat" title={t().ribbon.pageNumberFormat}>
     <div class="im-label">{t().ribbon.pageNumberFormat}</div>
     {#each PAGE_NUM_FORMATS as f}

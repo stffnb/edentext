@@ -1480,6 +1480,7 @@ const en = {
     foldMarksHint: 'Fold and punch marks in the left margin (DIN 5008)',
     foldMarksA4Hint: 'Fold and punch marks only fit A4 portrait (DIN 5008)',
     hyphenationHint: 'Hyphenate automatically',
+    pageRtlHint: 'Right-to-left page',
     debugDump: 'Dump',
     cellMargins: 'Cell margins',
     altText: 'Alt text',

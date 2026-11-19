@@ -1474,6 +1474,7 @@ const fr: Messages = {
     foldMarksHint: 'Repères de pliage et de perforation dans la marge gauche (DIN 5008)',
     foldMarksA4Hint: 'Les repères de pliage et de perforation ne conviennent qu’au format A4 portrait (DIN 5008)',
     hyphenationHint: 'Couper les mots automatiquement',
+    pageRtlHint: 'Page de droite à gauche',
     debugDump: 'Exporter le diagnostic',
     cellMargins: 'Marges de cellule',
     altText: 'Texte de remplacement',

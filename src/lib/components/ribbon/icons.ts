@@ -129,6 +129,7 @@ export const STROKED = {
   // A speech bubble with its tail, the shape both word processors use for a comment.
   comment: ['M2 3.25h12v7.5H7.5L4.5 13.5v-2.75H2z', 'M4.75 6h6.5M4.75 8.25h4'],
   // A word broken at a hyphen: two stubs with the dash between them.
+  pageRtl: ['M14 4H6M14 8H9M14 12H6', 'M6.5 8H2M3.6 6.4 2 8l1.6 1.6'],
   hyphenation: ['M2 8h3M11 8h3', 'M6.5 8h3', 'M2 4.5h12M2 11.5h6'],
   // An A with a tick beside it: the letter AutoCorrect fixes, corrected.
   autoCorrect: ['M1.5 12 5 3.5 8.5 12', 'M2.9 9.2h4.2', 'M10 8.5l2 2 3.5-4.5'],

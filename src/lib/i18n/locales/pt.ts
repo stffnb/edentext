@@ -1464,6 +1464,7 @@ const pt: Messages = {
     foldMarksHint: 'Marcas de dobra e perfuração na margem esquerda (DIN 5008)',
     foldMarksA4Hint: 'As marcas de dobra e perfuração só se adequam ao A4 vertical (DIN 5008)',
     hyphenationHint: 'Hifenizar automaticamente',
+    pageRtlHint: 'Página da direita para a esquerda',
     debugDump: 'Diagnóstico de exportação',
     cellMargins: 'Margens da célula',
     altText: 'Texto alternativo',

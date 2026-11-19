@@ -30,6 +30,7 @@ import { loadPageMargins } from '../storage/pageMargins';
 import { loadPageNumbering } from '../storage/pageNumbering';
 import { loadLineNumbering } from '../storage/lineNumbering';
 import { loadHyphenation } from '../storage/hyphenation';
+import { loadPageRtl } from '../storage/writingMode';
 import { loadFoldMarks } from '../storage/foldMarks';
 import { loadPageDecor } from '../storage/pageDecor';
 import { loadDocProperties } from '../storage/docProperties';
@@ -420,6 +421,7 @@ function documentSettings(): string[] {
   if (loadLineNumbering().on) out.push('line numbers');
   if (loadHyphenation()) out.push('hyphenation');
   if (loadFoldMarks()) out.push('fold marks');
+  if (loadPageRtl()) out.push('right-to-left page');
   const decor = loadPageDecor();
   if (decor.background) out.push(`background ${decor.background}`);
   if (decor.border) out.push(`border ${decor.border.widthPt}pt ${decor.border.line ?? 'solid'} ${decor.border.color}`);

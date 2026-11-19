@@ -45,7 +45,7 @@
   import { loadOrientation, saveOrientation, type Orientation } from './lib/storage/pageOrientation';
   import { loadTabInterval, saveTabInterval, applyTabIntervalVar, DEFAULT_TAB_INTERVAL_CM } from './lib/storage/tabInterval';
   import { loadSpacingModel, saveSpacingModel, loadSpacingAtPageStart, saveSpacingAtPageStart, type SpacingModel } from './lib/storage/spacingModel';
-  import { loadPageRtl, savePageRtl } from './lib/storage/writingMode';
+  import { defaultPageRtl, loadPageRtl, savePageRtl } from './lib/storage/writingMode';
   import { loadPageFormat, savePageFormat, pageDimsCm, type PageFormat } from './lib/storage/pageFormat';
   import { setStyleSheet, showAllStyles, styleSheet } from './lib/styles/sheet.svelte';
   import { noteSettings, setNoteSettings } from './lib/storage/notes.svelte';
@@ -974,6 +974,7 @@
     documentEpoch++;
     resetHistory();
     resetDocumentState();
+    pageRtl = defaultPageRtl(documentLanguage);
     markSaved();
   }
 
@@ -1923,6 +1924,7 @@
       bind:differentFirstPage
       bind:differentOddEven
       bind:hyphenate
+      bind:pageRtl
       bind:pageNumbering
       bind:pageDecor
       bind:lineNumbering
@@ -2247,6 +2249,7 @@
           bind:differentFirstPage
           bind:differentOddEven
           bind:hyphenate
+          bind:pageRtl
           bind:pageNumbering
           bind:pageDecor
           bind:lineNumbering

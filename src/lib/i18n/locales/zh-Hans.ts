@@ -1465,6 +1465,7 @@ const zhHans: Messages = {
     foldMarksHint: '左页边距上的折叠和打孔标记（DIN 5008）',
     foldMarksA4Hint: '折叠和打孔标记只适用于 A4 纵向（DIN 5008）',
     hyphenationHint: '自动断词',
+    pageRtlHint: '页面从右到左',
     debugDump: '转储',
     cellMargins: '单元格边距',
     altText: '替代文字',

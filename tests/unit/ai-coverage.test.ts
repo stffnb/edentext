@@ -389,6 +389,7 @@ const RIBBON: Record<string, Entry> = {
   lineNumbers: check(page({ line_numbers: true }), () => loadLineNumbering().on),
   pageDecor: check(page({ border: '1pt solid #333333', background: '#FFFFEE', watermark: 'DRAFT' }), () => { const d = loadPageDecor(); return !!d.border && d.background?.toUpperCase() === '#FFFFEE' && d.watermark?.text === 'DRAFT'; }),
   foldMarks: check(page({ fold_marks: true }), () => loadFoldMarks()),
+  pageRtl: todo('the page direction as an argument of the page tool, once the prompt budget has room'),
   indentLeft: same('paragraph.indent'), indentRight: same('paragraph.indentRight'),
   spaceBefore: same('paragraph.spaceBefore'), spaceAfter: same('paragraph.spaceAfter'),
   toc: same('tableOfContents'), 'toc-toc': same('tableOfContents'), 'toc-figures': same('tableOfContents.index'), 'toc-tables': same('tableOfContents.index'),

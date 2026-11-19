@@ -62,7 +62,7 @@ export function listStyleDecos(doc: ProseMirrorNode, sheet: StyleSheet): Decorat
       if (!node.attrs.markerAlign && eff.markerAlign) attrs['data-marker-align'] = eff.markerAlign;
       if (typeof node.attrs.hanging !== 'number' && eff.hanging != null) css.push(`--list-hang: ${eff.hanging}cm`);
       if (!node.attrs.markerSuffix && eff.markerSuffix) attrs['data-marker-suffix'] = eff.markerSuffix;
-      if (node.attrs.indent == null && eff.indent) css.push(`margin-left: calc(var(--sec-inset-left, 0px) + ${eff.indent}cm)`);
+      if (node.attrs.indent == null && eff.indent) css.push(`margin-inline-start: calc(var(--sec-inset-start, 0px) + ${eff.indent}cm)`);
       if (css.length) attrs.style = css.join(';');
       if (Object.keys(attrs).length) decos.push(Decoration.node(pos, pos + node.nodeSize, attrs));
       nextCycle = childCycle(listCycle, eff.listStyleType as OrderedListType | null, eff.kind === 'number');

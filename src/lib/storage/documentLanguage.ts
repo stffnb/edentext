@@ -73,6 +73,11 @@ export function isComplexTag(tag: string): boolean {
   return /^(ar|he|fa|ur|ps|sd|ug|yi|dv|ckb|th|lo|km|hi|bn|ta|te|kn|ml|gu|pa|mr|ne|si)\b/i.test(tag.trim());
 }
 
+// Languages written from right to left: a new document in one starts with such a page.
+export function isRtlTag(tag: string): boolean {
+  return /^(ar|he|fa|ur|ps|sd|ug|yi|dv|ckb)\b/i.test(tag.trim());
+}
+
 // The slot of the file a tag is written to and read from.
 export type LangSlot = 'west' | 'asian' | 'complex';
 export function langSlot(tag: string): LangSlot {

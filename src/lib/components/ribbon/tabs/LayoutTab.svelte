@@ -26,6 +26,7 @@
     pageFormat = $bindable<PageFormat>('A4'),
     extraHfSections = $bindable<HfSet[]>([]),
     hyphenate = $bindable(false),
+    pageRtl = $bindable(false),
     pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
     pageDecor = $bindable(EMPTY_PAGE_DECOR),
     lineNumbering = $bindable(DEFAULT_LINE_NUMBERING),
@@ -40,6 +41,7 @@
     pageFormat?: PageFormat;
     extraHfSections?: HfSet[];
     hyphenate?: boolean;
+    pageRtl?: boolean;
     pageNumbering?: PageNumbering;
     pageDecor?: PageDecor;
     lineNumbering?: LineNumbering;
@@ -325,6 +327,15 @@
       title={t().ribbon.hyphenationHint}
       active={hyphenate}
       onclick={() => (hyphenate = !hyphenate)}
+    />
+    <RibbonButton
+      variant="small"
+      icon="pageRtl"
+      cmd="pageRtl"
+      label={t().paragraphDialog.dirRtl}
+      title={t().ribbon.pageRtlHint}
+      active={pageRtl}
+      onclick={() => (pageRtl = !pageRtl)}
     />
     <div class="rb-menu-wrap" use:clickOutside={'pageNum'}>
       <RibbonButton

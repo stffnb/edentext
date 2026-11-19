@@ -39,6 +39,7 @@
     differentFirstPage = $bindable(false),
     differentOddEven = $bindable(false),
     hyphenate = $bindable(false),
+    pageRtl = $bindable(false),
     pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
     pageDecor = $bindable(EMPTY_PAGE_DECOR),
     lineNumbering = $bindable(DEFAULT_LINE_NUMBERING),
@@ -68,6 +69,7 @@
     differentFirstPage?: boolean;
     differentOddEven?: boolean;
     hyphenate?: boolean;
+    pageRtl?: boolean;
     pageNumbering?: PageNumbering;
     pageDecor?: PageDecor;
     lineNumbering?: LineNumbering;
@@ -120,7 +122,7 @@
       <InsertTools {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} bind:hfDistances bind:differentFirstPage bind:differentOddEven
         {onEditZone} onManageTableStyles={() => onManageTableStyles?.('table')} {onAutoText} onTabsDialog={openTabs} />
     {:else if category === 'layout'}
-      <LayoutTools {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:extraHfSections bind:hyphenate
+      <LayoutTools {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:extraHfSections bind:hyphenate bind:pageRtl
         bind:pageNumbering bind:pageDecor bind:lineNumbering bind:foldMarks onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if category === 'references'}
       <ReferenceTools {editor} {tick} {hfActive} {onNoteOptions} {onHeadingNumbering} />

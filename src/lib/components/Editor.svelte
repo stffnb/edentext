@@ -1897,7 +1897,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   <!-- Follows the edited header/footer zone: its stops are what a left/centre/right
        running head rides on, and the zone spans the same text column as the body. -->
   {#if showRuler && scaledWidth}
-    <Ruler editor={hfActive ? hfEditor : editor} tick={hfActive ? hfTick : tick} zoom={appliedZoom} width={scaledWidth} page={rulerGeometry} gutter={scaledCanvasWidth - scaledWidth} />
+    <Ruler editor={hfActive ? hfEditor : editor} tick={hfActive ? hfTick : tick} zoom={appliedZoom} width={scaledWidth} page={rulerGeometry} gutter={scaledCanvasWidth - scaledWidth} {pageRtl} />
   {/if}
   <!-- Reserves the scaled scroll footprint; the transform on .paper reserves none.
        Before the first measure (size 0) it's left unsized so .paper isn't clipped. -->

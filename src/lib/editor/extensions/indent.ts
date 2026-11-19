@@ -4,7 +4,8 @@ import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { DEFAULT_SHORTCUTS } from '../shortcuts';
 import { blockFontSize } from '../../utils/fontSize';
 
-// Left indent in cm: maps to fo:margin-left on paragraphs/headings; on lists it shifts
+// Indent before the text in cm (the right side of a right-to-left block, as in both
+// formats): maps to fo:margin-left on paragraphs/headings; on lists it shifts
 // the whole list block (list items nest instead via sinkListItem/liftListItem).
 
 export const INDENT_STEP_CM = 1.25; // LibreOffice's default indent increment
@@ -171,7 +172,7 @@ export const Indent = Extension.create({
                 'data-indent': String(cm),
                 // Plus the section inset, which .tiptap's own padding can't draw, and a
                 // boxed paragraph's hang (editor.css).
-                style: `margin-left: calc(var(--sec-inset-left, 0px) + ${cm}cm + var(--box-hang, 0px)); --ind: ${cm}cm`,
+                style: `margin-inline-start: calc(var(--sec-inset-start, 0px) + ${cm}cm + var(--box-hang, 0px)); --ind: ${cm}cm`,
               };
             },
           },
@@ -184,7 +185,7 @@ export const Indent = Extension.create({
               if (attributes.indentChars == null) return {};
               const n = Number(attributes.indentChars);
               const ind = `calc(${n} * var(--char-unit, 1em))`;
-              return { 'data-indent-chars': String(n), style: `margin-left: calc(var(--sec-inset-left, 0px) + ${ind} + var(--box-hang, 0px)); --ind: ${ind}` };
+              return { 'data-indent-chars': String(n), style: `margin-inline-start: calc(var(--sec-inset-start, 0px) + ${ind} + var(--box-hang, 0px)); --ind: ${ind}` };
             },
           },
           // Right indent in characters, the mirror of `indentChars`.
@@ -194,7 +195,7 @@ export const Indent = Extension.create({
             renderHTML: (attributes: Record<string, unknown>) => {
               if (attributes.indentRightChars == null) return {};
               const n = Number(attributes.indentRightChars);
-              return { 'data-indent-right-chars': String(n), style: `margin-right: calc(var(--sec-inset-right, 0px) + ${n} * var(--char-unit, 1em)); --ind-r: calc(${n} * var(--char-unit, 1em))` };
+              return { 'data-indent-right-chars': String(n), style: `margin-inline-end: calc(var(--sec-inset-end, 0px) + ${n} * var(--char-unit, 1em)); --ind-r: calc(${n} * var(--char-unit, 1em))` };
             },
           },
           // Right indent in cm (fo:margin-right / w:ind w:right), the mirror of `indent`.
@@ -206,7 +207,7 @@ export const Indent = Extension.create({
               const cm = Number(attributes.indentRight);
               return {
                 'data-indent-right': String(cm),
-                style: `margin-right: calc(var(--sec-inset-right, 0px) + ${cm}cm); --ind-r: ${cm}cm`,
+                style: `margin-inline-end: calc(var(--sec-inset-end, 0px) + ${cm}cm); --ind-r: ${cm}cm`,
               };
             },
           },
