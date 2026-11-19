@@ -80,6 +80,10 @@ let docLangTag = 'en-US';
 // table style without threading it through every helper (mirrors odt.ts).
 let exportSheet: StyleSheet = builtinStyleSheet();
 let exportSpacingModel: SpacingModel = 'add';
+// The page's direction, which the document defaults carry as w:bidi: a block is
+// right-to-left by its own `dir`, else by the page.
+let exportPageRtl = false;
+const isRtl = (attrs: TiptapNode['attrs']): boolean => attrs?.dir === 'rtl' || (attrs?.dir !== 'ltr' && exportPageRtl);
 
 // DOCX export. Mirrors export/odt.ts feature-for-feature, but builds OOXML via the
 // `docx` library instead of odf-kit. Lazy-loaded from App.svelte so neither this
@@ -1445,7 +1449,7 @@ function txbxPPrXml(attrs: TiptapNode['attrs'], indentTwip: number, pt: number):
     }).join('')}</w:tabs>`);
   }
   if (attrs?.noHyphenation === true) out.push('<w:suppressAutoHyphens/>');
-  if (attrs?.dir === 'rtl') out.push('<w:bidi/>');
+  if (attrs?.dir === 'rtl' || attrs?.dir === 'ltr') out.push(attrs.dir === 'rtl' ? '<w:bidi/>' : '<w:bidi w:val="0"/>');
   if (attrs?.snapToGrid === false) out.push('<w:snapToGrid w:val="0"/>');
   const s = spacingOf(attrs);
   if (s) {
@@ -1466,9 +1470,9 @@ function txbxPPrXml(attrs: TiptapNode['attrs'], indentTwip: number, pt: number):
   if (ind.length) out.push(`<w:ind${ind.join('')}/>`);
   // In a w:bidi paragraph w:jc left and right are the leading and trailing edge.
   const ta = attrs?.textAlign;
-  const bidi = attrs?.dir === 'rtl';
+  const bidi = isRtl(attrs);
   const jc = ta === 'center' ? 'center' : ta === 'justify' ? 'both'
-    : ta === 'right' ? (bidi ? 'left' : 'right') : ta === 'left' && bidi ? 'right' : '';
+    : ta === 'right' || ta === 'left' ? ((ta === 'right') !== bidi ? 'right' : 'left') : '';
   if (jc) out.push(`<w:jc w:val="${jc}"/>`);
   // w:rPr closes CT_PPr; it formats the paragraph mark and names the block's language.
   const font = fontPair(attrs?.fontFamily, attrs?.fontFamilyAsian, screenToDoc);
@@ -2914,22 +2918,23 @@ function paragraphStart(xml: string): number {
 
 // ---- paragraphs ------------------------------------------------------------
 // The physical edge. In a w:bidi paragraph Word reads w:jc left as the leading edge, the
-// right one; docx mirrors left and right on a `bidirectional` paragraph to match.
-function alignOf(attrs: TiptapNode['attrs']): (typeof AlignmentType)[keyof typeof AlignmentType] | undefined {
+// right one; docx mirrors left and right on a `bidirectional` paragraph to match, and
+// `mirror` does it for one that is w:bidi by the document defaults or its style alone.
+function alignOf(attrs: TiptapNode['attrs'], mirror = false): (typeof AlignmentType)[keyof typeof AlignmentType] | undefined {
   switch (attrs?.textAlign) {
     case 'center': return AlignmentType.CENTER;
-    case 'right': return AlignmentType.RIGHT;
+    case 'right': return mirror ? AlignmentType.LEFT : AlignmentType.RIGHT;
     case 'justify': return AlignmentType.BOTH;
-    case 'left': return AlignmentType.LEFT;
+    case 'left': return mirror ? AlignmentType.RIGHT : AlignmentType.LEFT;
     default: return undefined;
   }
 }
 
-// A right-to-left block's alignment: its own, else the edge its style names, which Word
-// would read mirrored from the style of a w:bidi paragraph.
+// A block's alignment: its own, else the edge its style names where the block runs against
+// the page, since Word reads a style's w:jc by the direction of the paragraph using it.
 function bidiAlignOf(node: TiptapNode): string | undefined {
   const own = node.attrs?.textAlign as string | undefined;
-  if (own || node.attrs?.dir !== 'rtl') return own;
+  if (own || isRtl(node.attrs) === exportPageRtl) return own;
   const ta = resolveStyle(exportSheet, styleOf(node)).para.textAlign;
   return ta === 'left' || ta === 'right' ? ta : undefined;
 }
@@ -3026,7 +3031,7 @@ function paragraphProps(node: TiptapNode, opts: ParaOpts): IParagraphPropertiesO
   const stops = parseTabStops(attrs.tabStops);
   return {
     style,
-    alignment: alignOf({ textAlign: bidiAlignOf(node) }),
+    alignment: alignOf({ textAlign: bidiAlignOf(node) }, attrs.dir !== 'rtl' && isRtl(attrs)),
     spacing: opts.inCell ? cellSpacingOf(attrs, node) : spacingOf(attrs),
     indent: Object.keys(indent).length ? indent : undefined,
     pageBreakBefore: attrs.breakBefore === 'page' || undefined,
@@ -3587,12 +3592,13 @@ function blockPt(node: TiptapNode): number {
 
 // Stamps each display formula with its paragraph's alignment, the attr over the named
 // style's, for its m:jc: Word places a math paragraph by that alone, not by w:jc.
-// shortcut: an unaligned rtl paragraph counts as left; resolve its direction if one shows up.
+// An unaligned paragraph sits at the edge its direction starts at.
 function alignDisplayFormulas(node: TiptapNode): TiptapNode {
   if (!node.content?.length) return node;
   const ta = node.attrs?.textAlign;
   const align = node.type === 'paragraph' || node.type === 'heading'
-    ? (ta === 'center' || ta === 'right' || ta === 'justify' ? ta : resolveStyle(exportSheet, styleOf(node)).para.textAlign ?? 'left')
+    ? (ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify' ? ta
+      : resolveStyle(exportSheet, styleOf(node)).para.textAlign ?? (isRtl(node.attrs) ? 'right' : 'left'))
     : null;
   return { ...node, content: node.content.map((c) => c.type === 'formula' && c.attrs?.display === true && align
     ? { ...c, attrs: { ...c.attrs, align: align === 'justify' ? 'left' : align } }
@@ -3682,7 +3688,7 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   const paragraph: Record<string, unknown> = {};
   const lineRule = fixedPt > 0 ? LineRuleType.EXACT : LineRuleType.AUTO;
   if (Object.keys(spacing).length) paragraph.spacing = { ...spacing, ...(spacing.line ? { lineRule } : {}) };
-  if (p.textAlign) paragraph.alignment = alignOf({ textAlign: p.textAlign });
+  if (p.textAlign) paragraph.alignment = alignOf({ textAlign: p.textAlign }, exportPageRtl);
   const first = typeof p.indentFirst === 'number' ? p.indentFirst : null;
   if (p.indent != null || first != null) {
     paragraph.indent = {
@@ -3825,7 +3831,7 @@ function buildStyles(sheet: StyleSheet, used: Set<string>, language?: ExportLang
   };
   return {
     default: {
-      document: { run, paragraph: { spacing: { after: 0, line: 240, lineRule: LineRuleType.AUTO } } },
+      document: { run, paragraph: { ...(exportPageRtl ? { bidirectional: true } : {}), spacing: { after: 0, line: 240, lineRule: LineRuleType.AUTO } } },
       footnoteText: noteText, endnoteText: noteText,
       ...slotted,
     },
@@ -3866,6 +3872,7 @@ export async function buildDocx(
   // rasterizing is async where the emitters that place them are not.
   docJson = await rasterizeSvgImages(docJson);
   exportSheet = styles;
+  exportPageRtl = rtl;
   docJson = stampBookmarkEdges(alignDisplayFormulas(clampListLevels(docJson, DOCX_LIST_LEVELS)));
   exportSpacingModel = spacingModel;
   docFormulas = [];

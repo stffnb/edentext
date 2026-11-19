@@ -29,3 +29,50 @@ A **run of tabs wider than the line** continues on the next one with the grid st
 
 - **Field shading** — LibreOffice draws every field on a grey ground, and so does this: `.cross-ref`, `.pm-citation`, `[data-page-field]` (page number/count, chapter), `[data-datetime-field]`, `[data-seq]` (a caption's number) and `[data-placeholder-field]` share one rule in `editor.css`, a formula cell (`:is(td, th)[data-formula]`) paints it as a gradient over its own colour (an index entry is no shaded field: it shows only with the formatting marks, as a bar whose negative margins keep lines where they are). The value is declared **once**, on `.paper`, and are `transparent` until `View ▸ Field Shadings` sets `.paper.field-shading` (`Editor.svelte`, `showFieldShading`, stored as `edentext-field-shading` and **on** by default — LibreOffice's own default). Scoped to `.paper`, not `.tiptap`, so the page number in an unedited header zone — plain HTML, no editor — is shaded too. Printing and the PDF export drop it, as LibreOffice does: the `@media print` block clears the variable and `buildClone` strips the class.
 - **`utils/orderedListTypes.ts`** — the ordered numbering table, one row per marker, read by the menus, `editor.css`, both exporters and `export/pdf.ts` (which sets the marker as real text, since html2canvas does not raster `counter()`). The **CJK rows** (`cjk-counting`, `cjk-legal`, `cjk-stem`, `circled-decimal`) carry the ODF `style:num-format` **as the whole sequence** — `一, 二, 三, ...`, `壹, 贰, 叁, ...`, `甲, 乙, 丙, ...`, `①, ②, ③, ...` — not as the first character: probed, LibreOffice drops a bare `一` back to decimal on the next save. In DOCX they are `chineseCountingThousand` (what LibreOffice writes for 一、二、三; it reads `chineseCounting`, `ideographDigital`, `japaneseCounting` and `taiwaneseCounting` as the same thing), `chineseLegalSimplified`, `ideographTraditional` and `decimalEnclosedCircle`. `formatOrdinal` reproduces LibreOffice's own rendering, probed by converting a list per format to text: the informal set drops the leading 一 in 十…十九 while the formal one keeps it (壹拾壹), the ten heavenly stems give way to decimal at 11, and the circled digits run ①–⑳, ㉑–㉟, ㊱–㊿ before doing the same. On screen the first three use CSS's own counter styles; only the circled digits need an `@counter-style`. The **kana rows** (`katakana`, `katakana-iroha`) are `ア, イ, ウ, ...` / `イ, ロ, ハ, ...` in ODF and `aiueoFullWidth` / `irohaFullWidth` in DOCX; the half-width spellings (`ｱ, ｲ, ｳ, ...`, `aiueo`, `iroha`) are read as them. Probed the same way, LibreOffice starts each syllabary over after its last sign (46 for aiueo, 48 for iroha with ヰ and ヱ), so both need a cyclic `@counter-style` rather than CSS's own `katakana`. The **Russian rows** carry LibreOffice's spellings verbatim (`а, б, .., аа, аб, ... (ru)` and the letter-repeating `а, б, .., аа, бб, ... (ru)`, plus the `А, Б` pair); probed, it counts with 29 letters (ы in; ё, й, ъ, ь out) and capitalises only the first one (Аа, Бб), so the lists draw the lower counter style with `text-transform: capitalize`. The **letter-sync rows** (a … z, aa, bb) are `a`/`A` with `style:num-letter-sync="true"` in ODF, held as the internal formats `'aa'`/`'AA'`; `odfNumFormatOf` and `odfNumFormatAttrs` fold and unfold them at every list and outline level. In DOCX both kinds share Word's one format per alphabet (`lowerLetter`, `russianLower`); LibreOffice reads `lowerLetter` as letter-sync, the editor keeps reading it as `lower-alpha`, so a Word list and the editor's own a, b, c round-trip unchanged. The menus show the `script` rows (CJK, Cyrillic) only where the UI or the document language is in that script (`numberingScripts`), and always the list's own; the letter-sync rows (`rare`) appear only in the list style dialog. `NoteNumFormat` (footnotes, page numbers, chapter numbering) keeps its own narrow `1/a/A/i/I` union and stays out of this. The Arabic rows (offered where the document or the interface is in Arabic script, `isArabicTag`): the letters in alphabetical and abjad order, spelled as LibreOffice writes them (probed: `أ, ب, ت, ...`, `ا, ب, ج, ...`; Word `arabicAlpha`/`arabicAbjad`), and Arabic-Indic digits, Word's `hindiNumbers`, which LibreOffice has no numbering for and counts 1, 2, 3.
+
+## Alignment and direction
+
+`textAlign` is the edge the reader sees (`left`/`right` are physical, as CSS renders them); an
+unset block sits at the edge its direction starts at. Both importers suppress that edge and
+keep the other, measured against the named style's alignment where it has one.
+
+A block runs right to left by its own `dir`, else by the page (`pageRtl`), and the page's
+direction is written as the document's paragraph default, where LibreOffice and Word look for
+it: neither derives a paragraph's alignment from the page, and Word not even its direction.
+LibreOffice itself puts the pair into `Standard`/`Normal` (probed off a DOCX conversion); the
+defaults reach styles without a parent too. A block following the page writes nothing, one
+running against it writes its own direction and, where its styles leave it unaligned, its edge.
+The importers read the default back as no formatting, so a `dir` or `textAlign` appears only
+on a block that had one. This holds for every paragraph: body, headings, list items, cells,
+header/footer, notes and text boxes all inherit the default.
+
+- **ODF** writes `fo:text-align` `left`/`right` only, never `start`/`end`: LibreOffice reads
+  the two by the producer (physical in files of LibreOffice before 26.2, logical from 26.2
+  on and for any other generator), and its default alignment is the physical left in either
+  direction. A right-to-left page writes `style:writing-mode="rl-tb"` and
+  `fo:text-align="right"` into the paragraph `style:default-style`, beside the mode on the
+  page layout; a block of its own direction that its style chain leaves unaligned writes its
+  edge (`paraStyleFromAttrs`: `right` for `rtl`, `left` for `ltr` on a right-to-left page).
+  The import resolves `start`/`end` against the paragraph's direction
+  (`StyleResolver.textAlign`), and as physical for the producers that wrote them so:
+  LibreOffice before 26.2, OpenOffice and this editor's own earlier files (`odfPhysicalEdges`).
+  A style naming the edge its own direction starts at counts as unaligned for its blocks
+  (`BlockDefaults.textAlign`), and on a right-to-left page a style without a parent does not
+  own the right edge (`collectStyleSheet`), wherever the file keeps the default.
+- **DOCX**: in a `w:bidi` paragraph Word reads `w:jc` `left`/`start` as the leading (right)
+  edge and `right`/`end` as the trailing one, and LibreOffice agrees. The docx package
+  mirrors the two on a `bidirectional` paragraph, a text box paragraph is mirrored by hand
+  (`txbxPPrXml`), and the import mirrors back by the paragraph's resolved `w:bidi` (direct,
+  style chain, document defaults; `DocxStyles.physicalJc`). A right-to-left page writes
+  `w:bidi` into `w:docDefaults` beside the one on each `w:sectPr`, so every paragraph is
+  `w:bidi` unless it says `w:bidi w:val="0"`; the package mirrors only a paragraph with its
+  own flag, so `alignOf` mirrors the others and the named styles' `w:jc`. A style has no
+  direction of its own, so a block running against the page under a left- or right-aligned
+  style carries that edge as direct `w:jc` (`bidiAlignOf`).
+- **DOCX import** takes a paragraph's direction from `w:bidi` alone, as Word does: in a
+  `w:bidi` section a paragraph without one is left-to-right and gets `dir="ltr"`. Files of
+  this editor from before the defaults carried the direction have it on the section only;
+  they are told apart by a `docProps/app.xml` naming no application (the docx package's;
+  Word and LibreOffice name theirs) and no `w:bidi` in the defaults (`sectionDirOnly`).
+- A display formula's `m:jc` is the paragraph's physical edge, the direction's where it has
+  none (`alignDisplayFormulas`).

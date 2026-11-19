@@ -107,6 +107,8 @@ type Ctx = {
   // The section's own direction: a block declaring the same one is inheriting, not
   // formatted, so only a block that differs carries a `dir` attr.
   pageRtl: boolean;
+  // Whether a paragraph declaring no direction takes the section's; see sectionDirOnly.
+  sectionDir: boolean;
   // Word's document-wide automatic hyphenation: a paragraph can only turn it off.
   hyphenate: boolean;
   // settings.xml m:defJc: where a math paragraph without its own m:jc stands.
@@ -329,7 +331,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
   const rightMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'right') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, listCounters: new Map(), listOverridden: new Set(), headingNumPr: new Map(), bodyNumLevels: new Set(), usedListStyles: new Map(), contentWidthCm, leftMarginCm, rightMarginCm, ...sectionHeightsCm(sectPr), pageRtl: sectPrRtl(sectPr), mainLang: docLangs.main, hyphenate: docSetting(files, 'autoHyphenation'), mathJc: docMathJc(files), cellSpacing: {}, compatMode: wordCompatMode(files), accents: themeAccents(themeDoc), themeColors: theme, themeLineWidths: Array.from(themeDoc?.getElementsByTagNameNS(A, 'lnStyleLst')[0]?.children ?? [], (ln) => (Number(ln.getAttribute('w')) || 12700) / 12700), openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentDefs: docxComments(files), moveNames: moveNames(body), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, listCounters: new Map(), listOverridden: new Set(), headingNumPr: new Map(), bodyNumLevels: new Set(), usedListStyles: new Map(), contentWidthCm, leftMarginCm, rightMarginCm, ...sectionHeightsCm(sectPr), pageRtl: sectPrRtl(sectPr), sectionDir: sectionDirOnly(files, styles), mainLang: docLangs.main, hyphenate: docSetting(files, 'autoHyphenation'), mathJc: docMathJc(files), cellSpacing: {}, compatMode: wordCompatMode(files), accents: themeAccents(themeDoc), themeColors: theme, themeLineWidths: Array.from(themeDoc?.getElementsByTagNameNS(A, 'lnStyleLst')[0]?.children ?? [], (ln) => (Number(ln.getAttribute('w')) || 12700) / 12700), openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentDefs: docxComments(files), moveNames: moveNames(body), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
     footnote: noteParts(files, 'footnotes', 'footnote'),
     endnote: noteParts(files, 'endnotes', 'endnote'),
   }, noteBookmarks: new Map() };
@@ -1617,10 +1619,12 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // w:jc is an edge by the paragraph's own w:bidi (a formula's m:jc is not); one the style
   // supplies lands at the other edge in a paragraph of the other direction, so it counts.
   const physJc = mathJc ?? DocxStyles.physicalJc(jcVal, bidi === true);
+  // Word takes a paragraph's direction from w:bidi alone, never from the section.
+  const rtl = bidi ?? (ctx.sectionDir && ctx.pageRtl);
   const physStyleJc = DocxStyles.physicalJc(styleJc, ctx.styles.paragraphBidi(styleId) === true);
   const attrs = blockAttrs(ppr, kind, level, directJc || baked || kind === 'list' || mathJc || physJc !== physStyleJc ? physJc : null,
     baked || kind === 'list' ? ctx.styles.paragraphSpacing(styleId, kind === 'cell' ? ctx.cellSpacing : undefined) : {},
-    bidi ?? ctx.pageRtl, kind === 'zone' ? null : physStyleJc);
+    rtl, kind === 'zone' ? null : physStyleJc);
   // A list item carries no style name either and renders the default style's spacing,
   // so its own style's spacing rides the block wherever the two differ.
   if (kind === 'list') {
@@ -1697,9 +1701,9 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // at all; below that switch it says what is already true.
   const directSah = fc(ppr, 'suppressAutoHyphens');
   if (ctx.hyphenate && directSah && onOff(directSah)) attrs.noHyphenation = true;
-  // The section's own base direction is inheritance, not formatting, so only a block
-  // that differs from it carries the attr.
-  if (bidi != null && bidi !== ctx.pageRtl) attrs.dir = bidi ? 'rtl' : 'ltr';
+  // The page's direction is inheritance, not formatting, so only a block that differs
+  // from it carries the attr.
+  if (rtl !== ctx.pageRtl) attrs.dir = rtl ? 'rtl' : 'ltr';
   // Tab stops: a direct w:tabs replaces the style's, which the resolver walks for.
   const directTabs = fc(ppr, 'tabs');
   const stops = formatTabStops(directTabs ? readTabStops(directTabs) : ctx.styles.paragraphTabs(styleId));
@@ -4218,11 +4222,19 @@ function docxLineNumbering(sectPr: Element | null): LineNumbering {
   });
 }
 
-// A right-to-left section (w:bidi): the columns fill from the right, and it is the
-// direction a block inherits when it declares none of its own.
+// A right-to-left section (w:bidi): the columns fill from the right. It is the page's
+// direction; a paragraph's own comes from w:bidi on it, its style or the defaults.
 function sectPrRtl(sectPr: Element | null): boolean {
   const b = fc(sectPr, 'bidi');
   return !!b && onOff(b);
+}
+
+// A file of this editor whose document defaults name no direction carries the page's on
+// the section alone, for every paragraph. Told apart by a docProps/app.xml that names no
+// application, as the docx package writes it; Word, LibreOffice and others name theirs.
+function sectionDirOnly(files: Record<string, Uint8Array>, styles: DocxStyles): boolean {
+  const app = files['docProps/app.xml'];
+  return !!app && styles.paragraphBidi(null) == null && !/<(?:\w+:)?Application\b/.test(strFromU8(app));
 }
 
 // A section break's w:type: 'continuous'/'nextColumn' flow within the page; anything

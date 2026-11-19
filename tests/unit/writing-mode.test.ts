@@ -84,6 +84,54 @@ describe('paragraph alignment and direction', () => {
     ]);
   });
 
+  // The page's direction is the document's default (ODF default-style, DOCX docDefaults), so
+  // a block following it carries nothing and one running against it keeps its own.
+  it.each(Object.keys(formats) as (keyof typeof formats)[])('keeps the blocks of a right-to-left page free of formatting through %s', async (format) => {
+    const aligns = [null, 'left', 'right', 'center', 'justify'];
+    const blocks = (prefix: string) => [null, 'ltr'].flatMap((dir) => aligns.map((textAlign) =>
+      ({ ...P({ ...(dir ? { dir } : {}), ...(textAlign ? { textAlign } : {}) }), content: [{ type: 'text', text: `${prefix}${dir ?? 'page'}${textAlign ?? ''}` }] })));
+    const body = [
+      ...blocks('p'),
+      { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'h' }] },
+      { type: 'bulletList', content: blocks('li').map((b) => ({ type: 'listItem', content: [b] })) },
+      { type: 'table', content: [{ type: 'tableRow', content: [{ type: 'tableCell', attrs: {}, content: blocks('c') }] }] },
+      { type: 'paragraph', content: [{ type: 'textBox', attrs: { width: 240, height: 240 }, content: blocks('b') }] },
+    ];
+    const hf = { header: { type: 'doc', content: blocks('z') }, footer: null, pageCount: 1 } as any;
+    const bytes = format === 'odt'
+      ? await buildOdt({ type: 'doc', content: body } as any, margins, 'portrait', hf, null, 'A4', undefined, undefined, 'add', true)
+      : await buildDocx({ type: 'doc', content: body } as any, margins, 'portrait', hf, null, 'A4', undefined, undefined, undefined, true);
+    const files = unzipSync(bytes);
+    expect(strFromU8(files[format === 'odt' ? 'styles.xml' : 'word/styles.xml']))
+      .toMatch(format === 'odt' ? /<style:default-style style:family="paragraph">[^]*?rl-tb/ : /<w:pPrDefault>[^]*?<w:bidi\/>[^]*?<\/w:pPrDefault>/);
+    const back = format === 'odt' ? importOdt(bytes) : importDocx(bytes);
+    expect(back.rtl).toBe(true);
+    const found: string[] = [];
+    const walk = (n: any) => {
+      if ((n.type === 'paragraph' || n.type === 'heading') && n.content?.[0]?.type === 'text') found.push(seen(n));
+      (n.content ?? []).forEach(walk);
+    };
+    walk(back.content);
+    walk(back.header);
+    const group = ['page/unset', 'page/left', 'page/unset', 'page/center', 'page/justify', 'ltr/unset', 'ltr/unset', 'ltr/right', 'ltr/center', 'ltr/justify'];
+    expect(found).toEqual([...group, 'page/unset', ...group, ...group, ...group, ...group]);
+  });
+
+  // Word takes a paragraph's direction from w:bidi on it, its style or the defaults, never
+  // from the section. Files of this editor that name it on the section alone still read.
+  it('reads a w:bidi section without w:bidi paragraphs by its producer', async () => {
+    const doc = { type: 'doc', content: [P({}), P({ textAlign: 'left' }), P({ dir: 'ltr' })] } as any;
+    const files = unzipSync(await buildDocx(doc, margins, 'portrait', undefined, null, 'A4', undefined, undefined, undefined, true));
+    files['word/styles.xml'] = strToU8(strFromU8(files['word/styles.xml']).replace(/(<w:pPrDefault><w:pPr>)<w:bidi\/>/, '$1'));
+    files['word/document.xml'] = strToU8(strFromU8(files['word/document.xml']).replace('<w:jc w:val="right"/>', '<w:jc w:val="left"/>'));
+    const own = importDocx(zipSync(files));
+    expect((own.content as any).content.map(seen)).toEqual(['page/unset', 'page/left', 'ltr/unset']);
+    files['docProps/app.xml'] = strToU8(strFromU8(files['docProps/app.xml']).replace(/\/>\s*$/, '><Application>Microsoft Office Word</Application></Properties>'));
+    const other = importDocx(zipSync(files));
+    expect(other.rtl).toBe(true);
+    expect((other.content as any).content.map(seen)).toEqual(['ltr/unset', 'ltr/unset', 'ltr/unset']);
+  });
+
   // In a w:bidi paragraph Word reads left/start as the leading (right) edge and right/end
   // as the trailing (left) one; without w:bidi all four are physical.
   it('reads w:jc by the paragraph\'s own w:bidi', async () => {

@@ -1794,7 +1794,8 @@ type BlockDefaults = {
   // The named style's line spacing as an ODF factor; a block declaring the same one adds
   // nothing, but a block that declares 100% under a 115% style is direct formatting.
   lineHeight: string;
-  // The style's own alignment and flow flags (Title centres, Heading keeps with next).
+  // The style's own alignment and flow flags (Title centres, Heading keeps with next);
+  // null too where it names the edge its direction starts at, which a block follows.
   textAlign: string | null;
   keepNext: boolean;
   keepLines: boolean;
@@ -1908,7 +1909,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     marginBottomPt: lengthToPt(para['fo:margin-bottom']) ?? 0,
     indentPt: lengthToPt(para['fo:margin-left']) ?? 0,
     lineHeight: lineSpacing(para['fo:line-height']) ?? '1',
-    textAlign: resolver.textAlign(para),
+    textAlign: resolver.textAlign(para) === startEdge(resolver, para) ? null : resolver.textAlign(para),
     keepNext: para['fo:keep-with-next'] === 'always',
     keepLines: para['fo:keep-together'] === 'always',
     boldByDefault: weight ? weight === 'bold' || parseInt(weight, 10) >= 600 : fallback.boldByDefault,
@@ -1936,6 +1937,11 @@ function displayStyleName(odfName: string, display?: string): string {
 
 export function decodeStyleName(odfName: string): string {
   return odfName.replace(/_([0-9a-fA-F]{2,6})_/g, (_m, hex: string) => String.fromCodePoint(parseInt(hex, 16)));
+}
+
+// The edge a paragraph of these props starts at, which is its alignment when it has none.
+function startEdge(resolver: StyleResolver, para: PropMap): 'left' | 'right' {
+  return resolver.paraRtl(para) ? 'right' : 'left';
 }
 
 function paraPropsFromOdf(props: PropMap, resolver: StyleResolver): ParaProps {
@@ -2043,6 +2049,9 @@ function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
       cur = defs.get(cur)!.parent;
     }
   }
+  // A right-to-left page's default is the right edge (LibreOffice writes it into Standard,
+  // this editor into the default-style), so a style without a parent does not own it.
+  const rootBase: PropMap = resolver.pageRtl ? { 'fo:text-align': 'right' } : {};
   for (const odfName of keep) {
     const def = defs.get(odfName)!;
     const name = displayStyleName(odfName, def.display);
@@ -2056,7 +2065,7 @@ function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
       parent: parent && parent !== name ? parent : builtin?.parent ?? null,
       next: def.next ? displayStyleName(def.next, defs.get(def.next)?.display) : builtin?.next ?? null,
       builtin: builtin?.builtin,
-      para: ownProps(paraPropsFromOdf(resolver.paraProps(odfName), resolver), paraPropsFromOdf(def.parent ? resolver.paraProps(def.parent) : {}, resolver)),
+      para: ownProps(paraPropsFromOdf(resolver.paraProps(odfName), resolver), paraPropsFromOdf(def.parent ? resolver.paraProps(def.parent) : rootBase, resolver)),
       text: ownProps(textPropsFromOdf(resolver.paraTextProps(odfName), resolver), textPropsFromOdf(def.parent ? resolver.paraTextProps(def.parent) : {}, resolver)),
     };
     const level = /^Heading (\d+)$/.exec(name);
@@ -2420,7 +2429,7 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefau
   // direct formatting, and a block overriding it back needs the attr to win. Where the
   // style has none, the edge the block's direction starts at is no formatting either.
   const ta = resolver.textAlign(paraProps);
-  const base = defaults.textAlign ?? (resolver.paraRtl(paraProps) ? 'right' : 'left');
+  const base = defaults.textAlign ?? startEdge(resolver, paraProps);
   if (ta !== null && ta !== base) attrs.textAlign = ta;
 
   // A header/footer's proportional spacing is left out: LibreOffice lays the band out at

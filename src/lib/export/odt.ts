@@ -1772,11 +1772,12 @@ function paraStyleFromAttrs(attrs: TiptapNode['attrs'], withIndents = true): Par
     lineHeight = isNaN(lhNum) ? String(lh) : lhNum;
   }
   const border = (v: unknown) => (typeof v === 'string' && v && v !== 'none' ? v : null);
-  // A right-to-left block its styles leave unaligned names its edge: LibreOffice's default
-  // is the physical left in either direction, and reads start/end by the file's producer.
+  // A block of its own direction whose styles leave it unaligned names its edge: nothing
+  // in LibreOffice follows the direction, and it reads start/end by the file's producer.
   const named = typeof attrs?.styleName === 'string' && attrs.styleName ? attrs.styleName
     : typeof attrs?.level === 'number' ? `Heading ${attrs.level}` : DEFAULT_STYLE;
-  const dirEdge = attrs?.dir === 'rtl' && !resolveStyle(exportSheet, named, 'paragraph').para.textAlign ? 'right' : null;
+  const ownEdge = attrs?.dir === 'rtl' ? 'right' : attrs?.dir === 'ltr' && exportPageRtl ? 'left' : null;
+  const dirEdge = ownEdge && !resolveStyle(exportSheet, named, 'paragraph').para.textAlign ? ownEdge : null;
   return {
     align: ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify' ? ta : dirEdge,
     spaceBefore: typeof sb === 'number' ? sb : null,
@@ -4018,12 +4019,16 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: ExportLanguage | null, pag
     '<style:master-page style:name="Standard"',
   );
 
+  // A right-to-left page's paragraphs take its direction and the edge it starts at from
+  // the default-style: LibreOffice's own default is the physical left in either direction.
+  const pageDir = rtl ? ' fo:text-align="right" style:writing-mode="rl-tb"' : '';
+
   // The document's tab interval, on the paragraph default-style. Always written: a file
   // that declares none falls back to ODF's own 2cm, which is not what the editor shows
   // (measured — LibreOffice puts a bare A⇥X at 2cm, not at its UI default of 1.25).
   // Widow-orphan control too, which a file declaring none does not have (probed).
   styles = styles.replace('<office:styles>', '<office:styles>'
-    + `<style:default-style style:family="paragraph"><style:paragraph-properties fo:orphans="2" fo:widows="2" style:tab-stop-distance="${round3(tabIntervalCm)}cm"/></style:default-style>`
+    + `<style:default-style style:family="paragraph"><style:paragraph-properties fo:orphans="2" fo:widows="2"${pageDir} style:tab-stop-distance="${round3(tabIntervalCm)}cm"/></style:default-style>`
     + notesStyles() + notesConfiguration(notes));
 
   // The separator belongs to the page layout, beside the margins it is measured against.
@@ -4114,6 +4119,8 @@ function linkHrefOf(marks: TiptapNode['marks'] = []): string | undefined {
 // without threading it through every cell/list helper (mirrors docLangTag in docx.ts).
 let exportSheet: StyleSheet = builtinStyleSheet();
 let exportSpacingModel: SpacingModel = 'add';
+// The page's direction, which the paragraph default-style carries with its edge.
+let exportPageRtl = false;
 // The document language as a tag, for the shape text that inherits none (replaceTextBoxes).
 let exportDocLangs: { lang: string | null; langAsian: string | null } = { lang: null, langAsian: null };
 
@@ -5923,6 +5930,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
   exportSheet = styles;
+  exportPageRtl = rtl;
   exportSpacingModel = spacingModel;
   const mainLang = language ? tagFromOdf(language.language, language.country) : null;
   exportDocLangs = { lang: westLang(mainLang) ?? westLang(language?.other), langAsian: asianLang(mainLang) ?? asianLang(language?.other) };
