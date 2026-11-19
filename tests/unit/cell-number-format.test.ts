@@ -13,6 +13,7 @@ import es from '../../src/lib/i18n/locales/es';
 import fr from '../../src/lib/i18n/locales/fr';
 import pt from '../../src/lib/i18n/locales/pt';
 import ru from '../../src/lib/i18n/locales/ru';
+import id from '../../src/lib/i18n/locales/id';
 import ja from '../../src/lib/i18n/locales/ja';
 import zhHans from '../../src/lib/i18n/locales/zh-Hans';
 import zhHant from '../../src/lib/i18n/locales/zh-Hant';
@@ -113,7 +114,7 @@ describe('the currency and date formats', () => {
   });
 
   it('shows a sample of every format in every UI language', () => {
-    for (const l of [en, de, es, fr, pt, ru, ja, zhHans, zhHant]) for (const f of CELL_FORMATS) expect(l.table.numberFormats[f]).toBeTruthy();
+    for (const l of [en, de, es, fr, pt, ru, id, ja, zhHans, zhHant]) for (const f of CELL_FORMATS) expect(l.table.numberFormats[f]).toBeTruthy();
   });
 
   it('writes the picture switch each locale spells', () => {

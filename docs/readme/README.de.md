@@ -33,7 +33,7 @@
 
 ---
 
-EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von der schnellen Notiz bis zum ganzen Buch. Kein Server, kein Konto: Alles wird lokal verarbeitet, die Dokumente verlassen nie den eigenen Rechner. Einfach den Link öffnen oder EdenText als App installieren und offline nutzen. Der erste Download ist für die meisten Sprachen etwa 2 MB groß; Wörterbücher und Schriften werden erst bei Bedarf geladen[^1]. Die Oberfläche gibt es auf Englisch, Deutsch, Spanisch, Französisch, Italienisch, Portugiesisch, Griechisch, Russisch, Ukrainisch, Japanisch und Chinesisch (vereinfacht und traditionell).
+EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von der schnellen Notiz bis zum ganzen Buch. Kein Server, kein Konto: Alles wird lokal verarbeitet, die Dokumente verlassen nie den eigenen Rechner. Einfach den Link öffnen oder EdenText als App installieren und offline nutzen. Der erste Download ist für die meisten Sprachen etwa 2 MB groß; Wörterbücher und Schriften werden erst bei Bedarf geladen[^1]. Die Oberfläche gibt es auf Englisch, Deutsch, Spanisch, Französisch, Italienisch, Portugiesisch, Griechisch, Russisch, Ukrainisch, Indonesisch, Japanisch und Chinesisch (vereinfacht und traditionell).
 
 > [!NOTE]
 > EdenText ist noch in der **Beta**-Phase und wird laufend weiterentwickelt. Tests und

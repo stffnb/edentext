@@ -16,6 +16,7 @@ const loaders: Record<Exclude<Locale, 'en'>, () => Promise<{ default: Messages }
   el: () => import('./locales/el'),
   ru: () => import('./locales/ru'),
   uk: () => import('./locales/uk'),
+  id: () => import('./locales/id'),
   ja: () => import('./locales/ja'),
   'zh-Hans': () => import('./locales/zh-Hans'),
   'zh-Hant': () => import('./locales/zh-Hant'),
