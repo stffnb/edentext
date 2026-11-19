@@ -146,7 +146,8 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 6px 6px 10px;
+    padding-block: 6px;
+    padding-inline: 10px 6px;
     border-bottom: 1px solid var(--color-border);
     background: var(--color-surface);
   }

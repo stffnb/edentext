@@ -71,7 +71,7 @@
     background: none;
     color: inherit;
     padding: 0;
-    text-align: left;
+    text-align: start;
     font: inherit;
     cursor: pointer;
   }
@@ -82,8 +82,8 @@
 
   .quote {
     margin: 3px 0;
-    padding-left: 6px;
-    border-left: 2px solid currentColor;
+    padding-inline-start: 6px;
+    border-inline-start: 2px solid currentColor;
     /* Two lines of the changed text is enough to recognise it. */
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -103,7 +103,7 @@
     background: none;
     color: inherit;
     padding: 2px 4px;
-    text-align: left;
+    text-align: start;
     font: inherit;
     white-space: pre-wrap;
     resize: vertical;

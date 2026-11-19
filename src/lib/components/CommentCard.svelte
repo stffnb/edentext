@@ -168,7 +168,7 @@
     background: none;
     color: inherit;
     padding: 0;
-    text-align: left;
+    text-align: start;
     font: inherit;
     cursor: pointer;
   }
@@ -201,8 +201,8 @@
 
   .quote {
     margin: 3px 0;
-    padding-left: 6px;
-    border-left: 2px solid;
+    padding-inline-start: 6px;
+    border-inline-start: 2px solid;
     color: var(--color-text-muted);
     /* Two lines of the annotated text is enough to recognise it. */
     display: -webkit-box;
@@ -231,8 +231,8 @@
   /* An answer is indented under the comment it belongs to, as in a threaded pane. */
   .reply {
     margin-top: 4px;
-    padding-left: 6px;
-    border-left: 1px solid var(--color-border);
+    padding-inline-start: 6px;
+    border-inline-start: 1px solid var(--color-border);
   }
 
   textarea {

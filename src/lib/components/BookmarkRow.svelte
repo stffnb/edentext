@@ -75,7 +75,7 @@
     background: transparent;
     color: var(--color-text);
     font-size: 0.8rem;
-    text-align: left;
+    text-align: start;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

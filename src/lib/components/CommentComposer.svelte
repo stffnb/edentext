@@ -76,8 +76,8 @@
 
   .quote {
     margin: 3px 0;
-    padding-left: 6px;
-    border-left: 2px solid var(--color-primary);
+    padding-inline-start: 6px;
+    border-inline-start: 2px solid var(--color-primary);
     color: var(--color-text-muted);
     display: -webkit-box;
     -webkit-line-clamp: 2;

@@ -445,7 +445,8 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    padding: 6px 6px 6px 10px;
+    padding-block: 6px;
+    padding-inline: 10px 6px;
   }
   .title { flex: 1; font-weight: 600; }
 
@@ -549,7 +550,7 @@
     flex: 1;
     min-width: 0;
     padding: 3px 4px;
-    text-align: left;
+    text-align: start;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

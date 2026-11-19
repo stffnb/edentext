@@ -627,7 +627,7 @@
     padding: 6px 12px;
     border: 1px solid var(--color-border);
     border-radius: 999px;
-    text-align: left;
+    text-align: start;
   }
   .chip:hover:not(:disabled) { border-color: var(--w-accent); background: var(--w-accent-soft); }
 
@@ -636,7 +636,8 @@
     align-self: flex-end;
     max-width: 85%;
     padding: 7px 11px;
-    border-radius: 14px 14px 4px 14px;
+    border-radius: 14px;
+    border-end-end-radius: 4px;
     background: var(--w-accent-soft, var(--color-btn-hover));
     white-space: pre-wrap;
   }
@@ -644,7 +645,7 @@
   .content :global(p) { margin: 0 0 0.5em; }
   .content :global(.zone-line) { margin: 0.3em 0; padding: 0.2em 0; border-block: 1px dashed var(--w-border); font-size: 0.85em; opacity: 0.75; }
   .content :global(h1), .content :global(h2), .content :global(h3) { margin: 0.4em 0; font-size: 1em; }
-  .content :global(ul), .content :global(ol) { margin: 0 0 0.5em; padding-left: 1.4em; }
+  .content :global(ul), .content :global(ol) { margin: 0 0 0.5em; padding-inline-start: 1.4em; }
   .content :global(table) { border-collapse: collapse; margin-bottom: 0.5em; }
   .content :global(td), .content :global(th) { border: 1px solid var(--color-border); padding: 2px 4px; }
   .tool { color: var(--color-text-muted); font-size: 0.75rem; }
@@ -655,9 +656,9 @@
 
   .acts { display: flex; gap: 6px; }
   .acts.round { align-items: center; flex-wrap: wrap; }
-  .tools-row { display: flex; gap: 2px; margin-left: -3px; }
+  .tools-row { display: flex; gap: 2px; margin-inline-start: -3px; }
   .msg.user { position: relative; }
-  .msg.user .edit { position: absolute; left: -22px; top: 4px; opacity: 0; }
+  .msg.user .edit { position: absolute; inset-inline-start: -22px; top: 4px; opacity: 0; }
   .msg.user:hover .edit, .msg.user .edit:focus-visible { opacity: 1; }
   .msg.user.editing { align-self: stretch; max-width: none; display: flex; flex-direction: column; gap: 6px; white-space: normal; }
   .msg.user.editing textarea { width: 100%; box-sizing: border-box; padding: 2px 0; }
@@ -686,7 +687,7 @@
     background: var(--color-surface);
     box-shadow: var(--w-menu-shadow, 0 8px 28px rgba(0, 0, 0, 0.22));
   }
-  .menu button { display: flex; gap: 8px; align-items: baseline; padding: 5px 8px; text-align: left; }
+  .menu button { display: flex; gap: 8px; align-items: baseline; padding: 5px 8px; text-align: start; }
   .menu button.on { background: var(--w-accent-soft); }
   .menu .cmd { font-weight: 600; color: var(--w-accent); }
   .menu .label { color: var(--color-text-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -706,7 +707,8 @@
     gap: 4px;
     align-self: flex-start;
     max-width: 100%;
-    padding: 2px 4px 2px 8px;
+    padding-block: 2px;
+    padding-inline: 8px 4px;
     border-radius: 999px;
     background: var(--w-accent-soft);
     font-size: 0.72rem;
@@ -724,7 +726,7 @@
     font: inherit;
   }
   .row { display: flex; align-items: center; gap: 6px; }
-  .row .send { margin-left: auto; }
+  .row .send { margin-inline-start: auto; }
   .chips-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
   .chips-row .error { font-size: 0.72rem; }
   .presets .chip { padding: 3px 9px; font-size: 0.75rem; }
