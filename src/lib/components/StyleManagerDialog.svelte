@@ -513,7 +513,7 @@
               {#if editingName === s.name}
                 <input
                   class="entry rename"
-                  style="padding-left: {indentRem(0)}rem"
+                  style="padding-inline-start: {indentRem(0)}rem"
                   value={s.name}
                   use:focusSelect
                   onblur={(e) => editingName === s.name && commitRename(s.name, e.currentTarget.value)}
@@ -526,7 +526,7 @@
                 <button
                   class="entry"
                   class:active={current === s.name}
-                  style="padding-left: {indentRem(0)}rem"
+                  style="padding-inline-start: {indentRem(0)}rem"
                   title={styleLabel(s.name)}
                   onclick={() => select(s.name)}
                   ondblclick={() => { if (!s.builtin) editingName = s.name; }}
@@ -544,7 +544,7 @@
               {#if editingName === s.name}
                 <input
                   class="entry rename"
-                  style="padding-left: {indentRem(0)}rem"
+                  style="padding-inline-start: {indentRem(0)}rem"
                   value={s.name}
                   use:focusSelect
                   onblur={(e) => editingName === s.name && commitRename(s.name, e.currentTarget.value)}
@@ -557,7 +557,7 @@
                 <button
                   class="entry"
                   class:active={current === s.name}
-                  style="padding-left: {indentRem(0)}rem"
+                  style="padding-inline-start: {indentRem(0)}rem"
                   title={styleLabel(s.name)}
                   onclick={() => select(s.name)}
                   ondblclick={() => { if (!s.builtin) editingName = s.name; }}
@@ -574,7 +574,7 @@
             {#if editingName === s.name}
               <input
                 class="entry rename"
-                style="padding-left: {indentRem(depth)}rem"
+                style="padding-inline-start: {indentRem(depth)}rem"
                 value={s.name}
                 use:focusSelect
                 onblur={(e) => editingName === s.name && commitRename(s.name, e.currentTarget.value)}
@@ -588,7 +588,7 @@
               <button
                 class="entry"
                 class:active={current === s.name}
-                style="padding-left: {indentRem(depth)}rem"
+                style="padding-inline-start: {indentRem(depth)}rem"
                 title={styleLabel(s.name)}
                 onclick={() => select(s.name)}
                 ondblclick={() => { if (!s.builtin) editingName = s.name; }}
@@ -1078,7 +1078,7 @@
     display: flex;
     flex-direction: column;
     width: 14rem;
-    border-right: 1px solid var(--color-border);
+    border-inline-end: 1px solid var(--color-border);
   }
   /* Five tabs in two full rows: three over two, as one row would break the words. */
   .family {
@@ -1127,11 +1127,11 @@
     color: var(--color-text);
     font: inherit;
     font-size: 0.85rem;
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
   .entry:hover { background: var(--color-btn-hover); }
-  .rename { padding-right: 0.6rem; outline: 1px solid var(--color-primary); outline-offset: -1px; }
+  .rename { padding-inline-end: 0.6rem; outline: 1px solid var(--color-primary); outline-offset: -1px; }
   .entry.active { background: var(--color-primary); color: white; }
   /* A long name is clipped instead of overflowing the pane (the title shows it in full). */
   .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -531,7 +531,7 @@
     gap: 2px;
     padding: 18px 10px;
     background: var(--w-hover);
-    border-right: 1px solid var(--w-border);
+    border-inline-end: 1px solid var(--w-border);
   }
   h2 { font-size: 1rem; padding: 0 10px 12px; }
   .nav-item {
@@ -544,7 +544,7 @@
     background: none;
     color: var(--w-text-dim);
     font: inherit;
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
   .nav-item:hover { background: var(--w-pressed); color: var(--color-text); }
@@ -565,7 +565,8 @@
   h3 {
     margin: 0 28px;
     font-size: 1.15rem;
-    padding: 18px 40px 10px 0;
+    padding-block: 18px 10px;
+    padding-inline: 0 40px;
     border-bottom: 1px solid var(--w-border);
   }
   .close {
@@ -594,7 +595,7 @@
   }
   .row:last-child { border-bottom: 0; }
   .row.stack { flex-direction: column; align-items: stretch; gap: 10px; }
-  .row.sub { padding-left: 16px; }
+  .row.sub { padding-inline-start: 16px; }
   .row.dim .name { color: var(--w-text-tertiary); }
   .info { flex: 1; min-width: 0; }
   .name { font-weight: 500; }
@@ -687,7 +688,7 @@
   /* A phone: the side bar becomes a row of tabs above the pane. */
   @media (max-width: 600px) {
     .shell { flex-direction: column; }
-    nav { width: auto; flex-direction: row; overflow-x: auto; padding: 10px; margin-right: 48px; border-right: 0; border-bottom: 1px solid var(--w-border); }
+    nav { width: auto; flex-direction: row; overflow-x: auto; padding: 10px; margin-inline-end: 48px; border-inline-end: 0; border-bottom: 1px solid var(--w-border); }
     h2 { display: none; }
     .nav-item { flex: none; }
     .scroll { padding: 0 16px 20px; }

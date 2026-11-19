@@ -166,7 +166,7 @@
   .bp-dropdown {
     position: absolute;
     top: calc(100% + 3px);
-    left: 0;
+    inset-inline-start: 0;
     z-index: 200;
     display: flex;
     flex-direction: column;

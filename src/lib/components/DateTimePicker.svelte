@@ -143,7 +143,7 @@
   .dt-dropdown {
     position: absolute;
     top: calc(100% + 3px);
-    right: 0;
+    inset-inline-end: 0;
     width: 340px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -176,7 +176,7 @@
   }
 
   .dt-cell {
-    text-align: left;
+    text-align: start;
     padding: 0.32rem 0.45rem;
     border: 1px solid var(--color-border);
     border-radius: 3px;

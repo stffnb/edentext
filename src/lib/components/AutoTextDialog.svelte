@@ -113,7 +113,7 @@
     color: var(--color-text);
     padding: 4px 8px;
     font: inherit;
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
   .entry:hover { background: var(--color-btn-hover); }

@@ -213,7 +213,7 @@
   .char-dropdown {
     position: absolute;
     top: calc(100% + 3px);
-    right: 0;
+    inset-inline-end: 0;
     width: 312px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);

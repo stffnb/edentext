@@ -207,7 +207,7 @@
   .table-dropdown {
     position: absolute;
     top: calc(100% + 3px);
-    left: 0;
+    inset-inline-start: 0;
     /* A column so every child stretches to the panel width: a <button> with width:auto
        sizes to its content in WebKit, which left the manage row short of the edge. */
     display: flex;
@@ -218,9 +218,9 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     z-index: 200;
     padding: 8px;
-    /* Anchor near the right edge of the toolbar — keep it from spilling off-screen. */
-    right: 0;
-    left: auto;
+    /* Anchor near the end edge of the toolbar — keep it from spilling off-screen. */
+    inset-inline-end: 0;
+    inset-inline-start: auto;
   }
 
   .table-dim-label {

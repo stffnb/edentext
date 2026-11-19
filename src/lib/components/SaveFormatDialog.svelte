@@ -94,7 +94,7 @@
     color: var(--color-text);
     padding: 7px 14px;
     font: inherit;
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
   button:hover { background: var(--color-btn-hover); }

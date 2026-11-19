@@ -162,7 +162,7 @@
   .tsp-dropdown {
     position: absolute;
     top: calc(100% + 3px);
-    left: 0;
+    inset-inline-start: 0;
     z-index: 200;
     display: flex;
     flex-direction: column;
@@ -205,8 +205,8 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
-    padding-left: 8px;
-    border-left: 1px solid var(--color-border);
+    padding-inline-start: 8px;
+    border-inline-start: 1px solid var(--color-border);
   }
 
   .tsp-option {

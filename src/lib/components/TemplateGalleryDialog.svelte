@@ -159,7 +159,7 @@
     border-radius: var(--radius);
     background: transparent;
     color: var(--color-text);
-    text-align: left;
+    text-align: start;
     cursor: pointer;
     transition: border-color 0.12s, background 0.12s;
   }

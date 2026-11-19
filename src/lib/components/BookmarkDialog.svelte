@@ -121,7 +121,8 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    padding: 0.35rem 0.4rem 0.35rem 0.7rem;
+    padding-block: 0.35rem;
+    padding-inline: 0.7rem 0.4rem;
     border-bottom: 1px solid var(--color-border);
     font-size: 0.8rem;
     font-weight: 600;

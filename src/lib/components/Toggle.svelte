@@ -36,7 +36,7 @@
     content: '';
     position: absolute;
     top: 2px;
-    left: 2px;
+    inset-inline-start: 2px;
     width: 16px;
     height: 16px;
     border-radius: 50%;
@@ -46,6 +46,7 @@
   }
   .toggle:checked { background: var(--w-accent-fill); }
   .toggle:checked::after { transform: translateX(16px); }
+  :global(html[dir='rtl']) .toggle:checked::after { transform: translateX(-16px); }
   .toggle:focus-visible { outline: 2px solid var(--w-accent); outline-offset: 2px; }
   .toggle:disabled { opacity: 0.45; cursor: default; }
   @media (prefers-reduced-motion: reduce) {
