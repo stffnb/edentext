@@ -751,15 +751,15 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   break-after: avoid;
 }
 
-/* A tab stop's leader fills the gap the tab was given as margin-left. The span is
-   zero-width (tab-size:0), so its right padding edge is where the stop sits. Not scoped
+/* A tab stop's leader fills the gap the tab was given as the margin before it. The span is
+   zero-width (tab-size:0), so its far padding edge is where the stop sits. Not scoped
    to .tiptap: a static header/footer zone carries the same spans. */
 .paper .tab-leader {
   position: relative;
 }
 .paper .tab-leader::before {
   position: absolute;
-  right: 0;
+  inset-inline-end: 0;
   top: 0;
   width: var(--leader-w, 0);
   overflow: hidden;
@@ -768,6 +768,12 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   pointer-events: none;
   /* Long enough to outrun any gap A4 can hold; the box clips the rest. */
   content: '................................................................................................................................................................................................................';
+}
+/* A right-to-left mark behind a right-to-left block's tab: each segment between tabs is
+   ordered on its own, as a word processor sets it. Without it Firefox runs left-to-right
+   text across the tab, and Chromium and WebKit take a leader's placeholder into that run. */
+.paper .tab-rtl::after {
+  content: '\200F';
 }
 .paper .tab-leader[data-leader='-']::before {
   content: '----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------';
@@ -1457,12 +1463,21 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
 .paper.show-formatting-marks .tiptap .pm-tab-mark::before {
   content: '→';
   position: absolute;
-  left: 0.1em;
+  inset-inline-start: 0.1em;
   top: 0;
   color: var(--color-primary);
   opacity: 0.5;
   pointer-events: none;
   user-select: none;
+}
+/* By attribute, the block's own over the page's: the build lowers :dir() to a list of
+   languages, which is not the direction. */
+.paper.show-formatting-marks .tiptap-host[dir='rtl'] .pm-tab-mark::before,
+.paper.show-formatting-marks .tiptap [dir='rtl'] .pm-tab-mark::before {
+  content: '←';
+}
+.paper.show-formatting-marks .tiptap [dir='ltr'] .pm-tab-mark::before {
+  content: '→';
 }
 
 /* A highlight repaints its text in its own colour, not in -webkit-text-fill-color, and WebKit

@@ -450,6 +450,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     void pageFormat;
     // …the tab grid, which changes where a tab lands and so where a line breaks…
     void tabIntervalCm;
+    // …the page's direction, which is the edge every tab stop is measured from…
+    void pageRtl;
     // …and how the space between two blocks is measured.
     void spacingModel;
     // …and the line grid, which sets every line's height.
