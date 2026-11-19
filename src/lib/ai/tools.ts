@@ -30,6 +30,7 @@ import { borderAttr, nameLookup, parseMargins, splitDocumentHtml, type NoteText,
 import { PAGE_FORMAT_CM, sizeSetup, type PageFormat } from '../storage/pageFormat';
 import type { Orientation } from '../storage/pageOrientation';
 import { recordLock } from '../storage/trackChanges.svelte';
+import { selectionTableRtl } from '../editor/extensions/tableView';
 import type { PageMargins } from '../storage/pageMargins';
 import type { HfDoc, HfVariant, HfZone } from '../storage/headerFooter';
 import { PAGE_NUM_FORMATS } from '../storage/pageNumbering';
@@ -524,8 +525,10 @@ function tableChange(ctx: TurnContext, pos: number, at: CellAt, action: string, 
       const start = at.tablePos + 1;
       const here = map.map[(at.row - 1) * map.width + at.col - 1];
       const rect = map.findCell(here);
-      if (rect.right >= map.width) throw new ToolError('there is no cell to the right');
-      const right = map.map[(at.row - 1) * map.width + rect.right];
+      // The cell the reader sees on the right: the one before, where the columns run mirrored.
+      const next = selectionTableRtl(ed.view, pos + 1) ? rect.left - 1 : rect.right;
+      if (next < 0 || next >= map.width) throw new ToolError('there is no cell to the right');
+      const right = map.map[(at.row - 1) * map.width + next];
       ed.view.dispatch(ed.state.tr.setSelection(CellSelection.create(ed.state.doc, start + here, start + right)));
       return ok(ed.commands.mergeCells(), 'the cells cannot be merged');
     }
@@ -830,16 +833,18 @@ function run(ctx: TurnContext, call: ToolCall): ToolResult {
       if (!TABLE_ACTIONS.includes(where)) throw new ToolError(`action is one of ${TABLE_ACTIONS.join(', ')}`);
       if (!where.startsWith('row_') && !where.startsWith('column_')) return { result: tableChange(ctx, p.pos, at, where, a), summary: m.table(at.table) };
       const chain = ctx.editor.chain().setTextSelection(p.pos + 1);
+      // Left and right are the sides the reader sees; the new line's index is the grid's.
+      const before = where.startsWith('row') ? where === 'row_above' : (where === 'column_left') !== selectionTableRtl(ctx.editor.view, p.pos + 1);
       const done = where === 'row_above' ? chain.addRowBefore().run()
         : where === 'row_below' ? chain.addRowAfter().run()
-        : where === 'column_left' ? chain.addColumnBefore().run()
-        : chain.addColumnAfter().run();
+        : where === 'column_left' ? chain.addColumnLeft().run()
+        : chain.addColumnRight().run();
       if (!done) throw new ToolError('the table cannot take a row or column there');
       // The structure cannot be tracked; the new cells' text is, as any insertion.
       const table = ctx.editor.state.doc.nodeAt(at.tablePos)!;
       const map = TableMap.get(table);
       const row = where.startsWith('row');
-      const line = row ? (where === 'row_above' ? at.row - 1 : at.row) : (where === 'column_left' ? at.col - 1 : at.col);
+      const line = (row ? at.row : at.col) - (before ? 1 : 0);
       const cells = [...new Set(Array.from({ length: row ? map.width : map.height }, (_, k) => map.map[row ? line * map.width + k : k * map.width + line]))];
       const texts = Array.isArray(a.cells) ? a.cells.map(String) : [];
       dispatch(ctx, (tr) => {

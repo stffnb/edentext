@@ -87,7 +87,12 @@ table's cells keeps the page's. A cell's `borderLeft`/`borderRight` and the left
 and "first column" need no direction, and a right-to-left table draws left on the right
 (`--cell-b-l`/`--cell-b-r`, swapped paddings). The table's `marginLeft`/`marginRight` are the
 drawn ones. Controls naming a drawn side mirror by the table's computed direction
-(`selectionTableRtl`: border presets, insert column left/right, cell margins, column drag).
+(`selectionTableRtl`: border presets, the `addColumnLeft`/`addColumnRight` commands of ribbon,
+table toolbar and the assistant's `column_left`/`column_right`/`merge_right`, the cell margin
+fields via `cellSideIndex`, column drag). Left and right arrow at a cell's edge go to the
+cell drawn on that side (`tableArrow`): the end of the line is the visual one and the step
+follows the table's direction, so Arabic text leaves a cell the way the key points, with
+Shift extending the cell selection the same way. Tab, sort and "first column" are grid order.
 
 - **DOCX**: Word mirrors a table by `w:bidiVisual` in its own `w:tblPr` alone, and then reads
   `w:left`/`w:start` of `w:tcBorders`, `w:tblBorders`, `w:tcMar`, `w:tblCellMar` as the leading

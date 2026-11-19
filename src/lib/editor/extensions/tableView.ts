@@ -1,6 +1,8 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { CELL_PAD_VARS, DEFAULT_CELL_PADDING, parseCellPadding } from './tableCellPadding';
 import type { EditorView, ViewMutationRecord } from '@tiptap/pm/view';
+import { Selection, TextSelection } from '@tiptap/pm/state';
+import { CellSelection, nextCell } from '@tiptap/pm/tables';
 
 // Custom table node view: <colgroup> uses percentage widths and the table stays at
 // width:100%, so it's always full text width (matching the export) and responsive
@@ -39,10 +41,16 @@ export function columnPercents(weights: (number | null)[]): number[] {
 
 // Whether the table at the selection draws its columns right to left (its own `dir`,
 // else the page's): what a control naming a physical side has to mirror by.
-export function selectionTableRtl(view: EditorView): boolean {
-  const at = view.domAtPos(view.state.selection.from).node;
+export function selectionTableRtl(view: EditorView, pos = view.state.selection.from): boolean {
+  const at = view.domAtPos(pos).node;
   const table = (at instanceof Element ? at : at.parentElement)?.closest('table');
   return !!table && getComputedStyle(table).direction === 'rtl';
+}
+
+// A cell's margins are stored top, right, bottom, left, the sides being the grid's: the
+// index a field naming a drawn side reads and writes.
+export function cellSideIndex(view: EditorView, i: number): number {
+  return i % 2 === 1 && selectionTableRtl(view) ? 4 - i : i;
 }
 
 // The table's own margins (cm) go on the wrapper; the table stays 100% of it, so a
@@ -172,4 +180,45 @@ export class TableView {
     }
     return false;
   }
+}
+
+// The cell the caret leaves on the side the reader sees: it stands at that end of its
+// line, in the cell's last block where that side is where the text runs to, else its first.
+function cellLeftAt(view: EditorView, side: 'left' | 'right'): number | null {
+  const sel = view.state.selection;
+  if (!(sel instanceof TextSelection) || !view.endOfTextblock(side)) return null;
+  const { $head } = sel;
+  const at = view.domAtPos($head.pos).node;
+  const block = at instanceof Element ? at : at.parentElement;
+  const forward = (side === 'left') === (!!block && getComputedStyle(block).direction === 'rtl');
+  for (let d = $head.depth - 1; d >= 0; d--) {
+    const parent = $head.node(d);
+    if ((forward ? $head.indexAfter(d) : $head.index(d)) !== (forward ? parent.childCount : 0)) return null;
+    const role = parent.type.spec.tableRole;
+    if (role === 'cell' || role === 'header_cell') return $head.before(d);
+  }
+  return null;
+}
+
+// Left and right arrow at a cell's edge: the caret (or, extending, the cell selection) goes
+// to the cell drawn on that side, whichever way the table's columns and the text run.
+export function tableArrow(view: EditorView, side: 'left' | 'right', extend: boolean): boolean {
+  const { state } = view;
+  const sel = state.selection;
+  const cells = sel instanceof CellSelection ? sel : null;
+  const cellPos = cells ? cells.$headCell.pos : cellLeftAt(view, side);
+  if (cellPos == null) return false;
+  const step = (side === 'left') === selectionTableRtl(view, cellPos + 1) ? 1 : -1;
+  const $cell = state.doc.resolve(cellPos);
+  if (extend) {
+    const $head = nextCell($cell, 'horiz', step);
+    // No cell on that side: selected cells stay, and a mirrored table's caret does not
+    // fall through to a handler extending the other way.
+    if (!$head) return !!cells || step !== (side === 'left' ? -1 : 1);
+    view.dispatch(state.tr.setSelection(new CellSelection(cells ? cells.$anchorCell : $cell, $head)).scrollIntoView());
+    return true;
+  }
+  const out = cells ? $cell : state.doc.resolve(step > 0 ? cellPos + $cell.nodeAfter!.nodeSize : cellPos);
+  view.dispatch(state.tr.setSelection(Selection.near(out, step)).scrollIntoView());
+  return true;
 }

@@ -51,7 +51,7 @@ import { FormattingMarks } from './extensions/formattingMarks';
 import { SpellCheck } from './extensions/spellCheck';
 import { GrammarCheck } from './extensions/grammarCheck';
 import { SearchReplace } from './extensions/searchReplace';
-import { TableView } from './extensions/tableView';
+import { TableView, selectionTableRtl, tableArrow } from './extensions/tableView';
 import { TableColumnResize } from './extensions/tableColumnResize';
 import { TableRowResize } from './extensions/tableRowResize';
 import { TableSplit } from './extensions/tableSplit';
@@ -92,6 +92,15 @@ import { recordChanges, recordLock } from '../storage/trackChanges.svelte';
 import { markupView } from '../storage/markup.svelte';
 import { userName } from '../storage/userName.svelte';
 import { Insertion, Deletion, FormatChange, REBUILDING, TrackChanges } from './extensions/trackChanges';
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    tableSides: {
+      addColumnLeft: () => ReturnType;
+      addColumnRight: () => ReturnType;
+    };
+  }
+}
 
 const pxToPt = (size: string): string | null => {
   const px = /^([\d.]+)px$/.exec(size)?.[1];
@@ -248,6 +257,15 @@ export const extensions = [
     addProseMirrorPlugins() {
       return [...(this.parent?.() ?? []), new Plugin({ props: { handleDrop: (_view, _event, slice) => cutsCells(slice) } })];
     },
+    addKeyboardShortcuts() {
+      return {
+        ...this.parent?.(),
+        ArrowLeft: ({ editor }) => tableArrow(editor.view, 'left', false),
+        ArrowRight: ({ editor }) => tableArrow(editor.view, 'right', false),
+        'Shift-ArrowLeft': ({ editor }) => tableArrow(editor.view, 'left', true),
+        'Shift-ArrowRight': ({ editor }) => tableArrow(editor.view, 'right', true),
+      };
+    },
     addCommands() {
       const parent = this.parent?.() ?? {};
       // A split cell regroups a table as a merge does; neither has a form for a change.
@@ -282,7 +300,10 @@ export const extensions = [
       addRowBefore: () => ({ state, dispatch }) => inheritingInsert(addRowBefore, 'row', 'before')(state, dispatch),
       addRowAfter: () => ({ state, dispatch }) => inheritingInsert(addRowAfter, 'row', 'after')(state, dispatch),
       addColumnBefore: () => ({ state, dispatch }) => inheritingInsert(addColumnBefore, 'column', 'before')(state, dispatch),
-      addColumnAfter: () => ({ state, dispatch }) => inheritingInsert(addColumnAfter, 'column', 'after')(state, dispatch) };
+      addColumnAfter: () => ({ state, dispatch }) => inheritingInsert(addColumnAfter, 'column', 'after')(state, dispatch),
+      // A side the reader sees: a right-to-left table's columns run mirrored.
+      addColumnLeft: () => ({ state, view, commands }) => (selectionTableRtl(view, state.selection.from) ? commands.addColumnAfter() : commands.addColumnBefore()),
+      addColumnRight: () => ({ state, view, commands }) => (selectionTableRtl(view, state.selection.from) ? commands.addColumnBefore() : commands.addColumnAfter()) };
     },
   }).configure({ resizable: false, View: TableView }),
   ResizableTableRow,
