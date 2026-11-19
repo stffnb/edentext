@@ -18,20 +18,30 @@ const SOURCES = [
 // "(noun)", "(ugs.)", "(generic term)" — a label to read, not a word to insert.
 const clean = (word) => word.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
 
-// MyThes: a "headword|senseCount" line, then that many "(pos)|syn|syn|…" lines.
+// An antonym, as a sense line's tag (id "[ant]", ru) or a word's label (en, es): not a synonym.
+const ANTONYM = /\((antonym|антоним|ant[oó]nimo)\)|^\[ant\]/i;
+
+// MyThes: a "headword|senseCount" line, then that many "(pos)|syn|syn|…" lines. Most
+// sources leave the headword out of its own senses, so it leads the group here; the
+// same members under another headword are one group.
 function groups(dat) {
   const lines = dat.split('\n');
-  const out = new Set();
+  const out = new Map();
   for (let i = 1; i < lines.length; i++) {
     const head = lines[i].split('|');
     const senses = Number(head.at(-1));
     if (head.length < 2 || !Number.isInteger(senses) || senses < 1) continue;
+    const headword = clean(head[0]);
     for (let s = 0; s < senses; s++) {
-      const words = [...new Set((lines[++i] ?? '').split('|').slice(1).map(clean).filter(Boolean))];
-      if (words.length > 1) out.add(words.join(';'));
+      const [tag, ...fields] = (lines[++i] ?? '').split('|');
+      if (ANTONYM.test(tag)) continue;
+      const words = [...new Set(fields.filter((w) => !ANTONYM.test(w)).map(clean).filter(Boolean))];
+      if (headword && !words.some((w) => w.toLowerCase() === headword.toLowerCase())) words.unshift(headword);
+      const key = words.map((w) => w.toLowerCase()).sort().join(';');
+      if (words.length > 1 && !out.has(key)) out.set(key, words.join(';'));
     }
   }
-  return [...out].sort();
+  return [...out.values()].sort();
 }
 
 const bytes = async (path) => {
