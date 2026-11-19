@@ -4649,11 +4649,11 @@ function tablePropsOf(node: TiptapNode, contentWidthCm: number): TableProps | nu
 }
 
 // ODF's sides are the drawn ones, where a cell's left faces the column before it: a
-// right-to-left table swaps them. LibreOffice runs a table the way of the table or page
-// around it, so one running the other way names its mode.
-function physicalTables(node: TiptapNode, around = exportPageRtl): TiptapNode {
+// right-to-left table swaps them. A table running against its page names its mode, and a
+// nested one always: LibreOffice does not reliably hand it its parent's (probed).
+function physicalTables(node: TiptapNode, around = exportPageRtl, nested = false): TiptapNode {
   if (!node.content) return node;
-  if (node.type !== 'table') return { ...node, content: node.content.map((c) => physicalTables(c, around)) };
+  if (node.type !== 'table') return { ...node, content: node.content.map((c) => physicalTables(c, around, nested)) };
   const rtl = node.attrs?.dir === 'rtl' || (node.attrs?.dir !== 'ltr' && exportPageRtl);
   const swapped = (attrs: TiptapNode['attrs']): TiptapNode['attrs'] => {
     if (!rtl || !attrs) return attrs;
@@ -4662,9 +4662,9 @@ function physicalTables(node: TiptapNode, around = exportPageRtl): TiptapNode {
   };
   return {
     ...node,
-    attrs: { ...swapped(node.attrs), ...(rtl !== around ? { odtWritingMode: rtl ? 'rl-tb' : 'lr-tb' } : {}) },
+    attrs: { ...swapped(node.attrs), ...(rtl !== around || nested ? { odtWritingMode: rtl ? 'rl-tb' : 'lr-tb' } : {}) },
     content: node.content.map((row) => ({ ...row, content: (row.content ?? []).map((cell) => ({
-      ...cell, attrs: swapped(cell.attrs), content: (cell.content ?? []).map((c) => physicalTables(c, rtl)),
+      ...cell, attrs: swapped(cell.attrs), content: (cell.content ?? []).map((c) => physicalTables(c, rtl, true)),
     })) })),
   };
 }

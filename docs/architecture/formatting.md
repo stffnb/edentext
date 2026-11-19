@@ -99,9 +99,11 @@ Shift extending the cell selection the same way. Tab, sort and "first column" ar
   (right) side, `w:tblInd` from the right edge and `w:jc` mirrored (ECMA-376 §17.4; grid
   order, `w:gridSpan`, `w:gridBefore`, `w:tblLook` first column are logical anyway). So the
   export writes `w:bidiVisual` for a right-to-left table (`w:val="off"` for a left-to-right one
-  on a right-to-left page, which LibreOffice would mirror by the section), `w:tblInd` from
+  on a right-to-left page or in a right-to-left table, which LibreOffice would mirror by
+  the section or the table around it), `w:tblInd` from
   `marginRight`, and the cell sides unchanged. The import reads the flag, `w:tblInd` and `w:jc`
-  (`center`/`right`, also for left-to-right tables) the same way, `w:start`/`w:end` borders
+  (`center`/`right`, also for left-to-right tables) the same way, the flag also from the
+  table style's `w:tblPr` down its `w:basedOn` chain, `w:start`/`w:end` borders
   as left/right, and sets `dir` where the table runs against the page. A file of this editor
   from before (`sectionDirOnly`, no `w:bidiVisual`) wrote the sides as drawn: its tables
   follow the page and swap their sides. LibreOffice 26.2 differs from the standard (probed):
@@ -110,6 +112,6 @@ Shift extending the cell selection the same way. Tab, sort and "first column" ar
 - **ODF** sides are the drawn ones, so both directions swap the cells' left and right for a
   right-to-left table (`physicalTables`, `convertTable`); margins need none. The table's own
   `style:writing-mode` (`rl-tb`/`lr-tb`, LibreOffice's `page` inherits) is written where it runs
-  against the table or page around it, since LibreOffice hands a nested table its parent's
-  direction, and read back the same way. LibreOffice sets a right-to-left paragraph in such a
+  against its page and on every nested table: LibreOffice ran an unmarked left-to-right table
+  in a left-to-right one right to left on a right-to-left page (probed). Read back against the page. LibreOffice sets a right-to-left paragraph in such a
   cell against the swapped paddings (probed, a left-to-right one against the drawn ones).

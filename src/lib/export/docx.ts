@@ -84,6 +84,13 @@ let exportSpacingModel: SpacingModel = 'add';
 // right-to-left by its own `dir`, else by the page.
 let exportPageRtl = false;
 const isRtl = (attrs: TiptapNode['attrs']): boolean => attrs?.dir === 'rtl' || (attrs?.dir !== 'ltr' && exportPageRtl);
+// Whether the table whose cells are being written runs right to left.
+let aroundTableRtl = false;
+function inTable<T>(rtl: boolean, write: () => T): T {
+  const outer = aroundTableRtl;
+  aroundTableRtl = rtl;
+  try { return write(); } finally { aroundTableRtl = outer; }
+}
 
 // DOCX export. Mirrors export/odt.ts feature-for-feature, but builds OOXML via the
 // `docx` library instead of odf-kit. Lazy-loaded from App.svelte so neither this
@@ -3226,6 +3233,7 @@ function cellBlocksToDocx(content: TiptapNode[] = [], force: TextProps, num: Num
 }
 
 function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, float?: ITableFloatOptions): Table {
+  const rtl = isRtl(node.attrs);
   const rows = (node.content ?? []).filter((r) => r.type === 'tableRow');
   // LibreOffice's reject takes the whole table for a column some row has no cell of (probed).
   const mergedColumn = rows.some((row) => !row.attrs?.revMark && !row.content?.some((c) => c.attrs?.revMark));
@@ -3286,9 +3294,9 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
         },
         // A nested table measures against the cell's text width, as on import; at least
         // 0.5cm, as the ODT's, since tables nested deep leave a cell narrower than its padding.
-        children: cellBlocksToDocx(content, cellForce(tableStyle, cell, bg), num, Math.max(0.5,
+        children: inTable(rtl, () => cellBlocksToDocx(content, cellForce(tableStyle, cell, bg), num, Math.max(0.5,
           (widthTwip ? widthTwip * 2.54 / 1440 : (contentWidthCm - ml - mr) * colspan / gridCols)
-            - (ownPad ?? pad)[1] - (ownPad ?? pad)[3]), node.attrs?.keepNext === true),
+            - (ownPad ?? pad)[1] - (ownPad ?? pad)[3]), node.attrs?.keepNext === true)),
       }));
     }
     return new TableRow({
@@ -3303,12 +3311,11 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
     });
   });
 
-  // Word mirrors a table by w:bidiVisual alone, LibreOffice also by the section, so a
-  // table running against a right-to-left page says so too. Cell sides need no swap:
-  // w:left is the leading side there, as a cell's left faces the column before it.
-  const rtl = isRtl(node.attrs);
+  // Word mirrors a table by w:bidiVisual alone, LibreOffice also by the section and the
+  // table around it, so a table running against either says so too. Cell sides need no
+  // swap: w:left is the leading side there, as a cell's left faces the column before it.
   return new Table({
-    ...(rtl !== exportPageRtl || rtl ? { visuallyRightToLeft: rtl } : {}),
+    ...(rtl || exportPageRtl || aroundTableRtl ? { visuallyRightToLeft: rtl } : {}),
     ...(float ? { float } : {}),
     ...(tableStyle ? {
       style: docxStyleId(tableStyle.name),

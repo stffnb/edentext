@@ -221,6 +221,25 @@ describe('paragraph alignment and direction', () => {
       expect(content).not.toMatch(/fo:border-left="[^"]*#ff0000"/i);
     });
 
+    // LibreOffice runs a nested table by what stands around it, so each one says its own way.
+    it('keeps a nested table\'s direction and names it in the file', async () => {
+      const inner = (dir: string | null, text: string) => ({ type: 'table', attrs: dir ? { dir } : {}, content: [{ type: 'tableRow', content: [cell(text), cell('x')] }] });
+      const nested = { type: 'doc', content: [{ type: 'table', attrs: { dir: 'rtl' }, content: [{ type: 'tableRow', content: [
+        { type: 'tableCell', attrs: { colspan: 1, rowspan: 1 }, content: [inner(null, 'plain')] },
+        { type: 'tableCell', attrs: { colspan: 1, rowspan: 1 }, content: [inner('rtl', 'mirrored')] },
+      ] }] }, { type: 'paragraph' }] } as any;
+      const dirs = (doc: any) => {
+        const out: (string | null)[] = [];
+        (function walk(n: any) { if (n.type === 'table') out.push(n.attrs?.dir ?? null); (n.content ?? []).forEach(walk); })(doc);
+        return out;
+      };
+      const word = await docx(nested, false), odf = await odtOf(nested, false);
+      expect(dirs(importDocx(word).content)).toEqual(['rtl', null, 'rtl']);
+      expect(dirs(importOdt(odf).content)).toEqual(['rtl', null, 'rtl']);
+      expect(strFromU8(unzipSync(word)['word/document.xml']).match(/<w:bidiVisual[^>]*>/g)).toHaveLength(3);
+      expect(strFromU8(unzipSync(odf)['content.xml']).match(/<style:table-properties[^>]*style:writing-mode=/g)).toHaveLength(3);
+    });
+
     // Before tables wrote w:bidiVisual the sides went out as drawn and the section alone
     // carried the direction: such a file still shows what it showed.
     it('reads this editor\'s earlier right-to-left files as they were drawn', async () => {
@@ -250,6 +269,21 @@ describe('paragraph alignment and direction', () => {
       expect(read('<w:jc w:val="center"/>')).toEqual([1.5, 1.5]);
       expect(read('<w:bidiVisual/><w:jc w:val="left"/>')).toEqual([3, 0]);
       expect(read('<w:bidiVisual/><w:jc w:val="end"/>')).toEqual([0, 3]);
+    });
+
+    // A table style's w:tblPr mirrors its tables, down the w:basedOn chain; the table's own wins.
+    it('reads w:bidiVisual from the table style', async () => {
+      const files = unzipSync(await docx(table(null), false));
+      const read = (tblPr: string) => {
+        const out = { ...files };
+        out['word/document.xml'] = strToU8(strFromU8(files['word/document.xml']).replace('<w:tblPr>', `<w:tblPr><w:tblStyle w:val="Leaf"/>${tblPr}`));
+        out['word/styles.xml'] = strToU8(strFromU8(files['word/styles.xml']).replace('</w:styles>',
+          '<w:style w:type="table" w:styleId="Base"><w:name w:val="Base"/><w:tblPr><w:bidiVisual/></w:tblPr></w:style>'
+          + '<w:style w:type="table" w:styleId="Leaf"><w:name w:val="Leaf"/><w:basedOn w:val="Base"/></w:style></w:styles>'));
+        return shape(importDocx(zipSync(out)).content).dir;
+      };
+      expect(read('')).toBe('rtl');
+      expect(read('<w:bidiVisual w:val="0"/>')).toBe(null);
     });
   });
 });

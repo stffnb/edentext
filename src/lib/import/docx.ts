@@ -4007,7 +4007,7 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
   // Word mirrors a table by its own w:bidiVisual alone, and w:left then names the
   // leading side, which is what a cell's left is here. This editor's earlier files
   // carried the direction on the section only and wrote the sides as drawn.
-  const bidiVisual = fc(fc(tbl, 'tblPr'), 'bidiVisual');
+  const bidiVisual = fc(fc(tbl, 'tblPr'), 'bidiVisual') ?? ctx.styles.tableBidiVisual(styleId);
   const drawnSides = !bidiVisual && ctx.sectionDir && ctx.pageRtl;
   const rtl = bidiVisual ? onOff(bidiVisual) : drawnSides;
   if (drawnSides) for (const row of rows) for (const cell of row.content ?? []) swapCellSides(cell.attrs!);

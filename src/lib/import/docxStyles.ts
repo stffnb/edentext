@@ -263,6 +263,7 @@ export class DocxStyles {
   private defaultsBidi: boolean | null = null; // docDefaults w:pPrDefault/w:bidi
   private ownTabs = new Map<string, TabStop[]>(); // style's own w:pPr/w:tabs
   private ownCellMar = new Map<string, Element>(); // table style's own w:tblPr/w:tblCellMar
+  private ownBidiVisual = new Map<string, Element>(); // table style's own w:tblPr/w:bidiVisual
   private ownTblBorders = new Map<string, Element>(); // table style's own w:tblPr/w:tblBorders
   private ownPBdr = new Map<string, Element>(); // style's own w:pPr/w:pBdr (rule lines)
   private ownParaShd = new Map<string, Element>(); // style's own w:pPr/w:shd (colored field)
@@ -373,6 +374,8 @@ export class DocxStyles {
       const tblPr = firstChild(style, 'tblPr');
       const cellMar = tblPr && firstChild(tblPr, 'tblCellMar');
       if (cellMar) this.ownCellMar.set(id, cellMar);
+      const bidiVisual = tblPr && firstChild(tblPr, 'bidiVisual');
+      if (bidiVisual) this.ownBidiVisual.set(id, bidiVisual);
       const tblBorders = tblPr && firstChild(tblPr, 'tblBorders');
       if (tblBorders) this.ownTblBorders.set(id, tblBorders);
       const tcShd = firstChild(style, 'tcPr') && firstChild(firstChild(style, 'tcPr')!, 'shd');
@@ -713,6 +716,14 @@ export class DocxStyles {
     if (!styleId || seen.has(styleId)) return null;
     seen.add(styleId);
     return this.ownCellMar.get(styleId) ?? this.tableCellMar(this.basedOn.get(styleId) ?? null, seen);
+  }
+
+  // The nearest w:bidiVisual of a table style's w:tblPr along the chain: a table without
+  // its own takes its direction from there.
+  tableBidiVisual(styleId: string | null | undefined, seen = new Set<string>()): Element | null {
+    if (!styleId || seen.has(styleId)) return null;
+    seen.add(styleId);
+    return this.ownBidiVisual.get(styleId) ?? this.tableBidiVisual(this.basedOn.get(styleId) ?? null, seen);
   }
 
   // Every w:tblBorders along the w:basedOn chain, leaf first. The sides merge one by one,
