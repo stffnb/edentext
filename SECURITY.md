@@ -13,8 +13,9 @@ changelog credits the reporter unless you prefer otherwise.
 
 ## Supported versions
 
-Only the latest release gets security fixes. EdenText is in beta and releases often, so
-updating is the fix.
+Only the latest release receives security fixes; older versions are not patched. While
+EdenText is in beta and releases frequently, please update to the latest release to get
+a fix.
 
 ## Scope
 

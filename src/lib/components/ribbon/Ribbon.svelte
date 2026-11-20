@@ -18,7 +18,7 @@
   import FrameTabs from './tabs/FrameTabs.svelte';
   import UiLanguagePicker from '../UiLanguagePicker.svelte';
   import ParagraphDialog from '../ParagraphDialog.svelte';
-  import TabsDialog from '../TabsDialog.svelte';
+  import { OPEN_TABS_DIALOG_EVENT } from '../../editor/extensions/tabStops';
   import CommandSearch from './CommandSearch.svelte';
   import { clickOutside, isMenuOpen, pinPanels, toggleMenu, closeMenu, showMenu } from './menu.svelte';
   import { RIBBON_COMMANDS, TABS, actOnCommand, searchableCommands, styleCommands, tabOf, type RibbonCommand, type Tab } from './commands';
@@ -37,11 +37,11 @@
   import type { PageFormat } from '../../storage/pageFormat';
   import { DEFAULT_HF_DISTANCES, type HfDistances, type HfSet, type HfZone } from '../../storage/headerFooter';
   import { isAsianTag, numberingScripts, tagForLanguage, type DocumentLanguage } from '../../storage/documentLanguage';
-  import { DEFAULT_TAB_INTERVAL_CM } from '../../storage/tabInterval';
   import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../../storage/pageNumbering';
   import { EMPTY_PAGE_DECOR, type PageDecor } from '../../storage/pageDecor';
   import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../../storage/lineNumbering';
   import { aiEnabled } from '../../storage/ai.svelte';
+  import { dictationAvailable } from '../../dictation/session.svelte';
   import { volatile } from '../../storage/docScope';
   import { embedded, whiteLabel } from '../../embed/mode';
 
@@ -62,7 +62,6 @@
     zoom = 100,
     onZoom,
     onDebugDump,
-    tabIntervalCm = $bindable(DEFAULT_TAB_INTERVAL_CM),
     pageMargins = $bindable(DEFAULT_MARGINS),
     pageOrientation = $bindable<Orientation>('portrait'),
     pageFormat = $bindable<PageFormat>('A4'),
@@ -71,6 +70,7 @@
     differentFirstPage = $bindable(false),
     differentOddEven = $bindable(false),
     hyphenate = $bindable(false),
+    pageRtl = $bindable(false),
     pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
     pageDecor = $bindable(EMPTY_PAGE_DECOR),
     lineNumbering = $bindable(DEFAULT_LINE_NUMBERING),
@@ -108,7 +108,6 @@
     zoom?: number;
     onZoom?: (value: number) => void;
     onDebugDump?: () => void;
-    tabIntervalCm?: number;
     pageMargins?: PageMargins;
     pageOrientation?: Orientation;
     pageFormat?: PageFormat;
@@ -117,6 +116,7 @@
     differentFirstPage?: boolean;
     differentOddEven?: boolean;
     hyphenate?: boolean;
+    pageRtl?: boolean;
     pageNumbering?: PageNumbering;
     pageDecor?: PageDecor;
     lineNumbering?: LineNumbering;
@@ -190,7 +190,7 @@
 
   let docNameSizerWidth = $state(0);
   let paragraphDialogOpen = $state(false);
-  let tabsDialogOpen = $state(false);
+  const openTabs = () => window.dispatchEvent(new CustomEvent(OPEN_TABS_DIALOG_EVENT));
 
   let collapsed = $state(loadRibbonCollapsed());
   $effect(() => saveRibbonCollapsed(collapsed));
@@ -205,7 +205,7 @@
   let searchable = $derived(searchableCommands([
     ...RIBBON_COMMANDS,
     ...styleCommands(visibleStyles(styleSheet(), showAllStyles()).map((s) => s.name)),
-  ], shown, { ai: aiEnabled(), volatile, embedded, collab: !!onCollab }));
+  ], shown, { ai: aiEnabled(), volatile, embedded, dictation: dictationAvailable(), collab: !!onCollab }));
 
   const act = (id: string) => actOnCommand(document.querySelector(`.ribbon [data-cmd="${CSS.escape(id)}"]`));
 
@@ -291,7 +291,7 @@
             <hr />
             {#each recentFiles as f (f.id)}
               <button onclick={() => { closeMenu(); onOpenRecent?.(f.id); }}>
-                <Icon name="folder" size={16} />{f.name}
+                <Icon name="folder" size={16} /><bdi>{f.name}</bdi>
               </button>
             {/each}
             <button onclick={() => run(onForgetRecent)}>
@@ -347,7 +347,7 @@
 
     <CommandSearch commands={searchable} onRun={runCommand} onCancel={() => editor?.commands.focus()} />
 
-    <div class="doc-name">
+    <div class="doc-name" dir="ltr">
       <span class="doc-name-sizer" aria-hidden="true" bind:clientWidth={docNameSizerWidth}>{documentName || namePlaceholder}</span>
       <input
         class="doc-name-input"
@@ -422,7 +422,7 @@
     {:else if tab === 'insert'}
       <InsertTab {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} bind:hfDistances bind:differentFirstPage bind:differentOddEven {onEditZone} {onManageTableStyles} {onAutoText} />
     {:else if tab === 'layout'}
-      <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:extraHfSections bind:hyphenate bind:pageNumbering bind:pageDecor bind:lineNumbering bind:foldMarks onParagraphDialog={() => (paragraphDialogOpen = true)} />
+      <LayoutTab {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:extraHfSections bind:hyphenate bind:pageRtl bind:pageNumbering bind:pageDecor bind:lineNumbering bind:foldMarks onParagraphDialog={() => (paragraphDialogOpen = true)} />
     {:else if tab === 'references'}
       <ReferencesTab {editor} {tick} {hfActive} {onNoteOptions} {onHeadingNumbering} />
     {:else if tab === 'review'}
@@ -430,7 +430,7 @@
     {:else if tab === 'view'}
       <ViewTab bind:showRuler bind:showFormattingMarks bind:showFieldShading bind:splitView bind:pageColumns {zoom} {onZoom} {onDebugDump} {navigatorOpen} {onToggleNavigator} />
     {:else if tab === 'headerFooter'}
-      <HeaderFooterTab {editor} {hfActive} bind:hfDistances bind:differentFirstPage bind:differentOddEven {onEditZone} onTabsDialog={() => (tabsDialogOpen = true)} />
+      <HeaderFooterTab {editor} {hfActive} bind:hfDistances bind:differentFirstPage bind:differentOddEven {onEditZone} onTabsDialog={openTabs} />
     {:else if tab === 'tableDesign' || tab === 'tableLayout'}
       <TableTabs {editor} {tick} which={tab === 'tableDesign' ? 'design' : 'layout'} />
     {:else if tab === 'pictureFormat' || tab === 'shapeFormat'}
@@ -446,7 +446,7 @@
         fillColor={frameAttrs?.fillColor as string | null}
         strokeColor={frameAttrs?.strokeColor as string | null}
         strokeWidthPt={frameAttrs?.strokeWidthPt as number}
-        textVertical={frameAttrs?.textVertical === true}
+        textVertical={frameAttrs?.textVertical === 'up' ? 'up' : frameAttrs?.textVertical === true}
         textVAlign={frameAttrs?.textVAlign as never}
       />
     {/if}
@@ -462,8 +462,7 @@
   </div>
   {/if}
 
-  <ParagraphDialog bind:open={paragraphDialogOpen} {editor} {tick} onTabs={() => (tabsDialogOpen = true)} />
-  <TabsDialog bind:open={tabsDialogOpen} {editor} {tick} bind:tabIntervalCm />
+  <ParagraphDialog bind:open={paragraphDialogOpen} {editor} {tick} onTabs={openTabs} />
 </div>
 
 <style>
@@ -517,7 +516,7 @@
 
   .ribbon :global(.color-chevron) {
     width: 13px;
-    border-left: none;
+    border-inline-start: none;
     color: var(--w-text-dim);
   }
 
@@ -597,7 +596,7 @@
     justify-content: center;
     width: 26px;
     height: 26px;
-    margin-left: 6px;
+    margin-inline-start: 6px;
     padding: 0;
     border: none;
     background: none;
@@ -613,7 +612,7 @@
     color: #fff;
     border-radius: 4px;
     padding: 5px 14px;
-    margin-right: 6px;
+    margin-inline-end: 6px;
     font-family: inherit;
     font-size: 13px;
     font-weight: 600;
@@ -689,7 +688,11 @@
   .doc-name-input:focus { outline: none; border-color: var(--w-accent); color: var(--w-text); }
 
   .doc-name-ext { margin-right: 6px; }
-  .doc-dirty { margin: 0 6px 0 -4px; white-space: nowrap; font-size: 11px; color: var(--w-text-dim); }
+  /* The name box reads left to right in any interface, so its gap to the next item
+     goes on its outer side when that item lies to its left. */
+  :global(html[dir='rtl']) .doc-name { margin-left: 6px; }
+  :global(html[dir='rtl']) .doc-name-ext { margin-right: 0; }
+  .doc-dirty { margin-block: 0; margin-inline: -4px 6px; white-space: nowrap; font-size: 11px; color: var(--w-text-dim); }
 
   .ribbon-body {
     display: flex;
@@ -704,5 +707,5 @@
   }
 
   .ribbon-body::-webkit-scrollbar { display: none; }
-  .rb-ai { display: flex; margin-left: auto; }
+  .rb-ai { display: flex; margin-inline-start: auto; }
 </style>

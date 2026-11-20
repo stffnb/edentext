@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from '../i18n/i18n.svelte';
+  import { ltrIsland } from '../i18n/shortcut';
   const REPO_URL = 'https://github.com/stffnb/edentext';
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -17,7 +18,7 @@
 
   // The native close event (Escape, .close()) is the single source of truth.
   function onClose() {
-    open = false;
+    if (!dialogEl?.open) open = false;
   }
 
   // A click that lands on the dialog element itself is on the backdrop.
@@ -52,7 +53,7 @@
       {/each}
     </ul>
 
-    <p class="version">{t().about.version(__APP_VERSION__)}</p>
+    <p class="version">{t().about.version(ltrIsland(__APP_VERSION__))}</p>
 
     <a class="repo" href={REPO_URL} target="_blank" rel="noopener">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -97,7 +98,7 @@
   .close {
     position: absolute;
     top: 8px;
-    right: 8px;
+    inset-inline-end: 8px;
     display: inline-flex;
     align-items: center;
     justify-content: center;

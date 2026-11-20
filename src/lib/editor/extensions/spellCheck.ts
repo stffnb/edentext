@@ -6,10 +6,10 @@ import type { Node as PmNode } from '@tiptap/pm/model';
 import { changedRanges, type Range } from '../changedRanges';
 import { spellController } from '../../spell/controller';
 import { reading } from '../../collab/reading.svelte';
-import { codeForTag, westLang, type DocumentLanguage } from '../../storage/documentLanguage';
+import { asianLang, codeForTag, westLang, type DocumentLanguage } from '../../storage/documentLanguage';
 import { isPaginating } from './pageBreaks';
 import { highlightPlugin } from './highlights';
-import { ASIAN_SCRIPT_RE } from '../../utils/script';
+import { ASIAN_SCRIPT_RE, HANGUL_WORD_RE } from '../../utils/script';
 import { detectLanguage } from '../../spell/detect.svelte';
 
 export { changedRanges, type Range };
@@ -31,19 +31,19 @@ const DEBOUNCE_MS = 400;
 const WORD_RE = /[\p{L}\p{M}]+(?:['’\-][\p{L}\p{M}]+)*/gu;
 
 // The dictionary a node is checked against: its run's language, else its block's, else
-// the document's (language.ts carries both as full tags). Only the western language
-// counts: a dictionary checks the text outside East Asian script.
-function codeOf(tag: unknown): DocumentLanguage | undefined {
-  const west = westLang(tag);
-  return west ? codeForTag(west) ?? undefined : undefined;
+// the document's (language.ts carries both as full tags). The western language checks
+// the text outside East Asian script, the asian one (`asian`) the words in Hangul.
+function codeOf(attrs: Record<string, unknown> | undefined, asian = false): DocumentLanguage | undefined {
+  const tag = asian ? asianLang(attrs?.langAsian) ?? asianLang(attrs?.lang) : westLang(attrs?.lang);
+  return tag ? codeForTag(tag) ?? undefined : undefined;
 }
 
-export function langOf(node: PmNode, blockLang: DocumentLanguage | undefined): DocumentLanguage | undefined {
-  return codeOf(node.marks.find((m) => m.type.name === 'textStyle')?.attrs.lang) ?? blockLang;
+export function langOf(node: PmNode, blockLang: DocumentLanguage | undefined, asian = false): DocumentLanguage | undefined {
+  return codeOf(node.marks.find((m) => m.type.name === 'textStyle')?.attrs, asian) ?? blockLang;
 }
 
-export function blockLangOf(node: PmNode): DocumentLanguage | undefined {
-  return codeOf(node.attrs.lang);
+export function blockLangOf(node: PmNode, asian = false): DocumentLanguage | undefined {
+  return codeOf(node.attrs, asian);
 }
 
 // What a textblock is checked in: its own language, else the one it is detected in.
@@ -54,21 +54,43 @@ export function checkLangOf(node: PmNode): DocumentLanguage | undefined {
 // The misspelled words under `node`, whose content starts at `base` in the document.
 // A block's language holds for its own text only, never for the blocks after it.
 function wordDecos(node: PmNode, base: number, decos: Decoration[], outerLang?: DocumentLanguage): void {
-  let blockLang = outerLang;
+  const check = (block: PmNode, start: number) => {
+    const blockLang = checkLangOf(block) ?? outerLang;
+    // Adjacent text nodes are one text, so a word split by a formatting change is one word;
+    // anything else inline (a break, a field, a note anchor, struck text) ends a word.
+    let text = '', from = 0;
+    const blockAsian = blockLangOf(block, true) ?? blockLang;
+    const runs: { at: number; code: DocumentLanguage | undefined; asian: DocumentLanguage | undefined }[] = [];
+    const flush = () => {
+      WORD_RE.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = WORD_RE.exec(text)) !== null) {
+        const word = m[0];
+        // The word is in the language of the run it starts in.
+        let r = runs.length - 1;
+        while (r > 0 && runs[r].at > m.index) r--;
+        // Of East Asian script only a word all in Hangul is checked, in the asian language;
+        // not one mixed with other letters or counting a number before it (100원짜리).
+        const hangul = HANGUL_WORD_RE.test(word);
+        if (word.length < 2 || (hangul ? /\p{N}/u.test(text[m.index - 1] ?? '') : ASIAN_SCRIPT_RE.test(word))) continue;
+        if (spellController.check(word, hangul ? runs[r]?.asian : runs[r]?.code)) continue;
+        decos.push(Decoration.inline(from + m.index, from + m.index + word.length, { class: 'pm-spell-error' }));
+      }
+      text = '';
+      runs.length = 0;
+    };
+    block.forEach((child, offset) => {
+      if (!child.isText || child.marks.some((m) => m.type.name === 'deletion')) { flush(); return; }
+      if (!text) from = start + offset;
+      runs.push({ at: text.length, code: langOf(child, blockLang), asian: langOf(child, blockAsian, true) });
+      text += child.text ?? '';
+    });
+    flush();
+  };
+  if (node.isTextblock) check(node, base);
   node.descendants((child, pos) => {
-    if (child.isTextblock) blockLang = checkLangOf(child) ?? outerLang;
-    if (!child.isText || child.marks.some((m) => m.type.name === 'deletion')) return;
-    const text = child.text ?? '';
-    const code = langOf(child, blockLang);
-    WORD_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = WORD_RE.exec(text)) !== null) {
-      const word = m[0];
-      // East Asian script is in the asian language, which no dictionary here checks.
-      if (word.length < 2 || ASIAN_SCRIPT_RE.test(word) || spellController.check(word, code)) continue;
-      const from = base + pos + m.index;
-      decos.push(Decoration.inline(from, from + word.length, { class: 'pm-spell-error' }));
-    }
+    if (child.isTextblock) check(child, base + pos + 1);
+    return !child.isText;
   });
 }
 
@@ -123,8 +145,9 @@ export function spellLangAt(state: EditorState, pos: number): DocumentLanguage |
   const $pos = state.doc.resolve(pos);
   if (!$pos.parent.isTextblock) return undefined;
   const node = $pos.nodeAfter ?? $pos.nodeBefore;
-  return (node ? codeOf(node.marks.find((m) => m.type.name === 'textStyle')?.attrs.lang) : undefined)
-    ?? checkLangOf($pos.parent);
+  // A word in East Asian script is in the asian language.
+  const asian = ASIAN_SCRIPT_RE.test($pos.nodeAfter?.text?.[0] ?? '');
+  return (node ? langOf(node, undefined, asian) : undefined) ?? blockLangOf($pos.parent, asian) ?? checkLangOf($pos.parent);
 }
 
 // The word covering `pos`, right or wrong — what the thesaurus looks up. Leaf nodes

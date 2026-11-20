@@ -109,7 +109,8 @@
   .bm {
     position: fixed;
     /* The popover's own inset: 0 would stretch it between top and bottom. */
-    inset: 9rem 2rem auto auto;
+    inset-block: 9rem auto;
+    inset-inline: auto 2rem;
     margin: 0;
     z-index: 300;
     width: 18rem;
@@ -121,7 +122,8 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    padding: 0.35rem 0.4rem 0.35rem 0.7rem;
+    padding-block: 0.35rem;
+    padding-inline: 0.7rem 0.4rem;
     border-bottom: 1px solid var(--color-border);
     font-size: 0.8rem;
     font-weight: 600;

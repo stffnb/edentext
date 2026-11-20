@@ -11,7 +11,8 @@ import { closeGroup } from '../undo';
 import { IDB_SRC, awaitImage, shownSrc } from '../../storage/imageStore';
 import { cmToPx } from '../../storage/pageMargins';
 import { changedRanges } from '../changedRanges';
-import { readVerticalMargins, placeFrameSoon, placeInColumn, freeDragX, sinkSideFloat } from './pageBreaks';
+import { readVerticalMargins, placeFrameSoon, placeInColumn, freeDragX, sinkSideFloat, shiftToOffset } from './pageBreaks';
+import { coordsAt } from './overlay';
 
 // Inline, as-character image, or a floating text-wrapped frame (wrap = flow mode);
 // width/height are doc px @96dpi, rotation CW degrees. Export → cm + ODF
@@ -153,38 +154,19 @@ export function frameMargins(wrap: WrapMode, offsetCm: unknown, boxWidthPx: numb
   return `0 ${far} ${bottom} ${gapPx(g.left)}px`;
 }
 
-// CSS queues floats of one side behind each other, so a later frame would sit beside an
-// earlier one, or below it where its x no longer fits, rather than at its own x. Once
-// laid out, its margins are set to reach that x from the earlier one's outer edge, the
-// gap beside it cut where it would cross the column's edge. Kept on the element, so a
-// re-applied wrap restores them at once instead of laying out again.
-export function unstackFloat(el: HTMLElement, side: 'left' | 'right', offsetCm: unknown): void {
+// A side float placed at an x of its own (see shiftToOffset), with the gap it keeps to
+// the text. The shift last measured is kept on the element, so a re-applied wrap restores
+// it at once instead of a frame late.
+export function unstackFloat(el: HTMLElement, side: 'left' | 'right', offsetCm: unknown, distCm?: unknown): void {
   const kept = el.dataset.unstack?.split(':');
   if (typeof offsetCm !== 'number' || kept?.[0] !== `${side}${offsetCm}`) delete el.dataset.unstack;
   else [el.style.marginLeft, el.style.marginRight] = [kept[1], kept[2]];
-  if (typeof offsetCm !== 'number') return;
+  if (typeof offsetCm !== 'number') { delete el.dataset.floatX; return; }
+  el.dataset.floatX = String(offsetCm);
+  const g = wrapGap(distCm);
+  el.dataset.floatGap = String(gapPx(side === 'right' ? g.left : g.right));
   // Deferred: a new node view is not in its paragraph yet, so its neighbours are unknown.
-  requestAnimationFrame(() => {
-    let before = el.previousElementSibling;
-    while (before && !(before instanceof HTMLElement && before.style.float === side)) before = before.previousElementSibling;
-    const block = el.parentElement;
-    if (!before || !block || !el.isConnected || el.style.float !== side) return;
-    const b = block.getBoundingClientRect(), p = before.getBoundingClientRect(), r = el.getBoundingClientRect();
-    const s = b.width / (block.offsetWidth || 1);
-    const cs = getComputedStyle(block), pm = getComputedStyle(before), em = getComputedStyle(el);
-    const top = r.top - parseFloat(em.marginTop) * s;
-    if (top < p.top - parseFloat(pm.marginTop) * s - 1 || top > p.bottom + 1) return; // not queued on its line
-    const left = b.left + (parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth)) * s;
-    const right = b.right - (parseFloat(cs.paddingRight) + parseFloat(cs.borderRightWidth)) * s;
-    const x = cmToPx(offsetCm), w = r.width / s, cw = (right - left) / s;
-    let ml = parseFloat(em.marginLeft), mr = parseFloat(em.marginRight);
-    if (side === 'left') { ml = x - ((p.right - left) / s + parseFloat(pm.marginRight)); mr = Math.min(mr, cw - x - w); }
-    else { mr = cw - x - w - ((right - p.left) / s + parseFloat(pm.marginLeft)); ml = Math.min(ml, x); }
-    if (Math.abs(ml - parseFloat(em.marginLeft)) < 0.5 && Math.abs(mr - parseFloat(em.marginRight)) < 0.5) return;
-    el.style.marginLeft = `${ml.toFixed(2)}px`;
-    el.style.marginRight = `${mr.toFixed(2)}px`;
-    el.dataset.unstack = `${side}${offsetCm}:${el.style.marginLeft}:${el.style.marginRight}`;
-  });
+  requestAnimationFrame(() => shiftToOffset(el));
 }
 
 // What picking a wrap mode by hand drops: the offsets belong to the mode that was set,
@@ -226,6 +208,17 @@ export function applyRunThrough(el: HTMLElement, offsetCm: unknown, offsetYCm: u
   } else if (typeof offsetCm === 'number') {
     el.dataset.columnX = String(px(offsetCm));
   }
+}
+
+// A header's or footer's text does not wrap around a frame anchored in it (probed in
+// LibreOffice: full-width and narrow, paragraph- and margin-relative): it runs through at its
+// anchor, and its gap above is kept for the footer's band (HeaderFooterLayer).
+export function runInZone(view: EditorView, el: HTMLElement, offsetCm: unknown, offsetYCm: unknown, dist: unknown, rank: unknown): void {
+  applyRunThrough(el, offsetCm, offsetYCm, true, false, false, rank);
+  // How far its gap reaches above its paragraph's top.
+  el.dataset.zoneGap = String(gapPx(wrapGap(dist).top) - (typeof offsetYCm === 'number' ? gapPx(offsetYCm) : 0));
+  if (el.isConnected) placeInColumn(view, el);
+  else placeFrameSoon(view, el);
 }
 
 // A free frame's layer: in front of the text under the header layer (22), behind it over
@@ -308,6 +301,7 @@ export function restackFrame(state: EditorState, dispatch: ((tr: Transaction) =>
 
 // A frame leaving run-through, or its page, takes no page place along.
 export function clearPagePlace(el: HTMLElement): void {
+  delete el.dataset.zoneGap;
   delete el.dataset.fromBody;
   delete el.dataset.pageX;
   delete el.dataset.pageY;
@@ -857,7 +851,11 @@ class ImageView {
   private offX(): unknown { return this.dragBy ? this.dragX + this.dragBy.x : this.node.attrs.wrapOffset; }
   private offY(): unknown { const v = this.node.attrs.wrapOffsetY; return this.dragBy ? (typeof v === 'number' ? v : 0) + this.dragBy.y : v; }
   // A frame out of the flow is placed by those offsets alone, so it is dragged by them.
-  private isFree(): boolean { return this.attrWrap() === 'through' || typeof this.node.attrs.anchorPage === 'number' || this.pastZone(); }
+  private isFree(): boolean { return this.attrWrap() === 'through' || typeof this.node.attrs.anchorPage === 'number' || this.inZone(); }
+  // Any frame of a zone's own that is not in its line is out of the zone's text flow.
+  private inZone(): boolean {
+    return this.attrWrap() !== 'inline' && !!(this.view.dom as HTMLElement).closest('.hf-zone');
+  }
   // A zone's frame set against the page or its body text is out of the zone's flow: the
   // layer places it there and moves the body clear of it (HeaderFooterLayer).
   private pastZone(): boolean {
@@ -925,6 +923,10 @@ class ImageView {
       applyRunThrough(d, this.offX(), this.offY(), true, a.wrapFromPage === true, a.wrapFromBody === true, a.zIndex);
       return;
     }
+    if (wrap !== 'through' && this.inZone()) {
+      runInZone(this.view, d, this.offX(), this.offY(), a.wrapDist, a.zIndex);
+      return;
+    }
     if (wrap === 'through') {
       applyRunThrough(d, this.offX(), this.offY(), a.inFront === true, a.wrapFromPage === true, a.wrapFromBody === true, a.zIndex);
       // Deferred like sinkToOffset: the frame has to be laid out before its own page
@@ -937,7 +939,7 @@ class ImageView {
     if (wrap === 'left' || wrap === 'right') {
       d.style.float = wrap;
       d.style.margin = frameMargins(wrap, a.wrapOffset, this.boxWidth(), null, a.wrapDist);
-      unstackFloat(d, wrap, a.wrapOffset);
+      unstackFloat(d, wrap, a.wrapOffset, a.wrapDist);
       this.sinkToOffset();
     } else if (wrap === 'topBottom' && (a.wrapAlign === 'left' || a.wrapAlign === 'right')) {
       // Sharing its band with the frame set against the other end (the importers only
@@ -987,7 +989,7 @@ class ImageView {
     if (gap === null || (wrap !== 'left' && wrap !== 'right')) return;
     this.dom.dataset.sinkGap = String(gap);
     this.dom.dataset.gapTop = String(top);
-    sinkSideFloat(this.view, this.dom);
+    sinkSideFloat(this.dom);
   }
 
   // Drag an image to re-anchor it live to the text position under the cursor (text
@@ -1015,7 +1017,7 @@ class ImageView {
     let lastY = event.clientY;
 
     const lineTop = (pos: number): number | null => {
-      try { return view.coordsAtPos(pos).top; } catch { return null; }
+      try { return coordsAt(view, pos).top; } catch { return null; }
     };
 
     // Re-anchor the image at the exact text position under the cursor (so it follows

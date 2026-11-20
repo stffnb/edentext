@@ -1,8 +1,7 @@
 # Embed mode
 
-Another web application can show EdenText in an iframe and keep the document itself.
-The page opened with `?embed=1` (`src/lib/embed/mode.ts`) is the normal app with these
-changes:
+Another web application can show EdenText in an iframe and keep the document itself;
+`?embed=1` (`src/lib/embed/mode.ts`) opens the normal app with these changes:
 
 - **Nothing is stored.** `embedded` makes `docScope.ts`'s `volatile` true, so the
   document, its pictures, snapshots, embedded fonts and recent files stay in memory.
@@ -17,13 +16,10 @@ changes:
   (`HOST_FILE_COMMANDS` in `ribbon/commands.ts`). Save, its button and Ctrl+S send
   `saveRequest` to the host. The name field is read-only, and there is no unload warning
   and no `launchQueue`. Print, PDF, protection and document properties stay.
-- **Attribution.** The status bar shows `PoweredBy.svelte`, a link to the homepage.
-  [`NOTICE.md`](../../NOTICE.md) makes keeping it and the chrome's logo a condition of
-  the AGPL under §7(b).
-  Only a build with `VITE_EDENTEXT_ATTRIBUTION=off`, allowed under the commercial
-  license, leaves it out. That build also drops the logo from both chromes
-  (`whiteLabel`), and the island's save menu gains an About entry in its place. There
-  is deliberately no runtime switch.
+- **Attribution.** The status bar shows `PoweredBy.svelte`, a link to the homepage;
+  [`NOTICE.md`](../../NOTICE.md) makes keeping it and the chrome's logo an AGPL §7(b)
+  condition. Only a build with `VITE_EDENTEXT_ATTRIBUTION=off` (commercial license) drops
+  both (`whiteLabel`; the island's save menu gains About instead). No runtime switch.
 
 ## Protocol (`src/lib/embed/bridge.ts`)
 
@@ -37,7 +33,7 @@ name and meaning. A change that breaks this raises the protocol number in `ready
 
 | Host → editor | Fields | Reply (`response`, same `id`) |
 |---|---|---|
-| `init` | `user?`, `locale?`, `theme?`, `chrome?`, `name?`, `accent?`, `ai?` | `ok` |
+| `init` | `user?`, `locale?`, `theme?`, `chrome?`, `name?`, `accent?`, `ai?`, `dictation?` | `ok` |
 | `configure` | the same, at any later time | `ok` |
 | `load` | `bytes` (ArrayBuffer), `name` | `ok: false` if the reader backed out (password) |
 | `new` | `name?` | `ok` |
@@ -58,8 +54,12 @@ A failure is answered with `error: message`.
   `storage/theme.ts`) or a `#rrggbb` colour. Like `user`, `locale`, `theme` and `chrome`
   it holds for the page and is not stored, so the host sends it with every `init`.
 - **`ai: false`** switches the assistant off above the user's own setting: every AI
-  surface, the context menu's AI submenu and the Settings ▸ AI section go (`setAiHostOff`, `storage/ai.svelte.ts`). It is
+  surface, the context menu's AI submenu and the Settings ▸ AI section go (`setEmbedHostConfig`, `storage/hostConfig.svelte.ts`). It is
   never stored, so the host sends it with every `init`; `ai: true` hands the choice back.
+  An object presets the provider with the fields of `edentext.config.json` (`ai.md`) and
+  overrides that file field by field. **`dictation`** works alike (`false` or `{ server,
+  model, locked, webSpeech }`, `dictation-local.md`); the iframe gets `allow="microphone"` unless the
+  constructor's options say `dictation: false`.
   The assistant is **on by default**, and a reader can enter any provider in the frame,
   which then receives document text: a host that must keep documents in-house sends
   `ai: false`.
@@ -69,6 +69,7 @@ A failure is answered with `error: message`.
 | Editor → host | Fields |
 |---|---|
 | `ready` | `protocol`, `version` |
+| `refused` | – (an `init` from a page `embed.config.json` does not name; sent to `*`) |
 | `dirty` | `dirty` |
 | `saveRequest` | – |
 | `warning` | `warnings` |
@@ -99,20 +100,21 @@ gets them without further setup.
 
 | Option (constructor and `configure`) | Values |
 |---|---|
-| `url` | the EdenText instance (constructor only); by default the one serving `embed.js` |
+| `url` | the EdenText instance (constructor only); by default the one serving `embed.js`, `/edentext/` in `@edentext/embed` |
 | `user` | the name on comments and recorded changes |
-| `locale` | a UI language: `en`, `de`, `es`, `fr`, `it`, `pt`, `el`, `ru`, `uk`, `ja`, `zh-Hans` or `zh-Hant` |
+| `locale` | a UI language: `en`, `de`, `es`, `fr`, `it`, `pt`, `el`, `ru`, `uk`, `pl`, `id`, `ar`, `ja`, `ko`, `zh-Hans` or `zh-Hant` |
 | `theme` | `light`, `dark`, `allBlack` or `auto` (follows the system) |
 | `chrome` | `ribbon` or `modern` (the floating toolbar) |
 | `name` | the host's file name, shown in the title field |
 | `accent` | `slate`, `blue`, `teal`, `green`, `violet`, `berry`, `graphite` or a `#rrggbb` colour |
-| `ai` | `false` removes the AI assistant and its settings; `true` leaves it to the reader |
+| `ai` | `false` removes the AI assistant and its settings; `true` leaves it to the reader; `{ provider, endpoint, model, contextTokens, locked }` presets it, never with a key |
+| `dictation` | `false` removes dictation; `{ server, model, locked, webSpeech }` presets its speech server and whether the browser's recognition stays on offer |
 
 An unknown value is ignored, so the setting keeps what it had.
 
 | Method | Does |
 |---|---|
-| `ready` | a promise that resolves once the editor has taken the options; `version` is then set |
+| `ready` | a promise that resolves once the editor has taken the options; `version` is then set. It rejects when the editor turns the page away or speaks another protocol |
 | `configure(options)` | changes any option above at a later time |
 | `load(data, name?)` | opens a `Blob`, `ArrayBuffer` or `Uint8Array`; the name's extension (`.odt`, `.ott`, `.docx`, `.dotx`) picks the reader. Resolves `false` if the reader cancelled a password prompt |
 | `newDocument(name?)` | starts an empty document |
@@ -121,19 +123,58 @@ An unknown value is ignored, so the setting keeps what it had.
 | `on(event, fn)` | `dirty` (`{ dirty }`), `saveRequest` (the reader pressed Save or Ctrl+S), `warning` (`{ warnings }`, what an import could not keep); returns an unsubscribe function |
 | `destroy()` | removes the iframe |
 
+## npm packages
+
+`scripts/pack-npm.mjs` assembles `dist-npm/` from `dist/`, `public/embed.*` and
+`packages/`; all three packages carry the app's version, `npm run test:npm` installs
+them into a fresh Vite project, and the release workflow publishes them once the
+repository variable `NPM_PUBLISH` is `true`.
+
+- **`@edentext/app`** is `dist/` without the pages only edentext.app needs (sitemap,
+  robots, preview image, verification file, counter), with `LICENSE` and `NOTICE.md`
+  inside so every served copy carries them. `edentext-copy` (`copy.mjs`, Node built-ins
+  only) copies it to `public/edentext`, drops dictionaries and thesauri of languages
+  `--languages` leaves out (`en`'s thesaurus serves `en-GB` too), always writes
+  `embed.config.json` (`["self"]` without `--origins`) and replaces only a folder holding
+  `index.html`, `embed.js` and `licenses.txt`. The Vite plugin (`@edentext/app/vite`)
+  serves them under `/edentext/` in the dev server, with a 404 rather than the host's
+  SPA fallback past them, and copies them into the client build.
+- **`@edentext/embed`** is `public/embed.js` with `defaultUrl` set to `/edentext/`, so
+  the entry has no `import.meta.url` (checked with Vite, webpack and esbuild);
+  `element.js` defines `<eden-text>`, `react.js` `<EdenText>`, both importable without a
+  DOM for server-side rendering. **`edentext`** re-exports it under the plain name.
+
+**Licenses.** What runs in a host's page or build (helper, element, React component,
+copy tool, Vite plugin) is MIT (`packages/LICENSE`), so a host under any license can
+import it. The editor stays AGPL with the attribution term; `NOTICE.md` states that
+showing and driving it over messages leaves the host's code outside the AGPL. Each
+helper file opens with a `/*!` notice, which esbuild and terser keep and Vite 8 drops,
+so a host shipping third-party notices lists the helper with its MIT dependencies.
+`@edentext/app` declares AGPL-3.0-only and carries the MIT text as `LICENSE.MIT`.
+
+A copy without a language works: a dictionary or thesaurus answered with a 404 or HTML
+counts as not shipped (`NotServed`, `utils/loadFailure.ts`) and goes unchecked quietly.
+
+**Same origin.** Under the host's `/edentext/` the editor shares its storage (all
+`localStorage` keys begin with `edentext-`; embed mode writes only preferences, no
+IndexedDB). A host service worker scoped to `/` must pass the editor's requests through
+(measured: the editor starts). A host CSP header for `/edentext/` applies on top of the
+editor's `<meta>` policy, so it must allow `'wasm-unsafe-eval'`, the inline script
+hashes, `style-src 'unsafe-inline'` and `blob:` workers. Same origin means no isolation:
+an editor flaw would reach the host's cookies and storage, so for strict cases the
+package README recommends a subdomain with the application in `--origins`.
+
 ## Hosting notes
 
-- **iframe `sandbox`.** A host that sets it needs `allow-scripts allow-same-origin
-  allow-modals allow-popups`, and `allow-downloads` for the print path's fallbacks.
-  Without same-origin the app has no storage at all.
-- **No file pickers.** The File System Access pickers are unavailable in a cross-origin
-  iframe. Nothing in embed mode needs them.
-- **Local network.** Chromium blocks a page on a public address from framing a loopback
-  or private address, so the host and EdenText have to be on the same kind of network.
-  The smoke leg serves its host page from a second loopback server for this reason.
-- **iframe `allow`.** `embed.js` grants `clipboard-read` (the context menu's Paste),
-  `clipboard-write` and `local-fonts` (installed fonts in the picker). A host that drops
-  one loses only that feature.
+- **iframe `sandbox`** needs `allow-scripts allow-same-origin allow-modals allow-popups`,
+  plus `allow-downloads` for the print fallbacks; without same-origin there is no storage.
+- **No file pickers:** File System Access is unavailable in a cross-origin iframe; embed
+  mode needs none.
+- **Local network:** Chromium blocks a public page from framing a loopback or private
+  address, so host and EdenText share a kind of network (the smoke leg serves its host
+  from a second loopback server).
+- **iframe `allow`:** `embed.js` grants `clipboard-read` (Paste), `clipboard-write` and
+  `local-fonts`; a host that drops one loses only that feature.
 
 ## Security
 
@@ -146,12 +187,14 @@ An unknown value is ignored, so the setting keeps what it had.
 - **Who may frame it.** A `<meta>` policy cannot carry `frame-ancestors`, so the
   serving side sends it: the Helm chart's `frameAncestors` value, or the same header
   from any other server. Without it any page may frame the instance.
-- **Who may drive it.** A build with `VITE_EMBED_ORIGINS` (origins separated by spaces
-  or commas) pins the host only to one of those; any other page's `init` is ignored.
-  Without it the first page to send `init` is the host. A host should run its own
-  instance on its own origin, with both settings.
-- **`embed.js`.** A host that loads the helper from another origin trusts that origin
-  with its page. Copying `embed.js` and `embed.d.ts` into the host's own assets, or
-  pinning them with Subresource Integrity, removes that.
+- **Who may drive it.** `embed.config.json` beside `index.html`, `{ "origins": [...] }`
+  with `"self"` for the editor's own origin, pins the host to one of those; any other
+  page's `init` is ignored. The bridge reads it before `ready`, past the service
+  worker's cache. A build with `VITE_EMBED_ORIGINS` (origins separated by spaces or
+  commas) takes precedence and skips the file. With neither, or when the file does not
+  arrive, the first page to send `init` is the host; a file that arrives malformed
+  admits none. A host should run its own instance on its own origin, with both settings.
+- **`embed.js`** loaded from another origin makes the host trust that origin; copying
+  `embed.js` and `embed.d.ts` into its own assets, or Subresource Integrity, avoids it.
 - **What the host gets.** The editor accepts messages only from `window.parent` and,
   after `init`, only from the pinned origin, and sends document data only there.

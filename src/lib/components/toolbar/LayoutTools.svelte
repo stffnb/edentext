@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatDecimal, parseDecimal } from '../../i18n/number';
   import type { Editor } from '@tiptap/core';
   import IslandButton from './IslandButton.svelte';
   import IslandMenu from './IslandMenu.svelte';
@@ -27,6 +28,7 @@
     pageFormat = $bindable<PageFormat>('A4'),
     extraHfSections = $bindable<HfSet[]>([]),
     hyphenate = $bindable(false),
+    pageRtl = $bindable(false),
     pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
     pageDecor = $bindable(EMPTY_PAGE_DECOR),
     lineNumbering = $bindable(DEFAULT_LINE_NUMBERING),
@@ -41,6 +43,7 @@
     pageFormat?: PageFormat;
     extraHfSections?: HfSet[];
     hyphenate?: boolean;
+    pageRtl?: boolean;
     pageNumbering?: PageNumbering;
     pageDecor?: PageDecor;
     lineNumbering?: LineNumbering;
@@ -68,7 +71,7 @@
   const FORMATS = Object.keys(PAGE_FORMAT_CM) as NamedPageFormat[];
   const EDGES = ['top', 'bottom', 'left', 'right'] as const;
 
-  const fmtCm = (v: number) => String(Math.round(v * 100) / 100);
+  const fmtCm = (v: number) => formatDecimal(v);
   // Mirrored, the left/right fields are the inner/outer pair and say so.
   const mLabel = (edge: (typeof EDGES)[number]) => t().toolbarExpanded.margins[marginAxisLabel(edge, pageMargins)];
 
@@ -78,14 +81,14 @@
   }
 
   function setMargin(edge: (typeof EDGES)[number], raw: string) {
-    const v = parseFloat(raw.replace(',', '.'));
+    const v = parseDecimal(raw);
     if (!isNaN(v)) setMargins({ ...pageMargins, [edge]: Math.min(10, Math.max(0, v)) });
   }
 
   // A typed width or height: the page takes the box, its orientation following the sides.
   function setPageSize(side: 'w' | 'h', input: HTMLInputElement) {
     const cur = pageDimsCm(pageFormat, pageOrientation);
-    const v = parseFloat(input.value.replace(',', '.'));
+    const v = parseDecimal(input.value);
     const next = sizeSetup(side === 'w' ? v : cur.w, side === 'h' ? v : cur.h);
     if (!next) { input.value = fmtCm(cur[side]); return; }
     pageFormat = next.format;
@@ -110,10 +113,10 @@
   let spaceBefore = $derived(tick >= 0 && editor ? uniformBlockAttr<number>(editor.state, 'spaceBefore', 0) : 0);
   let spaceAfter = $derived(tick >= 0 && editor ? uniformBlockAttr<number>(editor.state, 'spaceAfter', 0) : 0);
 
-  const num = (v: number | '') => (v === '' ? '' : String(Math.round(v * 100) / 100));
+  const num = (v: number | '') => (v === '' ? '' : formatDecimal(v));
 
   function apply(fn: (v: number) => void, raw: string) {
-    const v = parseFloat(raw.replace(',', '.'));
+    const v = parseDecimal(raw);
     if (!isNaN(v)) fn(v);
   }
 </script>
@@ -232,11 +235,12 @@
 
 <div class="toolbar-group">
   <IslandButton icon="hyphenation" cmd="hyphenation" title={t().ribbon.hyphenationHint} active={hyphenate} onclick={() => (hyphenate = !hyphenate)} />
+  <IslandButton icon="pageRtl" cmd="pageRtl" title={t().ribbon.pageRtlHint} active={pageRtl} onclick={() => (pageRtl = !pageRtl)} />
   <IslandMenu id="pageNum" icon="pageNumber" cmd="pageNumberFormat" title={t().ribbon.pageNumberFormat}>
     <div class="im-label">{t().ribbon.pageNumberFormat}</div>
     {#each PAGE_NUM_FORMATS as f}
       <button class:selected={pageNumbering.format === f} onclick={() => (pageNumbering = { ...pageNumbering, format: f })}>
-        {[1, 2, 3].map((n) => formatOrdinal(n, f)).join(', ')}
+        <span dir="ltr">{[1, 2, 3].map((n) => formatOrdinal(n, f)).join(', ')}</span>
       </button>
     {/each}
     <label class="im-row">

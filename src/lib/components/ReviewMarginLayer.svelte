@@ -1,4 +1,5 @@
 <script lang="ts" module>
+  import { coordsAt } from '../editor/extensions/overlay';
   // Page edge → balloon, and the balloon itself: the strip Editor.svelte reserves beside
   // the page for this layer.
   export const BALLOON_GAP_CM = 0.5;
@@ -63,6 +64,7 @@
   let balloons = $state<Balloon[]>([]);
   let colors = $state(new Map<string, string>());
   let heights = $state<number[]>([]);
+  let placed = $state(new Set<string>());
   // A clicked card and where every card was: the view scrolls by as much as it moves.
   let hold: { key: string; top: number; from: Map<string, number> } | null = null;
   // While that scroll runs, each card glides from where it was on the same curve.
@@ -107,6 +109,10 @@
     const ro = new ResizeObserver(() => { heights = read(); });
     for (const e of els.slice(0, list.length)) if (e) ro.observe(e);
     untrack(() => { heights = read(); });
+    // A new card appears where its measured height puts it; only later moves glide, since
+    // one from the unmeasured stack would cross the cards around it.
+    const keys = list.map((b) => b.key);
+    requestAnimationFrame(() => { placed = new Set(keys); });
     return () => ro.disconnect();
   });
 
@@ -188,7 +194,7 @@
   // Where a card's line is. An empty block or a table has no line at its position, but a
   // box of its own, unless the view hides it.
   function anchorBox(view: EditorView, pos: number, side = 1): { top: number; bottom: number; left: number } | null {
-    const line = view.coordsAtPos(pos, side);
+    const line = coordsAt(view, pos, side);
     if (line.bottom - line.top >= 1) return line;
     const { node, offset } = view.domAtPos(pos), child = node.childNodes[offset];
     const el = child instanceof HTMLElement && !child.matches('br, img.ProseMirror-separator') ? child : node instanceof HTMLElement ? node : node.parentElement;
@@ -234,7 +240,7 @@
         // on hidden text has no box; its card would stack at the top of the page.
         const a = anchorBox(view, from) ?? (part.revision ? anchorBox(view, from, -1) ?? anchorBox(view, to) ?? shownAround(view, from) : null);
         if (!a) return;
-        const end = view.coordsAtPos(to, -1), b = end.bottom - end.top >= 1 ? end : a;
+        const end = coordsAt(view, to, -1), b = end.bottom - end.top >= 1 ? end : a;
         want = (a.top - rect.top) / scale;
         anchorX = (b.left - rect.left) / scale;
         // The bottom of the line box, not its middle: both word processors run the leader
@@ -292,6 +298,7 @@
       color: b.color,
       active: b.active || hovered === b.key,
       resolved: !!b.comment?.resolved,
+      fresh: !placed.has(b.key),
     };
   }));
 
@@ -325,7 +332,7 @@
 </script>
 
 <div
-  class="review-margin-layer"
+  class="review-margin-layer ui-dir"
   class:layer-instant={!!glide}
   bind:this={host}
   use:hover
@@ -336,6 +343,7 @@
       {#each leaders as l}
         <path
           d={l.d}
+          class:fresh={l.fresh}
           style:d={`path("${l.d}")`}
           fill="none"
           stroke={l.color}
@@ -355,6 +363,7 @@
       class:lifted={hovered === b.key && !b.active}
       class:resolved={!!b.comment?.resolved}
       class:mentioned={!!b.comment && unseenMentions().includes(b.comment.id)}
+      class:fresh={!placed.has(b.key)}
       class:on-deck={i > 0 && stack.reach[i - 1] < (heights[i - 1] ?? 0) && balloons[i - 1]?.page === b.page}
       style="top: {shown[i] ?? b.want}px; left: {b.left}px; width: {cmToPx(BALLOON_W_CM)}px; border-color: {b.color};"
     >
@@ -397,7 +406,9 @@
   }
 
   .layer-instant path,
-  .layer-instant .balloon {
+  .layer-instant .balloon,
+  path.fresh,
+  .balloon.fresh {
     transition: none;
   }
 

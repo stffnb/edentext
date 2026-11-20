@@ -80,3 +80,53 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- $image }}
 {{- end }}
 {{- end }}
+
+{{/* edentext.config.json: only the presets that differ from the app's defaults; empty for none. */}}
+{{- define "edentext.hostConfig" -}}
+{{- $cfg := dict }}
+{{- $ai := dict }}
+{{- with .Values.ai }}
+{{- if not .enabled }}{{ $_ := set $ai "enabled" false }}{{ end }}
+{{- if ne .provider "openai" }}{{ $_ := set $ai "provider" .provider }}{{ end }}
+{{- with (.endpoint | default (ternary "/ai/v1" "" .proxy.enabled)) }}{{ $_ := set $ai "endpoint" . }}{{ end }}
+{{- with .model }}{{ $_ := set $ai "model" . }}{{ end }}
+{{- with .contextTokens }}{{ $_ := set $ai "contextTokens" (int .) }}{{ end }}
+{{- if .locked }}{{ $_ := set $ai "locked" true }}{{ end }}
+{{- end }}
+{{- if $ai }}{{ $_ := set $cfg "ai" $ai }}{{ end }}
+{{- $dictation := dict }}
+{{- with .Values.dictation }}
+{{- if not .enabled }}{{ $_ := set $dictation "enabled" false }}{{ end }}
+{{- with (.server | default (ternary "/stt/v1" "" .proxy.enabled)) }}{{ $_ := set $dictation "server" . }}{{ end }}
+{{- with .model }}{{ $_ := set $dictation "model" . }}{{ end }}
+{{- if .locked }}{{ $_ := set $dictation "locked" true }}{{ end }}
+{{- if not .webSpeech }}{{ $_ := set $dictation "webSpeech" false }}{{ end }}
+{{- end }}
+{{- if $dictation }}{{ $_ := set $cfg "dictation" $dictation }}{{ end }}
+{{- if $cfg }}{{ toPrettyJson $cfg }}{{ end }}
+{{- end }}
+
+{{/* Whether a proxy adds a key, which an init container writes into nginx.conf. */}}
+{{- define "edentext.proxyKeys" -}}
+{{- if or (and .Values.ai.proxy.enabled .Values.ai.proxy.apiKeySecret.name) (and .Values.dictation.proxy.enabled .Values.dictation.proxy.apiKeySecret.name) }}true{{ end }}
+{{- end }}
+
+{{/*
+A same-origin proxy to the operator's server: nginx sets the key (or clears the browser's
+headers) and drops Origin, which some servers refuse. Args: path, upstream, header, var.
+*/}}
+{{- define "edentext.proxyLocation" -}}
+location {{ .path }} {
+  proxy_pass {{ .upstream | trimSuffix "/" }}/;
+  proxy_http_version 1.1;
+  proxy_ssl_server_name on;
+  proxy_set_header Origin "";
+  proxy_set_header Cookie "";
+  proxy_set_header Authorization {{ if and .var (eq .header "Authorization") }}"Bearer ${{ .var }}"{{ else }}""{{ end }};
+  proxy_set_header x-api-key {{ if and .var (eq .header "x-api-key") }}"${{ .var }}"{{ else }}""{{ end }};
+  proxy_buffering off;
+  proxy_read_timeout {{ .timeout }};
+  proxy_send_timeout {{ .timeout }};
+  client_max_body_size {{ .body }};
+}
+{{- end }}

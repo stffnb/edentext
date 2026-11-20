@@ -81,6 +81,55 @@ describe('script-dependent run properties', () => {
   });
 });
 
+// Bold and italic have the three slots too. A style whose slots disagree is read per run;
+// the editor keeps one value, so what it writes says the same in all three.
+describe('script-dependent weight and slant', () => {
+  const slotted = (props: string) => {
+    const styles = `<?xml version="1.0"?><office:document-styles ${NS}><office:styles>
+     <style:style style:name="Standard" style:family="paragraph"/>
+     <style:style style:name="Chapter" style:family="paragraph" style:parent-style-name="Standard">
+      <style:text-properties ${props}/></style:style>
+    </office:styles></office:document-styles>`;
+    const content = `<?xml version="1.0"?><office:document-content ${NS}><office:body><office:text>
+     <text:p text:style-name="Chapter">${HEBREW}<text:span>latin</text:span></text:p>
+    </office:text></office:body></office:document-content>`;
+    return runs(importOdt(zipSync({ 'content.xml': strToU8(content), 'styles.xml': strToU8(styles) })).content);
+  };
+  const has = (r: Run, type: string) => !!r.marks?.some((m) => m.type === type);
+
+  it('reads a style bold in the western slot only as upright Hebrew', () => {
+    const [hebrew, latin] = slotted('fo:font-weight="bold" style:font-weight-complex="normal" fo:font-style="italic" style:font-style-complex="normal"');
+    expect(textStyle(hebrew)).toMatchObject({ fontWeight: 'normal', fontStyle: 'normal' });
+    expect(latin.marks).toBeUndefined();
+  });
+
+  it('reads a style bold in the complex slot only as bold Hebrew', () => {
+    const [hebrew, latin] = slotted('style:font-weight-complex="bold" style:font-style-complex="italic"');
+    expect(has(hebrew, 'bold') && has(hebrew, 'italic')).toBe(true);
+    expect(latin.marks).toBeUndefined();
+  });
+
+  it('writes every size, weight and slant into all three slots', async () => {
+    const para = (text: string, marks?: unknown[]) => ({ type: 'paragraph', attrs: {}, content: [{ type: 'text', text, ...(marks ? { marks } : {}) }] });
+    const doc = { type: 'doc', content: [
+      { type: 'tableOfContents', attrs: {} },
+      { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: HEBREW }] },
+      { type: 'heading', attrs: { level: 4 }, content: [{ type: 'text', text: CHINESE }] },
+      para(HEBREW, [{ type: 'bold' }, { type: 'italic' }, { type: 'textStyle', attrs: { fontSize: '15pt' } }]),
+      { type: 'orderedList', attrs: {}, content: [{ type: 'listItem', content: [para(HEBREW, [{ type: 'bold' }])] }] },
+    ] };
+    const files = unzipSync(await buildOdt(doc as never));
+    const blocks = ['styles.xml', 'content.xml'].flatMap((name) => strFromU8(files[name]).match(/<style:text-properties\b[^>]*>/g) ?? []);
+    const value = (block: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(block)?.[1];
+    const uneven = blocks.filter((block) => ['size', 'weight', 'style'].some((prop) => {
+      const western = value(block, `fo:font-${prop}`);
+      return western != null && ['asian', 'complex'].some((slot) => value(block, `style:font-${prop}-${slot}`) !== western);
+    }));
+    expect(blocks.some((block) => value(block, 'fo:font-weight') === 'bold')).toBe(true);
+    expect(uneven).toEqual([]);
+  });
+});
+
 // DOCX carries the asian font alone (w:rFonts w:eastAsia); the format has no asian size
 // or weight, and the choice is per w:r rather than per text node.
 const WNS = `xmlns:w="${W}"`;
@@ -250,6 +299,112 @@ describe('western/asian language pair', () => {
     const back = importDocx(zipSync({ ...files, 'word/document.xml': strToU8(xml) }));
     expect(back.language).toBe('zh-CN');
     expect(runs(back.content as Doc).map(textStyle).filter((t) => t?.lang || t?.langAsian)).toEqual([]);
+  });
+});
+
+// Arabic and Hebrew are the third slot of both formats: language, weight, slant and size
+// of such text are read from it alone, by Word and by LibreOffice.
+describe('complex-script language and run formatting', () => {
+  const ARABIC = 'هذا نص عربي طويل';
+  const AR_EN = { language: 'ar', country: 'SA', other: 'en-US' };
+  const EN_AR = { language: 'en', country: 'US', other: 'ar-SA' };
+  const para = (...content: unknown[]) => ({ type: 'doc', content: [{ type: 'paragraph', attrs: {}, content }] });
+  const arDoc = para({ type: 'text', text: ARABIC }, { type: 'text', text: ' ok', marks: [{ type: 'italic' }] });
+  const both = async (doc: unknown, lang?: unknown) => [
+    await importOdt(await buildOdt(doc as never, MARGINS, 'portrait', undefined, lang as never)),
+    importDocx(await buildDocx(doc as never, MARGINS, 'portrait', undefined, lang as never)),
+  ];
+
+  it('writes an Arabic document default into the complex slot, the western beside it', async () => {
+    const docx = strFromU8(unzipSync(await buildDocx(arDoc as never, MARGINS, 'portrait', undefined, AR_EN))['word/styles.xml']);
+    expect(docx).toMatch(/<w:lang w:val="en-US"[^>]*w:bidi="ar-SA"/);
+    const odt = strFromU8(unzipSync(await buildOdt(arDoc as never, MARGINS, 'portrait', undefined, AR_EN))['styles.xml']);
+    expect(odt).toContain('style:language-complex="ar"');
+    expect(odt).toContain('fo:language="en"');
+  });
+
+  it('reads the document back as Arabic, its runs without a language of their own', async () => {
+    for (const back of await both(arDoc, AR_EN)) {
+      expect([back.language, back.languageOther]).toEqual(['ar', 'en-US']);
+      expect(runs(back.content as Doc).map(textStyle).filter((t) => t.lang)).toEqual([]);
+    }
+  });
+
+  it('keeps a western document western beside the complex default of its Arabic passage', async () => {
+    const quote = para({ type: 'text', text: `An English sentence that quotes ${ARABIC.slice(0, 6)}` });
+    for (const back of await both(quote, EN_AR)) expect([back.language, back.languageOther]).toEqual(['en', 'ar-SA']);
+  });
+
+  it('keeps the language of a complex-script run', async () => {
+    const persian = para({ type: 'text', text: 'word ' }, { type: 'text', text: ARABIC, marks: [{ type: 'textStyle', attrs: { lang: 'fa-IR' } }] });
+    for (const back of await both(persian, EN_AR)) {
+      expect(runs(back.content as Doc).map((r) => textStyle(r).lang)).toEqual([undefined, 'fa-IR']);
+    }
+  });
+
+  it('keeps bold and size of Arabic text through both formats', async () => {
+    const bold = para({ type: 'text', text: ARABIC, marks: [{ type: 'bold' }, { type: 'textStyle', attrs: { fontSize: '18pt' } }] });
+    for (const back of await both(bold, AR_EN)) {
+      const [run] = runs(back.content as Doc);
+      expect(run.marks?.some((m) => m.type === 'bold')).toBe(true);
+      expect(textStyle(run).fontSize).toBe('18pt');
+    }
+  });
+
+  // Word sets Arabic text from w:bCs and w:szCs: the western pair beside them is unread.
+  it('reads a DOCX run of Arabic text from its complex set alone', async () => {
+    const bold = para({ type: 'text', text: ARABIC, marks: [{ type: 'bold' }, { type: 'textStyle', attrs: { fontSize: '18pt' } }] });
+    const files = unzipSync(await buildDocx(bold as never, MARGINS, 'portrait', undefined, AR_EN));
+    const xml = strFromU8(files['word/document.xml']);
+    expect(xml).toContain('<w:bCs/>');
+    const western = xml.replace('<w:bCs/>', '').replace(/<w:szCs w:val="36"\/>/, '<w:szCs w:val="28"/>');
+    const [run] = runs(importDocx(zipSync({ ...files, 'word/document.xml': strToU8(western) })).content as Doc);
+    expect(run.marks?.some((m) => m.type === 'bold')).toBe(false);
+    expect(textStyle(run).fontSize).toBe('14pt');
+  });
+
+  // Word orders a paragraph by its runs' w:rtl, so the export cuts runs where the direction
+  // the editor shows turns; the import joins them again.
+  const RTL_PAGE = [MARGINS, 'portrait', undefined, AR_EN, 'A4', undefined, undefined, undefined, true] as const;
+  const runFlags = (xml: string) => [...xml.matchAll(/<w:r>(?:<w:rPr>(.*?)<\/w:rPr>)?<w:t[^>]*>(.*?)<\/w:t><\/w:r>/g)]
+    .map((m) => [m[2], /<w:rtl\/>/.test(m[1] ?? '')] as const);
+  const mixed = para(
+    { type: 'text', text: '12a نستخدم EdenText منذ عام 2026 و ١٢٣ (مقدمة) ' },
+    { type: 'text', text: 'عريض bold', marks: [{ type: 'bold' }, { type: 'italic' }] },
+    { type: 'text', text: ' ثم ' },
+    { type: 'text', text: 'To jest', marks: [{ type: 'textStyle', attrs: { lang: 'pl-PL' } }] },
+    { type: 'text', text: '.' });
+
+  it('flags the right-to-left stretches of a mixed paragraph and reads them back as written', async () => {
+    const bytes = await buildDocx(mixed as never, ...RTL_PAGE);
+    const flags = runFlags(strFromU8(unzipSync(bytes)['word/document.xml']));
+    expect(flags.filter(([, rtl]) => !rtl).map(([text]) => text)).toEqual(['12a', 'EdenText', '2026', '١٢٣', 'bold', 'To jest']);
+    expect(flags.map(([text]) => text).join('')).toBe(runs(mixed as Doc).map((r) => r.text).join(''));
+    const back = runs(importDocx(bytes).content as Doc);
+    expect(back.map((r) => [r.text, (r.marks ?? []).map((m) => m.type).sort().join()]))
+      .toEqual(runs(mixed as Doc).map((r) => [r.text, (r.marks ?? []).map((m) => m.type).sort().join()]));
+    expect(back.map((r) => textStyle(r).lang)).toEqual([undefined, undefined, undefined, 'pl-PL', undefined]);
+  });
+
+  it('flags an Arabic phrase with its number in a left-to-right paragraph, and nothing without one', async () => {
+    const xml = async (text: string) => strFromU8(unzipSync(await buildDocx(para({ type: 'text', text }) as never, MARGINS, 'portrait', undefined, EN_AR))['word/document.xml']);
+    expect(runFlags(await xml('The phrase مرحبا 15 بكم (see p. 3) ends.')).filter(([, rtl]) => rtl).map(([text]) => text)).toEqual(['مرحبا 15 بكم']);
+    expect(await xml('Plain text, 15 (see p. 3).')).not.toContain('w:rtl');
+  });
+
+  // Word numbers Arabic-Indic digits as a decimal label set right-to-left; its hindiNumbers
+  // are Devanagari, read as before.
+  it('writes an Arabic-Indic list as a right-to-left decimal level', async () => {
+    const list = { type: 'doc', content: [{ type: 'orderedList', attrs: { listStyleType: 'arabic-indic' }, content: [
+      { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: ARABIC }] }] }] }] };
+    const files = unzipSync(await buildDocx(list as never, ...RTL_PAGE));
+    const numbering = strFromU8(files['word/numbering.xml']);
+    expect(numbering).not.toContain('hindiNumbers');
+    expect(numbering).toMatch(/<w:numFmt w:val="decimal"\/>(?:(?!<\/w:lvl>).)*<w:rPr><w:rtl\/>/);
+    const typeOf = (bytes: Uint8Array) => (importDocx(bytes).content as Doc).content?.[0].attrs?.listStyleType;
+    expect(typeOf(zipSync(files))).toBe('arabic-indic');
+    const hindi = numbering.replace(/<w:numFmt w:val="decimal"\/>((?:(?!<\/w:lvl>).)*)<w:rPr><w:rtl\/><\/w:rPr>/, '<w:numFmt w:val="hindiNumbers"/>$1');
+    expect(typeOf(zipSync({ ...files, 'word/numbering.xml': strToU8(hindi) }))).toBe('arabic-indic');
   });
 });
 

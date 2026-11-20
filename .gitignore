@@ -15,3 +15,4 @@ tests/render-parity/fixtures
 docs/*-plan.md
 desktop/node_modules
 desktop/release
+dist-npm

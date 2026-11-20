@@ -7,28 +7,30 @@ import { setLocale } from '../../src/lib/i18n/i18n.svelte';
 const KNOWN = ['Arial', 'SimSun', 'Songti SC', 'Microsoft YaHei'];
 
 describe('font labels', () => {
-  it('names the CJK families in Chinese, others as they are', () => {
-    setLocale('zh-Hans');
+  it('names the CJK families in Chinese, others as they are', async () => {
+    await setLocale('zh-Hans');
     expect(fontLabel('SimSun')).toBe('宋体');
-    setLocale('zh-Hant');
+    await setLocale('zh-Hant');
     expect(fontLabel('SimSun')).toBe('宋體');
     expect(fontLabel('Arial')).toBe('Arial');
-    setLocale('ja');
+    await setLocale('ja');
     expect(fontLabel('MS Mincho')).toBe('ＭＳ 明朝');
     expect(fontLabel('SimSun')).toBe('SimSun');
-    setLocale('de');
+    await setLocale('ko');
+    expect(fontLabel('Malgun Gothic')).toBe('맑은 고딕');
+    await setLocale('de');
     expect(fontLabel('SimSun')).toBe('SimSun');
   });
 
-  it('resolves a Chinese name back to the family', () => {
-    setLocale('zh-Hans');
+  it('resolves a Chinese name back to the family', async () => {
+    await setLocale('zh-Hans');
     expect(fontFromLabel('宋体', KNOWN)).toBe('SimSun');
     expect(fontFromLabel('微软雅黑', KNOWN)).toBe('Microsoft YaHei');
     expect(fontFromLabel('simsun', KNOWN)).toBe('SimSun');
     expect(fontFromLabel('宋', KNOWN)).toBe('SimSun');
     expect(fontFromLabel('Zapfino', KNOWN)).toBeUndefined();
     expect(fontMatches('Songti SC', '宋')).toBe(true);
-    setLocale('en');
+    await setLocale('en');
     expect(fontFromLabel('宋体', KNOWN)).toBeUndefined();
   });
 });

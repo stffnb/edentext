@@ -1,15 +1,18 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { t } from '../i18n/i18n.svelte';
+  import { t, startEdge, uiRtl } from '../i18n/i18n.svelte';
+  import { formatDecimal, parseDecimal } from '../i18n/number';
 
   // A line width in pt as the font size box offers one: the presets in a list, or a
   // typed value. With `none`, 'none' (an empty field or 0) draws no line; without it a
   // width is always kept. `style` sizes the box for its toolbar.
-  let { value, onChange, presets = [0.5, 0.75, 1, 1.5, 2.25], none = true, style = '' }: {
-    value: string; onChange: (width: string) => void; presets?: number[]; none?: boolean; style?: string;
+  // A typed width is clamped to min..max, by default the hairline to the 9pt LibreOffice's
+  // border dialog allows, in 0.05pt steps; with unit '%' it is a whole percentage instead.
+  // For another size than a line's, `title` names it and `lines` leaves the list's lines out.
+  let { value, onChange, presets = [0.5, 0.75, 1, 1.5, 2.25], none = true, style = '', min = 0.05, max = 9, unit = 'pt', title, lines = unit === 'pt' }: {
+    value: string; onChange: (width: string) => void; presets?: number[]; none?: boolean; style?: string; min?: number; max?: number;
+    unit?: 'pt' | '%'; title?: string; lines?: boolean;
   } = $props();
-  // Within the hairline and the 9pt LibreOffice's border dialog allows, in 0.05pt steps.
-  const MAX_PT = 9;
 
   let open = $state(false);
   let focused = $state(false);
@@ -17,7 +20,8 @@
   let box = $state<HTMLElement>();
   let pos = $state({ top: 0, left: 0, width: 0 });
 
-  const label = (w: string) => (w === 'none' ? t().styles.noBorder : t().borders.pt(Number(w)));
+  const label = (w: string) => (w === 'none' ? t().styles.noBorder : unit === '%' ? `${formatDecimal(Number(w))}%` : t().borders.pt(formatDecimal(Number(w))));
+  const tip = $derived(title ?? t().borders.lineWidth);
 
   // A committed width shows until `value` moves: a caller may pass it back a frame later.
   let pending = $state<{ w: string; from: string } | null>(null);
@@ -29,11 +33,12 @@
 
   // An empty field or 0 is no line where there is one; anything unreadable keeps the width.
   function parse(input: string): string {
-    const s = input.trim().replace(',', '.');
-    const pt = s === '' ? 0 : parseFloat(s);
+    const s = input.trim();
+    const pt = s === '' ? 0 : parseDecimal(s);
     if (!Number.isFinite(pt)) return shown;
-    if (pt <= 0) return none ? 'none' : shown;
-    return String(Math.round(Math.min(MAX_PT, Math.max(0.05, pt)) * 20) / 20);
+    if (pt <= 0 && (s === '' || min > 0)) return none ? 'none' : shown;
+    const steps = unit === '%' ? 1 : 20;
+    return String(Math.round(Math.min(max, Math.max(min, pt)) * steps) / steps);
   }
 
   function commit(w: string) {
@@ -49,7 +54,7 @@
   async function show() {
     const r = box?.getBoundingClientRect();
     if (!r) return;
-    pos = { top: r.bottom + 3, left: r.left, width: r.width };
+    pos = { top: r.bottom + 3, left: startEdge(r).offset, width: r.width };
     open = true;
     await tick();
   }
@@ -82,12 +87,12 @@
       type="text"
       inputmode="decimal"
       bind:value={text}
-      title={t().borders.lineWidth}
+      title={tip}
       onfocus={(e) => { focused = true; show(); e.currentTarget.select(); }}
       onblur={() => { focused = false; commit(parse(text)); }}
       onkeydown={onKeydown}
     />
-    <button class="bw-caret" tabindex="-1" title={t().borders.lineWidth} aria-haspopup="menu" aria-expanded={open}
+    <button class="bw-caret" tabindex="-1" title={tip} aria-haspopup="menu" aria-expanded={open}
       onmousedown={(e) => e.preventDefault()} onclick={() => (open ? (open = false) : show())}>
       <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
         <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -96,11 +101,11 @@
   </div>
   {#if open}
     <div class="ribbon-menu bw-menu" role="menu" popover="manual" use:topLayer
-      style="top: {pos.top}px; left: {pos.left}px; min-width: {pos.width}px">
+      style="top: {pos.top}px; {uiRtl() ? 'right' : 'left'}: {pos.left}px; min-width: {pos.width}px">
       {#each [...(none ? ['none'] : []), ...presets.map(String)] as w}
         <!-- mousedown keeps the input's focus, so its blur can't commit the typed text first. -->
         <button class:selected={w === shown} onmousedown={(e) => e.preventDefault()} onclick={() => commit(w)}>
-          <span class="bw-line" style="height: {w === 'none' ? 0 : Math.max(1, Math.round((Number(w) * 96) / 72))}px"></span>
+          {#if lines}<span class="bw-line" style="height: {w === 'none' ? 0 : Math.max(1, Math.round((Number(w) * 96) / 72))}px"></span>{/if}
           {label(w)}
         </button>
       {/each}

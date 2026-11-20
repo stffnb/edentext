@@ -1,11 +1,15 @@
 import { Extension } from '@tiptap/core';
 import type { CommandProps } from '@tiptap/core';
 import type { EditorState } from '@tiptap/pm/state';
-import { selectedRect, isInTable } from '@tiptap/pm/tables';
+import { selectedRect, isInTable, TableMap } from '@tiptap/pm/tables';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import type { Node as PMNode } from '@tiptap/pm/model';
 
 // Per-side border attrs (`borderTop/Right/Bottom/Left`) on table cells: `null` = the
 // table default (0.5pt solid black), `'none'` = no border, else the canonical
-// `'<W>pt solid #RRGGBB'`. Round-trips to ODF fo:border-* and DOCX w:tcBorders.
+// `'<W>pt <line> #RRGGBB'`, W the total width as in fo:border and CSS. Round-trips to
+// ODF fo:border-* and DOCX w:tcBorders.
 
 export const DEFAULT_BORDER_WIDTH_PT = 0.5;
 export const DEFAULT_BORDER_COLOR = '#000000';
@@ -13,8 +17,21 @@ export const DEFAULT_BORDER_COLOR = '#000000';
 export type BorderPreset =
   | 'all' | 'outer' | 'inner' | 'innerH' | 'innerV'
   | 'top' | 'bottom' | 'left' | 'right';
-// null = no border ('none').
-export type BorderSpec = { widthPt: number; color: string } | null;
+// The line styles both formats and CSS share; LibreOffice draws its others alike.
+export const BORDER_LINES = ['solid', 'double', 'dotted', 'dashed'] as const;
+export type BorderLine = (typeof BORDER_LINES)[number];
+// null = no border ('none'). line absent = solid.
+export type BorderSpec = { widthPt: number; color: string; line?: BorderLine } | null;
+
+// An ODF/CSS border style keyword's line: dash variants are dashed, the 3D kinds solid.
+export function borderLineOf(style: string | null | undefined): BorderLine {
+  return style === 'double' || style === 'dotted' ? style : style?.includes('dash') ? 'dashed' : 'solid';
+}
+
+// The canonical value of one drawn side.
+export function borderValue(widthPt: number, color: string, line: BorderLine = 'solid'): string {
+  return `${Math.round(widthPt * 100) / 100}pt ${line} ${color.toUpperCase()}`;
+}
 
 export const BORDER_SIDES = ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'] as const;
 export type BorderSide = (typeof BORDER_SIDES)[number];
@@ -32,19 +49,26 @@ export function borderAttrValue(spec: BorderSpec): string | null {
   if (!spec) return 'none';
   const w = Math.round(spec.widthPt * 100) / 100;
   const color = spec.color.toUpperCase();
-  if (w === DEFAULT_BORDER_WIDTH_PT && color === DEFAULT_BORDER_COLOR) return null;
-  return `${w}pt solid ${color}`;
+  const line = spec.line ?? 'solid';
+  if (w === DEFAULT_BORDER_WIDTH_PT && color === DEFAULT_BORDER_COLOR && line === 'solid') return null;
+  return borderValue(w, color, line);
 }
 
-// null = table default, 'none' = no border, else width/color of a custom border.
+// null = table default, 'none' = no border, else width/color/line of a custom border.
 export function parseBorderAttr(
   value: string | null | undefined,
-): { widthPt: number; color: string } | 'none' | null {
+): { widthPt: number; color: string; line: BorderLine } | 'none' | null {
   if (value == null) return null;
   if (value === 'none') return 'none';
-  const m = /^([\d.]+)pt solid (#[0-9A-Fa-f]{6})$/.exec(value);
+  const m = /^([\d.]+)pt (solid|double|dotted|dashed) (#[0-9A-Fa-f]{6})$/.exec(value);
   if (!m) return null;
-  return { widthPt: parseFloat(m[1]), color: m[2].toUpperCase() };
+  return { widthPt: parseFloat(m[1]), color: m[3].toUpperCase(), line: m[2] as BorderLine };
+}
+
+// Whole pixels a side paints: at least 1, and 3 for a double line, which a browser
+// draws as one solid stroke below that.
+function paintedPx(b: { widthPt: number; line: BorderLine }): number {
+  return Math.max(b.line === 'double' ? 3 : 1, Math.round((b.widthPt * 96) / 72));
 }
 
 // CSS value for a side. The default 0.5pt renders as 1px (editor.css); custom widths
@@ -53,8 +77,7 @@ export function cssBorder(value: string): string | null {
   const b = parseBorderAttr(value);
   if (b === null) return null;
   if (b === 'none') return 'none';
-  const px = Math.max(1, Math.round((b.widthPt * 96) / 72));
-  return `${px}px solid ${b.color}`;
+  return `${paintedPx(b)}px ${b.line} ${b.color}`;
 }
 
 // What the painted border costs the row beyond the width the file declares: Chromium
@@ -64,8 +87,63 @@ export function borderOvershootPx(value: string): number {
   const b = parseBorderAttr(value);
   if (b === null || b === 'none') return 0;
   const declared = (b.widthPt * 96) / 72;
-  return Math.round((Math.max(1, Math.round(declared)) - declared) * 1000) / 1000;
+  return Math.round((paintedPx(b) - declared) * 1000) / 1000;
 }
+
+// A row edge as LibreOffice spaces it, in either format: every cell of a row sits below the
+// widest line along its top edge and above the widest along its bottom (probed: one cell's
+// 3pt top lowers its neighbours' text 0.88mm). A collapsed CSS cell takes half its own line.
+const paintedOf = (v: string | null | undefined) => {
+  const b = parseBorderAttr(v);
+  return b === 'none' ? 0 : b ? paintedPx(b) : 1;
+};
+const overOf = (v: string | null | undefined) => (v == null ? 1 - 2 / 3 : borderOvershootPx(v));
+function rowEdgeDecorations(doc: PMNode): DecorationSet {
+  const decos: Decoration[] = [];
+  doc.descendants((table, pos) => {
+    if (table.type.spec.tableRole !== 'table') return true;
+    const map = TableMap.get(table);
+    const cellAt = (row: number, col: number) => (row < 0 || row >= map.height ? null : map.map[row * map.width + col]);
+    // The collapsed line per grid line and column: the wider of the two facing sides.
+    const seg = (line: number, col: number): { px: number; attr: string | null } | null => {
+      const above = cellAt(line - 1, col), below = cellAt(line, col);
+      if (above != null && above === below) return null;
+      const a = above != null ? table.nodeAt(above)?.attrs.borderBottom ?? null : undefined;
+      const b = below != null ? table.nodeAt(below)?.attrs.borderTop ?? null : undefined;
+      const pa = a === undefined ? -1 : paintedOf(a), pb = b === undefined ? -1 : paintedOf(b);
+      return pa > pb ? { px: pa, attr: a ?? null } : { px: pb, attr: b ?? null };
+    };
+    const widest = Array.from({ length: map.height + 1 }, (_, line) => {
+      let best: { px: number; attr: string | null } | null = null;
+      for (let col = 0; col < map.width; col++) {
+        const s = seg(line, col);
+        if (s && (!best || s.px > best.px)) best = s;
+      }
+      return best;
+    });
+    const seen = new Set<number>();
+    map.map.forEach((offset) => {
+      if (seen.has(offset)) return;
+      seen.add(offset);
+      const cell = table.nodeAt(offset)!;
+      const rect = map.findCell(offset);
+      const row = table.child(rect.top);
+      if (row.attrs.fixedHeight) return;
+      const own = (line: number) => Math.max(0, ...Array.from({ length: rect.right - rect.left }, (_, k) => seg(line, rect.left + k)?.px ?? 0));
+      const topMax = widest[rect.top], bottomMax = widest[rect.bottom];
+      const t = topMax ? (topMax.px - own(rect.top)) / 2 : 0;
+      const ownB = own(rect.bottom);
+      const b = bottomMax && bottomMax.px > ownB ? (bottomMax.px - ownB) / 2 + overOf(cell.attrs.borderBottom) - overOf(bottomMax.attr) : 0;
+      if (t <= 0 && b <= 0) return;
+      const r3 = (n: number) => Math.round(Math.max(0, n) * 1000) / 1000;
+      decos.push(Decoration.node(pos + 1 + offset, pos + 1 + offset + cell.nodeSize,
+        { style: `--edge-pad-t: ${r3(t)}px; --edge-pad-b: ${r3(b)}px` }));
+    });
+    return true;
+  });
+  return DecorationSet.create(doc, decos);
+}
+const rowEdgeKey = new PluginKey<DecorationSet>('tableRowEdges');
 
 const SIDE_META: Record<BorderSide, { data: string; css: string }> = {
   borderTop: { data: 'data-border-top', css: 'border-top' },
@@ -160,7 +238,7 @@ export const BORDER_PRESETS: BorderPreset[] = [
 
 // What a boundary renders: the collapse winner of its two facing cell sides
 // (a border beats 'none', wider beats narrower; attr null = the table default).
-type EffectiveBorder = { widthPt: number; color: string } | 'none';
+type EffectiveBorder = { widthPt: number; color: string; line: BorderLine } | 'none';
 
 // Active states for the picker: a preset is active when every boundary it targets renders
 // exactly the pen border (width + color), so the default thin pen lights up a fresh table
@@ -175,7 +253,7 @@ export function activeBorderPresets(
   const sideEff = (pos: number | null, side: BorderSide): EffectiveBorder | null => {
     if (pos == null) return null;
     const b = parseBorderAttr(state.doc.nodeAt(rect.tableStart + pos)?.attrs[side] as string | null);
-    return b ?? { widthPt: DEFAULT_BORDER_WIDTH_PT, color: DEFAULT_BORDER_COLOR };
+    return b ?? { widthPt: DEFAULT_BORDER_WIDTH_PT, color: DEFAULT_BORDER_COLOR, line: 'solid' };
   };
   const boundaryEff = (aPos: number | null, aSide: BorderSide, bPos: number | null, bSide: BorderSide): EffectiveBorder => {
     let best: EffectiveBorder = 'none';
@@ -186,7 +264,8 @@ export function activeBorderPresets(
     return best;
   };
   const matchesPen = (v: EffectiveBorder) =>
-    v !== 'none' && Math.abs(v.widthPt - spec.widthPt) < 0.01 && v.color === spec.color.toUpperCase();
+    v !== 'none' && Math.abs(v.widthPt - spec.widthPt) < 0.01 && v.color === spec.color.toUpperCase()
+    && v.line === (spec.line ?? 'solid');
 
   const out = {} as Record<BorderPreset | 'none', boolean>;
   for (const preset of BORDER_PRESETS) {
@@ -229,8 +308,12 @@ export const TableCellBorders = Extension.create({
                 // Only the bottom one: with border-collapse a boundary draws a single
                 // line, so compensating both sides of it would take the excess twice.
                 // Always set, since the CSS fallback is the default line's excess.
+                // The side borders ride a custom property too: a right-to-left table draws
+                // a cell's left on the right (editor.css).
                 const style = `${SIDE_META[side].css}: ${css}` +
-                  (side === 'borderBottom' ? `; --border-over: ${borderOvershootPx(v)}px` : '');
+                  (side === 'borderBottom' ? `; --border-over: ${borderOvershootPx(v)}px`
+                    : side === 'borderLeft' ? `; --cell-b-l: ${css}`
+                    : side === 'borderRight' ? `; --cell-b-r: ${css}` : '');
                 return { [SIDE_META[side].data]: v, style };
               },
             },
@@ -238,6 +321,17 @@ export const TableCellBorders = Extension.create({
         ),
       },
     ];
+  },
+
+  addProseMirrorPlugins() {
+    return [new Plugin<DecorationSet>({
+      key: rowEdgeKey,
+      state: {
+        init: (_c, state) => rowEdgeDecorations(state.doc),
+        apply: (tr, old) => (tr.docChanged ? rowEdgeDecorations(tr.doc) : old),
+      },
+      props: { decorations: (state) => rowEdgeKey.getState(state) },
+    })];
   },
 
   addCommands() {

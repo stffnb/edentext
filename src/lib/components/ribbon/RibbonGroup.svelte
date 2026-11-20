@@ -20,7 +20,7 @@
     <span class="ribbon-group-label">{label}</span>
     {#if onLauncher}
       <button class="ribbon-launcher" onclick={onLauncher} title={launcherTitle ?? label} aria-label={launcherTitle ?? label}>
-        <svg width="9" height="9" viewBox="0 0 9 9" fill="none" aria-hidden="true">
+        <svg class="icon-flip" width="9" height="9" viewBox="0 0 9 9" fill="none" aria-hidden="true">
           <path d="M8 1v7H1" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
           <path d="M6.6 6.6 3.2 3.2" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
         </svg>

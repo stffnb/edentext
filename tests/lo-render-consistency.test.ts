@@ -3,7 +3,9 @@
 // document, two formats, one renderer, so every diff is an export bug in one of them.
 // Requires soffice + pdftoppm (poppler-utils); self-skips without either.
 import { describe, it, expect } from 'vitest';
-import { writeFileSync, readFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync, readdirSync, rmSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 import { buildDocx } from '../src/lib/export/docx';
 import { buildOdt } from '../src/lib/export/odt';
@@ -14,7 +16,8 @@ function has(cmd: string): boolean {
   catch { return false; }
 }
 
-const DIR = '/tmp/lo-render-consistency';
+// A fresh directory per run, so two checkouts can run this leg at once.
+const DIR = mkdtempSync(join(tmpdir(), 'lo-render-consistency-'));
 
 function pgm(path: string): { w: number; h: number; pixels: Uint8Array } {
   const bytes = readFileSync(path);

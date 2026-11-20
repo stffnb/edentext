@@ -9,6 +9,10 @@
   import { grammarEnabled, setGrammarEnabled } from '../spell/grammar.svelte';
   import { autoLanguage, setAutoLanguage } from '../spell/detect.svelte';
   import { numberRecognition, setNumberRecognition } from '../storage/tableOptions.svelte';
+  import { dictationHostOff, dictationSettings, setDictation, type DictationService } from '../storage/dictation.svelte';
+  import { inDesktopApp } from '../storage/desktopFiles';
+  import { dictationServer, dictationService, dictationServices, dictationSupported } from '../dictation/session.svelte';
+  import { checkSpeechServer, SpeechServerError } from '../dictation/speechServer';
   import {
     showComments, setShowComments, showChanges, setShowChanges,
     commentPlace, setCommentPlace, changePlace, setChangePlace, MARKUP_PLACES, type MarkupPlace,
@@ -16,14 +20,17 @@
   } from '../storage/markup.svelte';
   import { ACCENTS, loadAccent, saveAccent, applyAccent, isCustomAccent, parseAccentHex, type Accent, type ChromeMode, type ThemeMode } from '../storage/theme';
   import { LOCALES, LOCALE_LABELS, isLocale } from '../i18n/config';
+  import { dockSide } from '../storage/panes.svelte';
   import { t, locale, setLocale } from '../i18n/i18n.svelte';
   import { DATE_FORMATS, dateFormat, formatMoment, setDateFormat, type DateFormat } from '../storage/dateFormat.svelte';
   import { localeTag } from '../utils/dateTime';
   import { userName, setUserName } from '../storage/userName.svelte';
   import Icon from './ribbon/Icon.svelte';
   import Toggle from './Toggle.svelte';
+  import CustomColorPanel from './CustomColorPanel.svelte';
   import { LANGUAGES, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
-  import { aiSettings, setAi, aiConfig, aiHostOff, plainHttpEndpoint, AI_PRESETS, presetOf, DEFAULT_CONTEXT_TOKENS, type CustomCommand } from '../storage/ai.svelte';
+  import { hostAi, hostDictation } from '../storage/hostConfig.svelte';
+  import { aiSettings, setAi, aiConfig, aiHostOff, aiInUse, aiFromHost, plainHttpEndpoint, AI_PRESETS, presetOf, DEFAULT_CONTEXT_TOKENS, type CustomCommand } from '../storage/ai.svelte';
   import { COMMANDS, commandName } from '../ai/commands';
   import { streamChat, aiErrorText } from '../ai/client';
 
@@ -100,14 +107,30 @@
     saveAccent(a);
     applyAccent(a);
   }
-  // The colour input starts from the accent on screen, so a preset can be fine-tuned.
+  // The custom panel starts from the accent on screen, so a preset can be fine-tuned; it
+  // previews live, Cancel restores the accent it opened over.
   const shownAccent = () => parseAccentHex(getComputedStyle(document.documentElement).getPropertyValue('--brand-slate')) ?? '#4c6c8a';
+  let mixingFrom = $state<Accent | null>(null);
+  let customBtn = $state<HTMLButtonElement>();
+  const revealMixer = (node: HTMLElement) => {
+    node.scrollIntoView({ block: 'nearest' });
+    node.querySelector('input')?.focus();
+  };
+  function closeMixer(restore: boolean) {
+    if (restore && mixingFrom) pickAccent(mixingFrom);
+    mixingFrom = null;
+    customBtn?.focus();
+  }
   function typeAccentHex(e: Event & { currentTarget: HTMLInputElement }) {
     const hex = parseAccentHex(e.currentTarget.value);
     if (hex) pickAccent(hex);
   }
   let wc = $derived(wordCompletion());
   let ai = $derived(aiSettings());
+  // The installation's provider shows in the fields it fills; locked, they cannot be edited.
+  let aiUse = $derived(aiInUse());
+  let aiHost = $derived(aiFromHost());
+  let aiLocked = $derived(!!hostAi().locked);
 
   // One short request, so a wrong address, key or a CORS refusal shows here and not
   // in the middle of a chat.
@@ -124,11 +147,29 @@
     }
   }
 
+  // The speech server gets half a second of silence, so a wrong address, model or a
+  // missing CORS header shows here and not at the first dictated phrase.
+  let speechTest = $state<{ busy: boolean; ok: boolean; text: string } | null>(null);
+  async function testSpeech() {
+    const server = dictationServer();
+    if (!server) return;
+    speechTest = { busy: true, ok: false, text: t().dictation.testing };
+    try {
+      await checkSpeechServer(server, 'en');
+      speechTest = { busy: false, ok: true, text: t().dictation.testOk };
+    } catch (e) {
+      const code = e instanceof SpeechServerError ? e.code : 'failed';
+      const said = e instanceof Error && e.message ? ` (${e.message})` : '';
+      speechTest = { busy: false, ok: false, text: t().dictation.errors[code] + said };
+    }
+  }
+
   const editCommand = (i: number, patch: Partial<CustomCommand>) => setAi({ commands: ai.commands.map((c, k) => (k === i ? { ...c, ...patch } : c)) });
 
   function pickPreset(id: string) {
     const p = AI_PRESETS.find((x) => x.id === id);
-    if (p) setAi({ provider: p.provider, endpoint: p.endpoint });
+    if (id === 'host') setAi({ endpoint: '', model: '' });
+    else if (p) setAi({ provider: p.provider, endpoint: p.endpoint });
     else setAi({ provider: 'openai' });
     aiTest = null;
   }
@@ -158,7 +199,7 @@
 
 <dialog
   bind:this={dialogEl}
-  onclose={() => (open = false)}
+  onclose={() => !dialogEl?.open && (open = false)}
   onclick={(e) => e.target === dialogEl && (open = false)}
   aria-label={t().settings.title}
 >
@@ -210,11 +251,19 @@
               {#each ACCENTS as a (a)}
                 <button role="radio" aria-checked={accent === a} class:on={accent === a} data-accent={a} title={t().settings.accents[a]} aria-label={t().settings.accents[a]} onclick={() => pickAccent(a)}></button>
               {/each}
-              <input type="color" class="custom" class:on={isCustomAccent(accent)} value={isCustomAccent(accent) ? accent : shownAccent()} title={t().settings.accents.custom} aria-label={t().settings.accents.custom} oninput={(e) => pickAccent(parseAccentHex(e.currentTarget.value) ?? accent)} />
+              <button class="custom" class:on={isCustomAccent(accent)} style:background={isCustomAccent(accent) ? accent : null} bind:this={customBtn} aria-expanded={mixingFrom !== null} title={t().settings.accents.custom} aria-label={t().settings.accents.custom} onclick={() => (mixingFrom === null ? (mixingFrom = accent) : closeMixer(false))}></button>
               {#if isCustomAccent(accent)}
-                <input class="field accent-hex" type="text" maxlength="7" spellcheck="false" value={accent} aria-label={t().settings.accentHex} oninput={typeAccentHex} onblur={(e) => (e.currentTarget.value = accent)} />
+                <input class="field accent-hex" type="text" dir="ltr" maxlength="7" spellcheck="false" value={accent} aria-label={t().settings.accentHex} oninput={typeAccentHex} onblur={(e) => (e.currentTarget.value = accent)} />
               {/if}
             </div>
+            {#if mixingFrom !== null}
+              <div class="accent-mixer" use:revealMixer>
+                <CustomColorPanel color={isCustomAccent(mixingFrom) ? mixingFrom : shownAccent()}
+                  onInput={(hex) => pickAccent(parseAccentHex(hex) ?? accent)}
+                  onConfirm={(hex) => { pickAccent(parseAccentHex(hex) ?? accent); closeMixer(false); }}
+                  onCancel={() => closeMixer(true)} />
+              </div>
+            {/if}
           </div>
           <!-- The modern chrome is still a beta, so only a development build offers the choice. -->
           {#if import.meta.env.DEV}
@@ -269,6 +318,58 @@
             <div class="info"><div class="name">{t().settings.grammar}</div><div class="desc">{t().grammar.hint} {t().grammar.unavailable}</div></div>
             <Toggle label={t().settings.grammar} checked={grammarEnabled()} onchange={setGrammarEnabled} />
           </div>
+          {#if !dictationHostOff()}
+          {@const service = dictationService()}
+          {@const offered = dictationServices()}
+          {@const server = dictationServer()}
+          {@const locked = !!hostDictation().locked}
+          {@const off = !dictationSettings().enabled}
+          <div class="row" id="settings-dictation">
+            <div class="info"><div class="name">{t().dictation.enable}</div><div class="desc">{dictationSupported() ? t().dictation.enableHint : `${t().dictation.unsupported(inDesktopApp)}${locked ? '' : `. ${t().dictation.unsupportedServer}`}`}</div></div>
+            <Toggle label={t().dictation.enable} checked={dictationSettings().enabled} onchange={(on) => setDictation({ enabled: on })} />
+          </div>
+          {#if offered.length > 1}
+            <div class="row sub" class:dim={off}>
+              <div class="info"><div class="name">{t().dictation.service}</div><div class="desc">{t().dictation.serviceHint}</div></div>
+              <select value={service} disabled={off} onchange={(e) => { setDictation({ service: e.currentTarget.value as DictationService }); speechTest = null; }}>
+                {#each offered as s (s)}<option value={s}>{t().dictation.services[s]}</option>{/each}
+              </select>
+            </div>
+          {/if}
+          {#if service === 'browser'}
+            <div class="row sub" class:dim={off}>
+              <div class="info"><div class="name">{t().dictation.consent}</div><div class="desc">{t().dictation.consentHint}</div></div>
+              <Toggle label={t().dictation.consent} checked={dictationSettings().consent} disabled={off} onchange={(on) => setDictation({ consent: on })} />
+            </div>
+          {/if}
+          {#if service === 'installation' && server}
+            <div class="row sub" class:dim={off}>
+              <div class="info"><div class="name">{t().dictation.fromHost}</div><div class="desc">{t().dictation.fromHostHint(server.model, locked)}</div></div>
+            </div>
+          {/if}
+          {#if !locked}
+            <div class="row sub" class:dim={off}>
+              <div class="info"><div class="name">{t().dictation.server}</div><div class="desc">{t().dictation.serverHint}</div></div>
+              <input class="field" type="url" spellcheck="false" value={dictationSettings().server} disabled={off} placeholder="http://localhost:8000"
+                onchange={(e) => { const v = e.currentTarget.value.trim(); setDictation({ server: v, service: v ? 'own' : '' }); speechTest = null; }} />
+            </div>
+          {/if}
+          {#if service === 'own'}
+            <div class="row sub" class:dim={off}>
+              <div class="info"><div class="name">{t().dictation.serverModel}</div><div class="desc">{t().dictation.serverModelHint}</div></div>
+              <input class="field" type="text" dir="ltr" spellcheck="false" value={dictationSettings().model} disabled={off}
+                onchange={(e) => { setDictation({ model: e.currentTarget.value.trim() }); speechTest = null; }} />
+            </div>
+          {/if}
+          {#if server}
+            <div class="row sub" class:dim={off}>
+              <div class="info">
+                <div class="desc" class:ok={speechTest?.ok} role="status">{speechTest?.text ?? ''}</div>
+              </div>
+              <button class="btn" disabled={off || speechTest?.busy} onclick={testSpeech}>{t().dictation.test}</button>
+            </div>
+          {/if}
+          {/if}
           <div class="row">
             <div class="info"><div class="name">{t().table.numberRecognition}</div><div class="desc">{t().table.numberRecognitionHint}</div></div>
             <Toggle label={t().table.numberRecognition} checked={numberRecognition()} onchange={setNumberRecognition} />
@@ -324,38 +425,46 @@
           </div>
           <div class="row sub" class:dim={!ai.enabled}>
             <div class="info"><div class="name">{t().ai.side}</div><div class="desc">{t().ai.sideHint}</div></div>
-            <select value={ai.side} disabled={!ai.enabled} onchange={(e) => setAi({ side: e.currentTarget.value === 'left' ? 'left' : 'right' })}>
+            <select value={dockSide(ai.side)} disabled={!ai.enabled} onchange={(e) => setAi({ side: e.currentTarget.value === 'left' ? 'left' : 'right' })}>
               <option value="right">{t().ai.sideRight}</option>
               <option value="left">{t().ai.sideLeft}</option>
             </select>
           </div>
+          {#if aiHost}
+            <div class="row sub" class:dim={!ai.enabled}>
+              <div class="info"><div class="name">{t().ai.fromHost}</div><div class="desc">{t().ai.fromHostHint(aiUse.model, aiUse.endpoint, aiLocked)}</div></div>
+            </div>
+          {/if}
           <div class="row sub" class:dim={!ai.enabled}>
             <div class="info"><div class="name">{t().ai.provider}</div><div class="desc">{t().ai.providerHint}</div></div>
-            <select value={presetOf(ai)} disabled={!ai.enabled} onchange={(e) => pickPreset(e.currentTarget.value)}>
+            <select value={aiHost ? 'host' : presetOf(ai)} disabled={!ai.enabled || aiLocked} onchange={(e) => pickPreset(e.currentTarget.value)}>
+              {#if hostAi().endpoint || aiLocked}<option value="host">{t().ai.hostPreset}</option>{/if}
               {#each AI_PRESETS as p (p.id)}<option value={p.id}>{p.label}</option>{/each}
               <option value="custom">{t().ai.custom}</option>
             </select>
           </div>
           <div class="row sub" class:dim={!ai.enabled}>
-            <div class="info"><div class="name">{t().ai.endpoint}</div><div class="desc">{plainHttpEndpoint(ai.endpoint) ? t().ai.endpointPlain : t().ai.endpointHint}</div></div>
-            <input class="field" type="url" spellcheck="false" value={ai.endpoint} disabled={!ai.enabled}
-              placeholder="https://…/v1" onchange={(e) => { setAi({ endpoint: e.currentTarget.value.trim() }); aiTest = null; }} />
+            <div class="info"><div class="name">{t().ai.endpoint}</div><div class="desc">{plainHttpEndpoint(aiUse.endpoint) ? t().ai.endpointPlain : t().ai.endpointHint}</div></div>
+            <input class="field" type="url" spellcheck="false" value={aiLocked ? aiUse.endpoint : ai.endpoint} disabled={!ai.enabled || aiLocked}
+              placeholder={hostAi().endpoint || 'https://…/v1'} onchange={(e) => { setAi({ endpoint: e.currentTarget.value.trim() }); aiTest = null; }} />
           </div>
           <div class="row sub" class:dim={!ai.enabled}>
             <div class="info"><div class="name">{t().ai.model}</div><div class="desc">{t().ai.modelHint}</div></div>
-            <input class="field" type="text" spellcheck="false" value={ai.model} disabled={!ai.enabled}
-              onchange={(e) => { setAi({ model: e.currentTarget.value.trim() }); aiTest = null; }} />
+            <input class="field" type="text" dir="ltr" spellcheck="false" value={aiLocked ? aiUse.model : ai.model} disabled={!ai.enabled || aiLocked}
+              placeholder={aiHost ? hostAi().model ?? '' : ''} onchange={(e) => { setAi({ model: e.currentTarget.value.trim() }); aiTest = null; }} />
           </div>
           <div class="row sub" class:dim={!ai.enabled}>
             <div class="info"><div class="name">{t().ai.contextSize}</div><div class="desc">{t().ai.contextSizeHint}</div></div>
-            <input class="field short" type="number" min="2048" step="1024" value={ai.contextTokens} disabled={!ai.enabled}
+            <input class="field short" type="number" min="2048" step="1024" value={aiUse.contextTokens} disabled={!ai.enabled || aiLocked}
               onchange={(e) => { const n = Math.round(Number(e.currentTarget.value)); setAi({ contextTokens: n >= 2048 ? n : DEFAULT_CONTEXT_TOKENS }); }} />
           </div>
-          <div class="row sub" class:dim={!ai.enabled}>
-            <div class="info"><div class="name">{t().ai.apiKey}</div><div class="desc">{t().ai.apiKeyHint}</div></div>
-            <input class="field" type="password" autocomplete="off" spellcheck="false" value={ai.apiKey} disabled={!ai.enabled}
-              onchange={(e) => { setAi({ apiKey: e.currentTarget.value.trim() }); aiTest = null; }} />
-          </div>
+          {#if !aiHost}
+            <div class="row sub" class:dim={!ai.enabled}>
+              <div class="info"><div class="name">{t().ai.apiKey}</div><div class="desc">{t().ai.apiKeyHint}</div></div>
+              <input class="field" type="password" autocomplete="off" spellcheck="false" value={ai.apiKey} disabled={!ai.enabled}
+                onchange={(e) => { setAi({ apiKey: e.currentTarget.value.trim() }); aiTest = null; }} />
+            </div>
+          {/if}
           <div class="row sub" class:dim={!ai.enabled}>
             <div class="info">
               <div class="desc" class:ok={aiTest?.ok} role="status">{aiTest?.text ?? ''}</div>
@@ -423,7 +532,7 @@
     gap: 2px;
     padding: 18px 10px;
     background: var(--w-hover);
-    border-right: 1px solid var(--w-border);
+    border-inline-end: 1px solid var(--w-border);
   }
   h2 { font-size: 1rem; padding: 0 10px 12px; }
   .nav-item {
@@ -436,7 +545,7 @@
     background: none;
     color: var(--w-text-dim);
     font: inherit;
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
   .nav-item:hover { background: var(--w-pressed); color: var(--color-text); }
@@ -457,13 +566,14 @@
   h3 {
     margin: 0 28px;
     font-size: 1.15rem;
-    padding: 18px 40px 10px 0;
+    padding-block: 18px 10px;
+    padding-inline: 0 40px;
     border-bottom: 1px solid var(--w-border);
   }
   .close {
     position: absolute;
     top: 14px;
-    right: 14px;
+    inset-inline-end: 14px;
     z-index: 1;
     display: grid;
     place-items: center;
@@ -486,7 +596,7 @@
   }
   .row:last-child { border-bottom: 0; }
   .row.stack { flex-direction: column; align-items: stretch; gap: 10px; }
-  .row.sub { padding-left: 16px; }
+  .row.sub { padding-inline-start: 16px; }
   .row.dim .name { color: var(--w-text-tertiary); }
   .info { flex: 1; min-width: 0; }
   .name { font-weight: 500; }
@@ -558,11 +668,8 @@
   .accents { align-items: center; }
   .accents button.on, .accents .custom.on { outline: 2px solid var(--color-text); }
   .accents .custom { appearance: none; width: 22px; height: 22px; padding: 0; border: 2px solid var(--color-surface); border-radius: 50%; outline: 1px solid var(--w-border-strong); background: conic-gradient(#e0483e, #e0b43e, #4caf50, #3ea6e0, #6a5ae0, #e03ea6, #e0483e); cursor: pointer; }
-  .accents .custom::-webkit-color-swatch-wrapper { padding: 0; }
-  .accents .custom::-webkit-color-swatch { border: none; border-radius: 50%; }
-  .accents .custom::-moz-color-swatch { border: none; border-radius: 50%; }
-  .accents .custom:not(.on)::-webkit-color-swatch { opacity: 0; }
-  .accents .custom:not(.on)::-moz-color-swatch { opacity: 0; }
+  .row:has(> .accent-mixer) { flex-wrap: wrap; }
+  .accent-mixer { display: flex; flex-basis: 100%; justify-content: flex-end; }
   .field.accent-hex { width: 6.5em; font-family: ui-monospace, monospace; }
 
   .choices { display: flex; flex-direction: column; gap: 6px; }
@@ -582,7 +689,7 @@
   /* A phone: the side bar becomes a row of tabs above the pane. */
   @media (max-width: 600px) {
     .shell { flex-direction: column; }
-    nav { width: auto; flex-direction: row; overflow-x: auto; padding: 10px; margin-right: 48px; border-right: 0; border-bottom: 1px solid var(--w-border); }
+    nav { width: auto; flex-direction: row; overflow-x: auto; padding: 10px; margin-inline-end: 48px; border-inline-end: 0; border-bottom: 1px solid var(--w-border); }
     h2 { display: none; }
     .nav-item { flex: none; }
     .scroll { padding: 0 16px 20px; }

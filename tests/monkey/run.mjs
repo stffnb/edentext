@@ -23,7 +23,39 @@ const OPS = +(process.env.MONKEY_OPS ?? 60);
 const HF_OPS = +(process.env.MONKEY_HF_OPS ?? 8);
 const DOCS = process.env.MONKEY_DOC ? [process.env.MONKEY_DOC] : ['02-blocks.odt', '16-hf-variants.odt', '04-table.odt', '08-lists.odt', '12-notes.odt', '15-chapters.odt'];
 const { check, failures } = checker();
+// A hard limit on the whole run, so a hang ends as a failure instead of never.
+const DEADLINE_MIN = +(process.env.MONKEY_DEADLINE_MIN ?? 45);
+setTimeout(() => { console.log(`✗ the run passed its ${DEADLINE_MIN} min limit`); process.exit(2); }, DEADLINE_MIN * 60_000).unref();
 if (!hasXmllint) console.log('xmllint missing: the saved files are not validated against the schemas');
+
+// Text effects through the menu's commands, from a stream of their own (so a seed keeps
+// its other ops): random parameters on a range or at the caret, mixed with marks and a
+// copy or cut pasted elsewhere. 150 pt is a file's glow, past what the menu offers.
+const FX_RATE = +(process.env.MONKEY_FX ?? 0.25);
+const hexColor = (r) => `#${Math.floor(r() * 0x1000000).toString(16).padStart(6, '0')}`;
+const frac = (r, lo, hi, step) => Math.round((lo + r() * (hi - lo)) / step) * step;
+const FX_OPS_TABLE = [
+  [6, (r, size) => { const a = int(r, 1, Math.max(1, size - 2)), b = int(r, 1, Math.max(1, size - 2)); return { cmd: 'setTextSelection', args: [{ from: Math.min(a, b), to: Math.max(a, b) }] }; }],
+  [5, (r) => ({ cmd: 'setTextOutline', args: [{ color: hexColor(r), widthPt: pick(r, [0.1, 20, frac(r, 0.1, 20, 0.05)]) }] })],
+  [4, (r) => ({ cmd: 'setTextShadow', args: [{ color: hexColor(r), alpha: frac(r, 0, 1, 0.01), dxPt: frac(r, -10, 10, 0.01), dyPt: frac(r, -10, 10, 0.01), blurPt: pick(r, [0, 2, 4, 8, frac(r, 0, 20, 0.5)]) }] })],
+  [5, (r) => ({ cmd: 'setTextGlow', args: [{ color: hexColor(r), alpha: frac(r, 0, 100, 1) / 100, radiusPt: pick(r, [1, 40, 150, frac(r, 1, 40, 0.05)]) }] })],
+  [2, (r) => ({ cmd: pick(r, ['setTextOutline', 'setTextShadow', 'setTextGlow']), args: [null] })],
+  [3, (r) => ({ cmd: 'setTextEffect', args: pick(r, [['outline', true], ['shadow', true], ['outline', false], ['relief', 'embossed'], ['relief', 'engraved'], ['relief', null]]) })],
+  [3, (r) => ({ cmd: 'applyTextEffectPreset', preset: int(r, 0, 11) })],
+  [2, () => ({ cmd: 'unsetTextEffects' })],
+  [5, (r) => pick(r, [
+    { cmd: 'toggleBold' }, { cmd: 'setColor', args: [hexColor(r)] }, { cmd: 'setFontSize', args: [`${int(r, 8, 48)}pt`] },
+    { cmd: 'unsetAllMarks' }, { cmd: 'clearDirectFormatting' }, { cmd: 'insertContent', args: ['fx '] }, { cmd: 'splitBlock' }, { cmd: 'joinBackward' },
+  ])],
+  [4, (r) => ({ clip: [r(), r(), r()], cut: r() < 0.3 })],
+  [2, (r) => ({ cmd: pick(r, ['undo', 'redo']) })],
+];
+const FX_TOTAL = FX_OPS_TABLE.reduce((n, [w]) => n + w, 0);
+const drawFx = (r, size) => {
+  let x = r() * FX_TOTAL;
+  for (const [w, draw] of FX_OPS_TABLE) { if ((x -= w) < 0) return draw(r, size); }
+  return { cmd: 'unsetTextEffects' };
+};
 
 // What recording covers so far, drawn by the recording pass.
 const RECORDED_KEYS = ['Enter', 'Enter', 'Backspace', 'Backspace', 'Backspace', 'Delete', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
@@ -120,6 +152,57 @@ const dropText = ([a, b, c]) => ed(([a, b, c]) => {
   dataTransfer.setData('text/plain', view.state.doc.textBetween(from, to, '\n'));
   view.dom.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, clientX: left, clientY: top + 1, dataTransfer }));
 }, [a, b, c]);
+// A copy or cut of a range pasted at another place, through the clipboard events
+// ProseMirror serializes and parses: what a run's effects survive as HTML.
+const clipText = ([a, b, c], cut) => ed(([a, b, c, cut]) => {
+  const editor = document.querySelector('.tiptap-host .tiptap').editor, { view } = editor;
+  const at = (f) => {
+    const size = view.state.doc.content.size;
+    for (let n = Math.floor(f * size); n <= size; n++) if (view.state.doc.resolve(n).parent.inlineContent) return n;
+    return null;
+  };
+  const [from, to] = [at(Math.min(a, b)), at(Math.max(a, b))];
+  if (from == null || to == null || from === to) return;
+  editor.commands.setTextSelection({ from, to });
+  const clipboardData = new DataTransfer();
+  view.dom.dispatchEvent(new ClipboardEvent(cut ? 'cut' : 'copy', { bubbles: true, cancelable: true, clipboardData }));
+  const target = at(c);
+  if (target == null) return;
+  editor.commands.setTextSelection(target);
+  view.dom.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }));
+}, [a, b, c, cut]);
+// Every run whose mark holds an effect draws it, with CSS the browser accepts: no NaN or
+// undefined in the style, a text-shadow that computes, data attributes that parse.
+const fxCheck = () => ed(() => {
+  const editor = document.querySelector('.tiptap-host .tiptap').editor, { view } = editor;
+  const KEYS = ['outline', 'shadow', 'relief', 'textOutline', 'textShadow', 'textGlow'];
+  const bad = [];
+  for (const el of view.dom.querySelectorAll('[style*="--fx-"], [data-text-outline], [data-text-shadow], [data-text-glow]')) {
+    const style = el.getAttribute('style') ?? '';
+    if (/NaN|undefined|null|Infinity/.test(style)) bad.push(`style: ${style.slice(0, 200)}`);
+    for (const k of ['data-text-outline', 'data-text-shadow', 'data-text-glow']) {
+      const v = el.getAttribute(k);
+      if (v == null) continue;
+      try { if (Object.values(JSON.parse(v)).some((x) => typeof x === 'number' && !Number.isFinite(x))) bad.push(`${k}: ${v}`); } catch { bad.push(`${k}: ${v}`); }
+    }
+    const cs = getComputedStyle(el);
+    if (el.style.getPropertyValue('--fx-text-shadow') && cs.textShadow === 'none') bad.push(`text-shadow does not compute: ${style.slice(0, 200)}`);
+  }
+  view.state.doc.descendants((n, pos) => {
+    if (!n.isText || bad.length > 5) return;
+    const ts = n.marks.find((m) => m.type.name === 'textStyle');
+    if (!ts || !KEYS.some((k) => ts.attrs[k] != null && ts.attrs[k] !== false && ts.attrs[k] !== 'none')) return;
+    const node = view.nodeDOM(pos);
+    if (!node) return;
+    const host = (node.nodeType === 1 ? node : node.parentElement)?.closest('[style*="--fx-text-shadow"]');
+    if (!host || !view.dom.contains(host)) {
+      const at = node.nodeType === 1 ? node : node.parentElement;
+      bad.push(`"${n.text.slice(0, 20)}" holds ${JSON.stringify(Object.fromEntries(KEYS.map((k) => [k, ts.attrs[k]]).filter(([, v]) => v != null)))}`
+        + ` but draws none, in ${(() => { const $p = view.state.doc.resolve(pos); return Array.from({ length: $p.depth + 1 }, (_, d) => $p.node(d).type.name).join('>'); })()}: ${at?.outerHTML.slice(0, 400)}`);
+    }
+  });
+  return bad.length ? bad.slice(0, 3).join(' | ') : null;
+});
 const docJson = () => ed(() => JSON.stringify(document.querySelector('.tiptap-host .tiptap').editor.getJSON()));
 // The key the history is held against, and the count of the columns flow's own rewrites:
 // the flow changes the document outside the history (`FLOW_TX`, columnsFlow.ts), so undo
@@ -292,10 +375,14 @@ try {
       if (flipped) { broken = flipped; break; }
       await watchFlow();
       const initial = await docKey();
+      const fxR = mulberry32(seed * 7919);
       for (let i = 0; i < OPS && !broken; i++) {
-        const op = drawOp(r, await docSize());
+        const fx = fxR() < FX_RATE;
+        const op = fx ? drawFx(fxR, await docSize()) : drawOp(r, await docSize());
+        if (fx) i--;
         log.push(op);
-        if (op.type || op.key) {
+        if (op.clip) await clipText(op.clip, op.cut);
+        else if (op.type || op.key) {
           const err = await focused();
           if (err) broken = `focus threw: ${err}`;
           else if (op.type) await page.keyboard.type(op.type);
@@ -306,6 +393,8 @@ try {
         }
         const invalid = await docCheck();
         if (invalid) broken = `schema-invalid document: ${invalid}`;
+        const undrawn = invalid ? null : await fxCheck();
+        if (undrawn) broken = `text effects: ${undrawn}`;
         if (pageErrors.length) broken = `uncaught: ${pageErrors.join(' | ')}`;
       }
       const final = await docKey();
@@ -336,7 +425,11 @@ try {
       if (broken) break;
 
       for (const ext of ['odt', 'docx']) {
-        const bytes = await saveAs(ext);
+        // A save that fails keeps the document it failed on, for the repro.
+        const bytes = await saveAs(ext).catch(async (err) => {
+          await writeFile(join(tmpdir(), `monkey-${seed}-${ext}-unsaved.json`), await docJson());
+          throw err;
+        });
         const schema = hasXmllint ? (ext === 'odt' ? validateOdt : validateDocx)(unzipSync(bytes)) : [];
         const rt = await roundTrip(bytes, ext).catch((err) => ({ diff: null, warnings: [], threw: String(err.message ?? err).split('\n')[0] }));
         const bad = rt.threw ? `import threw: ${rt.threw}` : schema.length ? `schema: ${schema[0].slice(0, 300)}`

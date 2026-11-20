@@ -24,7 +24,8 @@ import { TEXTBOX_PADDING_CM, boxTextWidthCm, type TextVAlign } from '../editor/e
 import { colorModeOf, cropOf, wrapGap, wrapGapAttr, type ColorMode, type Crop, type WrapGap } from '../editor/extensions/image';
 import { SHAPES, boxHeads, isShapeKind, isLineKind, drawingMlPath, asShapePreset, asTextArea, type PathHeads, type ShapeKind, type DrawingMlPreset, type TextArea } from '../utils/shapes';
 import { cellFormatCode, isCellFormat } from '../utils/cellFormat';
-import { cjkDocFont, isAsianTag, type ExportLanguage } from '../storage/documentLanguage';
+import { rtlRunFlags } from '../utils/bidi';
+import { cjkDocFont, langSlot, type ExportLanguage } from '../storage/documentLanguage';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
 import type { RecordLock } from '../storage/trackChanges.svelte';
@@ -40,16 +41,18 @@ import { indexKindOf, INDEX_TITLES, INDEX_COLUMN_GAP_CM, type IndexKind } from '
 import { citationText, DOCX_BIB_FIELD, DOCX_SOURCE_TYPE, type BibSource } from '../editor/extensions/bibliographyEntry';
 import { DOCX_STYLE_NAME, isCitationStyle, type CitationStyle } from '../utils/citationStyle';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
-import { parseBorderAttr, type BorderSide } from '../editor/extensions/tableCellBorders';
+import { parseBorderAttr, type BorderLine, type BorderSide } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING } from '../editor/extensions/tableCellPadding';
+import { cellTextFlow } from '../editor/extensions/tableCellAlign';
 import { parseTabStops, type TabAlign } from '../editor/extensions/tabStops';
-import { emphasisToWord, isEmphasis } from '../editor/extensions/textEffects';
+import { emphasisToWord, isEmphasis, type TextEffectAttrs } from '../editor/extensions/textEffects';
+import { w14EffectsXml } from '../utils/w14Effects';
 import { firstLineCm, leftCm, rightCm } from '../editor/extensions/indent';
 import { charStyleProps, listMarkerFormat } from '../editor/extensions/listMarker';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, orderedTypeDef, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
-import { effectiveListLevel, listStyleMarginCm, listStyleOverridden, type ListStyle as ListStyleDef } from '../styles/listStyles';
+import { clampListLevels, DOCX_LIST_LEVELS, effectiveListLevel, listStyleMarginCm, listStyleOverridden, type ListStyle as ListStyleDef } from '../styles/listStyles';
 import { outlineIsEmpty, type OutlineNumbering } from '../styles/outlineNumbering';
-import { defaultBulletChar } from '../utils/bulletListTypes';
+import { defaultBulletChar, isSymbolFont, symbolFontChar } from '../utils/bulletListTypes';
 import { normalizeColor, GENERATOR, mergeJoinedParagraphsJson, twinFontName, frameRank, labelledItems, type HfExport } from './odt';
 import { MAX_HEADING_LEVEL } from '../styles/headings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
@@ -78,6 +81,17 @@ let docLangTag = 'en-US';
 // table style without threading it through every helper (mirrors odt.ts).
 let exportSheet: StyleSheet = builtinStyleSheet();
 let exportSpacingModel: SpacingModel = 'add';
+// The page's direction, which the document defaults carry as w:bidi: a block is
+// right-to-left by its own `dir`, else by the page.
+let exportPageRtl = false;
+const isRtl = (attrs: TiptapNode['attrs']): boolean => attrs?.dir === 'rtl' || (attrs?.dir !== 'ltr' && exportPageRtl);
+// Whether the table whose cells are being written runs right to left.
+let aroundTableRtl = false;
+function inTable<T>(rtl: boolean, write: () => T): T {
+  const outer = aroundTableRtl;
+  aroundTableRtl = rtl;
+  try { return write(); } finally { aroundTableRtl = outer; }
+}
 
 // DOCX export. Mirrors export/odt.ts feature-for-feature, but builds OOXML via the
 // `docx` library instead of odf-kit. Lazy-loaded from App.svelte so neither this
@@ -100,19 +114,21 @@ function fontPair(west: unknown, asian: unknown, map: (f: string) => string): IF
 }
 const screenToDoc = (f: string) => (f === SCREEN_FONT ? DOC_FONT : f);
 
-// Word keeps three languages per run; Chinese, Japanese and Korean text is read from the
-// east-asian one alone, so each tag goes to the slot of its script and w:val stays free
-// for the Latin words among it. A later tag wins its slot: the run's over the block's.
-function langProp(...tags: unknown[]): { value?: string; eastAsia?: string } | undefined {
-  const out: { value?: string; eastAsia?: string } = {};
-  for (const tag of tags) if (typeof tag === 'string' && tag) out[isAsianTag(tag) ? 'eastAsia' : 'value'] = tag;
-  return out.value || out.eastAsia ? out : undefined;
+// Word keeps three languages per run and reads text from the one of its script alone:
+// Chinese, Japanese and Korean from w:eastAsia, Arabic and Hebrew from w:bidi, the rest
+// from w:val. Each tag goes to its slot; a later tag wins it: the run's over the block's.
+type LangProp = { value?: string; eastAsia?: string; bidirectional?: string };
+const LANG_SLOT_KEY = { west: 'value', asian: 'eastAsia', complex: 'bidirectional' } as const;
+function langProp(...tags: unknown[]): LangProp | undefined {
+  const out: LangProp = {};
+  for (const tag of tags) if (typeof tag === 'string' && tag) out[LANG_SLOT_KEY[langSlot(tag)]] = tag;
+  return Object.keys(out).length ? out : undefined;
 }
-
 function langXml(...tags: unknown[]): string {
   const p = langProp(...tags);
   if (!p) return '';
-  return `<w:lang${p.value ? ` w:val="${escapeXml(p.value)}"` : ''}${p.eastAsia ? ` w:eastAsia="${escapeXml(p.eastAsia)}"` : ''}/>`;
+  const attr = (name: string, v?: string) => (v ? ` w:${name}="${escapeXml(v)}"` : '');
+  return `<w:lang${attr('val', p.value)}${attr('eastAsia', p.eastAsia)}${attr('bidi', p.bidirectional)}/>`;
 }
 
 // Effective bullet glyph of a list node: its bulletChar attr, else its named list
@@ -136,7 +152,7 @@ function effOrderedKey(node: TiptapNode, style: ListStyleDef | null, depth0: num
 // A `start` attr anywhere means a numbering continued across a split — only a private
 // reference can carry that; the style's shared abstract starts every instance at 1.
 function subtreeHasStart(node: TiptapNode): boolean {
-  if (typeof node.attrs?.start === 'number' && node.attrs.start > 1) return true;
+  if (typeof node.attrs?.start === 'number' && node.attrs.start !== 1) return true;
   return (node.content ?? []).some(subtreeHasStart);
 }
 
@@ -160,6 +176,10 @@ const ORDERED_FORMAT: Record<string, (typeof LevelFormat)[keyof typeof LevelForm
   // LibreOffice writes both of its counting modes to it.
   aa: LevelFormat.LOWER_LETTER,
   AA: LevelFormat.UPPER_LETTER,
+  // Stands in for Arabic-Indic digits until `arabicIndicLevels` writes the level.
+  '١, ٢, ٣, ...': LevelFormat.HINDI_NUMBERS,
+  'أ, ب, ت, ...': LevelFormat.ARABIC_ALPHA,
+  'ا, ب, ج, ...': LevelFormat.ARABIC_ABJAD,
   'а, б, .., аа, аб, ... (ru)': LevelFormat.RUSSIAN_LOWER,
   'а, б, .., аа, бб, ... (ru)': LevelFormat.RUSSIAN_LOWER,
   'А, Б, .., Аа, Аб, ... (ru)': LevelFormat.RUSSIAN_UPPER,
@@ -172,6 +192,10 @@ const ORDERED_FORMAT: Record<string, (typeof LevelFormat)[keyof typeof LevelForm
   '①, ②, ③, ...': LevelFormat.DECIMAL_ENCLOSED_CIRCLE,
   'ア, イ, ウ, ...': LevelFormat.AIUEO_FULL_WIDTH,
   'イ, ロ, ハ, ...': LevelFormat.IROHA_FULL_WIDTH,
+  '가, 나, 다, ...': LevelFormat.GANADA,
+  'ㄱ, ㄴ, ㄷ, ...': LevelFormat.CHOSUNG,
+  '일, 이, 삼, ...': LevelFormat.KOREAN_COUNTING,
+  '하나, 둘, 셋, ...': LevelFormat.KOREAN_LEGAL,
 };
 
 // ---- unit conversions ------------------------------------------------------
@@ -381,6 +405,20 @@ function markerRunProps(node: TiptapNode): Writable<IRunStylePropertiesOptions> 
   return props;
 }
 
+// A symbol font addresses its glyphs by private-use code: a label in one either writes
+// its char that way or, with no glyph mapped to it, leaves the font to the text's.
+function symbolBullet(char: string, run: Writable<IRunStylePropertiesOptions> | undefined) {
+  const font = typeof run?.font === 'string' ? run.font : undefined;
+  const code = isSymbolFont(font) ? symbolFontChar(char, font) : null;
+  return { text: code ?? char, run: code ? run : textMarkerRun(run) };
+}
+
+function textMarkerRun(run: Writable<IRunStylePropertiesOptions> | undefined) {
+  if (!run || typeof run.font !== 'string' || !isSymbolFont(run.font)) return run;
+  const { font: _font, ...rest } = run;
+  return Object.keys(rest).length ? rest : undefined;
+}
+
 // ---- numbering registry ----------------------------------------------------
 // docx needs every numbering definition up front, so the body is built first: one
 // reference per top-level list, each nesting level's format filled in when first met.
@@ -415,13 +453,14 @@ class Numbering {
       for (let l = 0; l < 9; l++) {
         const def = style.levels[l];
         const indent: IIndentAttributesProperties = {
-          left: cmToTwip(listStyleMarginCm(style, l + 1)), hanging: cmToTwip(LIST_HANGING_CM),
+          left: cmToTwip(listStyleMarginCm(style, l + 1)), ...listHangIndent(def?.hanging ?? null),
         };
+        const suffix = def?.markerSuffix === 'space' ? LevelSuffix.SPACE : def?.markerSuffix === 'nothing' ? LevelSuffix.NOTHING : undefined;
         const alignment = def?.markerAlign === 'right' ? AlignmentType.RIGHT : AlignmentType.LEFT;
         if (def?.kind === 'bullet') {
           levels.push({
             level: l, format: LevelFormat.BULLET, text: def.bulletChar ?? defaultBulletChar(l),
-            alignment, style: { paragraph: { indent } },
+            alignment, style: { paragraph: { indent } }, ...(suffix ? { suffix } : {}),
           });
         } else {
           const t = orderedTypeDef(style.multilevel ? 'decimal' : def?.numType ?? 'decimal');
@@ -430,7 +469,7 @@ class Numbering {
             format: ORDERED_FORMAT[t.numFormat] ?? LevelFormat.DECIMAL,
             text: style.multilevel ? Array.from({ length: l + 1 }, (_, i) => `%${i + 1}.`).join('') : `%${l + 1}${t.numSuffix}`,
             alignment, start: def?.startAt ?? 1,
-            style: { paragraph: { indent } },
+            style: { paragraph: { indent } }, ...(suffix ? { suffix } : {}),
           });
         }
       }
@@ -498,12 +537,16 @@ class Numbering {
   // number format, bullet char or label formatting forks its own reference (the ODT side mints its own
   // list style). The fork copies the shallower levels so the importer's cycle walk
   // (listBaseCycle) still sees the ancestry.
-  forkFor(reference: string, depth: number, node: TiptapNode, cycle: OrderedCycle, style: ListStyleDef | null = null): string {
+  // `restarts`: an item's later sub-list, which counts afresh here but on in Word.
+  forkFor(reference: string, depth: number, node: TiptapNode, cycle: OrderedCycle, style: ListStyleDef | null = null, restarts = false): string {
     const levels = this.map.get(reference)!;
     const l = levels.find((lv) => lv.level === depth);
     if (!l) return reference;
     // The style level's kind decides what the depth renders, whatever the node species.
     const eff = effectiveListLevel(node.attrs ?? {}, node.type === 'orderedList', style, depth + 1);
+    // Word restarts a sub-list at its level's start: one starting elsewhere needs its own.
+    const start = typeof node.attrs?.start === 'number' ? node.attrs.start : eff.startAt ?? 1;
+    restarts ||= eff.kind === 'number' && start !== (l.start ?? 1);
     let format: string, text: string;
     if (eff.kind === 'number') {
       const attr = eff.listStyleType;
@@ -515,7 +558,7 @@ class Numbering {
       format = LevelFormat.BULLET;
       text = bulletCharOf(node, depth, style);
     }
-    if (l.format === format && l.text === text
+    if (!restarts && l.format === format && l.text === text
       && JSON.stringify(l.style?.run ?? null) === JSON.stringify(markerRunProps(node) ?? null)) return reference;
     const fork = this.newReference();
     this.map.get(fork)!.push(...levels.filter((lv) => lv.level < depth));
@@ -548,18 +591,19 @@ class Numbering {
           : `%${depth + 1}${def.numSuffix}`,
         alignment,
         start: typeof node.attrs?.start === 'number' ? node.attrs.start : eff.startAt ?? 1,
-        style: { paragraph: { indent }, run: markerRunProps(node) },
+        style: { paragraph: { indent }, run: textMarkerRun(markerRunProps(node)) },
         ...(suffix ? { suffix } : {}),
       });
     } else {
+      // The Unicode char goes into w:lvlText literally, or as its private-use code
+      // under a symbol font the label is set in.
+      const { text, run } = symbolBullet(bulletCharOf(node, depth, style), markerRunProps(node));
       levels.push({
         level: depth,
         format: LevelFormat.BULLET,
-        // The Unicode char goes into w:lvlText literally; Word renders it in the
-        // paragraph font (no Wingdings/Symbol rFonts needed).
-        text: bulletCharOf(node, depth, style),
+        text,
         alignment,
-        style: { paragraph: { indent }, run: markerRunProps(node) },
+        style: { paragraph: { indent }, run },
         ...(suffix ? { suffix } : {}),
       });
     }
@@ -603,7 +647,10 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], force: TextProps = {
   if (force.bold && bold !== false) bold = true;
   if (bold !== undefined) props.bold = bold;
 
-  if (markPresent(marks, 'italic') || force.italic) props.italics = true;
+  // An italic mark set over the un-italic channel wins, as it does on screen.
+  if (markPresent(marks, 'italic')) props.italics = true;
+  else if (ts?.attrs?.fontStyle === 'normal') props.italics = false;
+  else if (force.italic) props.italics = true;
   const u = marks.find((m) => m.type === 'underline');
   if (u) props.underline = wordUnderline(u.attrs);
   const st = marks.find((m) => m.type === 'strike');
@@ -623,8 +670,13 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], force: TextProps = {
   // Half-points, as Word writes them: LibreOffice takes the number and ignores a unit
   // behind it. The library's type wants the unit, the file does not.
   if (typeof pos === 'number' && pos) props.position = String(Math.round(pos * 2)) as `${number}pt`;
+  const spacing = ts?.attrs?.letterSpacing;
+  if (typeof spacing === 'number') props.characterSpacing = docxSpacing(spacing);
+  const box = runBorderOf(ts?.attrs);
+  if (box) props.border = box;
   const em = ts?.attrs?.emphasis;
   if (isEmphasis(em)) props.emphasisMark = { type: emphasisToWord(em) as 'dot' };
+  Object.assign(props, libEffects(ts?.attrs ?? {}));
 
   const font = fontPair(ts?.attrs?.fontFamily ?? force.fontFamily, ts?.attrs?.fontFamilyAsian ?? force.fontFamilyAsian, screenToDoc);
   if (font) props.font = font;
@@ -655,13 +707,39 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], force: TextProps = {
 
 // A text node → one run; tab chars become <w:tab/> via mixed children (a literal \t
 // would otherwise be dropped). Returned as an array so a link wrapper can adopt it.
-function textNodeToRuns(node: TiptapNode, force: TextProps): Inline[] {
-  const text = node.text ?? '';
+function textNodeToRuns(node: TiptapNode, force: TextProps, cuts?: DirectionCut[]): Inline[] {
   const props = runPropsFromMarks(node.marks, force);
-  const opts = text.includes('\t')
-    ? { children: tabbedChildren(text), ...props }
-    : { text, ...props };
-  return [revisedRun(node, opts, force)];
+  return (cuts ?? [{ text: node.text ?? '', rtl: false }]).map(({ text, rtl }) => {
+    const own = rtl ? { ...props, rightToLeft: true } : props;
+    const opts = text.includes('\t')
+      ? { children: tabbedChildren(text), ...own }
+      : { text, ...own };
+    return revisedRun(node, opts, force);
+  });
+}
+
+// Word orders a paragraph by its runs' w:rtl and resolves only inside a run by the
+// characters, so a text node is cut where the direction the editor shows turns
+// (`rtlRunFlags`). A paragraph without right-to-left text or direction has no cuts.
+type DirectionCut = { text: string; rtl: boolean };
+function directionCuts(content: TiptapNode[] = [], rtl: boolean): Map<TiptapNode, DirectionCut[]> {
+  const cuts = new Map<TiptapNode, DirectionCut[]>();
+  const flat = content.map((n) => (n.type === 'text' ? n.text ?? '' : n.type === 'hardBreak' ? '\n' : '\uFFFC')).join('');
+  const flags = rtlRunFlags(flat, rtl);
+  if (!flags) return cuts;
+  let at = 0;
+  for (const n of content) {
+    const text = n.type === 'text' ? n.text ?? '' : '';
+    const parts: DirectionCut[] = [];
+    for (let i = 0; i < text.length; i++) {
+      const last = parts[parts.length - 1];
+      if (last && last.rtl === flags[at + i]) last.text += text[i];
+      else parts.push({ text: text[i], rtl: flags[at + i] });
+    }
+    if (parts.some((c) => c.rtl)) cuts.set(n, parts);
+    at += n.type === 'text' ? text.length : 1;
+  }
+  return cuts;
 }
 
 // A format change is the run's w:rPrChange, the earlier properties from the same builder.
@@ -900,8 +978,9 @@ function docxBookmarkName(raw: string): string {
   return name;
 }
 
-function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline[] {
+function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}, rtl = exportPageRtl): Inline[] {
   const out: Inline[] = [];
+  const cuts = directionCuts(content, rtl);
   // A bookmark brackets its runs as two points, not as a wrapper: ranges overlap — a
   // heading's own name inside the contents' one — and no nesting holds them all. Its
   // edges come from `stampBookmarkEdges`, so a range across paragraphs is written once.
@@ -948,7 +1027,7 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
     if (atom) out.push(new TextRun({ text: atom[0] }));
     closeAtom = atom?.[1] ?? null;
     if (node.type === 'text' && node.text) {
-      const runs = textNodeToRuns(node, force);
+      const runs = textNodeToRuns(node, force, cuts.get(node));
       const href = node.marks?.find((m) => m.type === 'link')?.attrs?.href;
       const link = href ? String(href) : '';
       // An internal href targets a bookmark in this document, not a URL.
@@ -1145,7 +1224,8 @@ function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | 
     horizontalPosition,
     verticalPosition,
     wrap: { type: TextWrappingType.SQUARE, side },
-    allowOverlap: false,
+    // Frames forbidden to overlap are pushed apart sideways by Word, out of the text area.
+    allowOverlap: true,
     margins,
   };
 }
@@ -1214,7 +1294,7 @@ type TextBoxDocx = {
   arrowHeads: PathHeads | null;
   flipV: boolean;
   flipH: boolean;
-  textVertical: boolean;
+  textVertical: boolean | 'up';
   textVAlign: TextVAlign;
   fill: string | null;
   stroke: string | null;
@@ -1251,7 +1331,7 @@ function textBoxDocxDescriptor(node: TiptapNode): TextBoxDocx {
     arrowHeads: a.arrowHeads === 'start' || a.arrowHeads === 'end' || a.arrowHeads === 'both' ? a.arrowHeads : null,
     flipV: a.flipV === true,
     flipH: a.flipH === true,
-    textVertical: a.textVertical === true,
+    textVertical: a.textVertical === 'up' ? 'up' : a.textVertical === true,
     textVAlign: a.textVAlign === 'middle' || a.textVAlign === 'bottom' ? a.textVAlign : 'top',
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
@@ -1285,7 +1365,7 @@ function szXml(size: unknown): string {
   return hp ? `<w:sz w:val="${hp}"/><w:szCs w:val="${hp}"/>` : '';
 }
 
-function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLangs: unknown[] = [], block: TiptapNode['attrs'] = {}): string {
+function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLangs: unknown[] = [], block: TiptapNode['attrs'] = {}, rtl = false): string {
   const ts = marks.find((m) => m.type === 'textStyle');
   const parts: string[] = [];
   // w:rStyle leads w:rPr; the run's own properties below still win, as in the body.
@@ -1300,16 +1380,23 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLangs: unknown[] 
     if (s === 'normal' || s === '400') bold = false;
     else if (s === 'bold' || /^[5-9]\d\d$/.test(s)) bold = true;
   }
-  if (bold) parts.push('<w:b/>');
-  if (markPresent(marks, 'italic')) parts.push('<w:i/>');
+  if (bold) parts.push('<w:b/><w:bCs/>');
+  if (markPresent(marks, 'italic')) parts.push('<w:i/><w:iCs/>');
+  else if (ts?.attrs?.fontStyle === 'normal') parts.push('<w:i w:val="0"/><w:iCs w:val="0"/>');
   const st = marks.find((m) => m.type === 'strike');
   if (st) parts.push(st.attrs?.lineStyle === 'double' ? '<w:dstrike/>' : '<w:strike/>');
   const caps = ts?.attrs?.caps;
   if (caps === 'smallCaps') parts.push('<w:smallCaps/>');
   else if (caps === 'uppercase') parts.push('<w:caps/>');
   const pos = ts?.attrs?.textPosition;
+  const spacing = ts?.attrs?.letterSpacing;
+  if (typeof spacing === 'number') parts.push(`<w:spacing w:val="${Math.round(spacing * 20)}"/>`);
+  const box = runBorderOf(ts?.attrs);
+  if (box) parts.push(`<w:bdr w:val="${box.style}" w:sz="${box.size}" w:space="${box.space}" w:color="${box.color}"/>`);
   if (typeof pos === 'number' && pos) parts.push(`<w:position w:val="${Math.round(pos * 2)}"/>`);
   if (isEmphasis(ts?.attrs?.emphasis)) parts.push(`<w:em w:val="${emphasisToWord(ts.attrs.emphasis)}"/>`);
+  for (const [el, on] of Object.entries(wordEffectToggles(ts?.attrs ?? {}))) parts.push(on ? `<w:${el}/>` : `<w:${el} w:val="0"/>`);
+  const w14 = w14EffectsXml(ts?.attrs ?? {});
   const col = ts?.attrs?.color;
   if (col) {
     const h = hexColor(String(col));
@@ -1334,9 +1421,11 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLangs: unknown[] 
   }
   if (markPresent(marks, 'superscript')) parts.push('<w:vertAlign w:val="superscript"/>');
   else if (markPresent(marks, 'subscript')) parts.push('<w:vertAlign w:val="subscript"/>');
+  if (rtl) parts.push('<w:rtl/>');
   // Last in CT_RPr's order, and the only place Word reads a run's language from.
   const lang = langXml(...blockLangs, ts?.attrs?.lang, ts?.attrs?.langAsian);
   if (lang) parts.push(lang);
+  if (w14) parts.push(w14);
   const change = marks.find((m) => m.type === 'formatChange')?.attrs;
   if (change) parts.push(`<w:rPrChange ${txbxRevAttrs(change)}>${txbxRunPropsXml((change.old ?? []) as TiptapNode['marks'], blockLangs, block) || '<w:rPr/>'}</w:rPrChange>`);
   return parts.length ? `<w:rPr>${parts.join('')}</w:rPr>` : '';
@@ -1389,8 +1478,8 @@ function txbxPPrXml(attrs: TiptapNode['attrs'], indentTwip: number, pt: number):
   const borders = paraBordersOf(attrs);
   if (borders) {
     const side = (name: string, b?: IBorderOptions) =>
-      b ? `<w:${name} w:val="single" w:sz="${b.size}" w:space="1" w:color="${b.color}"/>` : '';
-    out.push(`<w:pBdr>${side('top', borders.top)}${side('left', borders.left)}${side('bottom', borders.bottom)}${side('right', borders.right)}</w:pBdr>`);
+      b ? `<w:${name} w:val="${b.style}" w:sz="${b.size}" w:space="${b.space ?? 0}" w:color="${b.color}"/>` : '';
+    out.push(`<w:pBdr>${side('top', borders.top)}${side('left', borders.left)}${side('bottom', borders.bottom)}${side('right', borders.right)}${side('between', borders.between)}</w:pBdr>`);
   }
   const shd = paraShadingOf(attrs);
   if (shd) out.push(`<w:shd w:val="clear" w:fill="${shd.fill}"/>`);
@@ -1402,7 +1491,7 @@ function txbxPPrXml(attrs: TiptapNode['attrs'], indentTwip: number, pt: number):
     }).join('')}</w:tabs>`);
   }
   if (attrs?.noHyphenation === true) out.push('<w:suppressAutoHyphens/>');
-  if (attrs?.dir === 'rtl') out.push('<w:bidi/>');
+  if (attrs?.dir === 'rtl' || attrs?.dir === 'ltr') out.push(attrs.dir === 'rtl' ? '<w:bidi/>' : '<w:bidi w:val="0"/>');
   if (attrs?.snapToGrid === false) out.push('<w:snapToGrid w:val="0"/>');
   const s = spacingOf(attrs);
   if (s) {
@@ -1421,8 +1510,11 @@ function txbxPPrXml(attrs: TiptapNode['attrs'], indentTwip: number, pt: number):
   const chars = indentCharsPayload(attrs);
   if (chars) ind.push(...chars.split(' ').map((kv) => ` w:${kv.replace('=', '="')}"`));
   if (ind.length) out.push(`<w:ind${ind.join('')}/>`);
+  // In a w:bidi paragraph w:jc left and right are the leading and trailing edge.
   const ta = attrs?.textAlign;
-  const jc = ta === 'center' ? 'center' : ta === 'right' ? 'right' : ta === 'justify' ? 'both' : '';
+  const bidi = isRtl(attrs);
+  const jc = ta === 'center' ? 'center' : ta === 'justify' ? 'both'
+    : ta === 'right' || ta === 'left' ? ((ta === 'right') !== bidi ? 'right' : 'left') : '';
   if (jc) out.push(`<w:jc w:val="${jc}"/>`);
   // w:rPr closes CT_PPr; it formats the paragraph mark and names the block's language.
   const font = fontPair(attrs?.fontFamily, attrs?.fontFamilyAsian, screenToDoc);
@@ -1463,7 +1555,8 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
     const old = txbxBlockPPr({ ...node, ...format.old }, indentTwip, madeList ? '' : numPr).replace(/<w:rPr>.*<\/w:rPr>$/, '');
     pPr.push(`<w:pPrChange ${txbxRevAttrs(format)}><w:pPr>${old}</w:pPr></w:pPrChange>`);
   }
-  const runProps = (marks: TiptapNode['marks']) => txbxRunPropsXml(marks, [attrs.lang, attrs.langAsian], attrs);
+  const runProps = (marks: TiptapNode['marks'], rtl = false) => txbxRunPropsXml(marks, [attrs.lang, attrs.langAsian], attrs, rtl);
+  const cuts = directionCuts(node.content, isRtl(attrs));
   let runs = '';
   // Comment ranges and bookmarks bracket consecutive runs sharing the mark, as
   // inlineToRuns does for the body; the reference run is what Word draws the bubble from.
@@ -1557,17 +1650,19 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
       docPlaceholders.push(String(child.attrs?.text ?? ''));
       runs += `<w:r>${runProps(child.marks)}<w:t xml:space="preserve">${PLH}${docPlaceholders.length - 1}${PLH}</w:t></w:r>`;
     } else if (child.type === 'text' && child.text) {
-      const rPr = runProps(child.marks);
       // A recorded revision wraps the run; a deletion's text sits in w:delText.
       const rev = revisionOf(child);
       const tag = rev?.kind === 'deletion' ? 'w:delText' : 'w:t';
-      let inner = '';
-      child.text.split('\t').forEach((seg, i) => {
-        if (i > 0) inner += '<w:tab/>';
-        if (seg) inner += `<${tag} xml:space="preserve">${escapeXml(seg)}</${tag}>`;
-      });
-      let run = `<w:r>${rPr}${inner}</w:r>`;
-      if (rev) run = wrapRevisionXml(run, rev, stackedOf(child));
+      let run = '';
+      for (const cut of cuts.get(child) ?? [{ text: child.text, rtl: false }]) {
+        let inner = '';
+        cut.text.split('\t').forEach((seg, i) => {
+          if (i > 0) inner += '<w:tab/>';
+          if (seg) inner += `<${tag} xml:space="preserve">${escapeXml(seg)}</${tag}>`;
+        });
+        const one = `<w:r>${runProps(child.marks, cut.rtl)}${inner}</w:r>`;
+        run += rev ? wrapRevisionXml(one, rev, stackedOf(child)) : one;
+      }
       const href = child.marks?.find((m) => m.type === 'link')?.attrs?.href;
       const link = href ? String(href) : '';
       if (link.startsWith('#')) {
@@ -1708,7 +1803,7 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
     `<wps:spPr><a:xfrm${rot}${flip}><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
     `${geom}${line ? '<a:noFill/>' : fill}${ln}</wps:spPr>` +
     body +
-    `<wps:bodyPr rot="0" vert="${box.textVertical ? 'vert' : 'horz'}" wrap="square"` +
+    `<wps:bodyPr rot="0" vert="${box.textVertical === 'up' ? 'vert270' : box.textVertical ? 'vert' : 'horz'}" wrap="square"` +
     ` lIns="${inset}" tIns="${insetT}" rIns="${inset}" bIns="${insetB}" anchor="${box.textVAlign === 'middle' ? 'ctr' : box.textVAlign === 'bottom' ? 'b' : 't'}">${autofit}</wps:bodyPr>` +
     `</wps:wsp>`;
   const graphic =
@@ -1734,7 +1829,7 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
     : `<wp:align>${align}</wp:align>`;
   return (
     `<w:drawing><wp:anchor ${WP_NS} distT="${emu(box.dist?.top ?? 0)}" distB="${emu(box.dist?.bottom ?? 0)}" distL="${emu(box.dist?.left ?? 0)}" distR="${emu(box.dist?.right ?? 0)}"` +
-    ` simplePos="0" relativeHeight="${box.zIndex}" behindDoc="${box.wrap === 'through' && !box.inFront ? 1 : 0}" locked="0" layoutInCell="1" allowOverlap="${box.wrap === 'through' ? 1 : 0}">` +
+    ` simplePos="0" relativeHeight="${box.zIndex}" behindDoc="${box.wrap === 'through' && !box.inFront ? 1 : 0}" locked="0" layoutInCell="1" allowOverlap="${box.wrap === 'topBottom' ? 0 : 1}">` +
     `<wp:simplePos x="0" y="0"/>` +
     `<wp:positionH relativeFrom="margin">${posH}</wp:positionH>` +
     (box.fromPage || box.fromBody
@@ -2064,7 +2159,7 @@ function applyRubyDocx(bytes: Uint8Array, rubies: RubyDocx[]): Uint8Array {
         `<w:r>${size ? `<w:rPr><w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr>` : ''}`
         + `<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
       return '<w:r><w:ruby><w:rubyPr><w:rubyAlign w:val="center"/><w:hps w:val="12"/>'
-        + `<w:hpsRaise w:val="24"/><w:hpsBaseText w:val="24"/><w:lid w:val="${docLangTag}"/></w:rubyPr>`
+        + `<w:hpsRaise w:val="24"/><w:hpsBaseText w:val="24"/><w:lid w:val="${docLangTag.split('-u-')[0]}"/></w:rubyPr>`
         + `<w:rt>${run(r.text, 12)}</w:rt><w:rubyBase>${run(r.base)}</w:rubyBase></w:ruby></w:r>`;
     },
   );
@@ -2300,8 +2395,82 @@ function orderDocxSettings(bytes: Uint8Array): Uint8Array {
   return zipSync(out);
 }
 
-// Post-pack pass (runs last) over what the library writes: a paragraph's w:pBdr sides
-// as top, bottom, left, right (the schema's sequence is top, left, bottom, right, between,
+// Outline, shadow and relief as Word's four toggles, in CT_RPr order; false switches a
+// style's off (w:val="0"). Only 'none' writes a relief toggle off: LibreOffice reads any
+// off one as no relief, the other one's on beside it included.
+function wordEffectToggles(a: TextEffectAttrs): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  if (a.outline != null) out.outline = !!a.outline;
+  if (a.shadow != null) out.shadow = !!a.shadow;
+  if (a.relief === 'embossed') out.emboss = true;
+  else if (a.relief === 'engraved') out.imprint = true;
+  else if (a.relief === 'none') out.emboss = out.imprint = false;
+  return out;
+}
+
+// The docx package has no outline, shadow or w14 option, so they ride a marked w:effect
+// (the toggles as letters, the w14 markup URI-encoded after a colon) that patchPackedXml
+// swaps for the elements in their schema place.
+const FX_MARK = 'edentextFx-';
+function libEffects(a: TextEffectAttrs): Writable<IRunStylePropertiesOptions> {
+  const t = wordEffectToggles(a);
+  const out: Writable<IRunStylePropertiesOptions> = {};
+  if (t.emboss != null) out.emboss = t.emboss;
+  if (t.imprint != null) out.imprint = t.imprint;
+  const w14 = w14EffectsXml(a);
+  const code = (t.outline == null ? '' : t.outline ? 'O' : 'o') + (t.shadow == null ? '' : t.shadow ? 'S' : 's')
+    + (w14 ? `:${encodeURIComponent(w14)}` : '');
+  if (code) out.effect = `${FX_MARK}${code}` as IRunStylePropertiesOptions['effect'];
+  return out;
+}
+
+// The CT_RPr elements after w:shadow that the package may already have written before
+// the marked w:effect; the two toggles go in front of the first.
+const AFTER_SHADOW = /<w:(?:emboss|imprint|noProof|snapToGrid|vanish|webHidden|color|spacing|w|kern|position|sz|szCs|highlight|u)\b/;
+const W14_AT = '<!--edentextW14:';
+function placeEffectToggles(xml: string): string {
+  if (!xml.includes(FX_MARK)) return xml;
+  const placed = xml.replace(new RegExp(`<w:rPr>((?:(?!<w:rPr>)[\\s\\S])*?)<w:effect w:val="${FX_MARK}([oOsS]*)(?::([^"]*))?"/>`, 'g'), (_m, inner: string, code: string, w14?: string) => {
+    const toggles = [...code].map((c) => `<w:${c.toLowerCase() === 'o' ? 'outline' : 'shadow'}${c === c.toUpperCase() ? '' : ' w:val="0"'}/>`).join('');
+    const at = AFTER_SHADOW.exec(inner)?.index ?? inner.length;
+    return `<w:rPr>${inner.slice(0, at)}${toggles}${inner.slice(at)}${w14 ? `${W14_AT}${w14}-->` : ''}`;
+  });
+  // The w14 elements close the run properties, ahead of a recorded format change.
+  return placed.replace(/<!--edentextW14:([^>]*)-->((?:(?!<\/w:rPr>|<w:rPrChange\b)[\s\S])*?)(<\/w:rPr>|<w:rPrChange\b)/g,
+    (_m, w14: string, rest: string, end: string) => `${rest}${decodeURIComponent(w14)}${end}`);
+}
+
+// A part holding w14 markup declares the namespace ignorable, or a reader without it
+// rejects the part.
+const W14_ROOT = /<w:(?:document|styles|hdr|ftr|footnotes|endnotes|comments|numbering)\b[^>]*>/;
+function declareW14(xml: string): string {
+  if (!xml.includes('<w14:')) return xml;
+  return xml.replace(W14_ROOT, (tag) => {
+    let t = tag;
+    if (!/\sxmlns:w14=/.test(t)) t = t.replace(/^(<w:\w+)/, `$1 xmlns:w14="${W14_NS}"`);
+    if (!/\sxmlns:mc=/.test(t)) t = t.replace(/^(<w:\w+)/, '$1 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"');
+    if (!/\smc:Ignorable="/.test(t)) return t.replace(/^(<w:\w+)/, '$1 mc:Ignorable="w14"');
+    return t.replace(/(\smc:Ignorable=")([^"]*)"/, (m, pre: string, list: string) => list.split(/\s+/).includes('w14') ? m : `${pre}w14 ${list}"`.replace(' "', '"'));
+  });
+}
+
+// Word has no numbering format for Arabic-Indic digits (its hindiNumbers are Devanagari)
+// and shapes a decimal label by its run: such a level goes out decimal and right-to-left.
+function arabicIndicLevels(xml: string): string {
+  const HINDI = '<w:numFmt w:val="hindiNumbers"/>';
+  if (!xml.includes(HINDI)) return xml;
+  return xml.replace(/<w:lvl\b[^>]*>[\s\S]*?<\/w:lvl>/g, (lvl) => {
+    if (!lvl.includes(HINDI)) return lvl;
+    const dec = lvl.replace(HINDI, '<w:numFmt w:val="decimal"/>').replace('<w:rPr/>', '');
+    const at = dec.indexOf('<w:rPr>');
+    if (at < 0) return dec.replace('</w:lvl>', '<w:rPr><w:rtl/></w:rPr></w:lvl>');
+    const tail = dec.slice(at).search(/<w:(?:cs|em|lang|eastAsianLayout|specVanish|oMath)\b|<\/w:rPr>/);
+    return `${dec.slice(0, at + tail)}<w:rtl/>${dec.slice(at + tail)}`;
+  });
+}
+
+// Post-pack pass (runs last) over what the library writes: the effect toggles above,
+// a paragraph's w:pBdr sides in the schema's sequence (top, left, bottom, right, between,
 // bar), and a page field with no cached result (a reader shows what it finds there).
 const PBDR_ORDER = ['w:top', 'w:left', 'w:bottom', 'w:right', 'w:between', 'w:bar'];
 function patchPackedXml(bytes: Uint8Array): Uint8Array {
@@ -2310,7 +2479,7 @@ function patchPackedXml(bytes: Uint8Array): Uint8Array {
   for (const [path, data] of Object.entries(files)) {
     if (!/^word\/.*\.xml$/.test(path)) continue;
     const xml = strFromU8(data);
-    const sorted = xml.replace(/<w:pBdr>([\s\S]*?)<\/w:pBdr>/g, (_m, inner: string) => {
+    const sorted = declareW14(placeEffectToggles(arabicIndicLevels(xml))).replace(/<w:pBdr>([\s\S]*?)<\/w:pBdr>/g, (_m, inner: string) => {
       const sides = inner.match(/<w:(?:top|left|bottom|right|between|bar)\b[^>]*\/>/g) ?? [];
       if (sides.join('') !== inner) return _m;
       const rank = (s: string) => PBDR_ORDER.indexOf(/^<(w:\w+)/.exec(s)![1]);
@@ -2469,9 +2638,9 @@ function applyPageDecorDocx(bytes: Uint8Array, decor: PageDecor, widthPt: number
   if (decor.border) {
     const color = decor.border.color.replace('#', '').toUpperCase();
     // w:sz is eighths of a point, w:space whole points from the text.
-    const sz = Math.max(2, Math.round(decor.border.widthPt * 8));
+    const { style, size: sz } = docxLine({ widthPt: decor.border.widthPt, line: decor.border.line ?? 'solid' });
     const space = Math.min(31, Math.round((decor.border.paddingCm / 2.54) * 72));
-    const side = (name: string) => `<w:${name} w:val="single" w:sz="${sz}" w:space="${space}" w:color="${color}"/>`;
+    const side = (name: string) => `<w:${name} w:val="${style}" w:sz="${sz}" w:space="${space}" w:color="${color}"/>`;
     const borders = `<w:pgBorders w:display="allPages" w:offsetFrom="text">`
       + `${side('top')}${side('left')}${side('bottom')}${side('right')}</w:pgBorders>`;
     // w:sectPr has a fixed child order and pgBorders belongs after pgMar; put ahead of
@@ -2669,7 +2838,11 @@ function applyBidiDocx(bytes: Uint8Array): Uint8Array {
   const docBytes = files['word/document.xml'];
   if (!docBytes) return bytes;
   files['word/document.xml'] = strToU8(
-    strFromU8(docBytes).replace(/<w:sectPr\b[^>]*>/g, (m) => `${m}<w:bidi/>`),
+    // The schema places w:bidi after w:textDirection and before these trailing children.
+    strFromU8(docBytes).replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, (sect) => {
+      const at = sect.search(/<w:(?:rtlGutter|docGrid|printerSettings|sectPrChange)\b|<\/w:sectPr>$/);
+      return `${sect.slice(0, at)}<w:bidi/>${sect.slice(at)}`;
+    }),
   );
   const out: Record<string, [Uint8Array, { level: 6 }]> = {};
   for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
@@ -2720,15 +2893,15 @@ function applyParagraphFlagsDocx(bytes: Uint8Array): Uint8Array {
   return zipSync(out);
 }
 
-// Post-pack pass: the docx package ends each section in an empty paragraph of its own,
-// a blank line in Word that LibreOffice folds into the paragraph before, which loses its
-// space below. The section mark goes onto that paragraph instead, where Word writes it;
-// an empty one keeps its marker, which the importers drop as just that.
+// Post-pack pass: a section's mark rides the paragraph ending it, where Word writes it. The
+// docx package puts it there or in an empty paragraph of its own; every mark first goes into
+// one of its own, then onto the paragraph before unless that one is empty (LibreOffice and
+// the importers drop an empty marked paragraph) or ends in a line break (dropped too).
 function applySectionMarksDocx(bytes: Uint8Array): Uint8Array {
   const files = unzipSync(bytes);
   const doc = files['word/document.xml'];
   if (!doc) return bytes;
-  const xml = strFromU8(doc);
+  const xml = ownSectionMarks(strFromU8(doc));
   const marker = /<w:p><w:pPr>(<w:sectPr\b[\s\S]*?<\/w:sectPr>)<\/w:pPr><\/w:p>/g;
   let out = '', last = 0;
   for (let m = marker.exec(xml); m; m = marker.exec(xml)) {
@@ -2753,6 +2926,47 @@ function applySectionMarksDocx(bytes: Uint8Array): Uint8Array {
   return zipSync(zipped);
 }
 
+// Every mid-body w:sectPr moved out of the paragraph holding it into an empty one after it.
+function ownSectionMarks(xml: string): string {
+  const mark = /<w:sectPr\b[\s\S]*?<\/w:sectPr>/g;
+  let out = '', last = 0;
+  for (let m = mark.exec(xml); m; m = mark.exec(xml)) {
+    const start = openParagraphStart(xml.slice(0, m.index));
+    if (start < 0 || xml.startsWith(`<w:p><w:pPr>${m[0]}</w:pPr></w:p>`, start)) continue;
+    const end = paragraphEnd(xml, m.index + m[0].length);
+    if (end < 0) continue;
+    const para = (xml.slice(start, m.index) + xml.slice(m.index + m[0].length, end)).replace(/^(<w:p\b[^>]*>)<w:pPr><\/w:pPr>/, '$1');
+    out += xml.slice(last, start) + para + `<w:p><w:pPr>${m[0]}</w:pPr></w:p>`;
+    last = end;
+    mark.lastIndex = end;
+  }
+  return last ? out + xml.slice(last) : xml;
+}
+
+// Where the paragraph still open at the end of `xml` starts, -1 for none.
+function openParagraphStart(xml: string): number {
+  const tags = [...xml.matchAll(/<w:p(?=[\s>/])[^>]*?(\/?)>|<\/w:p>/g)];
+  let depth = 0;
+  for (let i = tags.length - 1; i >= 0; i--) {
+    const t = tags[i];
+    if (t[0] === '</w:p>') depth++;
+    else if (!t[1] && depth-- === 0) return t.index!;
+  }
+  return -1;
+}
+
+// Where the paragraph open at `from` ends, past its closing tag; -1 for none.
+function paragraphEnd(xml: string, from: number): number {
+  const tag = /<w:p(?=[\s>/])[^>]*?(\/?)>|<\/w:p>/g;
+  tag.lastIndex = from;
+  let depth = 0;
+  for (let t = tag.exec(xml); t; t = tag.exec(xml)) {
+    if (t[0] === '</w:p>') { if (depth-- === 0) return t.index + t[0].length; }
+    else if (!t[1]) depth++;
+  }
+  return -1;
+}
+
 // Where the top-level paragraph `xml` ends with opens: its own w:p, past any nested in a
 // drawing's text.
 function paragraphStart(xml: string): number {
@@ -2767,16 +2981,26 @@ function paragraphStart(xml: string): number {
 }
 
 // ---- paragraphs ------------------------------------------------------------
-// w:jc names the physical edge, as LibreOffice reads it. docx mirrors left and right on a
-// `bidirectional` paragraph, so an rtl one passes the opposite edge to come out unchanged.
-function alignOf(attrs: TiptapNode['attrs'], rtl = false): (typeof AlignmentType)[keyof typeof AlignmentType] | undefined {
+// The physical edge. In a w:bidi paragraph Word reads w:jc left as the leading edge, the
+// right one; docx mirrors left and right on a `bidirectional` paragraph to match, and
+// `mirror` does it for one that is w:bidi by the document defaults or its style alone.
+function alignOf(attrs: TiptapNode['attrs'], mirror = false): (typeof AlignmentType)[keyof typeof AlignmentType] | undefined {
   switch (attrs?.textAlign) {
     case 'center': return AlignmentType.CENTER;
-    case 'right': return rtl ? AlignmentType.LEFT : AlignmentType.RIGHT;
+    case 'right': return mirror ? AlignmentType.LEFT : AlignmentType.RIGHT;
     case 'justify': return AlignmentType.BOTH;
-    case 'left': return rtl ? AlignmentType.RIGHT : AlignmentType.LEFT;
+    case 'left': return mirror ? AlignmentType.RIGHT : AlignmentType.LEFT;
     default: return undefined;
   }
+}
+
+// A block's alignment: its own, else the edge its style names where the block runs against
+// the page, since Word reads a style's w:jc by the direction of the paragraph using it.
+function bidiAlignOf(node: TiptapNode): string | undefined {
+  const own = node.attrs?.textAlign as string | undefined;
+  if (own || isRtl(node.attrs) === exportPageRtl) return own;
+  const ta = resolveStyle(exportSheet, styleOf(node)).para.textAlign;
+  return ta === 'left' || ta === 'right' ? ta : undefined;
 }
 
 // Word's table styles carry w:spacing after=0 and LibreOffice's Table Contents zeroes both,
@@ -2817,13 +3041,33 @@ function paraShadingOf(attrs: TiptapNode['attrs']) {
   return c ? { type: ShadingType.CLEAR, fill: c, color: 'auto' } : undefined;
 }
 
+// A drawn side's w:val and w:sz: a double line's w:sz is one of its three equal parts,
+// as LibreOffice writes it.
+const DOCX_LINE: Record<BorderLine, (typeof BorderStyle)[keyof typeof BorderStyle]> = {
+  solid: BorderStyle.SINGLE, double: BorderStyle.DOUBLE, dotted: BorderStyle.DOTTED, dashed: BorderStyle.DASHED,
+};
+function docxLine(b: { widthPt: number; line: BorderLine }): { style: (typeof BorderStyle)[keyof typeof BorderStyle]; size: number } {
+  const stroke = b.line === 'double' ? b.widthPt / 3 : b.widthPt;
+  return { style: DOCX_LINE[b.line], size: Math.max(2, Math.round(stroke * 8)) };
+}
+
+// A run's box → w:bdr, its gap in whole points as w:space.
+function runBorderOf(attrs: TiptapNode['attrs']): (IBorderOptions & { space: number; color: string }) | undefined {
+  const b = parseBorderAttr(attrs?.textBorder as string | null);
+  if (!b || b === 'none') return undefined;
+  return { ...docxLine(b), color: hexColor(b.color) ?? '000000', space: Math.round(Number(attrs?.textBorderPadding) || 0) };
+}
+
 function paraBordersOf(attrs: TiptapNode['attrs']) {
-  const out: { top?: IBorderOptions; left?: IBorderOptions; bottom?: IBorderOptions; right?: IBorderOptions } = {};
+  const out: { top?: IBorderOptions; left?: IBorderOptions; bottom?: IBorderOptions; right?: IBorderOptions; between?: IBorderOptions } = {};
   for (const [attr, side] of [['borderTop', 'top'], ['borderLeft', 'left'], ['borderBottom', 'bottom'], ['borderRight', 'right']] as const) {
     const b = parseBorderAttr(attrs?.[attr] as string | null);
     // w:space is the gap to the rule in points; the editor draws none unless one is set.
-    if (b && b !== 'none') out[side] = { style: BorderStyle.SINGLE, size: Math.max(2, Math.round(b.widthPt * 8)), color: hexColor(b.color) ?? '000000', space: Number(attrs?.borderPadding) || 0 };
+    if (b && b !== 'none') out[side] = { ...docxLine(b), color: hexColor(b.color) ?? '000000', space: Number(attrs?.borderPadding) || 0 };
   }
+  // An unmerged block's top rule is its w:between too: a like neighbour then still draws
+  // it between the two instead of merging them into one box.
+  if (attrs?.borderJoin === false && out.top) out.between = out.top;
   return Object.keys(out).length ? out : undefined;
 }
 
@@ -2851,7 +3095,7 @@ function paragraphProps(node: TiptapNode, opts: ParaOpts): IParagraphPropertiesO
   const stops = parseTabStops(attrs.tabStops);
   return {
     style,
-    alignment: alignOf(attrs, attrs.dir === 'rtl'),
+    alignment: alignOf({ textAlign: bidiAlignOf(node) }, attrs.dir !== 'rtl' && isRtl(attrs)),
     spacing: opts.inCell ? cellSpacingOf(attrs, node) : spacingOf(attrs),
     indent: Object.keys(indent).length ? indent : undefined,
     pageBreakBefore: attrs.breakBefore === 'page' || undefined,
@@ -2901,7 +3145,7 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
       ...(attrs.noHyphenation === true ? [new TextRun(NOHYP)] : []),
       ...(attrs.snapToGrid === false ? [new TextRun(NOSNAP)] : []),
       ...(indChars ? [new TextRun(`${INDC}${indChars}${INDC}`)] : []),
-      ...inlineToRuns(node.content, runForce),
+      ...inlineToRuns(node.content, runForce, isRtl(attrs)),
     ],
   });
 }
@@ -2919,10 +3163,10 @@ function listToParagraphs(
   const cChild = childCycle(cycle, eff.listStyleType, eff.kind === 'number');
   for (const item of node.content ?? []) {
     if (item.type !== 'listItem') continue;
-    let numberedFirst = false;
+    let numberedFirst = false, lists = 0;
     for (const child of item.content ?? []) {
       if (child.type === 'bulletList' || child.type === 'orderedList') {
-        const ref = num.forkFor(reference, depth + 1, child, cChild, style);
+        const ref = num.forkFor(reference, depth + 1, child, cChild, style, lists++ > 0 && child.type === 'orderedList');
         listToParagraphs(child, depth + 1, ref, indentCm, num, out, cChild, style, ref === reference ? instance : 0);
       } else if (child.type === 'paragraph' || child.type === 'heading') {
         if (!numberedFirst) {
@@ -2998,7 +3242,7 @@ const noneBorder: IBorderOptions = { style: BorderStyle.NIL, size: 0, color: 'au
 function docxCellBorder(attrs: Record<string, unknown> | undefined, side: BorderSide, fallback: IBorderOptions = cellBorder): IBorderOptions {
   const b = parseBorderAttr(attrs?.[side] as string | null);
   if (b === 'none') return noneBorder;
-  if (b) return { style: BorderStyle.SINGLE, size: Math.max(2, Math.round(b.widthPt * 8)), color: hexColor(b.color) ?? '000000' };
+  if (b) return { ...docxLine(b), color: hexColor(b.color) ?? '000000' };
   return fallback;
 }
 
@@ -3020,9 +3264,18 @@ function formulaCellContent(cell: TiptapNode): TiptapNode[] | null {
   return [{ ...first, content: [field] }, ...(cell.content ?? []).slice(1)];
 }
 
-function cellBlocksToDocx(content: TiptapNode[] = [], force: TextProps, num: Numbering, contentWidthCm: number): (Paragraph | Table)[] {
+// A table kept with the next block is Word's every paragraph in it kept with the next,
+// list items included; a nested table keeps its own.
+function keptBlock(block: TiptapNode): TiptapNode {
+  if (block.type === 'paragraph' || block.type === 'heading') return { ...block, attrs: { ...block.attrs, keepNext: true } };
+  if (block.type === 'table' || !block.content) return block;
+  return { ...block, content: block.content.map(keptBlock) };
+}
+
+function cellBlocksToDocx(content: TiptapNode[] = [], force: TextProps, num: Numbering, contentWidthCm: number, keepNext = false): (Paragraph | Table)[] {
   const out: (Paragraph | Table)[] = [];
-  for (const child of content) {
+  for (const block of content) {
+    const child = keepNext ? keptBlock(block) : block;
     if (child.type === 'bulletList' || child.type === 'orderedList') {
       listEntryToDocx(child, num, out);
     } else if (child.type === 'table') {
@@ -3037,6 +3290,7 @@ function cellBlocksToDocx(content: TiptapNode[] = [], force: TextProps, num: Num
 }
 
 function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, float?: ITableFloatOptions): Table {
+  const rtl = isRtl(node.attrs);
   const rows = (node.content ?? []).filter((r) => r.type === 'tableRow');
   // LibreOffice's reject takes the whole table for a column some row has no cell of (probed).
   const mergedColumn = rows.some((row) => !row.attrs?.revMark && !row.content?.some((c) => c.attrs?.revMark));
@@ -3049,7 +3303,9 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
   let ml = Number(node.attrs?.marginLeft) || 0;
   let mr = Number(node.attrs?.marginRight) || 0;
   if (ml + mr > contentWidthCm - 1) { ml = 0; mr = 0; }
-  const pad = parseCellPadding(node.attrs?.cellPadding) ?? DEFAULT_CELL_PADDING;
+  // Word mirrors the borders of a w:bidiVisual table but reads its cell margins as drawn.
+  const drawn = (p: readonly number[]) => (rtl ? [p[0], p[3], p[2], p[1]] : p);
+  const pad = drawn(parseCellPadding(node.attrs?.cellPadding) ?? DEFAULT_CELL_PADDING);
   const colsCm = columnWidthsCm(node, contentWidthCm - ml - mr);
   const colsTwip = colsCm?.map(cmToTwip);
   const totalTwip = colsTwip ? colsTwip.reduce((a, b) => a + b, 0) : cmToTwip(contentWidthCm - ml - mr);
@@ -3074,7 +3330,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
       const widthTwip = colsTwip ? colsTwip.slice(col, col + colspan).reduce((a, b) => a + b, 0) : undefined;
       col += colspan;
       // The cell's own margins (w:tcMar); absent, Word falls back to the table's.
-      const ownPad = parseCellPadding(cell.attrs?.cellPadding);
+      const own = parseCellPadding(cell.attrs?.cellPadding), ownPad = own && drawn(own);
       const content = formulaCellContent(cell) ?? cell.content;
       cells.push(new TableCell({
         ...(mergedColumn ? {} : revMarkRevisions(cell.attrs?.revMark)),
@@ -3087,6 +3343,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
         // Content set against the middle/bottom of the box → w:vAlign.
         verticalAlign: cell.attrs?.verticalAlign === 'middle' ? 'center'
           : cell.attrs?.verticalAlign === 'bottom' ? 'bottom' : undefined,
+        textDirection: cellTextFlow(cell.attrs?.textFlow) ?? undefined,
         width: widthTwip ? { size: widthTwip, type: WidthType.DXA } : undefined,
         borders: {
           top: docxCellBorder(cell.attrs, 'borderTop'),
@@ -3094,15 +3351,16 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
           left: docxCellBorder(cell.attrs, 'borderLeft'),
           right: docxCellBorder(cell.attrs, 'borderRight'),
         },
-        // A nested table measures against the cell's text width, as on import.
-        children: cellBlocksToDocx(content, cellForce(tableStyle, cell, bg), num,
+        // A nested table measures against the cell's text width, as on import; at least
+        // 0.5cm, as the ODT's, since tables nested deep leave a cell narrower than its padding.
+        children: inTable(rtl, () => cellBlocksToDocx(content, cellForce(tableStyle, cell, bg), num, Math.max(0.5,
           (widthTwip ? widthTwip * 2.54 / 1440 : (contentWidthCm - ml - mr) * colspan / gridCols)
-            - (ownPad ?? pad)[1] - (ownPad ?? pad)[3]),
+            - (ownPad ?? pad)[1] - (ownPad ?? pad)[3]), node.attrs?.keepNext === true)),
       }));
     }
     return new TableRow({
       ...revMarkRevisions(row.attrs?.revMark),
-      height: typeof rh === 'number' && rh > 0 ? { value: pxToTwip(rh), rule: HeightRule.ATLEAST } : undefined,
+      height: typeof rh === 'number' && rh > 0 ? { value: pxToTwip(rh), rule: row.attrs?.fixedHeight === true ? HeightRule.EXACT : HeightRule.ATLEAST } : undefined,
       ...(row.attrs?.cantSplit === true ? { cantSplit: true } : {}),
       // The flag marks a header row, whether the table asked for the repeat or only the
       // row's own cells say they head it — ODF spells both with one element.
@@ -3112,7 +3370,11 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
     });
   });
 
+  // Word mirrors a table by w:bidiVisual alone, LibreOffice also by the section and the
+  // table around it, so a table running against either says so too. Cell sides need no
+  // swap: w:left is the leading side there, as a cell's left faces the column before it.
   return new Table({
+    ...(rtl || exportPageRtl || aroundTableRtl ? { visuallyRightToLeft: rtl } : {}),
     ...(float ? { float } : {}),
     ...(tableStyle ? {
       style: docxStyleId(tableStyle.name),
@@ -3126,9 +3388,10 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
     rows: tableRows,
     columnWidths: colsTwip,
     width: { size: totalTwip, type: WidthType.DXA },
-    // The table's own edge, negative where it hangs into the page margin: what we write
-    // declares Word 2013 compatibility, where w:tblInd means exactly that.
-    indent: ml ? { size: cmToTwip(ml), type: WidthType.DXA } : undefined,
+    // The table's own leading edge (the right one of a right-to-left table), negative
+    // where it hangs into the page margin: what we write declares Word 2013
+    // compatibility, where w:tblInd means exactly that.
+    indent: (rtl ? mr : ml) ? { size: cmToTwip(rtl ? mr : ml), type: WidthType.DXA } : undefined,
     layout: TableLayoutType.FIXED,
     margins: { marginUnitType: WidthType.DXA, top: cmToTwip(pad[0]), right: cmToTwip(pad[1]), bottom: cmToTwip(pad[2]), left: cmToTwip(pad[3]) },
     borders: {
@@ -3401,12 +3664,13 @@ function blockPt(node: TiptapNode): number {
 
 // Stamps each display formula with its paragraph's alignment, the attr over the named
 // style's, for its m:jc: Word places a math paragraph by that alone, not by w:jc.
-// shortcut: an unaligned rtl paragraph counts as left; resolve its direction if one shows up.
+// An unaligned paragraph sits at the edge its direction starts at.
 function alignDisplayFormulas(node: TiptapNode): TiptapNode {
   if (!node.content?.length) return node;
   const ta = node.attrs?.textAlign;
   const align = node.type === 'paragraph' || node.type === 'heading'
-    ? (ta === 'center' || ta === 'right' || ta === 'justify' ? ta : resolveStyle(exportSheet, styleOf(node)).para.textAlign ?? 'left')
+    ? (ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify' ? ta
+      : resolveStyle(exportSheet, styleOf(node)).para.textAlign ?? (isRtl(node.attrs) ? 'right' : 'left'))
     : null;
   return { ...node, content: node.content.map((c) => c.type === 'formula' && c.attrs?.display === true && align
     ? { ...c, attrs: { ...c.attrs, align: align === 'justify' ? 'left' : align } }
@@ -3457,6 +3721,12 @@ export function docxStyleId(name: string): string {
   return name === DEFAULT_STYLE ? 'Normal' : name.replace(/[^A-Za-z0-9]/g, '');
 }
 
+// w:spacing in twips. A 0 resets the spacing above it, but the package skips a numeric 0,
+// so it goes as '0pt' (LibreOffice and the importer read it as 0).
+function docxSpacing(pt: number): number {
+  return (pt ? Math.round(pt * 20) : '0pt') as number;
+}
+
 // One registry style → a Word paragraph style with its parent chain.
 function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   const p = style.para;
@@ -3466,10 +3736,10 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   const font = fontPair(t.fontFamily, t.fontFamilyAsian, twinFontName);
   if (font) run.font = font;
   if (t.fontSizePt != null) run.size = Math.round(t.fontSizePt * 2);
-  if (t.letterSpacingPt) run.characterSpacing = Math.round(t.letterSpacingPt * 20);
-  // Word kerns nothing unless a size to start at is named, so the on state is the one
-  // this side has to write — half a point, i.e. every run.
-  if (t.kerning !== false) run.kern = 1;
+  if (t.letterSpacingPt != null) run.characterSpacing = docxSpacing(t.letterSpacingPt);
+  // Word kerns nothing unless a size to start at is named: on is half a point, i.e. every
+  // run; off is written too, as 0 (the package skips a numeric 0), against a kerned parent.
+  run.kern = t.kerning === false ? '0pt' : 1;
   if (t.bold != null) run.bold = t.bold;
   if (t.italic != null) run.italics = t.italic;
   if (t.underline) run.underline = {};
@@ -3477,6 +3747,8 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   if (t.color) run.color = t.color.replace('#', '');
   if (t.caps === 'smallCaps') run.smallCaps = true;
   else if (t.caps === 'uppercase') run.allCaps = true;
+  else if (t.caps === false) { run.allCaps = false; run.smallCaps = false; }
+  Object.assign(run, libEffects(t));
   const spacing: Record<string, number> = {};
   if (p.spaceBefore != null) spacing.before = ptToTwip(p.spaceBefore);
   if (p.spaceAfter != null) spacing.after = ptToTwip(p.spaceAfter);
@@ -3488,7 +3760,7 @@ function paragraphStyleOf(style: Style): IParagraphStyleOptions {
   const paragraph: Record<string, unknown> = {};
   const lineRule = fixedPt > 0 ? LineRuleType.EXACT : LineRuleType.AUTO;
   if (Object.keys(spacing).length) paragraph.spacing = { ...spacing, ...(spacing.line ? { lineRule } : {}) };
-  if (p.textAlign) paragraph.alignment = alignOf({ textAlign: p.textAlign });
+  if (p.textAlign) paragraph.alignment = alignOf({ textAlign: p.textAlign }, exportPageRtl);
   const first = typeof p.indentFirst === 'number' ? p.indentFirst : null;
   if (p.indent != null || first != null) {
     paragraph.indent = {
@@ -3519,13 +3791,17 @@ function runPropsOf(t: TextProps): Writable<IRunStylePropertiesOptions> {
   const font = fontPair(t.fontFamily, t.fontFamilyAsian, screenToDoc);
   if (font) run.font = font;
   if (t.fontSizePt != null) run.size = Math.round(t.fontSizePt * 2);
-  if (t.letterSpacingPt) run.characterSpacing = Math.round(t.letterSpacingPt * 20);
-  if (t.kerning !== false) run.kern = 1;
+  if (t.letterSpacingPt != null) run.characterSpacing = docxSpacing(t.letterSpacingPt);
+  // Only a state the style states: unset, its runs keep the paragraph's kerning.
+  if (t.kerning != null) run.kern = t.kerning ? 1 : '0pt';
   if (t.bold != null) run.bold = t.bold;
   if (t.italic != null) run.italics = t.italic;
   if (t.underline) run.underline = {};
   if (t.strike) run.strike = t.strike;
   if (t.color) run.color = t.color.replace('#', '');
+  if (t.caps === 'smallCaps') run.smallCaps = true;
+  else if (t.caps === 'uppercase') run.allCaps = true;
+  Object.assign(run, libEffects(t));
   return run;
 }
 
@@ -3627,7 +3903,7 @@ function buildStyles(sheet: StyleSheet, used: Set<string>, language?: ExportLang
   };
   return {
     default: {
-      document: { run, paragraph: { spacing: { after: 0, line: 240, lineRule: LineRuleType.AUTO } } },
+      document: { run, paragraph: { ...(exportPageRtl ? { bidirectional: true } : {}), spacing: { after: 0, line: 240, lineRule: LineRuleType.AUTO } } },
       footnoteText: noteText, endnoteText: noteText,
       ...slotted,
     },
@@ -3668,7 +3944,8 @@ export async function buildDocx(
   // rasterizing is async where the emitters that place them are not.
   docJson = await rasterizeSvgImages(docJson);
   exportSheet = styles;
-  docJson = stampBookmarkEdges(alignDisplayFormulas(docJson));
+  exportPageRtl = rtl;
+  docJson = stampBookmarkEdges(alignDisplayFormulas(clampListLevels(docJson, DOCX_LIST_LEVELS)));
   exportSpacingModel = spacingModel;
   docFormulas = [];
   nextBookmarkId = 0;

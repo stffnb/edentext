@@ -1,14 +1,14 @@
 <script lang="ts" module>
   import type { MenuEntry } from '../editor/contextMenuItems';
-  import { PANE_SIZES, type PaneLayout } from '../storage/panes.svelte';
-  import { t } from '../i18n/i18n.svelte';
+  import { PANE_SIZES, dockSide, type PaneLayout } from '../storage/panes.svelte';
+  import { t, uiRtl } from '../i18n/i18n.svelte';
 
   /** The entries every docked pane's options menu ends with: text size and side. */
   export function layoutItems(layout: PaneLayout, set: (patch: Partial<PaneLayout>) => void): MenuEntry[] {
     const p = t().pane;
     return [
       { kind: 'sub', label: p.textSize, items: PANE_SIZES.map((s) => ({ kind: 'item', label: p[s], checked: layout.size === s, run: () => set({ size: s }) })) },
-      { kind: 'sub', label: p.dock, items: (['left', 'right'] as const).map((s) => ({ kind: 'item', label: s === 'left' ? p.dockLeft : p.dockRight, checked: layout.side === s, run: () => set({ side: s }) })) },
+      { kind: 'sub', label: p.dock, items: (['left', 'right'] as const).map((s) => ({ kind: 'item', label: s === 'left' ? p.dockLeft : p.dockRight, checked: dockSide(layout.side) === s, run: () => set({ side: s }) })) },
     ];
   }
 </script>
@@ -39,7 +39,9 @@
   function toggle() {
     if (menu || performance.now() - closedAt < 300 || !button) { menu = null; return; }
     const box = button.getBoundingClientRect();
-    menu = { items: items(), x: left ? box.left : box.right - 208, y: box.bottom + 2 };
+    // The menu covers the same 208px either way: it opens leftwards from x in a right-to-left interface.
+    const x = left ? box.left : box.right - 208;
+    menu = { items: items(), x: uiRtl() ? x + 208 : x, y: box.bottom + 2 };
   }
 </script>
 

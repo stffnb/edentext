@@ -1,18 +1,22 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
-  import { activeTabStops, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
+  import { activeTabStops, OPEN_TABS_DIALOG_EVENT, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
   import { t } from '../i18n/i18n.svelte';
 
   // Horizontal ruler: the tab stops and indents of the block the cursor is in.
-  // Positions are cm from the left text margin, the attr's own origin.
-  let { editor, tick, zoom, width, margins, gutter = 0 }: {
+  // Positions are cm from the text margin the block starts at, the attr's own origin:
+  // the left one, or the right one of a right-to-left block, where the ruler runs mirrored.
+  // A section on other paper than the widest is centred on the sheet, so `page` places the
+  // measured page on it: unscaled px from the sheet's left edge, its width and own margins.
+  let { editor, tick, zoom, width, page, gutter = 0, pageRtl = false }: {
     editor: Editor | null;
     tick: number;
     zoom: number;
-    width: number; // the page's SCALED width in px (.paper-scaler's)
-    margins: PageMargins;
+    width: number; // the sheet's SCALED width in px (.paper-scaler's)
+    page: { left: number; width: number; margins: PageMargins };
     gutter?: number; // the balloon strip .paper-scaler reserves beside the page
+    pageRtl?: boolean;
   } = $props();
 
   const TYPES: TabAlign[] = ['left', 'center', 'right', 'decimal'];
@@ -25,17 +29,31 @@
   let strip: HTMLDivElement;
 
   const scale = $derived(zoom / 100);
-  const pageCm = $derived(scale > 0 ? width / scale / PX_PER_CM : 0);
+  const margins = $derived(page.margins);
+  const pageCm = $derived(page.width / PX_PER_CM);
+  const offsetCm = $derived(page.left / PX_PER_CM);
   // The block under the cursor; `tick` re-evaluates it on every transaction.
   const info = $derived(tick >= 0 && editor ? activeTabStops(editor.state) : null);
 
-  // cm from the left text margin → px within the strip, and back.
-  const px = (cm: number) => (margins.left + cm) * PX_PER_CM * scale;
+  // The block's own direction, else the page's.
+  const rtl = $derived.by(() => {
+    const dir = tick >= 0 ? editor?.state.selection.$from.parent.attrs.dir : null;
+    return dir ? dir === 'rtl' : pageRtl;
+  });
+  // The margin the text starts at, and where it lies on the sheet.
+  const startMargin = $derived(rtl ? margins.right : margins.left);
+  const originCm = $derived(rtl ? offsetCm + pageCm - margins.right : offsetCm + margins.left);
+  const sign = $derived(rtl ? -1 : 1);
+
+  // cm from the starting text margin → px within the strip, and back.
+  const px = (cm: number) => (originCm + sign * cm) * PX_PER_CM * scale;
   const cmAt = (clientX: number) =>
-    Math.round(((clientX - strip.getBoundingClientRect().left) / scale / PX_PER_CM - margins.left) / SNAP_CM) * SNAP_CM;
+    Math.round((sign * ((clientX - strip.getBoundingClientRect().left) / scale / PX_PER_CM - originCm)) / SNAP_CM) * SNAP_CM;
+  // Marks stay on the page; the sheet beside a narrower page is shaded as margin.
+  const onPage = (cm: number) => cm >= -startMargin && cm <= pageCm - startMargin;
 
   const textCm = $derived(Math.max(0, pageCm - margins.left - margins.right));
-  const ticks = $derived(Array.from({ length: Math.ceil(pageCm) + 1 }, (_, i) => i - Math.floor(margins.left)));
+  const ticks = $derived(Array.from({ length: Math.ceil(pageCm) + 1 }, (_, i) => i - Math.floor(startMargin)));
   // Between the cm marks: quarters, else halves, else none, whichever the zoom leaves room for.
   const subStep = $derived([0.25, 0.5].find((step) => step * PX_PER_CM * scale >= SUB_TICK_GAP_PX) ?? 0);
   const subTicks = $derived(subStep ? ticks.flatMap((cm) =>
@@ -58,18 +76,29 @@
     | { kind: 'indent' }
     | { kind: 'indentRight' }
     | { kind: 'first' };
-  let drag = $state<{ target: Drag; cm: number; off: boolean } | null>(null);
+  let drag = $state<{ target: Drag; cm: number; from: number; off: boolean } | null>(null);
 
   function apply(stops: TabStop[]) {
     editor?.chain().focus().setTabStops(stops).run();
   }
 
+  // A second press on the same unmoved stop within this time is a double-click, opening the
+  // Tabs dialog. Counted here: the pointer capture sends the clicks to the strip, not the stop.
+  const DOUBLE_CLICK_MS = 500;
+  let lastPress = { index: -1, at: 0 };
+
   function start(event: PointerEvent, target: Drag) {
     if (!editor || !info || event.button !== 0) return;
     event.preventDefault(); // keep the caret (and thus the target block) where it is
     event.stopPropagation();
+    if (target.kind === 'stop') {
+      const again = lastPress.index === target.index && event.timeStamp - lastPress.at < DOUBLE_CLICK_MS;
+      lastPress = again ? { index: -1, at: 0 } : { index: target.index, at: event.timeStamp };
+      if (again) { window.dispatchEvent(new CustomEvent(OPEN_TABS_DIALOG_EVENT)); return; }
+    }
     strip.setPointerCapture(event.pointerId);
-    drag = { target, cm: cmAt(event.clientX), off: false };
+    const cm = cmAt(event.clientX);
+    drag = { target, cm, from: cm, off: false };
   }
 
   function move(event: PointerEvent) {
@@ -81,13 +110,18 @@
 
   function end(event: PointerEvent) {
     if (!drag || !info) return;
-    const { target, cm, off } = drag;
+    const { target, cm, from, off } = drag;
     drag = null;
     strip.releasePointerCapture(event.pointerId);
+    // A click that never moved writes nothing, or it would snap the marker to the pointer
+    // (a double-click opening the Tabs dialog nudged its stop).
+    if (!off && cm === from) return;
+    lastPress = { index: -1, at: 0 }; // a press that moved its stop starts no double-click
     if (target.kind === 'stop') {
       const rest = info.stops.filter((_, i) => i !== target.index);
-      // Dragging moves the stop, so it keeps its alignment and its leader.
-      apply(off ? rest : [...rest, { ...info.stops[target.index], pos: cm }]);
+      // Dragging moves the stop, so it keeps its alignment and its leader; it stays in the
+      // text column, where a click adds one, so it never hides in the margin.
+      apply(off ? rest : [...rest, { ...info.stops[target.index], pos: Math.min(Math.max(cm, 0), textCm) }]);
     } else if (target.kind === 'indent') {
       // Moves the whole block: the first line keeps its offset from the indent.
       editor?.chain().focus().setIndent(Math.max(0, cm)).run();
@@ -121,7 +155,7 @@
 
 <!-- The strip beside the page is reserved here too, so the auto margins centre the
      ruler over the same footprint as .paper-scaler and it stays above the page. -->
-<div class="ruler" style="width: {width + gutter}px; padding-right: {gutter}px">
+<div class="ruler" dir="ltr" style="width: {width + gutter}px; padding-right: {gutter}px">
   <button
     class="tab-type"
     onpointerdown={(e) => e.preventDefault()}
@@ -140,18 +174,18 @@
     onpointercancel={end}
     role="presentation"
   >
-    <div class="margin" style="left: 0; width: {px(0)}px"></div>
-    <div class="margin" style="left: {px(textCm)}px"></div>
+    <div class="margin" style="left: 0; width: {Math.min(px(0), px(textCm))}px"></div>
+    <div class="margin" style="left: {Math.max(px(0), px(textCm))}px"></div>
 
     {#each ticks as cm (cm)}
-      {#if px(cm) >= 0 && px(cm) <= width}
+      {#if onPage(cm)}
         <div class="tick" style="left: {px(cm)}px">
           {#if cm > 0 && cm < textCm && cm % labelEvery === 0}<span>{cm}</span>{/if}
         </div>
       {/if}
     {/each}
     {#each subTicks as cm (cm)}
-      {#if px(cm) >= 0 && px(cm) <= width}
+      {#if onPage(cm)}
         <div class="sub" class:half={Math.abs(cm % 1) === 0.5} style="left: {px(cm)}px"></div>
       {/if}
     {/each}
@@ -166,7 +200,7 @@
           role="presentation"
           title={t().ruler.tabType[stop.align]}
         >
-          <svg viewBox="0 0 10 10"><path d={MARK[stop.align]} /><circle cx="7.8" cy="6.6" r="1.1" class:hide={stop.align !== 'decimal'} /></svg>
+          <svg viewBox="0 0 10 10" class:mirrored={rtl}><path d={MARK[stop.align]} /><circle cx="7.8" cy="6.6" r="1.1" class:hide={stop.align !== 'decimal'} /></svg>
         </div>
       {/each}
 
@@ -300,6 +334,13 @@
     margin-left: -5.5px;
     cursor: ew-resize;
     color: var(--color-text);
+    /* Above the indent handles: a stop dragged to the text edge sits on the right
+       indent's handle, which would otherwise take every grab and keep it undeletable. */
+    z-index: 1;
+  }
+  /* A stop's foot points the way the text runs from it. */
+  .stop svg.mirrored {
+    transform: scaleX(-1);
   }
 
   .stop.dragging {

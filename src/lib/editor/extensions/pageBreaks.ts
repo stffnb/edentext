@@ -6,7 +6,9 @@ import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { COLUMNS_FIT_MARGIN_PX, headFitPx } from './columns';
 import { isLeftPage, printedPageNumber } from '../../storage/pageNumbering';
+import { PX_PER_CM } from '../../storage/pageMargins';
 import { RESYNC_NOTES, setNoteAnchorPages } from './notes';
+import { coordsAt } from './overlay';
 
 export type PageBreakDebugSnapshot = {
   timestamp: string;
@@ -123,6 +125,12 @@ export function isPaginating(view: EditorView): boolean {
   return paginating.get(view)?.() ?? false;
 }
 
+// The height each page's footnotes take from its body, by page number (last pass).
+const noteReserves = new WeakMap<EditorView, Map<number, number>>();
+export function noteReservesOf(view: EditorView): Map<number, number> | undefined {
+  return noteReserves.get(view);
+}
+
 const layingOut = new WeakMap<EditorView, () => boolean>();
 // True while a pass runs or is due next frame; one merely queued behind typing is not.
 export function isLayingOut(view: EditorView): boolean {
@@ -197,10 +205,13 @@ export function readVerticalMargins(dom: HTMLElement): VMargins {
 // The content band of the page a document-px y falls on: where its body text may begin,
 // where it must end, and what is left between the two. Everything that places itself
 // against a page reads it here, so no consumer assumes a uniform page.
-export function bandAt(vm: VMargins, y: number): { start: number; end: number; height: number } {
+export function bandAt(
+  vm: VMargins, y: number, notes?: Map<number, number>,
+): { start: number; end: number; height: number } {
   const page = vm.grid.pageAt(y);
   const start = vm.grid.contentTopOf(page);
-  const end = vm.grid.contentBottomOf(page);
+  // A page's footnotes end its body above them (`notes`: noteReservesOf).
+  const end = vm.grid.contentBottomOf(page) - (notes?.get(page) ?? 0);
   return { start, end, height: end - start };
 }
 
@@ -359,22 +370,23 @@ export function pageOfElement(view: EditorView, el: HTMLElement, grid: PageGrid)
 // An element's top in document px from the editor's own top — spacers included, since
 // they sit in the flow above it.
 export function topInEditor(view: EditorView, el: HTMLElement): number {
-  const tiptap = view.dom as HTMLElement;
-  let top = 0;
-  for (let n: HTMLElement | null = el; n && n !== tiptap; n = n.offsetParent as HTMLElement | null) {
-    top += n.offsetTop;
-  }
-  return top;
+  return offsetIn(view.dom as HTMLElement, el, 'offsetTop');
 }
 
 // Its left, likewise — the same chain, so a frame reads both in one pass.
 export function leftInEditor(view: EditorView, el: HTMLElement): number {
-  const tiptap = view.dom as HTMLElement;
-  let left = 0;
-  for (let n: HTMLElement | null = el; n && n !== tiptap; n = n.offsetParent as HTMLElement | null) {
-    left += n.offsetLeft;
-  }
-  return left;
+  return offsetIn(view.dom as HTMLElement, el, 'offsetLeft');
+}
+
+// A header/footer zone's editor is not positioned, so the chain passes it by: both
+// chains then run to the root, and the editor's own offset comes off.
+function offsetIn(tiptap: HTMLElement, el: HTMLElement, key: 'offsetTop' | 'offsetLeft'): number {
+  let at = 0;
+  let n: HTMLElement | null = el;
+  for (; n && n !== tiptap; n = n.offsetParent as HTMLElement | null) at += n[key];
+  if (n) return at;
+  for (n = tiptap; n; n = n.offsetParent as HTMLElement | null) at -= n[key];
+  return at;
 }
 
 // A run-through frame the file places against the page, not against its anchor (Word's
@@ -458,30 +470,150 @@ function columnLeft(view: EditorView, el: HTMLElement): number {
     + (parseFloat(getComputedStyle(block).getPropertyValue('--sec-inset-left')) || 0);
 }
 
-// A side float sunk below its anchor (image.ts) stops short of the next float on its
-// side: floats cannot overlap as LibreOffice lets them, and one pushed aside squeezes its
-// text. The room is known once the lines around both are laid out: every pass re-measures.
-export function sinkSideFloat(view: EditorView, el: HTMLElement): void {
-  const want = Number(el.dataset.sinkGap);
-  if (!el.isConnected || !(want > 0)) return;
-  const top = (e: HTMLElement) => {
-    let y = -(parseFloat(e.style.marginTop) || 0);
-    for (let n: HTMLElement | null = e; n && n !== view.dom; n = n.offsetParent as HTMLElement | null) y += n.offsetTop;
-    return y;
-  };
-  const floats = Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>(`[data-wrap="${el.dataset.wrap}"]`));
-  const next = floats[floats.indexOf(el) + 1];
-  const gap = next ? Math.min(want, Math.max(0, Math.floor(top(next) - top(el) - el.offsetHeight))) : want;
-  // Text runs beside the offset down to the frame's own gap above it.
+// A side float sunk below its anchor (image.ts): text runs beside the offset down to
+// the frame's own gap above it. It may reach over the next float on its side, which
+// shiftToOffset then sets at its own x, as LibreOffice lets two frames overlap.
+export function sinkSideFloat(el: HTMLElement): void {
+  const gap = Number(el.dataset.sinkGap);
+  if (!el.isConnected || !(gap > 0)) return;
   el.style.marginTop = `${gap}px`;
   el.style.shapeOutside = `inset(${Math.max(0, gap - (Number(el.dataset.gapTop) || 0))}px 0 0 0) margin-box`;
+}
+
+// CSS queues floats of one side behind each other, so a later frame would sit beside an
+// earlier one, or drop below it, rather than at its own x (`data-float-x`, cm, from the
+// column) — also one reaching down from an earlier block. Both word processors let the
+// two overlap: its outer edge goes against the earlier one's, its box at its own x.
+// Measured again on every pass, since pagination moves the blocks under them.
+export function shiftToOffset(el: HTMLElement): void {
+  const block = el.parentElement, side = el.style.float, offsetCm = Number(el.dataset.floatX);
+  if (!block || !el.isConnected || (side !== 'left' && side !== 'right') || !Number.isFinite(offsetCm)) return;
+  if (block.closest('[style*="column-count"]')) return;
+  const b = block.getBoundingClientRect();
+  const s = b.width / (block.offsetWidth || 1);
+  const cs = getComputedStyle(block);
+  const left = b.left + (parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth)) * s;
+  const right = b.right - (parseFloat(cs.paddingRight) + parseFloat(cs.borderRightWidth)) * s;
+  const col = floatColumn(el);
+  if (col == null) return;
+  const gap = Number(el.dataset.floatGap) || 0, w = el.offsetWidth;
+  const x0 = col + offsetCm * PX_PER_CM * s, x1 = x0 + w * s;   // the box, in the viewport
+  // Where the frame's line puts it with nothing beside it: a box of no width always fits.
+  const keep = [el.style.marginLeft, el.style.marginRight];
+  el.style.marginLeft = '0px';
+  el.style.marginRight = `${-w}px`;
+  const top = el.getBoundingClientRect().top - parseFloat(getComputedStyle(el).marginTop) * s;
+  [el.style.marginLeft, el.style.marginRight] = keep;
+  const before = queuedBehind(el, side, top, s);
+  // The outer edge it lines up against, and the near side's gap, cut at the block's edge.
+  if (side === 'right') {
+    const edge = before ? before.getBoundingClientRect().left - parseFloat(getComputedStyle(before).marginLeft) * s : right;
+    setFloatMargins(el, Math.max(0, Math.min(gap, (x0 - left) / s)), (edge - x1) / s);
+  } else {
+    const edge = before ? before.getBoundingClientRect().right + parseFloat(getComputedStyle(before).marginRight) * s : left;
+    setFloatMargins(el, (x0 - edge) / s, Math.max(0, Math.min(gap, (right - x1) / s)));
+  }
+}
+
+function setFloatMargins(el: HTMLElement, ml: number, mr: number): void {
+  const em = getComputedStyle(el);
+  if (Math.abs(ml - parseFloat(em.marginLeft)) < 0.5 && Math.abs(mr - parseFloat(em.marginRight)) < 0.5) return;
+  el.style.marginLeft = `${ml.toFixed(2)}px`;
+  el.style.marginRight = `${mr.toFixed(2)}px`;
+  el.dataset.unstack = `${el.style.float}${el.dataset.floatX}:${el.style.marginLeft}:${el.style.marginRight}`;
+}
+
+// The left edge, in the viewport, of the column a frame's x counts from: a cell's or a
+// text box's content, else the body column (columnLeft) — not the anchor's indent.
+function floatColumn(el: HTMLElement): number | null {
+  const box = el.parentElement?.closest<HTMLElement>('td, th, .textbox-content');
+  const root = el.closest<HTMLElement>('.tiptap');
+  const at = box ?? root;
+  if (!at) return null;
+  const r = at.getBoundingClientRect(), s = r.width / (at.offsetWidth || 1), c = getComputedStyle(at);
+  let inset = 0;
+  if (!box && root) {
+    let top: HTMLElement = el;
+    while (top.parentElement && top.parentElement !== root) top = top.parentElement;
+    inset = parseFloat(getComputedStyle(top).getPropertyValue('--sec-inset-left')) || 0;
+  }
+  return r.left + (parseFloat(c.borderLeftWidth) + parseFloat(c.paddingLeft) + inset) * s;
+}
+
+// The earlier float of that side in the same formatting context whose band the frame's
+// top falls in, and of those the one reaching furthest in: the one CSS lines it up behind.
+function queuedBehind(el: HTMLElement, side: 'left' | 'right', top: number, s: number): HTMLElement | null {
+  const root = floatContext(el);
+  let best: HTMLElement | null = null, reach = 0;
+  for (const f of root?.querySelectorAll<HTMLElement>(`[style*="float: ${side}"]`) ?? []) {
+    if (f === el || !(f.compareDocumentPosition(el) & globalThis.Node.DOCUMENT_POSITION_FOLLOWING)) continue;
+    if (f.contains(el) || el.contains(f) || floatContext(f) !== root) continue;
+    const p = f.getBoundingClientRect(), pm = getComputedStyle(f);
+    if (top < p.top - parseFloat(pm.marginTop) * s - 0.5 || top >= p.bottom + parseFloat(pm.marginBottom) * s - 0.5) continue;
+    const edge = side === 'left' ? p.right + parseFloat(pm.marginRight) * s : -(p.left - parseFloat(pm.marginLeft) * s);
+    if (!best || edge > reach) { best = f; reach = edge; }
+  }
+  return best;
+}
+
+// The block formatting context a float lives in: floats queue only within one.
+function floatContext(el: HTMLElement): HTMLElement | null {
+  for (let e = el.parentElement; e; e = e.parentElement) {
+    if (e.classList.contains('tiptap')) return e;
+    const c = getComputedStyle(e);
+    if (c.float !== 'none' || (c.position !== 'static' && c.position !== 'relative') || c.overflow !== 'visible'
+        || /^(flow-root|inline-block|table-cell|table-caption|flex|grid)$/.test(c.display)) return e;
+  }
+  return null;
+}
+
+// A spacer splitting a paragraph ends its line by force, so once the lines re-break (a
+// font arriving after the pass that placed it) it can sit mid-line and hold a word or two
+// alone above it — a layout every later pass measures as consistent. One whose line and
+// the next word would fit together is hidden while the pass measures the natural lines.
+export function hideStaleLineSpacers(root: HTMLElement): () => void {
+  const stale: HTMLElement[] = [];
+  for (const sp of Array.from(root.querySelectorAll<HTMLElement>('[data-page-break-spacer]'))) {
+    const block = sp.parentElement?.closest<HTMLElement>('p, h1, h2, h3, h4, h5, h6');
+    if (!block || !root.contains(block)) continue;
+    const cs = getComputedStyle(block);
+    if (cs.direction === 'rtl') continue;
+    const before = document.createRange();
+    before.setStart(block, 0);
+    before.setEndBefore(sp);
+    const line = Array.from(before.getClientRects()).filter((r) => r.width > 0).pop();
+    const word = firstWordAfter(block, sp);
+    if (!line || !word) continue;
+    const right = block.getBoundingClientRect().right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth);
+    if (line.right + 0.3 * parseFloat(cs.fontSize) + word.width <= right + 0.5) stale.push(sp);
+  }
+  for (const sp of stale) sp.style.display = 'none';
+  return () => { for (const sp of stale) sp.style.display = ''; };
+}
+
+// The first word's box after a node, up to the next space, within its block.
+function firstWordAfter(block: HTMLElement, node: Node): DOMRect | null {
+  const walk = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  walk.currentNode = node;
+  for (let t = walk.nextNode() as Text | null; t; t = walk.nextNode() as Text | null) {
+    const at = t.data.search(/\S/);
+    if (at < 0) continue;
+    const end = t.data.slice(at).search(/\s/);
+    const r = document.createRange();
+    r.setStart(t, at);
+    r.setEnd(t, end < 0 ? t.data.length : at + end);
+    const box = r.getClientRects()[0];
+    return box ?? null;
+  }
+  return null;
 }
 
 // Pagination moves the page grid under those frames, so every pass re-places them.
 export function placePageFrames(view: EditorView, grid: PageGrid): void {
   for (const el of Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>('[data-sink-gap]'))) {
-    sinkSideFloat(view, el);
+    sinkSideFloat(el);
   }
+  for (const el of Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>('[data-float-x]'))) shiftToOffset(el);
   placeFrames(Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>(PLACED), (el) => [view, el]), grid);
 }
 
@@ -1068,7 +1200,7 @@ export const PageBreaks = Extension.create({
           if (!first) return null;
           const colgroup = tableEl.querySelector('colgroup');
           return {
-            html: `<table style="width:100%;table-layout:fixed;border-collapse:collapse">`
+            html: `<table${tableEl.dir ? ` dir="${tableEl.dir}"` : ''} style="width:100%;table-layout:fixed;border-collapse:collapse">`
               + (colgroup?.outerHTML ?? '')
               + `<tbody>${first.outerHTML}</tbody></table>`,
             height: first.offsetHeight,
@@ -1269,7 +1401,7 @@ export const PageBreaks = Extension.create({
             const mid = (lo + hi) >> 1;
             let midTop: number;
             try {
-              midTop = editorView.coordsAtPos(mid).top;
+              midTop = coordsAt(editorView, mid).top;
             } catch {
               lo = mid + 1;
               continue;
@@ -1386,7 +1518,10 @@ export const PageBreaks = Extension.create({
             // No break may fall between the rows (ODF style:may-break-between-rows), so
             // the table moves whole — unless it is taller than a page, where the rule
             // cannot be met and LibreOffice breaks it anyway.
-            const keepRows = tableEl?.dataset?.keepRows === 'true'
+            // A table kept with the next block moves whole with it, as LibreOffice
+            // moves one rather than split it (probed).
+            const keepNext = tableEl?.dataset?.keepNext === 'true';
+            const keepRows = (tableEl?.dataset?.keepRows === 'true' || keepNext)
               && wrapperEl.offsetHeight - spacerHeight <= contentHeight;
             // Fallback: no rows found — measure the whole wrapper as one atomic leaf.
             if (realRows.length === 0 || keepRows) {
@@ -1397,9 +1532,15 @@ export const PageBreaks = Extension.create({
                 kind: 'atomic',
                 naturalTop: top,
                 naturalHeight: wrapperEl.offsetHeight - spacerHeight,
+                keepNext: keepNext && !inTableCell && realRows.length > 0,
+                refs: refsWithin(wrapperEl),
               });
               return;
             }
+            // A kept table taller than a page starts on a fresh one and then breaks between
+            // rows — in a Word document only (probed: LibreOffice's TableRowKeep; ODF splits it).
+            const freshPage = keepNext && !inTableCell
+              && dom.closest('.paper')?.getAttribute('data-spacing-model') === 'max';
             const colgroup = tableEl?.querySelector('colgroup');
             const columns = colgroup?.children.length || realRows[0].children.length || 1;
             const leaderIdx = rowSpanGroups(realRows.map((r) => ({
@@ -1428,6 +1569,8 @@ export const PageBreaks = Extension.create({
                 // A row its leader's cell spans into: it grows that leaf rather than
                 // opening a break candidate of its own.
                 openGroup.naturalHeight = naturalTopOf(tr) + rowHeight - openGroup.naturalTop;
+                const dy = naturalTopOf(tr) - openGroup.naturalTop;
+                openGroup.refs = [...openGroup.refs ?? [], ...refsWithin(tr).map((r) => ({ ...r, dy: r.dy + dy }))];
                 seenRealRow = true;
                 continue;
               }
@@ -1440,6 +1583,8 @@ export const PageBreaks = Extension.create({
                   naturalTop: naturalTopOf(tr),
                   naturalHeight: rowHeight,
                   tableRow: { columns, wrapperEl, isFirstRow: !seenRealRow },
+                  forceBreakBefore: freshPage && !seenRealRow,
+                  refs: refsWithin(tr),
                 };
                 leaves.push(rowLeaf);
                 if (leader === tr) openGroup = rowLeaf;
@@ -1452,7 +1597,7 @@ export const PageBreaks = Extension.create({
                 );
                 // A row that may not break starts on a fresh page before it breaks there
                 // anyway (LibreOffice): a zero-height leaf forcing the row's own spacer.
-                if (tr.dataset.cantSplit === 'true') {
+                if (tr.dataset.cantSplit === 'true' || (freshPage && !seenRealRow)) {
                   leaves.push({
                     el: tr,
                     kind: 'atomic',
@@ -1574,6 +1719,7 @@ export const PageBreaks = Extension.create({
                     firstBlockNeededPx: Math.max(firstPx, 16),
                     spaceAbovePx: breaks ? parseFloat(getComputedStyle(first!).getPropertyValue('--space-before')) || 0 : 0,
                   },
+                  refs: refsWithin(child),
                 });
                 continue;
               }
@@ -1664,6 +1810,7 @@ export const PageBreaks = Extension.create({
                 naturalTop: naturalTopOf(child),
                 naturalHeight: child.offsetHeight,
                 inTableCell,
+                refs: refsWithin(child),
               });
             }
           }
@@ -1675,7 +1822,8 @@ export const PageBreaks = Extension.create({
         // A pass that throws must not leave the layout marked running: no later pass
         // would start, and the status would show the document loading for good.
         function calculate() {
-          try { layoutPass(); } catch (err) { isUpdating = false; throw err; }
+          const restore = hideStaleLineSpacers(editorView.dom as HTMLElement);
+          try { layoutPass(); } catch (err) { isUpdating = false; throw err; } finally { restore(); }
         }
 
         function layoutPass() {
@@ -1767,6 +1915,8 @@ export const PageBreaks = Extension.create({
             let sectionFirstPage = 1;
             // First page per section, which is what a numbering restart counts from.
             const sectionFirstPages: number[] = [1];
+            // The blank pages a section's start side inserts: no header or footer there.
+            const blankPages: number[] = [];
             // The grid this placement lays out against, grown as each section's first
             // page becomes known, with its reaches. Built here, not read back, so a pass
             // never measures its own last answer.
@@ -1890,6 +2040,7 @@ export const PageBreaks = Extension.create({
                 const side = i > 0 ? sideAt(sectionIndex) : null;
                 if (side) {
                   if ((sectionFirstPage % 2 === 0 ? 'even' : 'odd') !== side) {
+                    blankPages.push(sectionFirstPage);
                     sectionFirstPage++;
                     sectionFirstPages[sectionIndex] = sectionFirstPage;
                   }
@@ -2121,20 +2272,29 @@ export const PageBreaks = Extension.create({
               }
 
               // Keep with next: a heading that fits but whose successor's first line does
-              // not is left stranded at the page foot, so it goes down with it. One level
-              // only — a run of them would need the pass to reconsider earlier leaves.
+              // not is left stranded at the page foot, so it goes down with it. A run of
+              // kept blocks goes down from its first one, whole, when it fits on a page.
               if (
                 breaks.length === 0 && leaf.keepNext && i + 1 < leaves.length
                 && effectiveTop > contentStart + 0.5
               ) {
-                const next = leaves[i + 1];
-                // What the pair needs below this block: its own space below, then the
-                // successor's space above (its padding; an atomic leaf's height has it
-                // already) and its first line.
-                const wantLines = next.el.getAttribute('data-widow-control') === 'false' ? 1 : MIN_KEPT_LINES;
-                const needed = next.kind === 'atomic'
-                  ? Math.min(next.naturalHeight, CONTENT_HEIGHT)
-                  : firstLinesHeight(next.el, scale, wantLines) + (parseFloat(getComputedStyle(next.el).paddingTop) || 0);
+                // What the run needs below this block: its own space below, the kept blocks,
+                // then the last one's space above (its padding; an atomic leaf's height has
+                // it already) and its first lines.
+                const run = (j: number) => leaves[j].naturalTop - leaves[i + 1].naturalTop;
+                const needs = (j: number) => {
+                  const next = leaves[j];
+                  const wantLines = next.el.getAttribute('data-widow-control') === 'false' ? 1 : MIN_KEPT_LINES;
+                  return run(j) + (next.kind === 'atomic'
+                    ? Math.min(next.naturalHeight, CONTENT_HEIGHT)
+                    : firstLinesHeight(next.el, scale, wantLines) + (parseFloat(getComputedStyle(next.el).paddingTop) || 0));
+                };
+                let last = i + 1;
+                if (!leaves[i - 1]?.keepNext) {
+                  while (last + 1 < leaves.length && leaves[last].keepNext && !leaves[last + 1].forceBreakBefore) last++;
+                }
+                let needed = needs(last);
+                if (last > i + 1 && effectiveBottom - effectiveTop + (leaf.spaceAfter ?? 0) + needed > contentEnd - contentStart) needed = needs(i + 1);
                 if (effectiveBottom + (leaf.spaceAfter ?? 0) + needed > contentEnd) {
                   const target = pageContentStart(page + 1, topRest, grid);
                   const { docPos, row } = leafSpacer(leaf);
@@ -2292,7 +2452,7 @@ export const PageBreaks = Extension.create({
               }
             }
             return {
-              anchorPages, maxEffectiveBottom, sectionStartPages, placements, collapsedTrailing,
+              anchorPages, maxEffectiveBottom, sectionStartPages, blankPages, placements, collapsedTrailing,
               pageTopBlocks, sectionInsets, sectionTops, sideShifts, tableBands, leavesDebug, placementsDebug, grid,
             };
           }
@@ -2335,8 +2495,9 @@ export const PageBreaks = Extension.create({
             reserved = next;
             placed = placeLeaves(reserved);
           }
+          noteReserves.set(editorView, reserved);
           const {
-            maxEffectiveBottom, sectionStartPages, placements, collapsedTrailing,
+            maxEffectiveBottom, sectionStartPages, blankPages, placements, collapsedTrailing,
             pageTopBlocks, sectionInsets, sectionTops, sideShifts, tableBands, leavesDebug, placementsDebug,
           } = placed;
 
@@ -2348,7 +2509,7 @@ export const PageBreaks = Extension.create({
           for (const note of footnotes) {
             const page = placed.anchorPages.get(note.id);
             if (!page) continue;
-            const base = placed.grid.bottomOf(page) - vm.bottom - (reserved.get(page) ?? 0) + sepSpace;
+            const base = placed.grid.contentBottomOf(page) - (reserved.get(page) ?? 0) + sepSpace;
             const top = nextTop.get(page) ?? base;
             nextTop.set(page, top + note.height);
             // Resolved here, not at the decoration below: the key must watch the position
@@ -2518,13 +2679,13 @@ export const PageBreaks = Extension.create({
           // Announced only where the layout differs from the last one: every reader
           // re-reads the whole document from it and writes back what it found, so a pass
           // that lands what the last one did would set the round going again.
-          const announced = `${numPages}:${targetHeight}:${sectionStartPages.join()}:${placementsKey}:`
+          const announced = `${numPages}:${targetHeight}:${sectionStartPages.join()}:${blankPages.join()}:${placementsKey}:`
             + tableBreakBands.map((b) => `${b.key}@${Math.round(b.closeY)}|${Math.round(b.left)}|${Math.round(b.width)}`).join();
           if (announced !== lastAnnounced) {
             lastAnnounced = announced;
             dom.dispatchEvent(new CustomEvent('pm-pagecount', {
               bubbles: true,
-              detail: { numPages, docHeight: targetHeight, tableBreakBands, sectionStartPages },
+              detail: { numPages, docHeight: targetHeight, tableBreakBands, sectionStartPages, blankPages },
             }));
           }
 

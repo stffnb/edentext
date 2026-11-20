@@ -2,6 +2,7 @@
   import type { Editor, ChainedCommands } from '@tiptap/core';
   import { isHeaderStyled } from '../editor/extensions/tableHeaderRow';
   import type { CellPadding } from '../editor/extensions/tableCellPadding';
+  import { cellSideIndex } from '../editor/extensions/tableView';
   import IslandMenu from './toolbar/IslandMenu.svelte';
   import CaptionDialog from './CaptionDialog.svelte';
   import Icon from './ribbon/Icon.svelte';
@@ -12,6 +13,7 @@
   import TableStylePicker from './TableStylePicker.svelte';
   import { numberRecognition, setNumberRecognition } from '../storage/tableOptions.svelte';
   import { t } from '../i18n/i18n.svelte';
+  import { formatDecimal, parseDecimal } from '../i18n/number';
 
   let {
     editor,
@@ -30,6 +32,9 @@
   // Run a table command without disturbing the cell selection: preventDefault on
   // mousedown keeps focus/selection in the editor, then .focus() in the chain
   // re-anchors to that selection so the row/column lands at the active cell.
+  // Left and right are what the reader sees; a right-to-left table's columns run mirrored.
+  const sideIndex = (i: number) => (editor ? cellSideIndex(editor.view, i) : i);
+
   function run(cmd: (chain: ChainedCommands) => ChainedCommands) {
     if (!editor) return;
     cmd(editor.chain().focus()).run();
@@ -52,7 +57,7 @@
   let captionOpen = $state(false);
 
   function setPaddingEdge(i: number, raw: string) {
-    const v = parseFloat(raw.replace(',', '.'));
+    const v = parseDecimal(raw);
     if (!editor || !padding || isNaN(v)) return;
     const next = [...padding] as CellPadding;
     next[i] = Math.max(0, v);
@@ -112,7 +117,7 @@
     title={t().table.insertColumnLeft}
     data-cmd="insertLeft"
     aria-label={t().table.insertColumnLeft}
-    onclick={() => run((c) => c.addColumnBefore())}
+    onclick={() => run((c) => c.addColumnLeft())}
   >
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <rect x="9.5" y="1.5" width="7" height="15" rx="1" stroke="currentColor" stroke-width="1.3"/>
@@ -126,7 +131,7 @@
     title={t().table.insertColumnRight}
     data-cmd="insertRight"
     aria-label={t().table.insertColumnRight}
-    onclick={() => run((c) => c.addColumnAfter())}
+    onclick={() => run((c) => c.addColumnRight())}
   >
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <rect x="1.5" y="1.5" width="7" height="15" rx="1" stroke="currentColor" stroke-width="1.3"/>
@@ -362,7 +367,7 @@
         {#each (['top', 'right', 'bottom', 'left'] as const) as edge, i}
           <label class="im-field">
             <span>{t().toolbarExpanded.margins[edge]}</span>
-            <input type="text" inputmode="decimal" value={padding[i]} onchange={(e) => setPaddingEdge(i, e.currentTarget.value)} />
+            <input type="text" inputmode="decimal" value={formatDecimal(padding[sideIndex(i)])} onchange={(e) => setPaddingEdge(sideIndex(i), e.currentTarget.value)} />
           </label>
         {/each}
       </div>

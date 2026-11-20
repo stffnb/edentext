@@ -68,6 +68,8 @@ export const DEFAULT_SHORTCUTS = {
   commandSearch: 'Alt-q',
   // Copilot's key for drafting at the cursor.
   aiDraft: 'Alt-i',
+  // Word's key for Dictate, matched by the physical key: on a Mac Option+` is a dead key.
+  dictate: 'Alt-`',
 } as const;
 
 export type ShortcutId = keyof typeof DEFAULT_SHORTCUTS;
@@ -102,6 +104,7 @@ export function matchesEvent(e: KeyboardEvent, combo: string): boolean {
   if (/^\d$/.test(key)) return e.code === `Digit${key}` || e.code === `Numpad${key}`;
   if (/^F\d+$/.test(key) || key === 'Enter' || key === 'Tab') return e.key === key;
   if (key === 'Space') return e.code === 'Space';
+  if (key === '`') return e.code === 'Backquote';
   // macOS turns Option+letter into another character (Option+Q types œ).
   if (alt && /^[a-z]$/i.test(key) && e.code === `Key${key.toUpperCase()}`) return true;
   return e.key.toLowerCase() === key.toLowerCase();

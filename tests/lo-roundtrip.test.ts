@@ -2,7 +2,9 @@
 // re-save -> importOdt -> compare. Requires soffice on PATH; the whole suite self-skips
 // when it is absent (so plain `npm test` / CI stay green).
 import { describe, it, expect } from 'vitest';
-import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 import { unzipSync, strFromU8 } from 'fflate';
 import { buildOdt } from '../src/lib/export/odt';
@@ -17,6 +19,8 @@ function hasSoffice(): boolean {
   catch { return false; }
 }
 const SOFFICE = hasSoffice();
+// A fresh directory per run, so two checkouts can run this leg at once.
+const RT = mkdtempSync(join(tmpdir(), 'lo-rt-'));
 
 function check(label: string, cond: boolean, detail?: unknown) {
   expect.soft(cond, detail !== undefined ? `${label} — ${JSON.stringify(detail)}` : label).toBe(true);
@@ -69,8 +73,15 @@ const fixture: N = {
       T('twice ', { type: 'underline', attrs: { lineStyle: 'double' } }),
       T('crossed ', { type: 'strike', attrs: { lineStyle: 'double' } }),
       T('stressed ', { type: 'textStyle', attrs: { emphasis: 'dot below' } }),
+      T('outlined ', { type: 'textStyle', attrs: { outline: true } }),
+      T('shadowed ', { type: 'textStyle', attrs: { shadow: true } }),
+      T('both ', { type: 'textStyle', attrs: { outline: true, shadow: true } }),
+      T('embossed ', { type: 'textStyle', attrs: { relief: 'embossed' } }),
+      T('engraved ', { type: 'textStyle', attrs: { relief: 'engraved' } }),
       // 4pt at 16pt is a whole 25%, the unit ODF stores it in — LibreOffice rounds
       // the percentage when it re-saves, so a fractional one comes back a notch off.
+      T('spaced ', { type: 'textStyle', attrs: { letterSpacing: 1.5 } }),
+      T('boxed ', { type: 'textStyle', attrs: { textBorder: '1.5pt solid #FF0000', textBorderPadding: 4 } }),
       T('raised', { type: 'textStyle', attrs: { fontSize: '16pt', textPosition: 4 } }),
     ),
     P({ textAlign: 'justify', lineHeight: '1.5', spaceBefore: 12, spaceAfter: 18 }, T('spaced')),
@@ -200,11 +211,11 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
     // An explicit document language: LibreOffice stamps its own locale as the default
     // otherwise, and a paragraph language equal to that default is inherited, not written.
     const bytes = await buildOdt(fixture, margins, 'landscape', undefined, { language: 'de', country: 'DE' });
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/doc.odt', bytes);
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/doc.odt`, bytes);
 
-    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/out /tmp/lo-rt/doc.odt', { stdio: 'pipe', timeout: 120000 });
-    const resaved = new Uint8Array(readFileSync('/tmp/lo-rt/out/doc.odt'));
+    execSync(`soffice --headless --convert-to odt --outdir ${RT}/out ${RT}/doc.odt`, { stdio: 'pipe', timeout: 120000 });
+    const resaved = new Uint8Array(readFileSync(`${RT}/out/doc.odt`));
 
     const res = importOdt(resaved);
     check('LO: no warnings', res.warnings.length === 0, res.warnings);
@@ -250,10 +261,10 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
     // Non-default edge distances must survive LibreOffice (they become the ODF page
     // margin; min-height fills the rest so the body stays at 2.54cm).
     const hfBytes = await buildOdt(fixture, hfMargins, 'portrait', { header, footer, pageCount: 4, headerDistanceCm: 0.8, footerDistanceCm: 1.6 });
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/hf.odt', hfBytes);
-    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/hfout /tmp/lo-rt/hf.odt', { stdio: 'pipe', timeout: 120000 });
-    const hfResaved = new Uint8Array(readFileSync('/tmp/lo-rt/hfout/hf.odt'));
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/hf.odt`, hfBytes);
+    execSync(`soffice --headless --convert-to odt --outdir ${RT}/hfout ${RT}/hf.odt`, { stdio: 'pipe', timeout: 120000 });
+    const hfResaved = new Uint8Array(readFileSync(`${RT}/hfout/hf.odt`));
 
     // Diagnostic: how LibreOffice rewrote the header/footer geometry.
     const loStyles = strFromU8(unzipSync(hfResaved)['styles.xml']);
@@ -281,15 +292,41 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
       { type: 'paragraph', attrs: { tabStops: '6l.;12r_' }, content: [T('Kapitel\t1\tS. 3')] },
     ] };
     const bytes = await buildOdt(tabDoc, margins, 'portrait', undefined, undefined, 'A4', undefined, 1.27);
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/tab.odt', bytes);
-    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/tabout /tmp/lo-rt/tab.odt', { stdio: 'pipe', timeout: 120000 });
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/tab.odt`, bytes);
+    execSync(`soffice --headless --convert-to odt --outdir ${RT}/tabout ${RT}/tab.odt`, { stdio: 'pipe', timeout: 120000 });
 
-    const res = importOdt(new Uint8Array(readFileSync('/tmp/lo-rt/tabout/tab.odt')));
+    const res = importOdt(new Uint8Array(readFileSync(`${RT}/tabout/tab.odt`)));
     check('LO tab: no warnings', res.warnings.length === 0, res.warnings);
     check('LO tab: interval ≈1.27cm', Math.abs((res.tabIntervalCm ?? 0) - 1.27) < 0.01, res.tabIntervalCm);
     const stops = (res.content.content ?? [])[0]?.attrs?.tabStops;
     check('LO tab: stops + leaders survive', stops === '6l.;12r_', stops);
+  });
+
+  // LibreOffice draws none of the w14 effects but keeps them on a DOCX re-save, in runs
+  // and in styles alike (probed with 26.2).
+  it('keeps the w14 text effects through a `soffice` DOCX re-save', { timeout: 180000 }, async () => {
+    const { buildDocx } = await import('../src/lib/export/docx');
+    const { importDocx } = await import('../src/lib/import/docx');
+    const fx = {
+      textOutline: { color: '#C00000', widthPt: 1.5 },
+      textShadow: { color: '#000000', alpha: 0.4, dxPt: 2.12, dyPt: 2.12, blurPt: 4 },
+      textGlow: { color: '#4472C4', alpha: 0.6, radiusPt: 5 },
+      textFxRaw: [{ n: 'props3d', a: { extrusionH: '57150', contourW: '0', prstMaterial: 'warmMatte' } }],
+    };
+    const sheet = builtinStyleSheet();
+    sheet.paragraph['Glow'] = { name: 'Glow', parent: 'Standard', next: 'Standard', para: {}, text: { textGlow: fx.textGlow } };
+    const fxDoc: N = { type: 'doc', content: [
+      P(null, T('effects', { type: 'textStyle', attrs: fx })),
+      P({ styleName: 'Glow' }, T('styled')),
+    ] };
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/fx.docx`, await buildDocx(fxDoc, undefined, undefined, undefined, undefined, undefined, sheet));
+    execSync(`soffice --headless --convert-to docx --outdir ${RT}/fxout ${RT}/fx.docx`, { stdio: 'pipe', timeout: 120000 });
+    const res = importDocx(new Uint8Array(readFileSync(`${RT}/fxout/fx.docx`)));
+    const attrs = res.content.content?.[0]?.content?.[0]?.marks?.find((m: N) => m.type === 'textStyle')?.attrs ?? {};
+    for (const k of Object.keys(fx) as (keyof typeof fx)[]) check(`LO docx: ${k} survives`, JSON.stringify(attrs[k]) === JSON.stringify(fx[k]), attrs[k]);
+    check('LO docx: a style keeps its glow', JSON.stringify(res.styles.paragraph['Glow']?.text.textGlow) === JSON.stringify(fx.textGlow), res.styles.paragraph['Glow']);
   });
 
   // Each half of the western/asian pair keeps its own slot through LibreOffice, in both
@@ -303,19 +340,19 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
       { type: 'paragraph', attrs: {}, content: [T('只有中文字体', style({ fontFamilyAsian: 'KaiTi' }))] },
       { type: 'paragraph', attrs: {}, content: [T('Western 西方', style({ fontFamily: 'Arial' }))] },
     ] };
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/pair.odt', await buildOdt(pairDoc));
-    writeFileSync('/tmp/lo-rt/pair.docx', await buildDocx(pairDoc));
-    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/pairout /tmp/lo-rt/pair.odt', { stdio: 'pipe', timeout: 120000 });
-    execSync('soffice --headless --convert-to docx --outdir /tmp/lo-rt/pairout /tmp/lo-rt/pair.docx', { stdio: 'pipe', timeout: 120000 });
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/pair.odt`, await buildOdt(pairDoc));
+    writeFileSync(`${RT}/pair.docx`, await buildDocx(pairDoc));
+    execSync(`soffice --headless --convert-to odt --outdir ${RT}/pairout ${RT}/pair.odt`, { stdio: 'pipe', timeout: 120000 });
+    execSync(`soffice --headless --convert-to docx --outdir ${RT}/pairout ${RT}/pair.docx`, { stdio: 'pipe', timeout: 120000 });
     const fonts = (doc: N) => (doc.content ?? []).map((b: N) => {
       const a = b.content?.[0]?.marks?.find((m: N) => m.type === 'textStyle')?.attrs ?? {};
       return [a.fontFamily ?? null, a.fontFamilyAsian ?? null];
     });
     const expected = [['Arial', 'SimHei'], [null, 'KaiTi'], ['Arial', null]];
-    const odt = importOdt(new Uint8Array(readFileSync('/tmp/lo-rt/pairout/pair.odt')));
+    const odt = importOdt(new Uint8Array(readFileSync(`${RT}/pairout/pair.odt`)));
     check('LO pair: ODT keeps both halves', JSON.stringify(fonts(odt.content)) === JSON.stringify(expected), fonts(odt.content));
-    const docx = importDocx(new Uint8Array(readFileSync('/tmp/lo-rt/pairout/pair.docx')));
+    const docx = importDocx(new Uint8Array(readFileSync(`${RT}/pairout/pair.docx`)));
     check('LO pair: DOCX keeps both halves', JSON.stringify(fonts(docx.content)) === JSON.stringify(expected), fonts(docx.content));
   });
 
@@ -330,14 +367,14 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
       { type: 'paragraph', attrs: {}, content: [T('这是一个中文文档。')] },
       { type: 'paragraph', attrs: {}, content: [T('word 漢字', { type: 'textStyle', attrs: { lang: 'en-GB', langAsian: 'ja-JP' } })] },
     ] };
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/langpair.odt', await buildOdt(langDoc, undefined, undefined, undefined, ZH));
-    writeFileSync('/tmp/lo-rt/langpair.docx', await buildDocx(langDoc, undefined, undefined, undefined, ZH));
-    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/langpairout /tmp/lo-rt/langpair.odt', { stdio: 'pipe', timeout: 120000 });
-    execSync('soffice --headless --convert-to docx --outdir /tmp/lo-rt/langpairout /tmp/lo-rt/langpair.docx', { stdio: 'pipe', timeout: 120000 });
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/langpair.odt`, await buildOdt(langDoc, undefined, undefined, undefined, ZH));
+    writeFileSync(`${RT}/langpair.docx`, await buildDocx(langDoc, undefined, undefined, undefined, ZH));
+    execSync(`soffice --headless --convert-to odt --outdir ${RT}/langpairout ${RT}/langpair.odt`, { stdio: 'pipe', timeout: 120000 });
+    execSync(`soffice --headless --convert-to docx --outdir ${RT}/langpairout ${RT}/langpair.docx`, { stdio: 'pipe', timeout: 120000 });
     for (const [kind, res] of [
-      ['ODT', importOdt(new Uint8Array(readFileSync('/tmp/lo-rt/langpairout/langpair.odt')))],
-      ['DOCX', importDocx(new Uint8Array(readFileSync('/tmp/lo-rt/langpairout/langpair.docx')))],
+      ['ODT', importOdt(new Uint8Array(readFileSync(`${RT}/langpairout/langpair.odt`)))],
+      ['DOCX', importDocx(new Uint8Array(readFileSync(`${RT}/langpairout/langpair.docx`)))],
     ] as const) {
       check(`LO language pair: ${kind} reads as Chinese`, res.language === 'zh-CN', [res.language, res.languageOther]);
       // LibreOffice lifts a run spanning its paragraph onto the paragraph.
@@ -357,10 +394,10 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
       P(null, T('Inline: '), F(inline, false), T(' im Text.')),
       P(null, F(block, true)),
     ] };
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/math.odt', await buildOdt(doc, margins, 'portrait'));
-    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/mathout /tmp/lo-rt/math.odt', { stdio: 'pipe', timeout: 120000 });
-    const resaved = new Uint8Array(readFileSync('/tmp/lo-rt/mathout/math.odt'));
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/math.odt`, await buildOdt(doc, margins, 'portrait'));
+    execSync(`soffice --headless --convert-to odt --outdir ${RT}/mathout ${RT}/math.odt`, { stdio: 'pipe', timeout: 120000 });
+    const resaved = new Uint8Array(readFileSync(`${RT}/mathout/math.odt`));
 
     // LibreOffice keeps them as real formula sub-documents (it adds its own settings.xml).
     const names = Object.keys(unzipSync(resaved)).filter((p) => /content\.xml$/.test(p) && p !== 'content.xml');
@@ -389,10 +426,10 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
         T(' or '), T('jump', { type: 'link', attrs: { href: '#Fig1' } }), T('.'),
       ),
     ] };
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/bm.odt', await buildOdt(doc, margins, 'portrait'));
-    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/bmout /tmp/lo-rt/bm.odt', { stdio: 'pipe', timeout: 120000 });
-    const resaved = new Uint8Array(readFileSync('/tmp/lo-rt/bmout/bm.odt'));
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/bm.odt`, await buildOdt(doc, margins, 'portrait'));
+    execSync(`soffice --headless --convert-to odt --outdir ${RT}/bmout ${RT}/bm.odt`, { stdio: 'pipe', timeout: 120000 });
+    const resaved = new Uint8Array(readFileSync(`${RT}/bmout/bm.odt`));
     const xml = strFromU8(unzipSync(resaved)['content.xml']);
 
     check('LO bookmarks: the range survives', xml.includes('text:bookmark-start text:name="Fig1"') && xml.includes('text:bookmark-end text:name="Fig1"'));
@@ -436,10 +473,10 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
         { type: 'note', attrs: { id: 'a', kind: 'footnote', label: null, text: '1' }, content: [T('The note.')] },
       ] },
     ] };
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/xr.odt', await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', sheet));
-    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/xrout /tmp/lo-rt/xr.odt', { stdio: 'pipe', timeout: 120000 });
-    const resaved = new Uint8Array(readFileSync('/tmp/lo-rt/xrout/xr.odt'));
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/xr.odt`, await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', sheet));
+    execSync(`soffice --headless --convert-to odt --outdir ${RT}/xrout ${RT}/xr.odt`, { stdio: 'pipe', timeout: 120000 });
+    const resaved = new Uint8Array(readFileSync(`${RT}/xrout/xr.odt`));
     const xml = strFromU8(unzipSync(resaved)['content.xml']);
 
     check('LO references: the caption keeps its own sequence field', /<text:sequence-ref[^>]*category-and-value/.test(xml), xml.match(/<text:sequence-ref[^>]*>/g));
@@ -473,10 +510,10 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
           content: [T('The endnote.')] },
       ] },
     ] };
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/note.odt', await buildOdt(doc, margins, 'portrait'));
-    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/noteout /tmp/lo-rt/note.odt', { stdio: 'pipe', timeout: 120000 });
-    const resaved = new Uint8Array(readFileSync('/tmp/lo-rt/noteout/note.odt'));
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/note.odt`, await buildOdt(doc, margins, 'portrait'));
+    execSync(`soffice --headless --convert-to odt --outdir ${RT}/noteout ${RT}/note.odt`, { stdio: 'pipe', timeout: 120000 });
+    const resaved = new Uint8Array(readFileSync(`${RT}/noteout/note.odt`));
     const files = unzipSync(resaved);
     const xml = strFromU8(files['content.xml']);
 
@@ -511,10 +548,10 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
         { text: 'MEY99: Meyer, Anna, Zur Sache, 1999', level: 1, page: 1 },
       ] } },
     ] };
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/bib.odt', await buildOdt(doc, margins, 'portrait'));
-    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/bibout /tmp/lo-rt/bib.odt', { stdio: 'pipe', timeout: 120000 });
-    const resaved = new Uint8Array(readFileSync('/tmp/lo-rt/bibout/bib.odt'));
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/bib.odt`, await buildOdt(doc, margins, 'portrait'));
+    execSync(`soffice --headless --convert-to odt --outdir ${RT}/bibout ${RT}/bib.odt`, { stdio: 'pipe', timeout: 120000 });
+    const resaved = new Uint8Array(readFileSync(`${RT}/bibout/bib.odt`));
     const xml = strFromU8(unzipSync(resaved)['content.xml']);
 
     check('LO bibliography: all three marks survive', (xml.match(/<text:bibliography-mark/g) ?? []).length === 3,
@@ -568,10 +605,10 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
         LI(P(null, T('mix')), { type: 'bulletList', content: [LI(P(null, T('mixsub')))] }),
       ] },
     ] };
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/ls.odt', await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', sheet));
-    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/lsout /tmp/lo-rt/ls.odt', { stdio: 'pipe', timeout: 120000 });
-    const resaved = new Uint8Array(readFileSync('/tmp/lo-rt/lsout/ls.odt'));
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/ls.odt`, await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', sheet));
+    execSync(`soffice --headless --convert-to odt --outdir ${RT}/lsout ${RT}/ls.odt`, { stdio: 'pipe', timeout: 120000 });
+    const resaved = new Uint8Array(readFileSync(`${RT}/lsout/ls.odt`));
     const files = unzipSync(resaved);
     const xml = strFromU8(files['content.xml']);
     const stylesXml = strFromU8(files['styles.xml']);
@@ -616,10 +653,10 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
         ] },
       ] },
     ] };
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/res.docx', await buildDocx(doc));
-    execSync('soffice --headless --convert-to fodt --outdir /tmp/lo-rt/resout /tmp/lo-rt/res.docx', { stdio: 'pipe', timeout: 120000 });
-    const fodt = readFileSync('/tmp/lo-rt/resout/res.fodt', 'utf8');
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/res.docx`, await buildDocx(doc));
+    execSync(`soffice --headless --convert-to fodt --outdir ${RT}/resout ${RT}/res.docx`, { stdio: 'pipe', timeout: 120000 });
+    const fodt = readFileSync(`${RT}/resout/res.fodt`, 'utf8');
     const style = (name: string) =>
       new RegExp(`<style:style style:name="${name}"[^>]*>[\\s\\S]*?</style:style>`).exec(fodt)?.[0] ?? '';
 
@@ -655,12 +692,12 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
       PBX({ width: 192, height: 96, ...style, shapePath: cube.path, shapeTextArea: cube.textArea, shapePreset: preset }, P(null, T('preset'))),
       PBX({ width: 192, height: 96, ...style, shapePath: cube.path, shapeTextArea: [10, 20, 80, 90] }, P(null, T('freeform'))),
     ] };
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/shapes.odt', await buildOdt(doc, margins, 'portrait'));
-    writeFileSync('/tmp/lo-rt/shapes.docx', await buildDocx(doc, margins, 'portrait'));
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/shapes.odt`, await buildOdt(doc, margins, 'portrait'));
+    writeFileSync(`${RT}/shapes.docx`, await buildDocx(doc, margins, 'portrait'));
     for (const ext of ['odt', 'docx'] as const) {
-      execSync(`soffice --headless --convert-to ${ext} --outdir /tmp/lo-rt/shapesout /tmp/lo-rt/shapes.${ext}`, { stdio: 'pipe', timeout: 120000 });
-      const bytes = new Uint8Array(readFileSync(`/tmp/lo-rt/shapesout/shapes.${ext}`));
+      execSync(`soffice --headless --convert-to ${ext} --outdir ${RT}/shapesout ${RT}/shapes.${ext}`, { stdio: 'pipe', timeout: 120000 });
+      const bytes = new Uint8Array(readFileSync(`${RT}/shapesout/shapes.${ext}`));
       const res = ext === 'odt' ? importOdt(bytes) : importDocx(bytes);
       check(`LO ${ext}: no warnings`, res.warnings.length === 0, [...res.warnings]);
       const [kept, free] = boxesIn(res.content);
@@ -683,10 +720,10 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
       PBX({ width: 200, height: 120, wrap: 'topBottom', shapeKind: 'diamond' },
         P(null, T('a '), T('link', { type: 'bold' }, link), T(' b', { type: 'italic' }), T(' after'))),
     ] };
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/shapelink.odt', await buildOdt(doc));
-    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/shapelinkout /tmp/lo-rt/shapelink.odt', { stdio: 'pipe', timeout: 120000 });
-    const runs = boxesIn(importOdt(new Uint8Array(readFileSync('/tmp/lo-rt/shapelinkout/shapelink.odt'))).content)[0]?.content?.[0]?.content ?? [];
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/shapelink.odt`, await buildOdt(doc));
+    execSync(`soffice --headless --convert-to odt --outdir ${RT}/shapelinkout ${RT}/shapelink.odt`, { stdio: 'pipe', timeout: 120000 });
+    const runs = boxesIn(importOdt(new Uint8Array(readFileSync(`${RT}/shapelinkout/shapelink.odt`))).content)[0]?.content?.[0]?.content ?? [];
     check('LO shape link: the text stays', runs.map((r: N) => r.text).join('') === 'a link b after', runs.map((r: N) => r.text));
     const marks = (runs.find((r: N) => r.text === 'link')?.marks ?? []).map((m: N) => m.type).sort();
     check('LO shape link: the run stays a bold link', JSON.stringify(marks) === '["bold","link"]', marks);
@@ -696,10 +733,10 @@ describe.skipIf(!SOFFICE)('LibreOffice round-trip (needs soffice on PATH)', () =
     const doc: N = { type: 'doc', content: [P(null, T('Ein Satz.'))] };
     const bytes = await buildOdt(doc, margins, 'portrait', undefined, null, 'A4', undefined,
       undefined, 'add', false, undefined, undefined, false, undefined, undefined, undefined, true);
-    mkdirSync('/tmp/lo-rt', { recursive: true });
-    writeFileSync('/tmp/lo-rt/rec.odt', bytes);
-    execSync('soffice --headless --convert-to odt --outdir /tmp/lo-rt/recout /tmp/lo-rt/rec.odt', { stdio: 'pipe', timeout: 120000 });
-    const resaved = new Uint8Array(readFileSync('/tmp/lo-rt/recout/rec.odt'));
+    mkdirSync(RT, { recursive: true });
+    writeFileSync(`${RT}/rec.odt`, bytes);
+    execSync(`soffice --headless --convert-to odt --outdir ${RT}/recout ${RT}/rec.odt`, { stdio: 'pipe', timeout: 120000 });
+    const resaved = new Uint8Array(readFileSync(`${RT}/recout/rec.odt`));
     const xml = strFromU8(unzipSync(resaved)['content.xml']);
 
     // LibreOffice keeps the empty registry for the flag alone, which is what makes it

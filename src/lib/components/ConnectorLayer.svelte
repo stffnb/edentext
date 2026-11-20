@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { coordsAt } from '../editor/extensions/overlay';
   import type { Editor } from '@tiptap/core';
   import { commentIdAt } from '../editor/extensions/comment';
   import { revisionIdAt } from '../editor/extensions/trackChanges';
@@ -61,7 +62,7 @@
     const add = (pos: number, card: Element | null, color: string) => {
       if (!card) return;
       let c: { top: number; bottom: number; left: number };
-      try { c = view.coordsAtPos(pos, -1); } catch { return; }
+      try { c = coordsAt(view, pos, -1); } catch { return; }
       // An anchor scrolled out of the page view has nothing left to point at.
       if (clip && (c.bottom < clip.top || c.top > clip.bottom || c.left < clip.left || c.left > clip.right)) return;
       const r = card.getBoundingClientRect();

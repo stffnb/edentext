@@ -24,6 +24,7 @@ copied verbatim into the build, so the licenses ship wherever the fonts do.
 | Carlito | OFL-1.1 | (c) 2013 The Carlito Project Authors (Reserved Font Name "Carlito") |
 | Caladea | OFL-1.1 | (c) 2012 The Caladea Project Authors |
 | STIX Two Math | OFL-1.1 | (c) 2001–2021 The STIX Fonts Project Authors |
+| Noto Naskh Arabic | OFL-1.1 | (c) 2022 The Noto Project Authors |
 | `EdenSymbols.woff2` — bullet glyphs subset from DejaVu Sans | Bitstream Vera | (c) 2003 Bitstream, Inc. |
 
 > OFL-1.1 permits bundling the fonts in any software, **including commercial and
@@ -52,6 +53,10 @@ thesaurus for the language.
 | `public/dictionaries/pt` — Hunspell, Universidade do Minho | GPL-2.0 or LGPL-2.1 or MPL-1.1 |
 | `public/dictionaries/ru` — Hunspell, Alexander I. Lebedev | BSD-3-Clause |
 | `public/dictionaries/uk` — Hunspell, brown-uk/dict_uk | GPL-3.0 |
+| `public/dictionaries/id` — Hunspell, hunspell-id | LGPL-3.0 |
+| `public/dictionaries/ar` — Hunspell-ar, Ayaspell | GPL-2.0-or-later or LGPL-2.1-or-later or MPL-1.1 |
+| `public/dictionaries/pl` — Hunspell, sjp.pl | GPL-2.0 or LGPL-2.1 or MPL-1.1 or Apache-2.0 or CC-BY-4.0 |
+| `public/dictionaries/ko-KR` — Hunspell, hunspell-dict-ko (spellcheck-ko) | GPL-3.0-or-later |
 | `public/thesaurus/de` — OpenThesaurus | LGPL-2.1-or-later |
 | `public/thesaurus/en` — WordNet 2.1, Princeton University | WordNet license (permissive) |
 | `public/thesaurus/es` — OpenThesaurus español | LGPL-2.1 |
@@ -60,6 +65,9 @@ thesaurus for the language.
 | `public/thesaurus/pt` — PAPEL/Onto.PT MyThes | CC-BY-3.0 and GPL-2.0-or-later |
 | `public/thesaurus/ru` — AOT and the Abramov dictionary | LGPL-2.1 |
 | `public/thesaurus/uk` — Andriy Rysin's MyThes | GPL or LGPL or MPL |
+| `public/thesaurus/id` — Tesaurus Bahasa Indonesia Pusat Bahasa, MyThes by Ali Ahmadi | LGPL-2.1 |
+| `public/thesaurus/ar` — Ayaspell Arabic thesaurus, Taha Zerrouki | GPL-2.0-or-later or LGPL-2.1-or-later or MPL-1.1 |
+| `public/thesaurus/pl` — Dobry słownik (Marcin Miłkowski) MyThes | LGPL-2.1 |
 
 The thesaurus files are generated from LibreOffice's own MyThes data by
 `scripts/make-thesaurus.mjs`, which also fetches the license files above. British

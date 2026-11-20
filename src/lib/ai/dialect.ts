@@ -45,12 +45,14 @@ export function borderAttr(css: string): string | null {
   if (!parts[0] || parts.some((p) => /^(none|hidden)$/i.test(p)) || parts.some((p) => toPt(p) === 0)) return 'none';
   let pt = 0.5;
   let color = '#000000';
+  let line = 'solid';
   for (const p of parts) {
     const w = toPt(p, 'none');
     if (w != null) pt = Math.max(0.25, round(w));
+    else if (/^(solid|double|dotted|dashed)$/i.test(p)) line = p.toLowerCase();
     else { const c = normalizeColor(p); if (c?.startsWith('#')) color = c; }
   }
-  return `${pt}pt solid ${color}`;
+  return `${pt}pt ${line} ${color}`;
 }
 
 const SIDES = ['top', 'right', 'bottom', 'left'] as const;
@@ -130,6 +132,18 @@ function paragraph(el: HTMLElement, o: DialectOptions, dropped: string[]): void 
 }
 
 /** A run's background as a highlight, the only run shading the editor has. */
+// Outline, shadow and relief in the CSS a model writes for them; relief has none, so it
+// is read from the ODF property name as written.
+function runEffects(el: HTMLElement): void {
+  const raw = el.getAttribute('style') ?? '';
+  const stroke = el.style.getPropertyValue('-webkit-text-stroke') || el.style.getPropertyValue('-webkit-text-stroke-width');
+  if (parseFloat(stroke) > 0 || /(?:^|;)\s*text-stroke\s*:/i.test(raw)) el.setAttribute('data-outline', 'true');
+  const shadow = el.style.textShadow;
+  if (shadow && shadow !== 'none') el.setAttribute('data-shadow', 'true');
+  const relief = /(?:^|;)\s*font-relief\s*:\s*(embossed|engraved)/i.exec(raw)?.[1].toLowerCase();
+  if (relief) el.setAttribute('data-relief', relief);
+}
+
 function runShading(el: HTMLElement): void {
   const bg = normalizeColor(el.style.backgroundColor || el.style.background);
   if (!bg?.startsWith('#')) return;
@@ -224,7 +238,8 @@ export function frameCss(box: HTMLElement, el: HTMLElement): void {
   const css = (p: string) => s.getPropertyValue(p).trim();
   const pad = toCm(s.paddingTop || s.padding, 'cm');
   if (pad != null) box.setAttribute('data-padding', String(pad));
-  if (/vertical/.test(css('writing-mode'))) box.setAttribute('data-text-vertical', 'true');
+  const mode = css('writing-mode');
+  if (/vertical|sideways/.test(mode)) box.setAttribute('data-text-vertical', /sideways-lr/.test(mode) ? 'up' : 'true');
   const v = css('vertical-align') || css('align-content');
   if (/middle|center/.test(v)) box.setAttribute('data-text-valign', 'middle');
   else if (/bottom|end/.test(v)) box.setAttribute('data-text-valign', 'bottom');
@@ -405,7 +420,7 @@ export function normalizeAiHtml(body: HTMLElement, o: DialectOptions = {}): { dr
     if (BLOCKS.has(tag)) paragraph(el, o, dropped);
     else if (tag === 'TABLE') table(el as HTMLTableElement, o, dropped);
     else if (tag === 'IMG') image(el as HTMLImageElement, dropped);
-    else if (tag === 'SPAN') runShading(el);
+    else if (tag === 'SPAN') { runEffects(el); runShading(el); }
     else if (tag === 'HR') {
       const next = el.nextElementSibling;
       if (next) next.setAttribute('data-page-break-before', 'page');

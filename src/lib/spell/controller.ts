@@ -1,5 +1,6 @@
 import { loadChecker, type Checker } from './dictionary';
-import { loadDocumentLanguage, type DocumentLanguage } from '../storage/documentLanguage';
+import { langSlot, loadDocumentLanguage, type DocumentLanguage, type LangSlot } from '../storage/documentLanguage';
+import { ASIAN_SCRIPT_RE, COMPLEX_SCRIPT_RE } from '../utils/script';
 import { volatile } from '../storage/docScope';
 
 const PERSONAL_KEY = 'edentext-user-dictionary';
@@ -18,11 +19,17 @@ function loadPersonal(): string[] {
   }
 }
 
+// The slot whose language a word is written in, by its script.
+const slotOf = (word: string): LangSlot =>
+  ASIAN_SCRIPT_RE.test(word) ? 'asian' : COMPLEX_SCRIPT_RE.test(word) ? 'complex' : 'west';
+
 // Singleton bridging the static TipTap extension to the live spell state. The
 // extension subscribes and re-decorates whenever the active checker, personal
 // dictionary, or ignore set changes.
 class SpellController {
   private code: DocumentLanguage = '';
+  // The document's language of another script: the western one beside Arabic, Korean beside English.
+  private alt: DocumentLanguage | null = null;
   // One checker per language the document actually uses; loadChecker caches the fetch.
   private readonly checkers = new Map<DocumentLanguage, Checker | null>();
   private token = 0;
@@ -44,9 +51,10 @@ class SpellController {
     return this.checkers.get(this.code) != null;
   }
 
-  async setLanguage(code: DocumentLanguage): Promise<void> {
-    if (code === this.code) return;
+  async setLanguage(code: DocumentLanguage, alt: DocumentLanguage | null = null): Promise<void> {
+    if (code === this.code && alt === this.alt) return;
     this.code = code;
+    this.alt = alt;
     const token = ++this.token;
     await this.load(code);
     if (token !== this.token) return; // a newer setLanguage superseded this one
@@ -54,43 +62,60 @@ class SpellController {
   }
 
   // Load a language's dictionary on demand — a run or paragraph in a language the
-  // document itself is not in. Notifies when it lands, which re-runs the check.
-  private loading = new Set<DocumentLanguage>();
-  private async load(code: DocumentLanguage): Promise<void> {
-    if (this.checkers.has(code) || this.loading.has(code)) return;
-    this.loading.add(code);
-    const checker = await loadChecker(code);
-    this.loading.delete(code);
-    if (checker) for (const w of this.personal) checker.add(w);
-    this.checkers.set(code, checker);
+  // document itself is not in. Every caller waits on the one load in flight.
+  private loading = new Map<DocumentLanguage, Promise<void>>();
+  private load(code: DocumentLanguage): Promise<void> {
+    if (this.checkers.has(code)) return Promise.resolve();
+    let pending = this.loading.get(code);
+    if (!pending) {
+      pending = loadChecker(code).then((checker) => {
+        this.loading.delete(code);
+        if (checker) for (const w of this.personal) checker.add(w);
+        this.checkers.set(code, checker);
+      });
+      this.loading.set(code, pending);
+    }
+    return pending;
   }
 
   private checkerFor(code: DocumentLanguage | undefined): Checker | null | undefined {
     const c = code || this.code;
     if (!this.checkers.has(c)) {
-      void this.load(c).then(() => this.notify());
+      // Notifies when it lands, which re-runs the check.
+      if (!this.loading.has(c)) void this.load(c).then(() => this.notify());
       return undefined; // not loaded yet — the caller skips the word
     }
     return this.checkers.get(c);
   }
 
+  // A word is checked in a language of its own script: Latin text in an Arabic or Korean
+  // paragraph takes the document's western language, and goes unchecked where there is none.
+  private checkerOfScript(word: string, code: DocumentLanguage | undefined): Checker | null | undefined {
+    const slot = slotOf(word);
+    const own = [code || this.code, this.code, this.alt].find((c) => c && langSlot(c) === slot);
+    return own ? this.checkerFor(own) : null;
+  }
+
   check(word: string, code?: DocumentLanguage): boolean {
-    const checker = this.checkerFor(code);
+    const checker = this.checkerOfScript(word, code);
     if (!checker) return true;
-    if (this.ignored.has(word)) return true;
+    // A personal word is asked here too: a word list that converts its input (Korean, to
+    // jamo) never finds a word added at run time.
+    if (this.ignored.has(word) || this.personal.has(word)) return true;
     return checker.correct(word);
   }
 
-  // The share of `words` a language's dictionary knows; undefined while it loads.
+  // The share of `words` a language's dictionary knows; undefined while it loads. A word
+  // in another script is not its to know: the Korean word list accepts any Latin word.
   knownShare(words: string[], code: DocumentLanguage): number | undefined {
     const checker = this.checkerFor(code);
     if (checker === undefined) return undefined;
     if (!checker || !words.length) return 0;
-    return words.filter((w) => checker.correct(w)).length / words.length;
+    return words.filter((w) => slotOf(w) === langSlot(code) && checker.correct(w)).length / words.length;
   }
 
   suggest(word: string, code?: DocumentLanguage): string[] {
-    return this.checkerFor(code)?.suggest(word) ?? [];
+    return this.checkerOfScript(word, code)?.suggest(word) ?? [];
   }
 
   addWord(word: string): void {

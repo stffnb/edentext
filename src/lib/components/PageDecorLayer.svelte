@@ -5,7 +5,7 @@
   // The page's border and watermark, one box per page — the background itself is a
   // custom property on .paper, which already paints the sheet. Geometry is unscaled
   // document px: the layer sits inside .paper, so the zoom transform covers it.
-  let { decor, pageBoxes, marginsAt, hfInsets = { headerCm: null, footerCm: null }, isLeft = () => false }: {
+  let { decor, pageBoxes, marginsAt, hfInsets = { headerCm: null, footerCm: null }, isLeft = () => false, blankPages = [] }: {
     decor: PageDecor;
     /** One box per page (Editor.svelte): a section on its own paper differs in size. */
     pageBoxes: { top: number; left: number; height: number; width: number }[];
@@ -15,6 +15,8 @@
     hfInsets?: { headerCm: number | null; footerCm: number | null };
     /** Whether a page is a left-hand one — its number is even, not its sheet. */
     isLeft?: (page: number) => boolean;
+    /** Inserted blank pages: LibreOffice draws neither border nor watermark there (probed). */
+    blankPages?: number[];
   } = $props();
 
   // The watermark's aspect ratio, measured off LibreOffice's own shape.
@@ -45,17 +47,18 @@
 <div class="page-decor-layer" aria-hidden="true">
   {#each pageBoxes as box, i}
     {@const p = i + 1}
-    {#if decor.border}
+    {@const blank = blankPages.includes(p)}
+    {#if decor.border && !blank}
       {@const ring = inset(p)}
       <div
         class="page-border"
         style="top: {box.top + ring.top}px; left: {box.left + ring.left}px;
                width: {box.width - ring.left - ring.right}px;
                height: {box.height - ring.top - ring.bottom}px;
-               border: {decor.border.widthPt}pt solid {decor.border.color};"
+               border: {decor.border.line === 'double' ? Math.max(decor.border.widthPt, 2.25) : decor.border.widthPt}pt {decor.border.line ?? 'solid'} {decor.border.color};"
       ></div>
     {/if}
-    {#if decor.watermark}
+    {#if decor.watermark && !blank}
       {@const markWidth = markWidthOf(box, p)}
       <div class="watermark" style="top: {box.top}px; left: {box.left}px; width: {box.width}px; height: {box.height}px;">
         <!-- A fontwork shape stretches its text to the box rather than setting it at a

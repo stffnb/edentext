@@ -145,7 +145,9 @@ try {
       if (layer && (box.top < layer.top - 0.5 || box.bottom > layer.bottom + 0.5)) out.push('balloon hangs off the page');
     }
     const rects = cards.map((e) => e.getBoundingClientRect());
-    for (let i = 1; i < rects.length; i++) if (rects[i].top < rects[i - 1].bottom - 0.5) out.push(`balloon ${i} overlaps the one above`);
+    // With the stack as it stood, for a failure on an engine this machine cannot run.
+    const stood = () => cards.map((e, i) => `${Math.round(rects[i].top)}+${Math.round(rects[i].height)}${e.matches('.active') ? 'a' : ''}${e.matches('.fresh') ? 'f' : ''}${e.matches('.on-deck') ? 'd' : ''}`).join(' ');
+    for (let i = 1; i < rects.length; i++) if (rects[i].top < rects[i - 1].bottom - 0.5) out.push(`balloon ${i} overlaps the one above [${stood()}; ${window.__balloonStill ? 'still' : 'still moving'}]`);
     // The leader belongs in the gap under its line, never across the letters.
     const anchor = document.querySelector('[data-comment="c1"]')?.getBoundingClientRect();
     const first = document.querySelector('.review-margin-layer path')?.getAttribute('d');
@@ -153,18 +155,27 @@ try {
       out.push('leader crosses its own line');
     return { count: cards.length, out: [...new Set(out)] };
   });
-  // The stack settles on the next frame after a card is measured, so let it.
-  const settle = () => page.waitForTimeout(300);
+  // Judge the stack as a reader does, once it stands still: no card gliding and the same
+  // boxes on two samples with frames drawn between them. A card's new height reaches the
+  // stack with a frame, and a slow runner may draw none for longer than a sample apart.
+  const settle = () => page.evaluate(async () => {
+    const layer = document.querySelector('.review-margin-layer');
+    let was = null;
+    window.__balloonStill = false;
+    for (const until = performance.now() + 10_000; performance.now() < until;) {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 100))));
+      const now = [...document.querySelectorAll('.balloon')].map((e) => { const r = e.getBoundingClientRect(); return `${r.top},${r.height}`; }).join('|');
+      if (now === was && !layer?.getAnimations({ subtree: true }).length) { window.__balloonStill = true; return; }
+      was = now;
+    }
+  }).catch(() => {});
   await settle();
   const spill = await menuSpill();
   await page.click('.balloon .edit');
   await settle();
-  // The card grows at once, the ones below glide after it; a slow runner is still there.
-  await page.waitForFunction(() => [...document.querySelectorAll('.balloon')].map((e) => e.getBoundingClientRect())
-    .every((r, i, all) => !i || r.top >= all[i - 1].bottom - 0.5), null, { timeout: 3000 }).catch(() => {});
   const opened = await menuSpill();
   check(spill.count === 7 && spill.out.length === 0 && opened.out.length === 0,
-    `margin balloons hold their content (${spill.count} balloons${[...spill.out, ...opened.out].length ? ': ' + [...spill.out, ...opened.out].join(', ') : ''})`);
+    `margin balloons hold their content (${spill.count} balloons${[...spill.out, ...opened.out].length ? ': ' + [...spill.out, ...opened.out.map((o) => `with a card open, ${o}`)].join(', ') : ''})`);
 
   // The display modes, through the ribbon: no markup takes bars and balloons off the
   // page, and the full view brings the same ones back.
@@ -262,7 +273,7 @@ try {
   // Embed mode: a host page on another origin drives the editor through public/embed.js.
   const host = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
   collectErrors(host, pageErrors, '[embed] ');
-  host.on('dialog', (d) => d.accept());
+  host.on('dialog', (d) => d.accept().catch(() => {}));
   // A real server on another site (127.0.0.1 vs localhost): a routed page counts as a
   // public one, which Chromium may not let frame a loopback address.
   const hostPage = `<!doctype html><div id="c" style="height:950px"></div>
@@ -271,7 +282,7 @@ try {
       window.events = [];
       window.ed = new EdenTextFrame(document.getElementById('c'), { url: 'http://localhost:${PORT}/', user: 'Host', locale: 'en', accent: 'teal', ai: false });
       for (const t of ['dirty', 'saveRequest', 'warning']) ed.on(t, (m) => events.push(m));
-      ed.ready.then(() => { window.isReady = true; });
+      ed.ready.then(() => { window.isReady = true; }, (e) => { window.readyError = e.message; });
     </script>`;
   const hostFiles = {
     '/embed.js': ['text/javascript', () => readFileSync(join(ROOT, 'public/embed.js'))],
@@ -284,8 +295,16 @@ try {
     res.writeHead(200, { 'content-type': type }).end(body());
   }).listen(PORT + 1, '127.0.0.1');
   await new Promise((r) => hostServer.once('listening', r));
+  // embed.config.json names who may drive the editor: "self" turns this host away.
+  let origins = ['self'];
+  await host.route('**/embed.config.json', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ origins }) }));
   await host.goto(`http://127.0.0.1:${PORT + 1}/`);
+  const refused = await host.waitForFunction(() => window.readyError, null, { timeout: 20_000 }).then((h) => h.jsonValue());
+  check(/embed\.config\.json/.test(refused), `embed: a host embed.config.json does not name is turned away (${refused})`);
+  origins = ['self', `http://127.0.0.1:${PORT + 1}`];
+  await host.reload();
   await host.waitForFunction(() => window.isReady, null, { timeout: 20_000 });
+  check(true, 'embed: a host embed.config.json names is accepted');
   const frame = host.frames().find((f) => f.url().includes('embed=1'));
   check(!!frame, 'embed: the editor boots in the iframe and answers init');
   const storedBefore = await frame.evaluate(() => [localStorage.getItem('edentext-doc'), sessionStorage.getItem('edentext-tab-doc')]);

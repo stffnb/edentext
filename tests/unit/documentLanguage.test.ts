@@ -3,6 +3,7 @@ import {
   codeForTag,
   findLanguage,
   hasDictionary,
+  hasThesaurus,
   isAsianTag,
   LANGUAGES,
   languageFromOdf,
@@ -73,10 +74,14 @@ describe('Chinese document language', () => {
     expect(codeForTag('zh-HK')).toBe('zh-CN');
   });
 
-  it('names Japanese without a dictionary', () => {
-    expect(hasDictionary('ja-JP')).toBe(false);
-    expect(codeForTag('ja')).toBe('ja-JP');
-    expect(languageFromOdf('ja', 'JP')).toBe('ja-JP');
+  it('names Japanese without a dictionary, Korean with one and no thesaurus', () => {
+    for (const [code, lang, country] of [['ja-JP', 'ja', 'JP'], ['ko-KR', 'ko', 'KR']]) {
+      expect(hasDictionary(code)).toBe(code === 'ko-KR');
+      expect(hasThesaurus(code)).toBe(false);
+      expect(codeForTag(lang)).toBe(code);
+      expect(languageFromOdf(lang, country)).toBe(code);
+    }
+    expect(hasThesaurus('de')).toBe(true);
   });
 
   it('counts the East Asian languages as asian, and only those', () => {

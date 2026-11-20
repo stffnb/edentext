@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <a href="../../README.md">English</a> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.it.md">Italiano</a> · <a href="README.pt.md">Português</a> · <a href="README.el.md">Ελληνικά</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.ja.md">日本語</a> · <b>简体中文</b> · <a href="README.zh-TW.md">繁體中文</a>
+  <a href="../../README.md">English</a> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.it.md">Italiano</a> · <a href="README.pt.md">Português</a> · <a href="README.el.md">Ελληνικά</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.pl.md">Polski</a> · <a href="README.id.md">Bahasa Indonesia</a> · <a href="README.ar.md">العربية</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <b>简体中文</b> · <a href="README.zh-TW.md">繁體中文</a>
 </p>
 
 <picture>
@@ -33,7 +33,7 @@
 
 ---
 
-EdenText 是一款基于网页、功能强大的文字处理软件，从随手笔记到整本书籍都能胜任。无需服务器，无需账号——所有处理都在本地完成，文档绝不会离开你的电脑。打开网址即可使用，也可以安装成应用离线使用。大多数语言首次打开需下载约 2 MB，词典和字体按需加载[^1]。界面提供英语、德语、西班牙语、法语、意大利语、葡萄牙语、希腊语、俄语、乌克兰语、日语和中文（简体与繁体）。
+EdenText 是一款基于网页、功能强大的文字处理软件，从随手笔记到整本书籍都能胜任。无需服务器，无需账号——所有处理都在本地完成，文档绝不会离开你的电脑。打开网址即可使用，也可以安装成应用离线使用。大多数语言首次打开需下载约 2 MB，词典和字体按需加载[^1]。界面提供英语、德语、西班牙语、法语、意大利语、葡萄牙语、希腊语、俄语、乌克兰语、波兰语、印度尼西亚语、阿拉伯语、日语、韩语和中文（简体与繁体）。
 
 > [!NOTE]
 > EdenText 目前还是 **beta** 版，仍在持续开发中。测试和往返转换检查
@@ -62,12 +62,15 @@ EdenText 是一款基于网页、功能强大的文字处理软件，从随手�
 - **表格**——表格样式、排序以及类似电子表格的公式
 - **论文所需的一切**——目录、题注、交叉引用、引文与书目、索引、公式（LaTeX）
 - **审阅工具**——修订，显示在页边批注框中、可逐条回复的批注，与其他文件比较和合并，可打印的修订标记，拼写检查
-  （英语、德语、西班牙语、法语、意大利语、葡萄牙语、希腊语、俄语和乌克兰语），同义词
-  （以上除希腊语外的所有语言），语法检查（英语）
+  （英语、德语、西班牙语、法语、意大利语、葡萄牙语、希腊语、俄语、乌克兰语、波兰语、印度尼西亚语、阿拉伯语和韩语），同义词
+  （以上除希腊语和韩语外的所有语言），语法检查（英语）
 - **可选的 AI 助手**——使用你自己的服务提供商或本地模型；回答关于文档的问题，并以修订
   的形式编辑文档。可以关闭；请求直接发送给服务提供商，不经过 EdenText 服务器
+- **听写**——说出的内容会出现在光标处，英语和德语可用语音输入标点。使用浏览器的语音
+  识别（Chrome、Edge、Safari），音频可能会发送到浏览器的语音服务；首次使用前会先征求同意；也可以连接
+  你自己的语音识别服务器（例如本机上的 Whisper），任何浏览器和桌面应用都能用
 - **隐私优先（Private by Design）**——文档绝不会离开你的电脑，所有处理均在本地完成；可安装为应用
-  离线使用。编辑器本身不发送任何内容，只有开启 AI 助手后，才会把请求发给你选择的服务提供商。文档会自动
+  离线使用。编辑器本身不发送任何内容，只有开启 AI 助手后，才会把请求发给你选择的服务提供商。听写时，浏览器可能会把音频发送到它的语音服务。文档会自动
   保存在浏览器中；在“最近使用的文档”里可以设置已关闭的文档在下次启动时删除，或者干脆
   不保存。隐私窗口关闭后不会留下任何痕迹
 - **支持所有现代浏览器**——在 Chrome 和 Edge 中，“保存”会写回打开的文件；在 Brave 中
@@ -134,6 +137,7 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 任何 Web 服务器都可以托管这个目录。
 也可以用 `docker build -t edentext .` 在本地构建容器镜像。
 适用于 Kubernetes 的社区维护 Helm chart 位于 [`charts/edentext`](../../charts/edentext)。
+如何为所有用户预先配置 AI 助手和听写，请参阅 [`docs/self-hosting.md`](../self-hosting.md)（英文）。
 
 更新时，请将新文件覆盖到旧文件上，不要先清空目录。
 更新前打开的标签页在重新加载之前，会继续加载其所属版本的文件。
@@ -152,6 +156,15 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 [docs/architecture/embed.md](../../docs/architecture/embed.md)。宿主应用还可以设置界面语言、主题和强调色，并关闭 AI 助手。在嵌入模式下，编辑器会显示
 EdenText 徽标和“Powered by EdenText”标识，AGPL 条款要求保留二者（[NOTICE.md](../../NOTICE.md)），
 只有依据[商业许可证](../../LICENSE.commercial.md)的白标构建（`VITE_EDENTEXT_ATTRIBUTION=off`）才会省略。
+
+要从自己的服务器提供编辑器，请安装这两个 npm 包。`@edentext/app` 是构建好的编辑器，
+会把它复制到你的静态文件目录（也可以用 Vite 插件）；`@edentext/embed` 是辅助脚本，
+另外还有 `<eden-text>` 元素和 React 组件。
+
+```sh
+npm install @edentext/app @edentext/embed
+npx edentext-copy public/edentext --languages en,de
+```
 
 ## 架构
 
@@ -202,6 +215,7 @@ Copyright © 2026 Steffen Becker · 德国制造
 
 [AGPL-3.0](../../LICENSE)，嵌入模式另有依据其第 7(b) 条的附加条款（[NOTICE.md](../../NOTICE.md)）。如果 AGPL 不适合你的用途，可以选择[商业许可证](../../LICENSE.commercial.md)。
 随附的字体和语言数据保留各自的许可证——参见 [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md)。
+辅助脚本和 npm 工具采用 MIT 许可证，因此宿主页面无论自身采用何种许可证都可以使用（[NOTICE.md](../../NOTICE.md)）。
 
 *EdenText 是一个独立项目，与 Microsoft 或 The Document Foundation 无关。支持 `.docx`
 和 `.odt` 是为了实现互操作性。*
@@ -211,4 +225,4 @@ Copyright © 2026 Steffen Becker · 德国制造
 [^1]: 指压缩后的网络传输量：约 1.0 MB 的应用代码，其余为拼写检查器（含浏览器语言对应的
     词典）以及页面显示所需的字体；希腊语和乌克兰语词典分别额外增加约 2.5 MB 和 1.5 MB。
     其他所有内容都在首次需要时获取，并缓存以供离线使用；全部字体、词典和同义词库合计
-    约 20 MB，加上英语语法检查约 28 MB。
+    约 22 MB，加上英语语法检查约 31 MB。

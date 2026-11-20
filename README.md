@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <b>English</b> · <a href="docs/readme/README.de.md">Deutsch</a> · <a href="docs/readme/README.es.md">Español</a> · <a href="docs/readme/README.fr.md">Français</a> · <a href="docs/readme/README.it.md">Italiano</a> · <a href="docs/readme/README.pt.md">Português</a> · <a href="docs/readme/README.el.md">Ελληνικά</a> · <a href="docs/readme/README.ru.md">Русский</a> · <a href="docs/readme/README.uk.md">Українська</a> · <a href="docs/readme/README.ja.md">日本語</a> · <a href="docs/readme/README.zh-CN.md">简体中文</a> · <a href="docs/readme/README.zh-TW.md">繁體中文</a>
+  <b>English</b> · <a href="docs/readme/README.de.md">Deutsch</a> · <a href="docs/readme/README.es.md">Español</a> · <a href="docs/readme/README.fr.md">Français</a> · <a href="docs/readme/README.it.md">Italiano</a> · <a href="docs/readme/README.pt.md">Português</a> · <a href="docs/readme/README.el.md">Ελληνικά</a> · <a href="docs/readme/README.ru.md">Русский</a> · <a href="docs/readme/README.uk.md">Українська</a> · <a href="docs/readme/README.pl.md">Polski</a> · <a href="docs/readme/README.id.md">Bahasa Indonesia</a> · <a href="docs/readme/README.ar.md">العربية</a> · <a href="docs/readme/README.ja.md">日本語</a> · <a href="docs/readme/README.ko.md">한국어</a> · <a href="docs/readme/README.zh-CN.md">简体中文</a> · <a href="docs/readme/README.zh-TW.md">繁體中文</a>
 </p>
 
 <picture>
@@ -33,7 +33,7 @@
 
 ---
 
-EdenText is a web-based, powerful word processor for everything from quick notes to full-length books. No server, no account — processing runs locally and your documents never leave your computer. Open the link, or install it as an app and work offline. For most languages the first download is about 2 MB; dictionaries and fonts load as needed[^1]. The interface comes in English, German, Spanish, French, Italian, Portuguese, Greek, Russian, Ukrainian, Japanese and Chinese (simplified and traditional).
+EdenText is a web-based, powerful word processor for everything from quick notes to full-length books. No server, no account — processing runs locally and your documents never leave your computer. Open the link, or install it as an app and work offline. For most languages the first download is about 2 MB; dictionaries and fonts load as needed[^1]. The interface comes in English, German, Spanish, French, Italian, Portuguese, Greek, Russian, Ukrainian, Polish, Indonesian, Arabic, Japanese, Korean and Chinese (simplified and traditional).
 
 > [!NOTE]
 > EdenText is still in **beta** and actively developed. Tests and round-trip
@@ -69,14 +69,18 @@ EdenText is a web-based, powerful word processor for everything from quick notes
 - **Review tools** — track changes and threaded comments with margin balloons,
   comparing and merging with another file,
   printable markup, spell check (English, German, Spanish, French, Italian, Portuguese,
-  Greek, Russian and Ukrainian), synonyms (all of these but Greek), grammar check
+  Greek, Russian, Ukrainian, Polish, Indonesian, Arabic and Korean), synonyms (all of these but Greek and Korean), grammar check
   (English)
 - **Optional AI assistant** — with your own provider or a local model;
   answers questions about the document and edits it as tracked changes. Can be
   switched off; requests go directly to the provider, without an EdenText server
+- **Dictation** — speak and the text appears at the cursor, with spoken punctuation in
+  English and German. Uses the browser’s speech recognition (Chrome, Edge, Safari), which
+  may send the audio to its speech service; EdenText asks before the first time; or your own
+  speech server, e.g. Whisper on this computer, in any browser and the desktop app
 - **Private by design** — your documents never leave your computer, all
   processing runs locally; works offline as an installable app. The editor sends nothing,
-  unless you switch on the AI assistant, which sends to the provider you chose.
+  unless you switch on the AI assistant, which sends to the provider you chose. Dictation uses the browser’s speech recognition, which may send the audio to its speech service.
   Documents are autosaved in the browser; Recent documents can be set to delete
   closed ones at the next start or not keep them at all, and a private window
   leaves nothing behind once it is closed
@@ -147,6 +151,7 @@ Alternatively, each release includes `edentext-<tag>.zip` with the built app, an
 `npm run build` creates the same files in `dist/`. Any web server can host this folder.
 The container image can also be built locally with `docker build -t edentext .`.
 A community-maintained Helm chart for Kubernetes is in [`charts/edentext`](charts/edentext).
+How to set up the AI assistant and dictation for all users is in [`docs/self-hosting.md`](docs/self-hosting.md).
 
 For an update, copy the new files over the old ones instead of emptying the folder first.
 Tabs opened before the update keep loading the files of their own version until they are
@@ -174,6 +179,16 @@ In embed mode the editor
 shows the EdenText logo and a “Powered by EdenText” notice, which the AGPL terms require
 to stay ([NOTICE.md](NOTICE.md)) and which only a white-label build under the
 [commercial license](LICENSE.commercial.md) leaves out (`VITE_EDENTEXT_ATTRIBUTION=off`).
+
+To run the editor from your own server, install the two npm packages. `@edentext/app`
+holds the built editor and copies it into your static files, with a Vite plugin as an
+alternative; `@edentext/embed` is the helper, along with an `<eden-text>` element and a
+React component.
+
+```sh
+npm install @edentext/app @edentext/embed
+npx edentext-copy public/edentext --languages en,de
+```
 
 ## Architecture
 
@@ -233,6 +248,8 @@ Copyright © 2026 Steffen Becker · Made in Germany
 ([NOTICE.md](NOTICE.md)). A [commercial license](LICENSE.commercial.md) is available
 for use cases the AGPL does not fit. Bundled fonts and language data keep their
 own licenses — see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+The embed helper and the npm tooling are under the MIT License, so a host page can use
+them whatever its own license ([NOTICE.md](NOTICE.md)).
 
 *EdenText is an independent project, not affiliated with Microsoft or The
 Document Foundation. `.docx` and `.odt` are supported for interoperability.*
@@ -241,4 +258,4 @@ Document Foundation. `.docx` and `.odt` are supported for interoperability.*
     the dictionary for the browser's language and the fonts a page shows; the Greek and
     Ukrainian dictionaries add ~2.5 and ~1.5 MB. Everything else is fetched and kept for
     offline use once it is needed; all fonts, dictionaries and thesauri together are
-    ~20 MB, or ~28 MB with the English grammar check.
+    ~22 MB, or ~31 MB with the English grammar check.

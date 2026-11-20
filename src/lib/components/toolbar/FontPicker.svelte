@@ -148,6 +148,7 @@
   <div class="font-trigger-wrap">
     <input
       type="text"
+      dir="ltr"
       class="font-input"
       style={currentFont ? `font-family: ${currentFont}` : ''}
       bind:value={inputValue}
@@ -170,7 +171,7 @@
         {#if recentShown.length > 0}
           <div class="font-section-label">{t().toolbarExpanded.recent}</div>
           {#each recentShown as font}
-            <button class="font-option" class:active={currentFont === font} style="font-family: {font}" onclick={() => pick(font)}>{fontLabel(font)}</button>
+            <button class="font-option" class:active={currentFont === font} style="font-family: {font}" onclick={() => pick(font)}><bdi>{fontLabel(font)}</bdi></button>
           {/each}
         {/if}
 
@@ -178,13 +179,13 @@
           <div class="font-section-label">{t().toolbarExpanded.webSafe}</div>
         {/if}
         {#each webSafeShown as font}
-          <button class="font-option" class:active={currentFont === font} style="font-family: {font}" onclick={() => pick(font)}>{fontLabel(font)}</button>
+          <button class="font-option" class:active={currentFont === font} style="font-family: {font}" onclick={() => pick(font)}><bdi>{fontLabel(font)}</bdi></button>
         {/each}
 
         {#if extraShown.length > 0}
           <div class="font-section-label">{t().toolbarExpanded.allFonts}</div>
           {#each extraShown as font}
-            <button class="font-option" class:active={currentFont === font} style="font-family: {font}" onclick={() => pick(font)}>{fontLabel(font)}</button>
+            <button class="font-option" class:active={currentFont === font} style="font-family: {font}" onclick={() => pick(font)}><bdi>{fontLabel(font)}</bdi></button>
           {/each}
         {/if}
 
@@ -256,7 +257,7 @@
   .font-dropdown {
     position: absolute;
     top: calc(100% + 3px);
-    left: 0;
+    inset-inline-start: 0;
     min-width: 100%;
     max-height: 360px;
     overflow: hidden;
@@ -305,7 +306,7 @@
     color: var(--color-primary);
     font-size: 0.8rem;
     font-family: var(--font-sans);
-    text-align: left;
+    text-align: start;
     cursor: pointer;
     position: sticky;
     bottom: -2px;
@@ -324,7 +325,7 @@
     background: transparent;
     color: var(--color-text);
     font-size: 0.85rem;
-    text-align: left;
+    text-align: start;
     cursor: pointer;
     white-space: nowrap;
     transition: background 0.1s;

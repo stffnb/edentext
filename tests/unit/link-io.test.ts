@@ -28,6 +28,16 @@ describe('an editor link round-trips as an editor link', () => {
     // Absent is the attribute's default: not plain, the same as an explicit false.
     expect(link?.attrs.plain).toBeFalsy();
   });
+  it('leaves a plain link its own underline and colour, through DOCX', async () => {
+    const own = [{ type: 'underline' }, { type: 'textStyle', attrs: { color: '#0000FF' } }];
+    const doc: N = { type: 'doc', content: [{ type: 'paragraph', content: [
+      { type: 'text', text: 'see', marks: [{ type: 'link', attrs: { href: '#top', plain: true } }, ...own] },
+    ] }] };
+    const run = texts(importDocx(await buildDocx(doc as any)).content as unknown as N)[0];
+    expect(run.marks?.find((m: any) => m.type === 'link')?.attrs.plain).toBe(true);
+    expect(run.marks?.some((m: any) => m.type === 'underline')).toBe(true);
+    expect(run.marks?.find((m: any) => m.type === 'textStyle')?.attrs.color).toBe('#0000FF');
+  });
 });
 
 // A file can carry any href; one with a scheme the editor would never open is read as

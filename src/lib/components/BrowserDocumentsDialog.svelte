@@ -32,7 +32,7 @@
 
 <dialog
   bind:this={dialogEl}
-  onclose={() => (open = false)}
+  onclose={() => !dialogEl?.open && (open = false)}
   onclick={(e) => e.target === dialogEl && (open = false)}
   aria-label={t().browserDocs.title}
 >
@@ -44,7 +44,7 @@
       {#each docs as d (d.id)}
         <li>
           <div class="info">
-            <span class="label">{d.label || t().app.untitled}</span>
+            <span class="label doc-quote" dir="auto">{d.label || t().app.untitled}</span>
             <span class="meta">
               {formatMoment(d.at)}{#if d.mine}{' · '}{t().browserDocs.thisTab}{:else if d.held}{' · '}{t().browserDocs.otherTab}{/if}
             </span>

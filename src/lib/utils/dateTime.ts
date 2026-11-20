@@ -121,13 +121,71 @@ export const DEFAULT_DATE_FORMAT = 'dmy_dots';
 export const DEFAULT_TIME_FORMAT = 'hm24';
 
 // The picture a *newly inserted* date field takes, by UI locale: a date is written
-// differently in each place. Only the preselection — an existing field keeps its own.
+// differently in each place, else the locale's own numeric form. Only the preselection.
 const DATE_FORMAT_BY_LOCALE: Record<string, string> = {
   'zh-Hans': 'ymd_cjk', 'zh-Hant': 'ymd_cjk', ja: 'ymd_cjk', en: 'mdy_slash',
 };
 
 export function defaultDateFormat(locale: string): string {
-  return DATE_FORMAT_BY_LOCALE[locale] ?? DEFAULT_DATE_FORMAT;
+  return DATE_FORMAT_BY_LOCALE[locale] ?? dateFormatsFor(locale)[0]?.key ?? DEFAULT_DATE_FORMAT;
+}
+
+// A UI language's own way of writing a date as tokens, read off Intl for a day and month
+// of one digit (so the padding shows); null where Intl writes a part no token has.
+function intlTokens(tag: string, opts: Intl.DateTimeFormatOptions): Token[] | null {
+  const out: Token[] = [];
+  for (const p of new Intl.DateTimeFormat(tag, opts).formatToParts(new Date(2026, 0, 5))) {
+    if (p.type === 'literal') {
+      // Bidi marks around the numbers are Intl's rendering, not the picture's.
+      const lit = p.value.replace(/[\u200E\u200F\u061C]/g, '');
+      if (lit) out.push({ t: 'lit', s: lit });
+    } else if (p.type === 'year') out.push({ t: 'year', long: p.value.length > 2 });
+    else if (p.type === 'day') out.push({ t: 'day', pad: p.value.length > 1 });
+    else if (p.type === 'weekday') out.push({ t: 'weekday', long: true });
+    else if (p.type === 'month') out.push({ t: 'month', style: !/^\d+$/.test(p.value) ? 'longText' : p.value.length > 1 ? 'num2' : 'num' });
+    else return null;
+  }
+  return out;
+}
+
+// The date formats the picker offers in a UI language: its own numeric, long and full
+// form (Intl's, a catalog key where one matches), then the catalog's purely numeric ones.
+// A catalog form with a month or weekday name is one language's order and is not offered
+// elsewhere: "20. نوفمبر 2026" is German order in Arabic words.
+export function dateFormatsFor(locale: string): DtFormat[] {
+  const tag = localeTag(locale);
+  const own = [
+    { day: 'numeric', month: 'numeric', year: 'numeric' },
+    { day: 'numeric', month: 'long', year: 'numeric' },
+    { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' },
+  ].flatMap((o) => {
+    const tokens = intlTokens(tag, o as Intl.DateTimeFormatOptions);
+    if (!tokens) return [];
+    // A catalog format differing only in padding stands for it (dd.MM.yyyy for d.M.yyyy).
+    const loose = (ts: Token[]) => JSON.stringify(ts.map((t) => (t.t === 'day' ? { t: 'day' } : t.t === 'month' && t.style.startsWith('num') ? { t: 'month' } : t)));
+    const near = DATE_FORMATS.find((f) => loose(f.tokens) === loose(tokens));
+    return [near ?? { key: docxPicture({ key: '', kind: 'date', tokens }), kind: 'date' as const, tokens }];
+  });
+  const numeric = DATE_FORMATS.filter((f) => f.tokens.every((t) => t.t !== 'weekday' && (t.t !== 'month' || t.style.startsWith('num')) && (t.t !== 'lit' || /^[\s./-]*$/.test(t.s))));
+  const seen = new Set<string>();
+  return [...own, ...numeric].filter((f) => !seen.has(f.key) && !!seen.add(f.key));
+}
+
+// The time formats the picker offers in a UI language: where its clock leads with the
+// day-period marker (오전 1:40, 下午1:40, as LibreOffice's ko-KR formats do), the 12-hour
+// forms put the marker first, with the language's own gap; the catalog's otherwise.
+export function timeFormatsFor(locale: string): DtFormat[] {
+  const parts = new Intl.DateTimeFormat(localeTag(locale), { hour: 'numeric', minute: '2-digit', hour12: true })
+    .formatToParts(new Date(2026, 0, 5, 1, 40));
+  const at = parts.findIndex((p) => p.type === 'dayPeriod');
+  const hour = parts.findIndex((p) => p.type === 'hour');
+  if (at < 0 || at > hour) return TIME_FORMATS;
+  const gap = parts.slice(at + 1, hour).map((p) => p.value).join('');
+  return TIME_FORMATS.map((f) => {
+    if (f.tokens[f.tokens.length - 1].t !== 'ampm') return f;
+    const tokens: Token[] = [{ t: 'ampm' }, ...(gap ? [{ t: 'lit' as const, s: gap }] : []), ...f.tokens.slice(0, -2)];
+    return { key: docxPicture({ key: '', kind: 'time', tokens }), kind: 'time' as const, tokens };
+  });
 }
 
 // Match a parsed token sequence back to a catalog format key (for import). Returns
@@ -170,10 +228,17 @@ export function renderFormat(fmt: DtFormat, d: Date, locale: string): string {
       case 'hour12': { const h = ((d.getHours() + 11) % 12) + 1; out += tok.pad ? pad2(h) : String(h); break; }
       case 'minute': out += pad2(d.getMinutes()); break;
       case 'second': out += pad2(d.getSeconds()); break;
-      case 'ampm': out += d.getHours() < 12 ? 'AM' : 'PM'; break;
+      case 'ampm': out += dayPeriod(d, locale); break;
     }
   }
   return out;
+}
+
+// The locale's own morning/afternoon marker (오전, ص, a. m.), as both word processors
+// render an AM/PM field; the file keeps the standard token.
+function dayPeriod(d: Date, locale: string): string {
+  const part = new Intl.DateTimeFormat(locale, { hour: 'numeric', hour12: true }).formatToParts(d).find((p) => p.type === 'dayPeriod');
+  return part?.value ?? (d.getHours() < 12 ? 'AM' : 'PM');
 }
 
 // --- ODF values --------------------------------------------------------------
@@ -222,7 +287,8 @@ export function docxPicture(fmt: DtFormat): string {
   let out = '';
   for (const tok of fmt.tokens) {
     switch (tok.t) {
-      case 'lit': out += tok.s; break;
+      // Latin letters in a literal would read as fields, so they are quoted, as Word does.
+      case 'lit': out += /[A-Za-z]/.test(tok.s) ? `'${tok.s}'` : tok.s; break;
       case 'year': out += tok.long ? 'yyyy' : 'yy'; break;
       case 'month':
         out += tok.style === 'num' ? 'M' : tok.style === 'num2' ? 'MM' : tok.style === 'longText' ? 'MMMM' : 'MMM';
@@ -241,7 +307,7 @@ export function docxPicture(fmt: DtFormat): string {
 
 const LOCALE_TAG: Record<string, string> = {
   en: 'en-US', de: 'de-DE', es: 'es-ES', fr: 'fr-FR', it: 'it-IT', pt: 'pt-PT', el: 'el-GR', ru: 'ru-RU', uk: 'uk-UA',
-  'zh-Hans': 'zh-CN', 'zh-Hant': 'zh-TW', ja: 'ja-JP',
+  pl: 'pl-PL', id: 'id-ID', ar: 'ar-EG-u-nu-latn', 'zh-Hans': 'zh-CN', 'zh-Hant': 'zh-TW', ja: 'ja-JP', ko: 'ko-KR',
 };
 
 // Map a UI locale to a BCP-47 tag for Intl.

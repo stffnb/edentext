@@ -1,13 +1,15 @@
 <script lang="ts">
-  import { STROKED, FILLED, pinnedStroke, type IconName } from './icons';
+  import { STROKED, FILLED, MIRRORED, UPRIGHT, pinnedStroke, type IconName } from './icons';
 
   let { name, size = 20 }: { name: IconName; size?: number } = $props();
 
   let stroked = $derived((STROKED as Record<string, readonly string[]>)[name] ?? []);
+  let upright = $derived(UPRIGHT[name] ?? []);
   let filled = $derived((FILLED as Record<string, readonly string[]>)[name] ?? []);
 </script>
 
 <svg
+  class:icon-flip={MIRRORED.has(name)}
   width={size}
   height={size}
   viewBox="0 0 16 16"
@@ -18,6 +20,6 @@
   stroke-linejoin="round"
   aria-hidden="true"
 >
-  {#each stroked as d}<path {d} />{/each}
+  {#each stroked as d, i}<path {d} class:icon-keep={upright.includes(i)} />{/each}
   {#each filled as d}<path {d} fill="currentColor" stroke="none" />{/each}
 </svg>

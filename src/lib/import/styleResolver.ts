@@ -3,12 +3,13 @@ import type { Orientation } from '../storage/pageOrientation';
 import { pageFormatOf, type PageFormat } from '../storage/pageFormat';
 import { ODF_IMPLIED_TAB_CM } from '../storage/tabInterval';
 import { normalizeLeader, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
+import { borderLineOf } from '../editor/extensions/tableCellBorders';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { DEFAULT_WATERMARK, normalizePageDecor, type PageDecor, type Watermark } from '../storage/pageDecor';
 import { DEFAULT_LINE_NUMBERING, normalizeLineNumbering, type LineNumbering } from '../storage/lineNumbering';
 import { DEFAULT_LINE_GRID, normalizeLineGrid, type LineGrid } from '../storage/lineGrid';
-import { mainOfPair, tagFromOdf } from '../storage/documentLanguage';
-import { mostlyAsian } from '../utils/script';
+import { mainOfSlots, tagFromOdf } from '../storage/documentLanguage';
+import { ASIAN_SCRIPT_RE, COMPLEX_SCRIPT_RE, dominantScript } from '../utils/script';
 
 // LibreOffice's (and Word's) name for the watermark shape — what tells it apart from an
 // ordinary drawing in the header.
@@ -96,6 +97,11 @@ export function layerTextProps(base: PropMap, over: PropMap): PropMap {
     delete out['style:font-family-asian'];
     delete out['style:font-name-asian'];
   }
+  // A colour and the automatic one are one property: either replaces the other.
+  if ('fo:color' in over || 'style:use-window-font-color' in over) {
+    delete out['fo:color'];
+    delete out['style:use-window-font-color'];
+  }
   return Object.assign(out, over);
 }
 
@@ -167,11 +173,13 @@ function entryFromStyleElement(el: Element): StyleEntry {
 // style:leader-style, for a file that names the line kind but no leader text.
 const ODF_LEADER: Record<string, string> = { dotted: '.', dash: '-', solid: '_' };
 
-// A style's or a run's western and asian language, each slot on its own; 'none' is none.
-export function langTagsOfProps(props: PropMap): { west: string | null; asian: string | null } {
+// A style's or a run's western, asian and complex language, each slot on its own; 'none' is none.
+export function langTagsOfProps(props: PropMap): { west: string | null; asian: string | null; complex: string | null } {
   const tag = (l: string | undefined, c: string | undefined) => (l && l !== 'none' ? tagFromOdf(l, c) : null);
-  return { west: tag(props['fo:language'], props['fo:country']), asian: tag(props['style:language-asian'], props['style:country-asian']) };
+  return { west: tag(props['fo:language'], props['fo:country']), asian: tag(props['style:language-asian'], props['style:country-asian']), complex: tag(props['style:language-complex'], props['style:country-complex']) };
 }
+
+type DocLangs = { main: string | null; other: string | null; west: string | null; asian: string | null; complex: string | null };
 
 export class StyleResolver {
   // (family + '\0' + name) → entry; later registrations win (content.xml
@@ -382,6 +390,25 @@ export class StyleResolver {
     return styleName ? this.merged('paragraph', styleName).text : (this.defaults.get('paragraph')?.text ?? {});
   }
 
+  // What start and end in fo:text-align resolve against, set by the importer: the page's
+  // direction, and whether the file's producer writes the two for the physical edges.
+  pageRtl = false;
+  physicalEdges = false;
+
+  // Whether a paragraph with these props runs right to left; "page" and unset inherit.
+  paraRtl(para: PropMap): boolean {
+    const wm = para['style:writing-mode'];
+    return wm === 'rl-tb' || (wm !== 'lr-tb' && this.pageRtl);
+  }
+
+  // fo:text-align as the physical edge the editor stores; null where the chain has none.
+  textAlign(para: PropMap): string | null {
+    const ta = para['fo:text-align'];
+    if (ta === 'center' || ta === 'justify' || ta === 'left' || ta === 'right') return ta;
+    if (ta !== 'start' && ta !== 'end') return null;
+    return (ta === 'start') !== (!this.physicalEdges && this.paraRtl(para)) ? 'left' : 'right';
+  }
+
   // Effective paragraph-layout props (alignment, margins, line-height).
   paraProps(styleName: string | null): PropMap {
     return styleName ? this.merged('paragraph', styleName).para : (this.defaults.get('paragraph')?.para ?? {});
@@ -425,18 +452,18 @@ export class StyleResolver {
     return styleName ? this.merged('graphic', styleName).para : {};
   }
 
-  // The document's two default languages, read from the base Standard paragraph style
+  // The document's three default languages, read from the base Standard paragraph style
   // (falls back to the paragraph default-style), and which of them is its main one
-  // (mainOfPair). Tags, null where unset.
-  documentLanguage(): { main: string | null; other: string | null; west: string | null; asian: string | null } {
+  // (mainOfSlots). Tags, null where unset.
+  documentLanguage(): DocLangs {
     if (!this.docLangs) {
-      const { west, asian } = langTagsOfProps(this.merged('paragraph', 'Standard').text);
-      const body = this.contentDoc.getElementsByTagNameNS(NS.office, 'text')[0];
-      this.docLangs = { ...mainOfPair(west, asian, mostlyAsian(body?.textContent ?? '')), west, asian };
+      const langs = langTagsOfProps(this.merged('paragraph', 'Standard').text);
+      const text = this.contentDoc.getElementsByTagNameNS(NS.office, 'text')[0]?.textContent ?? '';
+      this.docLangs = { ...mainOfSlots(langs, dominantScript(text), COMPLEX_SCRIPT_RE.test(text) && !ASIAN_SCRIPT_RE.test(text)), ...langs };
     }
     return this.docLangs;
   }
-  private docLangs: { main: string | null; other: string | null; west: string | null; asian: string | null } | null = null;
+  private docLangs: DocLangs | null = null;
 
   // Automatic hyphenation, from the same style — ODF counts it a text property, and
   // LibreOffice keeps it there rather than document-wide, so that style's value is
@@ -517,15 +544,20 @@ export class StyleResolver {
     return !!styleName && this.merged(family, styleName).misc['loext:text-changes-only'] === 'false';
   }
 
-  rowMinHeightCm(styleName: string | null): number | null {
+  // A row's height: style:min-row-height is a minimum, style:row-height an exact height.
+  rowHeightCm(styleName: string | null): { cm: number; exact: boolean } | null {
     if (!styleName) return null;
-    return lengthToCm(this.merged('table-row', styleName).misc['style:min-row-height']);
+    const misc = this.merged('table-row', styleName).misc;
+    const min = lengthToCm(misc['style:min-row-height']);
+    if (min != null) return { cm: min, exact: false };
+    const exact = lengthToCm(misc['style:row-height']);
+    return exact != null ? { cm: exact, exact: true } : null;
   }
 
-  // A cell style's fo:background-color (cell shading). null when none/transparent.
-  cellBackgroundColor(styleName: string | null): string | null {
+  // A cell, row or table style's fo:background-color. null when none/transparent.
+  cellBackgroundColor(styleName: string | null, family: 'table-cell' | 'table-row' | 'table' = 'table-cell'): string | null {
     if (!styleName) return null;
-    const c = this.merged('table-cell', styleName).misc['fo:background-color'];
+    const c = this.merged(family, styleName).misc['fo:background-color'];
     return c && c !== 'transparent' && c !== 'none' ? c : null;
   }
 
@@ -541,6 +573,14 @@ export class StyleResolver {
     if (!styleName) return null;
     const v = this.merged('table-cell', styleName).misc['style:vertical-align'];
     return v === 'middle' ? 'middle' : v === 'bottom' ? 'bottom' : null;
+  }
+
+  // A cell's turned text: ODF's tb-rl, or LibreOffice's own loext bt-lr.
+  cellTextFlow(styleName: string | null): 'btLr' | 'tbRl' | null {
+    if (!styleName) return null;
+    const misc = this.merged('table-cell', styleName).misc;
+    const v = misc['style:writing-mode'] ?? misc['loext:writing-mode'];
+    return v === 'bt-lr' ? 'btLr' : v === 'tb-rl' ? 'tbRl' : null;
   }
 
   // A cell style's raw fo:border-* values (per-side overriding the fo:border
@@ -743,6 +783,27 @@ export class StyleResolver {
     return null;
   }
 
+  // A page layout's header-/footer-style properties: the zone's band and area.
+  private areaProps(layout: Element | null, local: 'header-style' | 'footer-style'): Element | null {
+    for (const child of Array.from(layout?.children ?? [])) {
+      if (child.namespaceURI === NS.style && child.localName === local) {
+        return child.getElementsByTagNameNS(NS.style, 'header-footer-properties')[0] ?? null;
+      }
+    }
+    return null;
+  }
+
+  // The header and footer area properties of a master page's layout, where a border or
+  // padding frames them (the import's HfFrame); null where none does.
+  hfFrameProps(pageName: string | null): { header: Element | null; footer: Element | null } {
+    const layout = this.pageLayoutEl(pageName);
+    const framed = (local: 'header-style' | 'footer-style') => {
+      const props = this.areaProps(layout, local);
+      return props && isFramed(props) ? props : null;
+    };
+    return { header: framed('header-style'), footer: framed('footer-style') };
+  }
+
   private pageLayoutEl(pageName: string | null = null): Element | null {
     const doc = this.stylesDoc;
     const layoutName = this.masterPageEl(pageName)?.getAttributeNS(NS.style, 'page-layout-name');
@@ -767,6 +828,8 @@ export class StyleResolver {
     footerExtraCm: number;
     headerBandCm: number;
     footerBandCm: number;
+    headerFirstBandCm: number;
+    footerFirstBandCm: number;
     firstPageOnly: boolean;
     restPage: string | null;
     mirrorPair: boolean;
@@ -817,17 +880,11 @@ export class StyleResolver {
     const handover = pair || (successor && sameAsRest('header') && sameAsRest('footer')) ? null : successor;
 
     const zone = (local: string) => zoneIn(rest, local);
+    const restLayout = rest && rest !== mp ? this.pageLayoutEl(rest.getAttributeNS(NS.style, 'name')) : layout;
     const firstZone = (local: string): Element | null =>
       zoneIn(mp, `${local}-first`) ?? (handover ? zoneIn(mp, local) : null);
-    const bandProps = (local: 'header-style' | 'footer-style'): Element | null => {
-      if (!layout) return null;
-      for (const child of Array.from(layout.children)) {
-        if (child.namespaceURI === NS.style && child.localName === local) {
-          return child.getElementsByTagNameNS(NS.style, 'header-footer-properties')[0] ?? null;
-        }
-      }
-      return null;
-    };
+    const bandProps = (local: 'header-style' | 'footer-style', of: Element | null = layout): Element | null =>
+      this.areaProps(of, local);
     // The band LibreOffice lays out is max(declared height, zone content + its gap), and
     // the zone's own fo:padding counts on both sides of that content — but a *dynamic*
     // gap is absorbed instead of added, so there the band is max(height, content).
@@ -846,9 +903,11 @@ export class StyleResolver {
         ?? 0;
       return Math.max(height, gapCm(props, spacingAttr));
     };
-    const bandCm = (local: 'header-style' | 'footer-style', spacingAttr: 'margin-bottom' | 'margin-top'): number => {
-      const props = bandProps(local);
-      if (!props) return 0;
+    // A framed area keeps its padding and gap itself (`hfFrameProps`), so nothing rides
+    // the zone's spacing. The zones a page shows measure against that page's layout.
+    const bandCm = (local: 'header-style' | 'footer-style', spacingAttr: 'margin-bottom' | 'margin-top', of: Element | null = layout): number => {
+      const props = bandProps(local, of);
+      if (!props || isFramed(props)) return 0;
       const pad = lengthToCm(props.getAttributeNS(NS.fo, 'padding'));
       const padTop = lengthToCm(props.getAttributeNS(NS.fo, 'padding-top')) ?? pad ?? 0;
       const padBottom = lengthToCm(props.getAttributeNS(NS.fo, 'padding-bottom')) ?? pad ?? 0;
@@ -866,8 +925,10 @@ export class StyleResolver {
       footerLeft: zoneIn(rest, 'footer-left') ?? zoneIn(leftPage, 'footer'),
       headerExtraCm: extraCm('header-style', 'margin-bottom'),
       footerExtraCm: extraCm('footer-style', 'margin-top'),
-      headerBandCm: bandCm('header-style', 'margin-bottom'),
-      footerBandCm: bandCm('footer-style', 'margin-top'),
+      headerBandCm: bandCm('header-style', 'margin-bottom', restLayout),
+      footerBandCm: bandCm('footer-style', 'margin-top', restLayout),
+      headerFirstBandCm: bandCm('header-style', 'margin-bottom'),
+      footerFirstBandCm: bandCm('footer-style', 'margin-top'),
       // Handing over to a successor is itself the "different first page" flag: a title
       // master with no zones of its own leaves page one deliberately blank.
       firstPageOnly: !!handover,
@@ -969,10 +1030,11 @@ export class StyleResolver {
     // '<width> <style> <color>' — the same shorthand a paragraph border uses.
     const parts = border && border !== 'none' ? border.trim().split(/\s+/) : null;
     const widthPt = parts ? lengthToPt(parts[0]) : null;
+    const line = borderLineOf(parts?.[1]);
     return normalizePageDecor({
       background: bg && bg !== 'transparent' ? bg : null,
       border: parts && widthPt
-        ? { widthPt: Math.round(widthPt * 100) / 100, color: parts[2] ?? '#000000',
+        ? { widthPt: Math.round(widthPt * 100) / 100, color: parts[2] ?? '#000000', line,
             paddingCm: lengthToCm(props?.getAttributeNS(NS.fo, 'padding')) ?? 0 }
         : null,
       watermark: this.watermark(pageName),
@@ -1037,4 +1099,15 @@ export class StyleResolver {
     const widthPt = lengthToPt(border.trim().split(/\s+/)[0]) ?? 0;
     return (lengthToCm(props.getAttributeNS(NS.fo, 'padding')) ?? 0) + (widthPt * 2.54) / 72;
   }
+}
+
+// Whether a zone's area draws a border or insets its content by a padding.
+function isFramed(props: Element): boolean {
+  const attr = (name: string) => props.getAttributeNS(NS.fo, name);
+  const sides = ['top', 'right', 'bottom', 'left'];
+  const border = (v: string | null) => !!v && !/^(none|hidden)$|\b(none|hidden)\b|^0\w*\s/.test(v.trim());
+  const pad = (v: string | null) => !!v && parseFloat(v) > 0;
+  return border(attr('border')) || sides.some((s) => border(attr(`border-${s}`)))
+    || pad(attr('padding')) || sides.some((s) => pad(attr(`padding-${s}`)))
+    || /^#[0-9a-f]{6}$/i.test(attr('background-color') ?? '');
 }

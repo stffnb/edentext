@@ -3,6 +3,14 @@ const NAMED_COLOR = /^[a-zA-Z]+$/;
 const HEX_COLOR = /^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 const RGB_COLOR = /^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*(?:,\s*(\d+(?:\.\d+)?)\s*)?\)$/i;
 
+// A font colour as CSS: `auto` (Word's w:color auto, ODF's use-window-font-color) is the
+// page's text colour, which it stays even under a coloured style.
+export const AUTO_COLOR = 'auto';
+export function cssColor(input: unknown): string | undefined {
+  const c = normalizeColor(input);
+  return c === AUTO_COLOR ? 'var(--color-page-text)' : c;
+}
+
 export function normalizeColor(input: unknown): string | undefined {
   if (typeof input !== 'string') return undefined;
   const s = input.trim();

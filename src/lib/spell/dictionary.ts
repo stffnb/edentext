@@ -1,6 +1,6 @@
 import type { Hunspell, HunspellFactory } from 'hunspell-asm';
 import { NO_LANGUAGE, hasDictionary, findLanguage, type DocumentLanguage } from '../storage/documentLanguage';
-import { reportLoadFailure } from '../utils/loadFailure';
+import { reportLoadFailure, fetchAsset, NotServed } from '../utils/loadFailure';
 import { t } from '../i18n/i18n.svelte';
 
 // Thin engine-agnostic view over a loaded dictionary, so the controller and
@@ -25,9 +25,7 @@ function loadFactory(): Promise<HunspellFactory> {
 }
 
 async function fetchBytes(url: string): Promise<Uint8Array> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
-  return new Uint8Array(await res.arrayBuffer());
+  return new Uint8Array(await (await fetchAsset(url)).arrayBuffer());
 }
 
 async function build(code: string): Promise<Checker> {
@@ -69,6 +67,10 @@ export function loadChecker(code: DocumentLanguage): Promise<Checker | null> {
   let pending = cache.get(code);
   if (!pending) {
     pending = build(code).catch((err) => {
+      if (err instanceof NotServed) {
+        console.info(`[spell] no dictionary "${code}" on this instance`);
+        return null;
+      }
       cache.delete(code); // allow a retry after a transient failure
       console.error(`[spell] failed to load dictionary "${code}":`, err);
       // Nobody asked for this load, and a document can hold several languages: one

@@ -124,7 +124,7 @@
 <dialog
   class="formula-dialog"
   bind:this={dialogEl}
-  onclose={() => (open = false)}
+  onclose={() => !dialogEl?.open && (open = false)}
   onclick={(e) => { if (e.target === dialogEl) open = false; }}
   aria-label={t().formula.title}
 >
@@ -138,7 +138,7 @@
       </button>
     </header>
 
-    <div class="formula-preview">{@html preview}</div>
+    <div class="formula-preview" dir="ltr">{@html preview}</div>
 
     <div class="palette">
       {#each GROUPS as group (group.key)}
@@ -146,7 +146,7 @@
           <span class="palette-label">{t().formula.groups[group.key]}</span>
           <div class="palette-items">
             {#each group.items as item (item.snip)}
-              <button type="button" title={item.snip.trim()} onclick={() => insert(item.snip)}>{item.label}</button>
+              <button type="button" dir="ltr" title={item.snip.trim()} onclick={() => insert(item.snip)}>{item.label}</button>
             {/each}
           </div>
         </div>
@@ -158,6 +158,7 @@
       <textarea
         bind:this={input}
         bind:value={latex}
+        dir="ltr"
         rows="3"
         spellcheck="false"
         autocomplete="off"

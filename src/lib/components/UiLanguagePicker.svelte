@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { popover } from './ribbon/menu.svelte';
   import { LOCALES, LOCALE_LABELS, type Locale } from '../i18n/config';
   import { t, locale, setLocale } from '../i18n/i18n.svelte';
 
@@ -10,16 +11,9 @@
     setLocale(l);
   }
 
-  function clickOutside(node: HTMLElement) {
-    function handler(e: MouseEvent) {
-      if (!node.contains(e.target as Node)) open = false;
-    }
-    window.addEventListener('mousedown', handler);
-    return { destroy() { window.removeEventListener('mousedown', handler); } };
-  }
 </script>
 
-<div class="lang-wrap" use:clickOutside>
+<div class="lang-wrap" use:popover={() => (open = false)}>
   <button
     class="lang-btn"
     onclick={() => (open = !open)}
@@ -77,7 +71,7 @@
   .lang-dropdown {
     position: absolute;
     top: calc(100% + 3px);
-    right: 0;
+    inset-inline-end: 0;
     min-width: 130px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -111,7 +105,7 @@
     color: var(--color-text);
     font-size: 0.85rem;
     font-family: var(--font-sans);
-    text-align: left;
+    text-align: start;
     cursor: pointer;
     white-space: nowrap;
     transition: background 0.1s;

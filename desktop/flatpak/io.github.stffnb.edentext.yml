@@ -14,6 +14,8 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
+  # Dictation's microphone.
+  - --socket=pulseaudio
 modules:
   - name: edentext
     buildsystem: simple
@@ -28,8 +30,8 @@ modules:
     sources:
       - type: archive
         only-arches: [x86_64]
-        url: https://github.com/stffnb/edentext/releases/download/v0.11.0/edentext-0.11.0.tar.gz
-        sha256: 979797d101c28fffe5ee7a9e3d5ca646ff50ca72f8ecdf36514ec078ee96a567
+        url: https://github.com/stffnb/edentext/releases/download/v0.14.0/edentext-0.14.0.tar.gz
+        sha256: 8aa2a1bc173a119812465a7ae640760cffeb695c68805504e8c92ade0ff5da49
         dest: edentext
         x-checker-data:
           type: json
@@ -38,8 +40,8 @@ modules:
           url-query: .assets[] | select(.name == "edentext-" + $version + ".tar.gz") | .browser_download_url
       - type: archive
         only-arches: [aarch64]
-        url: https://github.com/stffnb/edentext/releases/download/v0.11.0/edentext-0.11.0-arm64.tar.gz
-        sha256: adcb4ec81a885a951ef476cdaa20d25cdd6d481535a51b978b8a8122108943f1
+        url: https://github.com/stffnb/edentext/releases/download/v0.14.0/edentext-0.14.0-arm64.tar.gz
+        sha256: 61374c391bddaeb3ca5f86067be2adff1c95d404c5da31da4269ca591660b309
         dest: edentext
         x-checker-data:
           type: json

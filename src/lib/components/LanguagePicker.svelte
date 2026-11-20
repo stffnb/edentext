@@ -3,9 +3,10 @@
   import { LANGUAGES, NO_LANGUAGE, tagForLanguage, codeForTag, documentLangs, findLanguage, type DocumentLanguage, type LanguageDef } from '../storage/documentLanguage';
   import { autoLanguage, detectLanguage, setAutoLanguage } from '../spell/detect.svelte';
   import { uniformLanguage } from '../utils/selectionFormat';
-  import { t } from '../i18n/i18n.svelte';
+  import { t, uiRtl } from '../i18n/i18n.svelte';
   import type { MenuEntry } from '../editor/contextMenuItems';
   import ContextMenu from './ContextMenu.svelte';
+  import { focusInPlace } from '../editor/extensions/overlay';
 
   let {
     value,
@@ -48,7 +49,9 @@
       // The document's language is the one everything without an opinion follows, so the
       // overrides go with it — LibreOffice's "For all text" clears them too. The caret stays
       // where it was, so the view does too: a caret left above would pull it back up.
-      if (canSet) editor!.chain().focus(null, { scrollIntoView: false }).selectAll().setBlockLanguage(null).setRunLanguage(null).setTextSelection(editor!.state.selection.from).run();
+      if (!canSet) return;
+      editor!.chain().selectAll().setBlockLanguage(null).setRunLanguage(null).setTextSelection(editor!.state.selection.from).run();
+      focusInPlace(editor!.view);
       return;
     }
     const tag = tagForLanguage(code) ?? code;
@@ -66,7 +69,7 @@
     const { $from: from, $to: to } = editor.state.selection;
     if (from.parent !== to.parent || from.parent.attrs.lang || atCursor !== tagForLanguage(value)) return undefined;
     const code = detectLanguage(from.parent);
-    return code ? findLanguage(code) : undefined;
+    return code && code !== value ? findLanguage(code) : undefined;
   });
 
   // The box's text: the detected language, several languages, one we have no dictionary for (still named, so it
@@ -117,7 +120,7 @@
     const box = button.getBoundingClientRect();
     // In the lower half the menu opens upward: placed at the top edge, it flips above it.
     const up = box.top > window.innerHeight / 2;
-    menu = { items: entries(), x: box.left, y: up ? box.top - 2 : box.bottom + 2 };
+    menu = { items: entries(), x: uiRtl() ? box.right : box.left, y: up ? box.top - 2 : box.bottom + 2 };
   }
 </script>
 

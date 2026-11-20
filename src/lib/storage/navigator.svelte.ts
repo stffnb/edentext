@@ -8,7 +8,7 @@ export type NavigatorSettings = PaneLayout & { open: boolean; wrap: boolean; tab
 const KEY = 'edentext-navigator';
 export const NAVIGATOR_WIDTH = 240;
 export const NAVIGATOR_TABS: NavigatorTab[] = ['headings', 'pages', 'results', 'bookmarks', 'objects'];
-const DEFAULTS: NavigatorSettings = { open: false, side: 'right', size: 'medium', width: NAVIGATOR_WIDTH, wrap: false, tab: 'headings' };
+const DEFAULTS: NavigatorSettings = { open: false, size: 'medium', width: NAVIGATOR_WIDTH, wrap: false, tab: 'headings' };
 
 function load(): NavigatorSettings {
   try {

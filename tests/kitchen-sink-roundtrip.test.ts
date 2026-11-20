@@ -5,7 +5,7 @@ import { buildOdt } from '../src/lib/export/odt';
 import { importOdt } from '../src/lib/import/odt';
 import { buildDocx } from '../src/lib/export/docx';
 import { importDocx } from '../src/lib/import/docx';
-import { normalize, firstDiff, stripFontHoist, stripBoxGrowth } from './normalize';
+import { normalize, firstDiff, stripFontHoist, stripBoxGrowth, odtEffectFallback } from './normalize';
 import { kitchenSinkDoc, kitchenSinkSheet, kitchenSinkOptions } from './kitchenSink';
 
 type N = any;
@@ -50,7 +50,7 @@ describe.each([['ODT', buildOdt, importOdt], ['DOCX', buildDocx, importDocx]] as
       const doc = kitchenSinkDoc() as N;
       const res = read(await (build as N)(doc, ...args)) as N;
       expect(res.warnings ?? []).toEqual([]);
-      expect(firstDiff(clean(doc), clean(res.content))).toBeNull();
+      expect(firstDiff(_name === 'ODT' ? odtEffectFallback(clean(doc)) : clean(doc), clean(res.content))).toBeNull();
     });
 
     // The zones are documents of their own, and hold what only they can: the running

@@ -7,6 +7,7 @@ import { FORCE_PAGE_RECALC, LAYOUT_ANSWER, decoMapping, isSplitPane, pageBreakKe
 import { PX_PER_CM } from '../../storage/pageMargins';
 import { blockFontSize } from '../../utils/fontSize';
 import { firstLineCm, leftCm, rightCm } from './indent';
+import { coordsAt } from './overlay';
 
 // Per-paragraph tab stops. CSS only has the fixed `tab-size` grid, so a tab that
 // resolves to a stop is measured and given the exact advance as an inline margin.
@@ -26,7 +27,8 @@ export function normalizeLeader(ch: unknown): string | null {
 }
 
 // Canonical attr form: one '<cm><align code><leader?>' per stop, ';'-separated
-// ('6c;12r.;16d'). Positions are cm from the left text margin — Word's origin and ODF's.
+// ('6c;12r.;16d'). Positions are cm from the text margin the block starts at (the right
+// one of a right-to-left block), the origin of both formats; 'l' and 'r' are its start and end.
 export function parseTabStops(value: unknown): TabStop[] {
   if (typeof value !== 'string' || !value) return [];
   const out: TabStop[] = [];
@@ -89,6 +91,10 @@ declare module '@tiptap/core' {
 
 export const tabStopsKey = new PluginKey<DecorationSet>('tabStops');
 
+// Opens the Tabs dialog: dispatched on window by the ruler and the toolbar buttons alike,
+// since the dialog is mounted outside both chromes (EventDialogs.svelte).
+export const OPEN_TABS_DIALOG_EVENT = 'odf-open-tabs-dialog';
+
 // A stop past the end of the line is drawn at the end of the line, as LibreOffice does:
 // the Math Guide's footer style puts its right stop at 18cm in a 17cm column, and honoured
 // literally that hangs the page number outside the page — or wraps the footer.
@@ -121,7 +127,7 @@ function tabPositions(node: PmNode, blockPos: number): number[] {
   return out;
 }
 
-type TabWidth = { pos: number; width: number; leader: string | null };
+type TabWidth = { pos: number; width: number; leader: string | null; rtl?: boolean };
 // Doc positions where a run of tabs has to start a new line.
 export type TabLayout = { widths: TabWidth[]; breaks: number[] };
 
@@ -136,6 +142,7 @@ export function sameLayout({ widths, breaks }: TabLayout, live: Decoration[]): b
   const at = [...breaks].sort((a, b) => a - b);
   return tabs.length === sorted.length && wraps.length === at.length
     && sorted.every((w, i) => tabs[i].from === w.pos && (tabs[i].spec.leader ?? null) === (w.leader ?? null)
+      && !tabs[i].spec.rtl === !w.rtl
       && Math.abs(tabs[i].spec.width - w.width) < SAME_WIDTH_PX)
     && at.every((p, i) => wraps[i] === p);
 }
@@ -148,31 +155,70 @@ export function nextStopCm(x: number, stops: number[], interval: number): number
   return Math.floor(x / interval + 1e-9) * interval + interval;
 }
 
+// The text margin a block's stops are measured from: the left one, or the right one of a
+// right-to-left block, where the pen runs leftwards.
+type Origin = { x: number; rtl: boolean };
+
+const cmFrom = (origin: Origin, clientX: number, scale: number): number =>
+  (origin.rtl ? origin.x - clientX : clientX - origin.x) / scale / PX_PER_CM;
+
+// The side a tab carries its advance on: before the tab, so the caret after it sits past the gap.
+const advanceSide = (rtl: boolean) => (rtl ? 'marginRight' : 'marginLeft');
+
+// `tab-rtl` puts a right-to-left mark behind the tab (editor.css), `tab-leader` draws the fill.
+const tabClass = (rtl: boolean, leader: boolean) =>
+  [leader && 'tab-leader', rtl && 'tab-rtl'].filter(Boolean).join(' ');
+
+const isRtl = (el: Element): boolean => getComputedStyle(el).direction === 'rtl';
+
 // The pen a tab starts from (cm from the text margin): the left edge of its own margin
 // box. coordsAtPos falls inside the tab's span wherever nothing precedes it on the line,
 // so the advance a previous pass gave it is in that coordinate and each pass adds it again.
-function tabPenCm(view: EditorView, tabPos: number, originX: number, scale: number): number {
+function tabPenCm(view: EditorView, tabPos: number, origin: Origin, scale: number): number {
   const dom = view.nodeDOM(tabPos);
   const el = dom instanceof Text ? dom.parentElement : null;
+  if (origin.rtl) return cmFrom(origin, rtlPenX(view, tabPos, el, scale), scale);
   const carried = el ? parseFloat(el.style.marginLeft || '0') || 0 : 0;
   const left = carried
     ? (el as HTMLElement).getBoundingClientRect().left - carried * scale
-    : view.coordsAtPos(tabPos, -1).left;
-  return (left - originX) / scale / PX_PER_CM;
+    : coordsAt(view, tabPos, -1).left;
+  return cmFrom(origin, left, scale);
+}
+
+// The same pen in a right-to-left block: the right edge of the tab's margin box, read off
+// the tab itself, since the text before it may be a left-to-right run ending elsewhere.
+function rtlPenX(view: EditorView, tabPos: number, el: HTMLElement | null, scale: number): number {
+  if (el && el.style.tabSize === '0') {
+    return rtlTabBox(el).right + (parseFloat(el.style.marginRight || '0') || 0) * scale;
+  }
+  const { node, offset } = view.domAtPos(tabPos, 1);
+  if (!(node instanceof Text)) return coordsAt(view, tabPos, -1).right;
+  const range = document.createRange();
+  range.setStart(node, offset);
+  range.setEnd(node, Math.min(offset + 1, node.length));
+  return range.getBoundingClientRect().right;
+}
+
+// The box of the tab glyph in its own span. Not the span's, which comes in several boxes
+// where the bidi order splits it, the margin then lying between them.
+function rtlTabBox(el: HTMLElement): DOMRect {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  return range.getClientRects().length ? range.getBoundingClientRect() : el.getBoundingClientRect();
 }
 
 // The advance the tab glyph itself still takes: WebKit gives a tab with `tab-size:0` the
 // width of a space rather than none, so without it the segment behind the last stop runs
 // past the margin and wraps.
-function tabGlyphPx(el: Element | null | undefined, scale: number): number {
+function tabGlyphPx(el: Element | null | undefined, scale: number, rtl = false): number {
   return el instanceof HTMLElement && el.style.tabSize === '0'
-    ? el.getBoundingClientRect().width / scale : 0;
+    ? (rtl ? rtlTabBox(el) : el.getBoundingClientRect()).width / scale : 0;
 }
 
 // A run of tabs wider than the line continues on the next one, as LibreOffice lays it out
 // (Chromium hangs the leftover tabs instead). Walked from the pen BEFORE the run — the one
 // thing a break of ours can't move — so the answer holds with the break already in place.
-function runBreaks(view: EditorView, blockEl: HTMLElement, tabs: number[], stops: TabStop[], scale: number, originX: number): number[] {
+function runBreaks(view: EditorView, blockEl: HTMLElement, tabs: number[], stops: TabStop[], scale: number, origin: Origin): number[] {
   // Only a run of two or more can outgrow a line, and reading the block's geometry
   // forces a reflow — so the ordinary single tab costs nothing here.
   const runs: [number, number][] = [];
@@ -189,13 +235,14 @@ function runBreaks(view: EditorView, blockEl: HTMLElement, tabs: number[], stops
   const lineCm = (blockEl.clientWidth - parseFloat(cs.paddingLeft || '0') - parseFloat(cs.paddingRight || '0')) / PX_PER_CM;
   if (!(interval > 0) || !(lineCm > 0)) return [];
   // Stops are measured from the text margin, the grid from the line start.
-  const offsetCm = (blockEl.getBoundingClientRect().left - originX) / scale / PX_PER_CM
-    + parseFloat(cs.paddingLeft || '0') / PX_PER_CM;
+  const box = blockEl.getBoundingClientRect();
+  const offsetCm = cmFrom(origin, origin.rtl ? box.right : box.left, scale)
+    + parseFloat((origin.rtl ? cs.paddingRight : cs.paddingLeft) || '0') / PX_PER_CM;
   const stopCms = stops.map((s) => s.pos - offsetCm);
   const out: number[] = [];
 
   for (const [i, end] of runs) {
-    let x = tabPenCm(view, tabs[i], originX, scale) - offsetCm;
+    let x = tabPenCm(view, tabs[i], origin, scale) - offsetCm;
     for (let j = i; j < end; j++) {
       let next = nextStopCm(x, stopCms, interval);
       // Never before the run's own first tab: that pen is what the walk starts from, so
@@ -218,8 +265,12 @@ function measure(view: EditorView): TabLayout {
   // header/footer zone is short enough for that rounding to be half a percent.
   const scale = dom.offsetWidth ? tipRect.width / dom.offsetWidth : 1;
   if (!scale) return { widths: [], breaks: [] };
-  // x = 0 is the left text margin (.tiptap's padding edge), the origin of a stop.
-  const originX = tipRect.left + parseFloat(getComputedStyle(dom).paddingLeft || '0') * scale;
+  // x = 0 is the text margin (.tiptap's padding edge) on the side a block starts at.
+  const tipStyle = getComputedStyle(dom);
+  const ltr: Origin = { x: tipRect.left + parseFloat(tipStyle.paddingLeft || '0') * scale, rtl: false };
+  const rtl: Origin = { x: tipRect.right - parseFloat(tipStyle.paddingRight || '0') * scale, rtl: true };
+  // Only a document that names a direction pays for reading each block's.
+  const mixed = dom.closest('[dir]')?.getAttribute('dir') === 'rtl' || !!dom.querySelector('[dir]');
   const out: TabWidth[] = [];
   const breaks: number[] = [];
 
@@ -228,10 +279,12 @@ function measure(view: EditorView): TabLayout {
     const tabs = tabPositions(node, pos);
     if (!tabs.length) return false;
     const blockEl = view.nodeDOM(pos);
-    const stops = blockEl instanceof HTMLElement
-      ? clampStops(stopsOf(node), (blockEl.getBoundingClientRect().right - originX) / scale / PX_PER_CM - 0.03)
+    const origin = mixed && blockEl instanceof HTMLElement && isRtl(blockEl) ? rtl : ltr;
+    const blockRect = blockEl instanceof HTMLElement ? blockEl.getBoundingClientRect() : null;
+    const stops = blockRect
+      ? clampStops(stopsOf(node), cmFrom(origin, origin.rtl ? blockRect.left : blockRect.right, scale) - 0.03)
       : stopsOf(node);
-    if (blockEl instanceof HTMLElement) breaks.push(...runBreaks(view, blockEl, tabs, stops, scale, originX));
+    if (blockEl instanceof HTMLElement) breaks.push(...runBreaks(view, blockEl, tabs, stops, scale, origin));
     if (!stops.length) return false;
     const blockEnd = pos + node.nodeSize - 1;
 
@@ -244,8 +297,8 @@ function measure(view: EditorView): TabLayout {
       const tabPos = tabs[t];
       // Side -1 measures at the end of the content BEFORE the tab. A new line — a hard
       // break, or a wrap — starts the pen over at what the DOM shows there.
-      const start = view.coordsAtPos(tabPos, -1);
-      if (pen == null || Math.abs(start.top - lineTop) > 1) pen = tabPenCm(view, tabPos, originX, scale);
+      const start = coordsAt(view, tabPos, -1);
+      if (pen == null || Math.abs(start.top - lineTop) > 1) pen = tabPenCm(view, tabPos, origin, scale);
       lineTop = start.top;
       // Custom stops replace the default grid to their left; past the last one the CSS
       // grid already does the right thing, so that tab stays undecorated — and the pen
@@ -254,7 +307,7 @@ function measure(view: EditorView): TabLayout {
       if (!stop) { pen = null; continue; }
       const tabDom = view.nodeDOM(tabPos);
       let width = (stop.pos - pen) * PX_PER_CM
-        - tabGlyphPx(tabDom instanceof Text ? tabDom.parentElement : null, scale);
+        - tabGlyphPx(tabDom instanceof Text ? tabDom.parentElement : null, scale, origin.rtl);
 
       const segEnd = t + 1 < tabs.length ? tabs[t + 1] : blockEnd;
       const segCm = segEnd > tabPos + 1 ? rangeWidth(view, tabPos + 1, segEnd) / scale / PX_PER_CM : 0;
@@ -263,11 +316,17 @@ function measure(view: EditorView): TabLayout {
           ? decimalPos(node, pos, tabPos + 1, segEnd) ?? segEnd
           : segEnd;
         let back = alignEnd > tabPos + 1 ? rangeWidth(view, tabPos + 1, alignEnd) / scale : 0;
+        // A number reads left to right in either direction, so what lies before its
+        // separator in the text need not lie before it on a right-to-left line.
+        if (origin.rtl && stop.align === 'decimal' && alignEnd < segEnd) back = rtlSeparatorInset(view, tabPos + 1, alignEnd, segEnd) / scale;
         if (stop.align === 'center') back /= 2;
         width -= back;
       }
-      out.push({ pos: tabPos, width: Math.max(0, Math.round(width * 100) / 100), leader: normalizeLeader(stop.leader) });
-      // The segment sits behind a left stop, astride a centred one and ahead of the rest.
+      out.push({
+        pos: tabPos, width: Math.max(0, Math.round(width * 100) / 100), leader: normalizeLeader(stop.leader),
+        ...(origin.rtl ? { rtl: true } : {}),
+      });
+      // The segment sits behind a start stop, astride a centred one and ahead of the rest.
       pen = stop.align === 'left' ? stop.pos + segCm : stop.align === 'center' ? stop.pos + segCm / 2 : stop.pos;
     }
     return false;
@@ -296,6 +355,22 @@ function rangeWidth(view: EditorView, from: number, to: number): number {
   let width = 0;
   for (const row of rows.values()) width += row.right - row.left;
   return width;
+}
+
+// How far the separator at `sep` lies from the start (right) edge of its segment's line.
+function rtlSeparatorInset(view: EditorView, from: number, sep: number, to: number): number {
+  const rectsOf = (a: number, b: number) => {
+    const start = view.domAtPos(a, 1);
+    const end = view.domAtPos(b, -1);
+    const range = document.createRange();
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset);
+    return Array.from(range.getClientRects());
+  };
+  const mark = rectsOf(sep, sep + 1)[0];
+  if (!mark) return 0;
+  const row = rectsOf(from, to).filter((r) => r.width && Math.abs(r.top - mark.top) < 1);
+  return row.length ? Math.max(0, Math.max(...row.map((r) => r.right)) - mark.right) : 0;
 }
 
 // Position of the segment's decimal separator ('.' or ',' — the attr carries no
@@ -343,19 +418,20 @@ function wrapZoneTabs(para: HTMLElement): HTMLElement[] {
 
 type ZoneJob = {
   para: HTMLElement; tabs: HTMLElement[]; wrapping: string; align: string;
-  scale: number; originX: number; stops: TabStop[];
+  scale: number; origin: Origin; stops: TabStop[];
 };
 
 // An inactive header/footer zone is a cloned DOM no ProseMirror plugin reaches,
-// so its tabs are measured straight on the DOM — same rule, left to right, each advance
-// applied before the next is read. Zones go together: a round's reads before its writes.
+// so its tabs are measured straight on the DOM — same rule, from the start edge on, each
+// advance applied before the next is read. Zones go together: a round's reads before its writes.
 export function layOutZoneTabs(zones: HTMLElement[]): void {
   const jobs: ZoneJob[] = [];
   for (const para of zones.flatMap((z) => Array.from(z.querySelectorAll<HTMLElement>('[data-tab-stops]')))) {
     if (!parseTabStops(para.getAttribute('data-tab-stops')).length) continue;
     const tabs = wrapZoneTabs(para);
+    const rtl = isRtl(para);
     for (const t of tabs) {
-      t.className = '';
+      t.className = tabClass(rtl, false);
       t.removeAttribute('data-leader');
       t.style.cssText = 'tab-size:0';
     }
@@ -364,12 +440,12 @@ export function layOutZoneTabs(zones: HTMLElement[]): void {
     // footer stayed two lines over three pixels.
     const wrapping = para.style.whiteSpace;
     para.style.whiteSpace = 'pre';
-    // Laid out from the left, whatever the paragraph's alignment: LibreOffice positions
+    // Laid out from the start edge, whatever the paragraph's alignment: LibreOffice positions
     // the tabbed segments on the stops and only then shifts the whole line by what is
     // left over (probed — a right-aligned head with two stops starts at the left edge).
     const align = para.style.textAlign;
-    para.style.textAlign = 'left';
-    jobs.push({ para, tabs, wrapping, align, scale: 1, originX: 0, stops: [] });
+    para.style.textAlign = rtl ? 'right' : 'left';
+    jobs.push({ para, tabs, wrapping, align, scale: 1, origin: { x: 0, rtl }, stops: [] });
   }
   for (const job of jobs) {
     const { para } = job;
@@ -382,7 +458,7 @@ export function layOutZoneTabs(zones: HTMLElement[]): void {
     // a run ending exactly on the boundary wraps and a pixel short of it shows on nothing.
     const lineCm = (rect.width / (job.scale || 1) - padLeft - parseFloat(cs.paddingRight || '0') - 1) / PX_PER_CM;
     job.stops = clampStops(parseTabStops(para.getAttribute('data-tab-stops')), lineCm);
-    job.originX = rect.left + padLeft * job.scale;
+    job.origin.x = job.origin.rtl ? rect.right - parseFloat(cs.paddingRight || '0') * job.scale : rect.left + padLeft * job.scale;
   }
   for (let i = 0; jobs.some((j) => i < j.tabs.length); i++) {
     const round: ZoneAdvance[] = [];
@@ -391,10 +467,10 @@ export function layOutZoneTabs(zones: HTMLElement[]): void {
       const advance = zoneTabAdvance(job, i);
       if (advance) round.push(advance);
     }
-    for (const { tab, width, leader } of round) {
-      tab.style.marginLeft = `${width}px`;
+    for (const { tab, width, leader, rtl } of round) {
+      tab.style[advanceSide(rtl)] = `${width}px`;
       if (leader) {
-        tab.className = 'tab-leader';
+        tab.className = tabClass(rtl, true);
         tab.dataset.leader = leader;
         tab.style.setProperty('--leader-w', `${width}px`);
       }
@@ -406,17 +482,18 @@ export function layOutZoneTabs(zones: HTMLElement[]): void {
   }
 }
 
-type ZoneAdvance = { tab: HTMLElement; width: number; leader: ReturnType<typeof normalizeLeader> };
+type ZoneAdvance = { tab: HTMLElement; width: number; leader: ReturnType<typeof normalizeLeader>; rtl: boolean };
 
 // One tab's advance to its stop, read off the layout of the moment (the tabs before it
 // already carry theirs); null where no stop is left on the line.
 function zoneTabAdvance(job: ZoneJob, i: number): ZoneAdvance | null {
-  const { para, tabs, stops, scale, originX, wrapping } = job;
+  const { para, tabs, stops, scale, origin, wrapping } = job;
   const tab = tabs[i];
-  const xCm = (tab.getBoundingClientRect().left - originX) / scale / PX_PER_CM;
+  const side = advanceSide(origin.rtl);
+  const xCm = cmFrom(origin, origin.rtl ? rtlTabBox(tab).right : tab.getBoundingClientRect().left, scale);
   const stop = stops.find((s) => s.pos > xCm + 0.01);
   if (!stop) return null;
-  const glyph = tabGlyphPx(tab, scale);
+  const glyph = tabGlyphPx(tab, scale, origin.rtl);
   let width = (stop.pos - xCm) * PX_PER_CM - glyph;
   // A decimal stop takes the whole segment back, i.e. behaves as right — a zone is one
   // paragraph of running text, where a separator to align on is not a case that arises.
@@ -441,15 +518,15 @@ function zoneTabAdvance(job: ZoneJob, i: number): ZoneAdvance | null {
     // that stays on the line — measured with the wrapping the zone really has, and
     // from this tab at zero, so the break falls where the layout will put it.
     if (width < 0) {
-      const own = tab.style.marginLeft;
-      tab.style.marginLeft = '0px';
+      const own = tab.style[side];
+      tab.style[side] = '0px';
       para.style.whiteSpace = wrapping;
       width = (stop.pos - xCm) * PX_PER_CM - glyph - take(segment());
       para.style.whiteSpace = 'pre';
-      tab.style.marginLeft = own;
+      tab.style[side] = own;
     }
   }
-  return { tab, width: Math.max(0, Math.round(width * 100) / 100), leader: normalizeLeader(stop.leader) };
+  return { tab, width: Math.max(0, Math.round(width * 100) / 100), leader: normalizeLeader(stop.leader), rtl: origin.rtl };
 }
 
 export const TabStops = Extension.create({
@@ -545,17 +622,18 @@ export const TabStops = Extension.create({
             // later tab's position but no advance, and a replaced document has mapped it empty.
             if (applied && sameLayout(layout, tabStopsKey.getState(view.state)?.find() ?? [])) return;
             applied = true;
-            const decos: Decoration[] = widths.map((w) =>
-              // margin-LEFT: the gap is the tab's own advance, so a caret placed after
-              // the tab has to sit behind it. As margin-right it stayed at the old x
-              // until the next keystroke moved it into the following text node.
-              Decoration.inline(w.pos, w.pos + 1, w.leader
+            const decos: Decoration[] = widths.map((w) => {
+              // The margin before the tab (left, or right in a right-to-left block): the gap
+              // is the tab's own advance, so a caret placed after the tab has to sit past it.
+              // On the far side it stayed at the old x until the next keystroke moved it.
+              const advance = `tab-size:0;margin-${w.rtl ? 'right' : 'left'}:${w.width}px`;
+              return Decoration.inline(w.pos, w.pos + 1, w.leader
                 // The fill is a ::before clipped to the gap (editor.css), so the leader
                 // stays out of the document's text.
-                ? { style: `tab-size:0;margin-left:${w.width}px;--leader-w:${w.width}px`, class: 'tab-leader', 'data-leader': w.leader }
-                : { style: `tab-size:0;margin-left:${w.width}px` },
-                { width: w.width, leader: w.leader }),
-            );
+                ? { style: `${advance};--leader-w:${w.width}px`, class: tabClass(!!w.rtl, true), 'data-leader': w.leader }
+                : { style: advance, ...(w.rtl ? { class: tabClass(true, false) } : {}) },
+                { width: w.width, leader: w.leader, ...(w.rtl ? { rtl: true } : {}) });
+            });
             // The tabs the line can't hold move to the next one, where the grid starts
             // over — which is what CSS does after a <br> anyway.
             for (const at of breaks) {

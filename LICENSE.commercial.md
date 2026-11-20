@@ -18,7 +18,9 @@ the AGPL as well.
 
 The AGPL may be incompatible with your needs if you want to:
 
-- embed this editor in a **proprietary / closed-source** product or service,
+- build this editor or parts of its code into a **proprietary / closed-source** product
+  or service (a host page that only shows the editor in embed mode needs no commercial
+  license for that; see [`NOTICE.md`](./NOTICE.md)),
 - distribute a modified version **without** releasing your source code,
 - offer it as part of a **hosted/SaaS** product without the AGPL's network-source
   obligations, or

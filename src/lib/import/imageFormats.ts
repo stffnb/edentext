@@ -46,8 +46,9 @@ function sniffImageMime(bytes: Uint8Array): string | null {
   return null;
 }
 
-// A bitmap's own size in cm, what ODF's fo:clip lengths are measured against: its pixels
-// at the resolution it states (PNG pHYs, JPEG JFIF), 96dpi where it states none.
+// A picture's own size in cm, what ODF's fo:clip lengths are measured against: a bitmap's
+// pixels at the resolution it states (PNG pHYs, JPEG JFIF), 96dpi where it states none; a
+// metafile's frame (EMF rclFrame, 0.01mm); an SVG's width and height, CSS px at 96dpi.
 // ponytail: LibreOffice takes the screen's resolution there (128dpi probed on macOS).
 export function imageSizeCm(b: Uint8Array): { w: number; h: number } | null {
   const u16 = (i: number) => (b[i] << 8) | b[i + 1];
@@ -80,8 +81,24 @@ export function imageSizeCm(b: Uint8Array): { w: number; h: number } | null {
     return null;
   }
   if (mime === 'image/gif' && b.length >= 10) return cm(b[6] | (b[7] << 8), b[8] | (b[9] << 8));
+  if (isEmf(b, '') && b.length >= 40) {
+    const d = new DataView(b.buffer, b.byteOffset, 40);
+    const w = d.getInt32(32, true) - d.getInt32(24, true), h = d.getInt32(36, true) - d.getInt32(28, true);
+    return w > 0 && h > 0 ? { w: w / 1000, h: h / 1000 } : null;
+  }
+  if (mime === 'image/svg+xml') {
+    const root = /<svg\b[^>]*>/i.exec(new TextDecoder().decode(b.subarray(0, 4096)))?.[0] ?? '';
+    const len = (name: string) => {
+      const m = new RegExp(`\\s${name}\\s*=\\s*["']\\s*([\\d.]+)\\s*(px|pt|pc|mm|cm|in)?\\s*["']`).exec(root);
+      return m ? +m[1] * SVG_UNIT_CM[m[2] ?? 'px'] : NaN;
+    };
+    const w = len('width'), h = len('height');
+    return w > 0 && h > 0 ? { w, h } : null;
+  }
   return null;
 }
+
+const SVG_UNIT_CM: Record<string, number> = { px: 2.54 / 96, pt: 2.54 / 72, pc: 2.54 / 6, mm: 0.1, cm: 1, in: 2.54 };
 
 // The mime to render `bytes` (from `path`) as, or null when the browser can't display
 // the format. Extension wins when renderable; otherwise the magic number is consulted.

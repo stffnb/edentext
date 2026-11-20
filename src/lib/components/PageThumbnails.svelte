@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { coordsAt } from '../editor/extensions/overlay';
   import type { Editor } from '@tiptap/core';
   import { onDestroy, tick as settle } from 'svelte';
   import { isPaginating } from '../editor/extensions/pageBreaks';
@@ -292,7 +293,7 @@
         page = box && first === at({ left: box.left, top: box.bottom - 1 }) ? first : 0;
         blocks.set(start, page);
       }
-      out.add(page || at(view.coordsAtPos(m.from)));
+      out.add(page || at(coordsAt(view, m.from)));
     }
     return [...out].sort((a, b) => a - b);
   }

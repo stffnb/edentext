@@ -1,7 +1,7 @@
 // UI locale configuration. Plain module (no runes), safe to import anywhere —
 // keeps appLanguage.ts and i18n.svelte.ts free of circular runes imports.
 
-export const LOCALES = ['en', 'de', 'es', 'fr', 'it', 'pt', 'el', 'ru', 'uk', 'ja', 'zh-Hans', 'zh-Hant'] as const;
+export const LOCALES = ['en', 'de', 'es', 'fr', 'it', 'pt', 'el', 'ru', 'uk', 'pl', 'id', 'ar', 'ja', 'ko', 'zh-Hans', 'zh-Hant'] as const;
 export type Locale = (typeof LOCALES)[number];
 
 export const LOCALE_LABELS: Record<Locale, string> = {
@@ -14,10 +14,28 @@ export const LOCALE_LABELS: Record<Locale, string> = {
   el: 'Ελληνικά',
   ru: 'Русский',
   uk: 'Українська',
+  pl: 'Polski',
+  id: 'Bahasa Indonesia',
+  ar: 'العربية',
   ja: '日本語',
+  ko: '한국어',
   'zh-Hans': '简体中文',
   'zh-Hant': '繁體中文',
 };
+
+// Languages written right to left: the interface mirrors for them. The page does not —
+// a document's direction is its own (`pageRtl`, a block's `dir`).
+export const RTL_LOCALES: readonly Locale[] = ['ar'];
+
+export function isRtlLocale(locale: string): boolean {
+  return (RTL_LOCALES as readonly string[]).includes(locale);
+}
+
+/** Names the UI language and its direction on `<html>`. */
+export function reflectLocale(locale: Locale): void {
+  document.documentElement.lang = locale;
+  document.documentElement.dir = isRtlLocale(locale) ? 'rtl' : 'ltr';
+}
 
 export function isLocale(value: string | null): value is Locale {
   return !!value && (LOCALES as readonly string[]).includes(value);

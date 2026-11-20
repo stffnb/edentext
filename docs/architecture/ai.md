@@ -18,6 +18,25 @@ endpoint, apiKey, model, contextTokens, mode, side, commands}`. On is the defaul
 An embedding host's `ai: false` (`docs/architecture/embed.md`) switches it off above the
 user's choice, unstored, and hides Settings ▸ AI and the context menu's submenu.
 
+## Installation presets
+
+A self-hoster presets the provider in `edentext.config.json` next to `index.html`
+(`storage/hostConfig.svelte.ts`): `ai: { enabled, provider, endpoint, model, contextTokens,
+locked }`, every field optional. It is fetched once at start (2 s limit, `no-cache`, the
+service worker passes it through), never stored and checked strictly: unknown keys and
+wrong types are dropped. A 404 presets nothing; the desktop app does not look for it.
+
+- **Order:** an embed option's object, then the file, then the user. `enabled: false`
+  switches the assistant off like `ai: false`.
+- **Unlocked**, the preset holds while the user has no address of their own; a model typed
+  over it still counts. Settings ▸ AI shows "Set up by this installation" with the model,
+  offers it as the provider "This installation" and hides the key row.
+- **`locked: true`** uses only the host's fields; they show disabled. The kill switch,
+  mode, side and commands stay the user's.
+- **No key in the file**, which anyone can read: the host's endpoint is a same-origin proxy
+  (`/ai/v1`, Helm chart and Docker image) that adds it. `aiInUse()` never sends the user's
+  key there, and `ai/client.ts` sends no empty `x-api-key`.
+
 `App.svelte` aborts every request in flight when the switch goes off. The network is gated
 in the types as well: `ai/client.ts` is the only `fetch`, and it needs an `AiConfig`, which
 `aiConfig()` only returns while the switch is on and an endpoint and model are set.

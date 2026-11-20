@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { buildSearchRegex, expandGroups, regexRanges } from '../../src/lib/editor/extensions/searchReplace';
+import { afterEach, describe, it, expect } from 'vitest';
+import { Editor } from '@tiptap/core';
+import Document from '@tiptap/extension-document';
+import Paragraph from '@tiptap/extension-paragraph';
+import Text from '@tiptap/extension-text';
+import Bold from '@tiptap/extension-bold';
+import { buildSearchRegex, expandGroups, regexRanges, searchMatches, SearchReplace } from '../../src/lib/editor/extensions/searchReplace';
 
 function ranges(text: string, term: string, matchCase = false, wholeWord = false, useRegex = false): [number, number][] {
   const re = buildSearchRegex(term, matchCase, wholeWord, useRegex);
@@ -72,5 +77,48 @@ describe('regular expressions', () => {
     expect(expandGroups('$2, $1', ['a@b', 'a', 'b'])).toBe('b, a');
     expect(expandGroups('<$&>', ['a@b', 'a', 'b'])).toBe('<a@b>');
     expect(expandGroups('$3!', ['a@b', 'a', 'b'])).toBe('!');
+  });
+});
+
+const editors: Editor[] = [];
+afterEach(() => { while (editors.length) editors.pop()!.destroy(); });
+
+// What the editor's own search finds in a paragraph, as the texts it would select.
+function found(html: string, term: string, wholeWord = false, useRegex = false): { hits: string[]; editor: Editor } {
+  const editor = new Editor({ extensions: [Document, Paragraph, Text, Bold, SearchReplace], content: html });
+  editors.push(editor);
+  editor.commands.setSearch({ term, matchCase: false, wholeWord, useRegex });
+  const hits = searchMatches(editor.state).matches.map((m) => editor.state.doc.textBetween(m.from, m.to));
+  return { hits, editor };
+}
+
+describe('Arabic text', () => {
+  it('looks through harakat, tatweel and the alef forms on both sides, a pattern excepted', () => {
+    expect(found('<p>قال مُحَمَّدٌ</p>', 'محمد').hits).toEqual(['مُحَمَّدٌ']);
+    expect(found('<p>محمد</p>', 'مُحَمَّد').hits).toEqual(['محمد']);
+    expect(found('<p>جميـــلًا جدا</p>', 'جميلا').hits).toEqual(['جميـــلًا']);
+    expect(found('<p>الإسلام والاسلام</p>', 'الاسلام').hits).toEqual(['الإسلام', 'الاسلام']);
+    expect(found('<p>مُحَمَّد</p>', 'محمد', false, true).hits).toEqual([]);
+    // ta marbuta and alef maqsura stay letters of their own.
+    expect(found('<p>مدرسه على</p>', 'مدرسة').hits).toEqual([]);
+    expect(found('<p>على</p>', 'علي').hits).toEqual([]);
+  });
+
+  it('spans runs and replaces the whole word with its marks', () => {
+    const { hits, editor } = found('<p>يا مُ<strong>حَمَّ</strong>دُ هنا</p>', 'محمد');
+    expect(hits).toEqual(['مُحَمَّدُ']);
+    editor.commands.replaceAll('علي');
+    expect(editor.state.doc.textContent).toBe('يا علي هنا');
+  });
+
+  it('bounds a whole word by its marks: a mark continues the word', () => {
+    expect(found('<p>كتابًا</p>', 'كتاب', true).hits).toEqual([]);
+    expect(found('<p>قرأت كِتَابًا ثم كِتَاب</p>', 'كتاب', true).hits).toEqual(['كِتَاب']);
+    expect(ranges('cafe\u0301 cafe', 'cafe', false, true)).toEqual([[6, 10]]);
+  });
+
+  it('leaves Latin text as it was, composed or decomposed', () => {
+    expect(found('<p>café cafe\u0301</p>', 'café').hits).toEqual(['café']);
+    expect(found('<p>café cafe\u0301</p>', 'cafe').hits).toEqual(['cafe']);
   });
 });

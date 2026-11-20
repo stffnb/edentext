@@ -19,11 +19,11 @@ changes: reading coordinates in the transaction handler can force a full layout 
 
 ## Layout lifecycle
 
-Pagination measures DOM that its prior pass changed. While an opened document converges,
-`.paper.settling` hides content without removing it from layout. Stop when the layout
-signature repeats or the bounded settle time expires. Re-arm on `documentEpoch` when opening a
-document, not on ordinary edits; sample only a bounded number of blocks so measurement does
-not starve the layout it is waiting for.
+Pagination measures DOM that its prior pass changed. While an opened document converges, `.paper.settling` makes
+content transparent without removing it from layout; `visibility: hidden` would also make the editor unfocusable,
+dropping its focus and any `focus()` made meanwhile (an open, New, a template). Stop when the layout signature repeats
+or the bounded settle time expires. Re-arm on `documentEpoch` when opening a document, not on ordinary edits; sample
+only a bounded number of blocks so measurement does not starve the layout it is waiting for.
 
 Zoom is `transform: scale()` on `.paper`; pagination always measures unscaled geometry.
 `.paper-scaler` reserves the transformed footprint for centering and scrollbars. `App.svelte`'s
@@ -111,8 +111,8 @@ undo lands pending changes first (`flushPending`). A store set in the same task 
 outside the history. Document properties, the recording switch and embedded fonts stay out,
 as in both. A shared session swaps the stack for Yjs's (`editor/undo.ts`, `collab.md`).
 
-A frame in a zone flows there when it wraps (side or band) and stays out of the zone's height
-when it runs through. One placed against the page is placed by CSS from the zone box:
+A frame anchored in a zone never moves its text (probed): it runs through (`runInZone`); a footer
+frame as wide as the column keeps its gap above clear of the body (`rise`: a 2.54mm gap, 2.5mm). One placed against the page is placed by CSS from the zone box:
 `--page-x`/`--page-y` from the node view against the zone's `--hf-page-y`, so the zone's editor
 and that paragraph take no position of their own. One placed against the body's top
 (`wrapFromBody`) is placed from `--hf-body-y`, where that page's body begins; a wrapping one
@@ -158,7 +158,7 @@ changes flow.
 
 Margin balloons sit beside `.paper`, inside the scaled canvas, so page content can remain the
 pagination width. Reserve their strip only when visible markup needs it. Group and stack cards
-per page using measured heights; a column too long for its page becomes a deck beside it
+per page using measured heights (a new card appears in place, never gliding in); a column too long for its page becomes a deck beside it
 (`deckHeights`): each card covers the one before it, the tallest cut first and none below its
 head (author, time), so the column never runs on past its page. Under the pointer a covered
 card rises whole, chosen by the strips the deck shows so the pointer walks down the heads, and

@@ -35,16 +35,16 @@ Both formats carry western, asian and complex-script text properties side by sid
 asian one (`style:font-name-asian`, `w:rFonts w:eastAsia`), on every run whatever its script,
 each suppressed against its own half of the style chain (`fonts`/`asianFonts`). Size, weight
 and slant still come from the set the run's own characters belong to (`scriptProps`,
-`ASIAN_SCRIPT_RE`), per ODF text node; DOCX has no asian size or weight, and its
-complex-script set is not read. A DOCX chain without `w:sz` is 10pt, as in Word; where a
+`ASIAN_SCRIPT_RE`), per ODF text node; DOCX has no asian size or weight, and a run of
+complex script takes `w:bCs`, `w:iCs`, `w:szCs` and the `cs` font (`runMarks`). A DOCX chain without `w:sz` is 10pt, as in Word; where a
 paragraph mark gives the block another size or font, runs without their own keep the style's
 (`keepRunDefault`), since the editor's unmarked text renders the block's. The default style's asian font is dropped where it is the
 western one or the language's Han default (`dropDefaultAsianFont`) — what an export writes back
 unasked. The **language** is a pair the same way: `lang` from `fo:language`/`w:val`,
 `langAsian` from `style:language-asian`/`w:eastAsia`, each suppressed against its own default
 (`BlockDefaults.lang`/`langAsian`); DOCX's `RunProps` keeps them apart (`langEastAsia`) so a
-run naming one inherits the other. The document's main language is the asian default where
-the body is mostly East Asian (`mainOfPair`, `mostlyAsian`), the other one `languageOther`.
+run naming one inherits the other. The document's main language is the asian or complex default where the body is mostly in that script (`mainOfSlots`, `dominantScript`), the other one
+`languageOther`; complex-script text reads its language from the complex slot (`scriptProps`, `langBidi`).
 
 A header/footer zone converts through the body's block converter (`'zone'` kind, a
 `zone` ctx flag), so a **text box** anchored in one keeps its PAGE field — what Word's
@@ -82,12 +82,12 @@ every later one, as overlapping ranges collapse to the outermost. LibreOffice wr
 `office:annotation-end` beside a deletion, never into the change registry.
 
 An ODF list with `text:continue-numbering="true"` continues the **latest top-level list of
-its style**, `text:continue-list` the one with that `xml:id`; both import as `start`, plus
-`continueNumbering` where counting on from the ordered list before it gives that start
-(`keepContinuation`); a DOCX numId resuming after a break does the same. Both exports write
-the link back (`text:continue-list`, the shared `w:num`). An item opening with a sub-list
-stays an item without a label, unless that sub-list restarts — our own export's form of an
-item's further sub-list, which goes back on the item before.
+its style**, `text:continue-list` the one with that `xml:id`, unless its first item has a
+`text:start-value`; both import as `start`, plus `continueNumbering` where counting on from
+the list before gives that start (`keepContinuation`). A later item's `text:start-value` splits the list there (LibreOffice restarts, probed); an automatic level's own `start-value` is the list's `start`. DOCX counts per abstractNum across
+numIds; a numId's `w:startOverride` restarts it. A level without `w:start` starts at 0 (LibreOffice draws "0.", probed); `start: 0` is a real start everywhere (`listStart`). A level's hang and indent step are kept unless exactly the default. Both exports write the link back. An item
+opening with a sub-list stays an item without a label, unless that sub-list restarts — our
+own export's form of an item's further sub-list, which goes back on the item before.
 
 `utils/shapePresets.json` is generated (`scripts/make-shape-presets.mjs`, MPL-2.0 from LibreOffice): never edit it by hand.
 

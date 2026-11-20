@@ -10,6 +10,8 @@
   import ToolbarExpanded from './lib/components/ToolbarExpanded.svelte';
   import Ribbon from './lib/components/ribbon/Ribbon.svelte';
   import EventDialogs from './lib/components/EventDialogs.svelte';
+  import SaveNotice from './lib/components/SaveNotice.svelte';
+  import { formatLosses } from './lib/export/formatLosses';
   import CommandSearch from './lib/components/ribbon/CommandSearch.svelte';
   import Icon from './lib/components/ribbon/Icon.svelte';
   import { RIBBON_COMMANDS, TABS, actOnCommand, searchableCommands, styleCommands, tabOf, type RibbonCommand, type Tab } from './lib/components/ribbon/commands';
@@ -46,6 +48,7 @@
   import { applyTabIntervalVar } from './lib/storage/tabInterval';
   import { pageDimsCm } from './lib/storage/pageFormat';
   import { layout, layoutValues, setLayout, resetLayout, adoptLayout, persistLayout } from './lib/storage/pageLayout.svelte';
+  import { defaultPageRtl } from './lib/storage/writingMode';
   import { setStyleSheet, showAllStyles, styleSheet } from './lib/styles/sheet.svelte';
   import { noteSettings, setNoteSettings } from './lib/storage/notes.svelte';
   import { OPEN_COMPARE_EVENT, OPEN_RECORD_LOCK_EVENT, recordChanges, recordLock, setRecordChanges, setRecordLock } from './lib/storage/trackChanges.svelte';
@@ -67,7 +70,7 @@
   import { startBridge, notify, type EmbedSettings, type ExportFormat } from './lib/embed/bridge';
   import { printMarkup } from './lib/storage/printMarkup.svelte';
   import { commentsInPane, changesInPane, markupAttrs, markupView, setShowChanges, setShowComments, showComments } from './lib/storage/markup.svelte';
-  import { defaultDocumentLanguage, isAsianTag, loadDocumentLanguage, numberingScripts, loadDocumentLanguageOther, pickDocumentLanguage, saveDocumentLanguage, saveDocumentLanguageOther, odfFromLanguage, tagForLanguage, westernCode, type DocumentLanguage } from './lib/storage/documentLanguage';
+  import { defaultDocumentLanguage, isAsianTag, loadDocumentLanguage, numberingScripts, loadDocumentLanguageOther, pickDocumentLanguage, saveDocumentLanguage, saveDocumentLanguageOther, odfFromLanguage, tagForLanguage, westernCode, spellAltCode, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { setTableLanguage } from './lib/storage/tableOptions.svelte';
   import { spellController } from './lib/spell/controller';
   import { setGrammarLanguage } from './lib/spell/grammar.svelte';
@@ -95,22 +98,26 @@
   import NavigatorPane from './lib/components/NavigatorPane.svelte';
   import type { PageBox } from './lib/utils/pageStrip';
   import AiPane, { askAi, resetAiChat } from './lib/components/AiPane.svelte';
-  import { aiConfig, aiAnswering, aiEnabled, setAiHostOff, AI_COMMENT_EVENT, OPEN_AI_CHAT_EVENT } from './lib/storage/ai.svelte';
+  import { setEmbedHostConfig } from './lib/storage/hostConfig.svelte';
+  import { aiConfig, aiAnswering, aiEnabled, AI_COMMENT_EVENT, OPEN_AI_CHAT_EVENT } from './lib/storage/ai.svelte';
   import { navigatorSettings, setNavigator } from './lib/storage/navigator.svelte';
   import { aiErrorText, isAbort } from './lib/ai/client';
+  import { bindDictation, dictationAvailable, stopDictation, toggleDictation } from './lib/dictation/session.svelte';
+  import DictationConsent from './lib/components/DictationConsent.svelte';
   import { abortAll as abortAiRequests, answerComment, startRequest, endRequest, type AiHost } from './lib/ai/tools';
   import { commentDraft, OPEN_COMMENT_EVENT } from './lib/editor/extensions/comment';
   import AutoCorrectDialog from './lib/components/AutoCorrectDialog.svelte';
   import AutoTextDialog from './lib/components/AutoTextDialog.svelte';
   import ThesaurusDialog from './lib/components/ThesaurusDialog.svelte';
   import { OPEN_THESAURUS_EVENT } from './lib/spell/thesaurus';
+  import { OPEN_DICTATION_SETTINGS_EVENT } from './lib/storage/dictation.svelte';
   import StyleManagerDialog from './lib/components/StyleManagerDialog.svelte';
   import NoteOptionsDialog from './lib/components/NoteOptionsDialog.svelte';
   import SaveFormatDialog from './lib/components/SaveFormatDialog.svelte';
-  import { t, locale, setLocale } from './lib/i18n/i18n.svelte';
+  import { t, locale, setLocale, uiRtl } from './lib/i18n/i18n.svelte';
   import { isLocale } from './lib/i18n/config';
   import { fnv1a } from './lib/utils/hash';
-  import { withShortcut } from './lib/i18n/shortcut';
+  import { ltrIsland, withShortcut } from './lib/i18n/shortcut';
   import { DEFAULT_SHORTCUTS, matchesEvent, shortcutHint } from './lib/editor/shortcuts';
   import { localizeImportMessage } from './lib/i18n/importMessages';
   import { unavailableFonts } from './lib/utils/fontDetect';
@@ -395,6 +402,9 @@
   $effect(() => { if (!aiEnabled()) abortAiRequests(); });
   // Not on mount: the chat kept with this document survives a reload.
   $effect(() => { if (documentEpoch) { abortAiRequests(); resetAiChat(); } });
+  // Dictation writes into the editor with the focus; another document or switching it off ends it.
+  onMount(() => bindDictation(() => activeEditor, () => tagForLanguage(documentLanguage)));
+  $effect(() => { if (documentEpoch || !dictationAvailable()) untrack(() => stopDictation(true)); });
   function openAiChat(prefill: string, send = false) {
     aiOpen = true;
     askAi(prefill, send);
@@ -482,7 +492,7 @@
   $effect(() => {
     saveDocumentLanguage(documentLanguage);
     saveDocumentLanguageOther(documentLanguageOther);
-    void spellController.setLanguage(westernCode(documentLanguage, documentLanguageOther));
+    void spellController.setLanguage(westernCode(documentLanguage, documentLanguageOther), spellAltCode(documentLanguage, documentLanguageOther, locale()));
     // A table cell's number is read and written in the document's language.
     setTableLanguage(documentLanguage);
     setGrammarLanguage(westernCode(documentLanguage, documentLanguageOther));
@@ -553,7 +563,7 @@
   let islandCommands = $derived(searchableCommands([
     ...RIBBON_COMMANDS,
     ...styleCommands(visibleStyles(styleSheet(), showAllStyles()).map((s) => s.name)),
-  ], islandShown, { ai: aiEnabled(), volatile, embedded, collab: !!collabRelay() }).filter((c) => !RIBBON_ONLY.has(c.id)));
+  ], islandShown, { ai: aiEnabled(), volatile, embedded, dictation: dictationAvailable(), collab: !!collabRelay() }).filter((c) => !RIBBON_ONLY.has(c.id)));
 
   // Where the island keeps a command: its own place if it moved one, the ribbon's tab otherwise.
   function islandPlace(c: RibbonCommand): { category: Category | null; via?: string } {
@@ -599,7 +609,9 @@
   const TRACK_EDGE = 20;     // track inset from the island's side edges
   let toolbarStackWidth = $state(0); // full content width of the stack
   let toolbarViewWidth = $state(0);  // visible (clipped) width
-  let tbScroll = $state(0);          // current left offset in px
+  let tbScroll = $state(0);          // offset from the stack's start edge in px
+  // The stack overflows towards the end side, so its offsets run that way too.
+  const tbSign = $derived(uiRtl() ? -1 : 1);
   let tbOverflow = $derived(Math.max(0, toolbarStackWidth - toolbarViewWidth));
   let tbTrackW = $derived(Math.max(0, toolbarViewWidth - 2 * (STACK_PAD_PX + TRACK_EDGE)));
   // Thumb: proportional, but capped short (25% of the track) so it reads clearly.
@@ -639,7 +651,7 @@
       return;
     }
     if (tbOverflow <= 0) return;
-    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX * tbSign : e.deltaY;
     if (delta === 0) return;
     e.preventDefault();
     tbScroll = Math.min(tbOverflow, Math.max(0, tbScroll + delta));
@@ -658,7 +670,8 @@
     const thumb = track.querySelector('.toolbar-scrollbar-thumb');
     if (!thumb?.contains(e.target as Node)) {
       const rect = track.getBoundingClientRect();
-      tbScroll = Math.min(tbOverflow, Math.max(0, ((e.clientX - rect.left - thumbWidth / 2) / thumbTravel) * tbOverflow));
+      const fromStart = uiRtl() ? rect.right - e.clientX : e.clientX - rect.left;
+      tbScroll = Math.min(tbOverflow, Math.max(0, ((fromStart - thumbWidth / 2) / thumbTravel) * tbOverflow));
     }
     tbDragging = true;
     tbDragX = e.clientX;
@@ -667,7 +680,7 @@
   }
   function onScrollbarPointerMove(e: PointerEvent) {
     if (!tbDragging || thumbTravel <= 0) return;
-    const delta = ((e.clientX - tbDragX) / thumbTravel) * tbOverflow;
+    const delta = (((e.clientX - tbDragX) * tbSign) / thumbTravel) * tbOverflow;
     tbScroll = Math.min(tbOverflow, Math.max(0, tbDragScroll + delta));
   }
   function onScrollbarPointerUp(e: PointerEvent) {
@@ -677,8 +690,8 @@
   function onScrollbarKeydown(e: KeyboardEvent) {
     if (thumbTravel <= 0) return;
     let next = tbScroll;
-    if (e.key === 'ArrowLeft') next -= 40;
-    else if (e.key === 'ArrowRight') next += 40;
+    if (e.key === 'ArrowLeft') next -= 40 * tbSign;
+    else if (e.key === 'ArrowRight') next += 40 * tbSign;
     else if (e.key === 'Home') next = 0;
     else if (e.key === 'End') next = tbOverflow;
     else return;
@@ -780,7 +793,7 @@
     return {
       header: headerDoc, footer: footerDoc,
       headerFirst: headerFirstDoc, footerFirst: footerFirstDoc, differentFirstPage: layout.differentFirstPage,
-      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven: layout.differentOddEven,
+      headerEven: headerEvenDoc, footerEven: footerEvenDoc, differentOddEven: layout.differentOddEven, ...layout.hfFrames,
     };
   }
 
@@ -872,6 +885,7 @@
     documentHasFile = false;
     docPassword = null;
     passwordLost = false;
+    lossNoticed = false;
     // Styles and note settings live in the document, so a new one starts from the built-ins
     setStyleSheet(builtinStyleSheet());
     setNoteSettings(DEFAULT_NOTE_SETTINGS);
@@ -894,6 +908,7 @@
     documentEpoch++;
     resetHistory();
     resetDocumentState();
+    layout.pageRtl = defaultPageRtl(documentLanguage);
     markSaved();
   }
 
@@ -1257,6 +1272,18 @@
     return () => window.removeEventListener(OPEN_THESAURUS_EVENT, open);
   });
 
+  // The microphone menu's link opens Settings ▸ Editing scrolled to the dictation rows.
+  $effect(() => {
+    const open = async () => {
+      settingsSection = 'editing';
+      settingsOpen = true;
+      await domUpdated();
+      document.getElementById('settings-dictation')?.scrollIntoView({ block: 'start' });
+    };
+    window.addEventListener(OPEN_DICTATION_SETTINGS_EVENT, open);
+    return () => window.removeEventListener(OPEN_DICTATION_SETTINGS_EVENT, open);
+  });
+
   // A document double-clicked in the OS reaches the installed app through launchQueue
   // (the manifest's `file_handlers`). It fires once at startup, so it waits for the
   // editor; the handle comes with write permission, so a later Save writes that file.
@@ -1375,6 +1402,7 @@
       await bindFile();
       documentHasFile = true;
       markSaved();
+      noticeLosses(documentFormat, json);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       // A stored handle may have lost its permission or its file: prompt for a new one,
@@ -1384,6 +1412,19 @@
       console.error('[save] Failed to save file:', err);
       reportLoadFailure(t().dialogs.couldNotSave, err);
     }
+  }
+
+  // What the saved format leaves out is said once per document, after the save; the
+  // document itself keeps everything (formatLosses.ts).
+  let lossNotice = $state<string | null>(null);
+  let lossNoticed = false;
+  function noticeLosses(format: string, json: TiptapNode) {
+    if (lossNoticed) return;
+    const losses = formatLosses(json as never, format, styleSheet());
+    if (!losses.length) return;
+    lossNoticed = true;
+    const text = { textEffects: t().ribbon.textEffects.odtLoss };
+    lossNotice = losses.map((k) => text[k]).join(' ');
   }
 
   // Save As is one entry per format: the format has to be settled before the bytes are
@@ -1406,6 +1447,7 @@
       await bindFile();
       documentHasFile = true;
       markSaved();
+      noticeLosses(kind, json);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[save] Failed to save file:', err);
@@ -1426,6 +1468,7 @@
       const kind = documentFormat === 'docx' ? 'dotx' : 'ott';
       const bytes = kind === 'dotx' ? docxToDotx(await buildBytes('docx', json)) : odtToOtt(await buildBytes('odt', json));
       await saveDocument(bytes, `${stripOdtExtension(suggestedFilename(json))}.${kind}`, kind, null, docPassword);
+      noticeLosses(kind, json);
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') return;
       console.error('[save] Failed to save template:', err);
@@ -1526,7 +1569,8 @@
       const accent: Accent | null = (ACCENTS as readonly string[]).includes(s.accent) ? (s.accent as Accent) : parseAccentHex(s.accent);
       if (accent) applyAccent(accent);
     }
-    if (typeof s.ai === 'boolean') setAiHostOff(!s.ai);
+    if (s.ai !== undefined) setEmbedHostConfig('ai', s.ai);
+    if (s.dictation !== undefined) setEmbedHostConfig('dictation', s.dictation);
     if (typeof s.name === 'string') {
       // The file's name as the host keeps it, which is no edit of the document.
       const clean = !dirty;
@@ -1551,7 +1595,7 @@
   $effect(() => {
     if (!embedded || !editor || bridged) return;
     bridged = true;
-    startBridge({
+    void startBridge({
       configure: configureEmbed,
       load: (bytes, name) => applyImport(bytes, null, name, { warn: (warnings) => notify('warning', { warnings }) }),
       newDocument: (name) => {
@@ -1856,6 +1900,11 @@
       // match, which is what the extension leaves unhandled.
       if (e.defaultPrevented) return;
       // Drafting needs the body editor; without the assistant the key is the browser's.
+      if (dictationAvailable() && matchesEvent(e, DEFAULT_SHORTCUTS.dictate)) {
+        e.preventDefault();
+        void toggleDictation();
+        return;
+      }
       if (aiEnabled() && !hfActive && matchesEvent(e, DEFAULT_SHORTCUTS.aiDraft)) {
         e.preventDefault();
         openAiChat('/draft ');
@@ -1924,7 +1973,7 @@
     {#if tbOverflow > 0}
       <div
         class="toolbar-scrollbar"
-        style="width: {tbTrackW}px; transform: translateX({tbScroll + TRACK_EDGE}px);"
+        style="width: {tbTrackW}px; transform: translateX({tbSign * (tbScroll + TRACK_EDGE)}px);"
         role="scrollbar"
         tabindex={0}
         aria-orientation="horizontal"
@@ -1937,7 +1986,7 @@
         onpointerup={onScrollbarPointerUp}
         onkeydown={onScrollbarKeydown}
       >
-        <div class="toolbar-scrollbar-thumb" style="width: {thumbWidth}px; transform: translateX({thumbLeft}px);"></div>
+        <div class="toolbar-scrollbar-thumb" style="width: {thumbWidth}px; transform: translateX({tbSign * thumbLeft}px);"></div>
       </div>
     {/if}
   {/snippet}
@@ -1960,7 +2009,6 @@
       {zoom}
       onZoom={setZoom}
       onDebugDump={import.meta.env.DEV ? handleDebugDump : undefined}
-      bind:tabIntervalCm={layout.tabIntervalCm}
       bind:pageMargins={layout.pageMargins}
       bind:pageOrientation={layout.pageOrientation}
       bind:pageFormat={layout.pageFormat}
@@ -1969,6 +2017,7 @@
       bind:differentFirstPage={layout.differentFirstPage}
       bind:differentOddEven={layout.differentOddEven}
       bind:hyphenate={layout.hyphenate}
+      bind:pageRtl={layout.pageRtl}
       bind:pageNumbering={layout.pageNumbering}
       bind:pageDecor={layout.pageDecor}
       bind:lineNumbering={layout.lineNumbering}
@@ -2016,7 +2065,7 @@
   {:else}
   <div class="toolbar-region" bind:clientHeight={toolbarRegionH}>
     <div class="toolbar-clip" id="primary-toolbar" bind:this={toolbarClipEl} onwheel={onToolbarWheel}>
-      <div class="toolbar-stack" bind:this={toolbarStackEl} style="transform: translateX(-{tbScroll}px);">
+      <div class="toolbar-stack" bind:this={toolbarStackEl} style="transform: translateX({-tbSign * tbScroll}px);">
   <header class:expanded={toolbarExpanded}>
     {#if !whiteLabel}
     <button class="logo-btn" data-cmd="about" onclick={() => (aboutOpen = true)} aria-label={t().about.label} title={t().about.label}>
@@ -2034,7 +2083,7 @@
           <rect x="4.75" y="8.75" width="6.5" height="4.75" rx="0.5" stroke="currentColor" stroke-width="1.3"/>
         </svg>
       {/snippet}
-      <div class="doc-name" class:has-value={documentName.trim().length > 0}>
+      <div class="doc-name" dir="ltr" class:has-value={documentName.trim().length > 0}>
         <!-- Document with lines -->
         <svg class="doc-name-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M9 1.75H4.5A1.25 1.25 0 0 0 3.25 3v10A1.25 1.25 0 0 0 4.5 14.25h7A1.25 1.25 0 0 0 12.75 13V5.5L9 1.75z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
@@ -2142,7 +2191,7 @@
                 <div class="theme-heading">{t().app.recentFiles}</div>
                 {#each menuRecentFiles as f (f.id)}
                   <button class="theme-option" onclick={() => handleOpenRecent(f)} role="menuitem">
-                    <span class="recent-name">{f.name}</span>
+                    <span class="recent-name">{ltrIsland(f.name)}</span>
                   </button>
                 {/each}
                 <button class="theme-option" onclick={handleForgetRecent} role="menuitem">
@@ -2291,7 +2340,6 @@
           bind:showRuler
           bind:splitView
           bind:pageColumns
-          bind:tabIntervalCm={layout.tabIntervalCm}
           bind:pageMargins={layout.pageMargins}
           bind:pageOrientation={layout.pageOrientation}
           bind:pageFormat={layout.pageFormat}
@@ -2300,6 +2348,7 @@
           bind:differentFirstPage={layout.differentFirstPage}
           bind:differentOddEven={layout.differentOddEven}
           bind:hyphenate={layout.hyphenate}
+          bind:pageRtl={layout.pageRtl}
           bind:pageNumbering={layout.pageNumbering}
           bind:pageDecor={layout.pageDecor}
           bind:lineNumbering={layout.lineNumbering}
@@ -2332,7 +2381,8 @@
     </div>
   </div>
   {/if}
-  <EventDialogs editor={activeEditor} tick={activeTick} />
+  <EventDialogs editor={activeEditor} tick={activeTick} bind:tabIntervalCm={layout.tabIntervalCm} />
+  {#if lossNotice}<SaveNotice message={lossNotice} onClose={() => (lossNotice = null)} />{/if}
   <!-- Outside the chrome fork: `handleOpen` clicks it wherever the File System
        Access API is missing, and both chromes reach that path. -->
   <input
@@ -2365,6 +2415,7 @@
     bind:hfActive
     bind:hfTick
     hfDistances={layout.hfDistances}
+    hfFrames={layout.hfFrames}
     tabIntervalCm={layout.tabIntervalCm}
     spacingModel={layout.spacingModel}
     spacingAtPageStart={layout.spacingAtPageStart}
@@ -2504,6 +2555,7 @@
   <AboutDialog bind:open={aboutOpen} />
   <TemplateGalleryDialog bind:open={templateGalleryOpen} onPick={applyTemplate} />
   <AutoCorrectDialog bind:open={autoCorrectOpen} />
+  <DictationConsent />
   <AutoTextDialog bind:open={autoTextOpen} editor={activeEditor} />
   <ThesaurusDialog bind:open={thesaurusOpen} editor={activeEditor} />
   <BrowserDocumentsDialog bind:open={browserDocsOpen} />
@@ -2577,11 +2629,14 @@
     position: relative;
   }
 
+  /* A pane's dock side is a physical one, so the row keeps its left-to-right order. */
+  :global(html[dir='rtl']) .editor-row { flex-direction: row-reverse; }
+
   /* Find & Replace bar: floats at the top-right of the editing area, just under the
      toolbar (top is set inline from the toolbar height). Below the toolbar's z-index. */
   .find-bar-anchor {
     position: fixed;
-    right: 1.5rem;
+    inset-inline-end: 1.5rem;
     z-index: 190;
   }
 
@@ -2630,7 +2685,7 @@
      below the dropdowns (z ≥ 200 in the same stacking context). */
   .toolbar-scrollbar {
     position: absolute;
-    left: 0;
+    inset-inline-start: 0;
     bottom: 4px;
     height: 3px;
     z-index: 1;
@@ -2643,7 +2698,7 @@
   .toolbar-scrollbar-thumb {
     position: absolute;
     top: 0;
-    left: 0;
+    inset-inline-start: 0;
     height: 100%;
     border-radius: 2px;
     background: var(--scrollbar-thumb, var(--color-btn-hover));
@@ -2704,7 +2759,8 @@
     justify-content: center;
     height: var(--toolbar-btn-size);
     padding: 0 0.4rem;
-    margin: 0 0.25rem 0 1.4rem;
+    margin-block: 0;
+    margin-inline: 1.4rem 0.25rem;
     border: 1px solid transparent;
     border-radius: var(--radius);
     background: transparent;
@@ -2729,8 +2785,8 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-left: auto;
-    margin-right: 1rem;
+    margin-inline-start: auto;
+    margin-inline-end: 1rem;
   }
 
   .file-actions {
@@ -2748,7 +2804,7 @@
     align-items: center;
     gap: 0.3rem;
     padding: 0 0.4rem;
-    margin-right: 0.25rem;
+    margin-inline-end: 0.25rem;
     height: var(--toolbar-btn-size);
     border-radius: var(--radius);
     color: var(--color-text-muted);
@@ -2893,13 +2949,14 @@
   }
 
   .save-control:hover:not(:has(:disabled)) .save-chevron {
-    border-left-color: var(--color-border);
+    border-inline-start-color: var(--color-border);
   }
 
   .save-main {
     width: auto;
     height: 100%;
-    padding: 0 0.2rem 0 0.5rem;
+    padding-block: 0;
+    padding-inline: 0.5rem 0.2rem;
     border-radius: 0;
   }
 
@@ -2911,7 +2968,7 @@
     height: 100%;
     padding: 0;
     border: none;
-    border-left: 1px solid transparent;
+    border-inline-start: 1px solid transparent;
     border-radius: 0;
     background: transparent;
     color: var(--color-text);
@@ -2976,8 +3033,8 @@
     height: var(--toolbar-btn-size);
     padding: 0 0.45rem;
     position: absolute;
-    /* Clear of the island's rounded bottom-left corner. */
-    left: 1.35rem;
+    /* Clear of the island's rounded bottom corner at the side the bar starts. */
+    inset-inline-start: 1.35rem;
     top: 0;
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -3003,10 +3060,11 @@
      language) and the extended toolbar starts right after it, never overlapping. */
   .toolbar-secondary.expanded .expand-toggle {
     position: relative;
-    left: auto;
+    inset-inline-start: auto;
     top: auto;
     flex: none;
-    margin: 0 0.6rem 0 0.35rem;
+    margin: 0;
+    margin-inline: 0.35rem 0.6rem;
   }
 
   .expand-toggle:hover {
@@ -3056,7 +3114,7 @@
   .theme-dropdown {
     position: absolute;
     top: calc(100% + 0.4rem);
-    right: 0;
+    inset-inline-end: 0;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -3092,7 +3150,7 @@
     font-size: 0.85rem;
     font-family: var(--font-sans);
     cursor: pointer;
-    text-align: left;
+    text-align: start;
     transition: background 0.1s;
   }
 
@@ -3256,7 +3314,7 @@
   .wordcount-popup {
     position: absolute;
     bottom: calc(100% + 6px);
-    left: 0;
+    inset-inline-start: 0;
     min-width: 220px;
     padding: 0 0 0.35rem;
     background: var(--color-surface);
@@ -3402,7 +3460,7 @@
     color: var(--color-text);
     font-family: var(--font-sans);
     font-size: 0.75rem;
-    text-align: right;
+    text-align: end;
     cursor: pointer;
     border-radius: 2px;
     transition: background 0.1s;

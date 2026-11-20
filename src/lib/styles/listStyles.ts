@@ -14,6 +14,9 @@ export type ListLevelStyle = {
   numType?: Exclude<OrderedListType, 'multilevel'>;
   indentCm?: number;
   markerAlign?: 'right';
+  // The label's hang left of the text (cm) and what follows it, as on a list node.
+  hanging?: number;
+  markerSuffix?: 'space' | 'nothing';
   startAt?: number;
 };
 
@@ -26,6 +29,29 @@ export type ListStyle = {
 };
 
 export const MAX_LIST_LEVELS = 10; // ODF's ceiling; the DOCX writer emits the first 9
+// The deepest level a .docx numbers (w:ilvl 0–8), and so the deepest the editor indents to.
+export const DOCX_LIST_LEVELS = 9;
+
+type ListJson = { type: string; content?: ListJson[] };
+const isListJson = (n: ListJson) => n.type === 'bulletList' || n.type === 'orderedList';
+
+// An item at the last level, its sub-lists' items lifted to follow it on that level.
+function flatItems(item: ListJson, max: number): ListJson[] {
+  const out: ListJson[] = [{ ...item, content: [] }];
+  for (const b of item.content ?? []) {
+    if (isListJson(b)) out.push(...(b.content ?? []).flatMap((i) => flatItems(i, max)));
+    else out[out.length - 1].content!.push(clampListLevels(b, max));
+  }
+  return out.filter((i) => i.content!.length);
+}
+
+/** The document with every list nested past `max` levels moved up onto the last one,
+ *  as a format with `max` levels shows it; a box's or a cell's lists count from 1 again. */
+export function clampListLevels<T extends ListJson>(node: T, max: number, level = 0): T {
+  if (!node.content?.length) return node;
+  if (!isListJson(node)) return { ...node, content: node.content.map((c) => clampListLevels(c, max, node.type === 'listItem' ? level : 0)) };
+  return { ...node, content: level + 1 < max ? node.content.map((item) => clampListLevels(item, max, level + 1)) : node.content.flatMap((item) => flatItems(item, max)) };
+}
 
 // A depth past the defined levels falls back to the depth-cycle default, like the
 // exporters' modulo geometry; depth is 1-based.
@@ -79,8 +105,8 @@ export function effectiveListLevel(
     listStyleType,
     indent: typeof a.indent === 'number' ? a.indent : (level?.indentCm ?? 0),
     markerAlign: (a.markerAlign as 'right' | null) ?? (level?.markerAlign ?? null),
-    hanging: typeof a.hanging === 'number' ? a.hanging : null,
-    markerSuffix: a.markerSuffix === 'space' || a.markerSuffix === 'nothing' ? a.markerSuffix : null,
+    hanging: typeof a.hanging === 'number' ? a.hanging : (level?.hanging ?? null),
+    markerSuffix: a.markerSuffix === 'space' || a.markerSuffix === 'nothing' ? a.markerSuffix : (level?.markerSuffix ?? null),
     startAt: kind === 'number' && styled ? level?.startAt ?? null : null,
   };
 }

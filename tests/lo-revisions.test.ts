@@ -2,7 +2,9 @@
 // of it, and must arrive at the paragraphs we arrive at. Self-skips without soffice.
 import { describe, it, expect, afterEach } from 'vitest';
 import { execSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { strFromU8, unzipSync } from 'fflate';
 import type { Editor } from '@tiptap/core';
 import { BLOCK_FORMAT_CASES, CASES, FORMAT_CASES, MOVE_CASES, TABLE_CASES, edit, open } from './trackChangesCases';
@@ -17,7 +19,8 @@ import { zoneExtensions } from '../src/lib/editor/extensions';
 const SOFFICE = (() => {
   try { execSync('command -v soffice', { stdio: 'ignore' }); return true; } catch { return false; }
 })();
-const DIR = '/tmp/lo-revisions';
+// A fresh directory per run, so two checkouts can run this leg at once.
+const DIR = mkdtempSync(join(tmpdir(), 'lo-revisions-'));
 const PROFILE = `${DIR}/profile`;
 const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const soffice = (args: string, env: Record<string, string> = {}) => execSync(

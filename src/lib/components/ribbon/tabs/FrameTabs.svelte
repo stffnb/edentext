@@ -26,7 +26,7 @@
     fillColor?: string | null;
     strokeColor?: string | null;
     strokeWidthPt?: number;
-    textVertical?: boolean;
+    textVertical?: boolean | 'up';
     textVAlign?: TextVAlign;
   } = $props();
 
@@ -182,8 +182,17 @@
       cmd="verticalText"
       label={t().textBox.verticalText}
       title={t().textBox.verticalText}
-      active={textVertical}
-      onclick={() => editor?.chain().focus().setTextBoxAttrs({ textVertical: !textVertical }).run()}
+      active={textVertical === true}
+      onclick={() => editor?.chain().focus().setTextBoxAttrs({ textVertical: textVertical !== true }).run()}
+    />
+    <RibbonButton
+      variant="big"
+      icon="textDirectionUp"
+      cmd="verticalTextUp"
+      label={t().textBox.verticalTextUp}
+      title={t().textBox.verticalTextUp}
+      active={textVertical === 'up'}
+      onclick={() => editor?.chain().focus().setTextBoxAttrs({ textVertical: textVertical === 'up' ? false : 'up' }).run()}
     />
     {#each VALIGNS as v}
       <RibbonButton
@@ -241,7 +250,7 @@
 
   .field input:focus { outline: none; border-color: var(--w-accent); }
 
-  .alt input { width: 200px; text-align: left; }
+  .alt input { width: 200px; text-align: start; }
   /* One grid, so both columns' boxes share their rows and line up on each column's right edge. */
   .gap-grid { display: grid; grid-template-columns: auto auto; align-content: center; gap: 3px 12px; }
   .gap-grid .field > span { flex: 1; }

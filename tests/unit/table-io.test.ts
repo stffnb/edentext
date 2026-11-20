@@ -54,46 +54,79 @@ describe('table keep-rows', () => {
     expect(xml).not.toContain('may-break-between-rows');
     expect(keepRows).toBe(null);
   });
+
+  // fo:keep-with-next on the table; Word spells it as every paragraph in it kept.
+  it('keeps a table with the next block through both formats', async () => {
+    // One cell holds a list: its items keep with the next as well, or Word's reading drops the keep.
+    const list = { ...cell('l'), content: [{ type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'i' }] }] }] }] };
+    const doc = { type: 'doc', content: [{ type: 'table', attrs: { keepNext: true }, content: [0, 1].map((r) => ({ type: 'tableRow', content: [cell(`a${r}`), r ? list : cell(`b${r}`)] })) }] } as N;
+    const odt = await buildOdt(doc);
+    expect(strFromU8(unzipSync(odt)['content.xml'])).toContain('fo:keep-with-next="always"');
+    const keeps = (d: N) => d.content?.[0]?.attrs?.keepNext ?? null;
+    expect(keeps(importOdt(odt).content)).toBe(true);
+    expect(keeps(importDocx(await buildDocx(doc)).content)).toBe(true);
+    expect(keeps(importDocx(await buildDocx({ ...doc, content: [{ ...doc.content[0], attrs: {} }] })).content)).toBe(null);
+  });
 });
 
-// A cell's verticalAlign attr round-trips through DOCX (w:vAlign); the ODF leg
-// (style:vertical-align) rides along in roundtrip.test.ts.
-const cell = (text: string, verticalAlign?: string): N => ({
+// A cell's box properties — where its content sits (w:vAlign, style:vertical-align) and
+// which way its text runs (w:textDirection, ODF writing-mode) — keep through both formats.
+const cell = (text: string, attrs: Record<string, unknown> = {}): N => ({
   type: 'tableCell',
-  attrs: { colspan: 1, rowspan: 1, colwidth: [120], ...(verticalAlign ? { verticalAlign } : {}) },
+  attrs: { colspan: 1, rowspan: 1, colwidth: [120], ...attrs },
   content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
 });
 
-describe('table cell vertical alignment', () => {
-  it('round-trips middle/bottom and leaves top unset', async () => {
-    const doc: N = {
-      type: 'doc',
-      content: [
-        { type: 'paragraph', content: [{ type: 'text', text: 'Before' }] },
-        { type: 'table', content: [
-          { type: 'tableRow', content: [cell('A', 'middle'), cell('B', 'bottom'), cell('C')] },
-        ] },
-      ],
-    };
-    const res = importDocx(await buildDocx(doc, { top: 2, bottom: 2, left: 2, right: 2 }, 'portrait'));
-    const cells = (res.content.content!.find((n: N) => n.type === 'table') as N).content[0].content;
-    expect(cells.map((c: N) => c.attrs?.verticalAlign ?? null)).toEqual(['middle', 'bottom', null]);
+describe('table cell box properties', () => {
+  const doc: N = {
+    type: 'doc',
+    content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Before' }] },
+      { type: 'table', content: [{ type: 'tableRow', attrs: { rowHeight: 80 }, content: [
+        cell('A', { verticalAlign: 'middle', textFlow: 'btLr' }), cell('B', { verticalAlign: 'bottom', textFlow: 'tbRl' }), cell('C'),
+      ] }] },
+    ],
+  };
+  const props = (res: { content: N }) => (res.content.content!.find((n: N) => n.type === 'table') as N).content[0].content
+    .map((c: N) => [c.attrs?.verticalAlign ?? null, c.attrs?.textFlow ?? null]);
+  const expected = [['middle', 'btLr'], ['bottom', 'tbRl'], [null, null]];
+  it('round-trips through DOCX', async () => {
+    expect(props(importDocx(await buildDocx(doc, { top: 2, bottom: 2, left: 2, right: 2 }, 'portrait')))).toEqual(expected);
+  });
+  it('round-trips through ODT', async () => {
+    expect(props(importOdt(await buildOdt(doc)))).toEqual(expected);
   });
 });
 
-// A row that may not break across pages (w:cantSplit, ODF's row fo:keep-together)
-// keeps the flag through both formats.
-const row = (cant: boolean) => `<w:tr>${cant ? '<w:trPr><w:cantSplit/></w:trPr>' : ''}<w:tc><w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc></w:tr>`;
-const docx = docxOf(`<w:tbl><w:tblGrid><w:gridCol w:w="4000"/></w:tblGrid>${row(true)}${row(false)}</w:tbl><w:p/>`);
-const flags = (doc: any) => doc.content.find((n: any) => n.type === 'table').content.map((r: any) => r.attrs?.cantSplit ?? false);
+// A row's own properties — may not break across pages (w:cantSplit, ODF's row
+// fo:keep-together), an exact height (w:hRule="exact", ODF style:row-height) or a
+// minimum one — keep through both formats.
+const row = (trPr: string) => `<w:tr>${trPr ? `<w:trPr>${trPr}</w:trPr>` : ''}<w:tc><w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc></w:tr>`;
+const docx = docxOf(`<w:tbl><w:tblGrid><w:gridCol w:w="4000"/></w:tblGrid>${row('<w:cantSplit/>')}${row('')}`
+  + `${row('<w:trHeight w:val="284" w:hRule="exact"/>')}${row('<w:trHeight w:val="284"/>')}</w:tbl><w:p/>`);
+const flags = (doc: any) => doc.content.find((n: any) => n.type === 'table').content
+  .map((r: any) => [r.attrs?.cantSplit ?? false, r.attrs?.fixedHeight ?? false, r.attrs?.rowHeight ?? null]);
+const expected = [[true, false, null], [false, false, null], [false, true, 18.93], [false, false, 18.93]];
 
-describe('a row that may not break across pages', () => {
+describe("a row's own properties", () => {
   const imported = importDocx(docx);
-  it('imports from w:cantSplit', () => expect(flags(imported.content)).toEqual([true, false]));
+  it('imports from w:trPr', () => expect(flags(imported.content)).toEqual(expected));
   it('survives a DOCX round trip', async () => {
-    expect(flags(importDocx(await buildDocx(imported.content as any, DEFAULT_MARGINS, 'portrait')).content)).toEqual([true, false]);
+    expect(flags(importDocx(await buildDocx(imported.content as any, DEFAULT_MARGINS, 'portrait')).content)).toEqual(expected);
   });
   it('survives an ODT round trip', async () => {
-    expect(flags(importOdt(await buildOdt(imported.content as any, DEFAULT_MARGINS, 'portrait')).content)).toEqual([true, false]);
+    expect(flags(importOdt(await buildOdt(imported.content as any, DEFAULT_MARGINS, 'portrait')).content)).toEqual(expected);
+  });
+  // Without MinRowHeightInclBorder a native ODT's height includes the margins: an exact
+  // row's bottom one, a minimum row's both (and its top border, none here).
+  it('reads a native ODT height as including the margins', async () => {
+    const doc = structuredClone(imported.content as any);
+    doc.content[0].attrs = { ...doc.content[0].attrs, cellPadding: [0.1, 0.19, 0.2, 0.19] };
+    const files = unzipSync(await buildOdt(doc, DEFAULT_MARGINS, 'portrait'));
+    expect(flags(importOdt(zipSync(files)).content)).toEqual(expected);
+    files['settings.xml'] = strToU8(strFromU8(files['settings.xml']).replace(/<config:config-item config:name="MinRowHeightInclBorder"[^]*?<\/config:config-item>/, ''));
+    const native = flags(importOdt(zipSync(files)).content);
+    expect(native[2][2]).toBeCloseTo(18.93 - 0.2 * 37.795, 1);
+    expect(native[3][2]).toBeCloseTo(18.93 - 0.3 * 37.795, 1);
   });
 });

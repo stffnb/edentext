@@ -1,5 +1,6 @@
 import type { TabAlign, TabStop } from '../editor/extensions/tabStops';
-import { emphasisFromWord, type CapsMode, type Emphasis } from '../editor/extensions/textEffects';
+import { emphasisFromWord, RAW_OF, type CapsMode, type Emphasis, type Relief, type TextGlow, type TextOutline, type TextShadow, type W14El } from '../editor/extensions/textEffects';
+import { readW14Effects, W14 } from '../utils/w14Effects';
 import { lengthToPt } from './styleResolver';
 import { boundedInt } from './importLimits';
 
@@ -35,6 +36,7 @@ export type RunProps = {
   color?: string; // raw w:val hex (no #) or 'auto'
   sizeHalfPt?: number; // w:sz (half-points)
   spacingTwip?: number; // w:spacing (character spacing, twentieths of a point)
+  bdr?: Element; // w:bdr, the box round the run
   kernHalfPt?: number; // w:kern: the smallest size pair kerning applies to (0/absent = never)
   font?: string; // explicit w:rFonts w:ascii/hAnsi
   fontEastAsia?: string; // explicit w:rFonts w:eastAsia, the font CJK text is set in
@@ -46,8 +48,22 @@ export type RunProps = {
   doubleStrike?: boolean;  // w:dstrike
   positionPt?: number;     // w:position: pt above the baseline (negative = below)
   emphasis?: Emphasis | false; // w:em; false = a run switching the style's off
+  outline?: boolean;       // w:outline
+  shadow?: boolean;        // w:shadow
+  relief?: Relief | 'none'; // w:emboss / w:imprint; 'none' = a run switching the style's off
+  textOutline?: TextOutline; // w14:textOutline
+  textShadow?: TextShadow;   // w14:shadow
+  textGlow?: TextGlow;       // w14:glow
+  textFxRaw?: W14El[];       // the w14 elements the editor does not draw, one per name
   lang?: string;           // w:lang w:val, the run's western language tag
   langEastAsia?: string;   // w:lang w:eastAsia, its asian one
+  // The complex-script set, which Hebrew, Arabic, Indic and Thai text is set from.
+  boldCs?: boolean;        // w:bCs
+  italicCs?: boolean;      // w:iCs
+  sizeCsHalfPt?: number;   // w:szCs
+  fontCs?: string;         // w:rFonts w:cs
+  langBidi?: string;       // w:lang w:bidi
+  complex?: boolean;       // w:rtl / w:cs: the run is complex script whatever its characters
 };
 
 // A numbering level definition (numbering.xml w:lvl). bulletFont is the level's
@@ -106,7 +122,8 @@ function readCaps(p: RunProps, child: Element): void {
   const on = toggle(child);
   if (child.localName === 'smallCaps') p.caps = on ? 'smallCaps' : false;
   else if (on) { if (p.caps !== 'smallCaps') p.caps = 'uppercase'; }
-  else if (p.caps === 'uppercase') p.caps = false;
+  // An explicit off switches an inherited all-caps off too, not only this layer's.
+  else if (p.caps !== 'smallCaps') p.caps = false;
 }
 
 // The highlighter pen's fixed palette (w:highlight names a colour where w:shd gives a
@@ -118,15 +135,21 @@ const HIGHLIGHT_HEX: Record<string, string> = {
   red: 'FF0000', white: 'FFFFFF', yellow: 'FFFF00', none: 'auto',
 };
 
-// w:rPr element → RunProps (later layers override earlier; absent keys inherit).
-export function parseRunProps(rPr: Element | null | undefined): RunProps {
+// w:rPr element → RunProps (later layers override earlier; absent keys inherit). `colorOf`
+// resolves a w14 effect's colour; without it only effects in plain sRGB are drawn.
+export function parseRunProps(rPr: Element | null | undefined, colorOf?: (holder: Element) => string | undefined): RunProps {
   const p: RunProps = {};
   if (!rPr) return p;
+  Object.assign(p, readW14Effects(rPr, colorOf ?? srgbOnly));
   for (const child of Array.from(rPr.children)) {
     if (child.namespaceURI !== W) continue;
     switch (child.localName) {
       case 'b': p.bold = toggle(child); break;
       case 'i': p.italic = toggle(child); break;
+      case 'bCs': p.boldCs = toggle(child); break;
+      case 'iCs': p.italicCs = toggle(child); break;
+      case 'szCs': { const n = parseInt(wVal(child) ?? '', 10); if (Number.isFinite(n)) p.sizeCsHalfPt = n; break; }
+      case 'rtl': case 'cs': p.complex = toggle(child) || !!p.complex; break;
       case 'strike': p.strike = toggle(child); break;
       case 'u': {
         const v = wVal(child);
@@ -138,6 +161,11 @@ export function parseRunProps(rPr: Element | null | undefined): RunProps {
       }
       case 'dstrike': { const on = toggle(child); p.doubleStrike = on; if (on) p.strike = true; break; }
       case 'caps': case 'smallCaps': readCaps(p, child); break;
+      case 'outline': p.outline = toggle(child); break;
+      case 'shadow': p.shadow = toggle(child); break;
+      // Both on is engraved, as LibreOffice reads it; an off toggle switches a style's off.
+      case 'emboss': if (p.relief !== 'engraved') p.relief = toggle(child) ? 'embossed' : 'none'; break;
+      case 'imprint': if (toggle(child)) p.relief = 'engraved'; else if (p.relief !== 'embossed') p.relief = 'none'; break;
       case 'em': p.emphasis = emphasisFromWord(wVal(child)) ?? false; break;
       case 'position': { const pt = signedHalfPointsPt(wVal(child)); if (pt != null) p.positionPt = pt; break; }
       case 'vertAlign': {
@@ -150,16 +178,21 @@ export function parseRunProps(rPr: Element | null | undefined): RunProps {
       case 'lang': {
         const v = wVal(child);
         const ea = child.getAttributeNS(W, 'eastAsia');
+        const bidi = child.getAttributeNS(W, 'bidi');
         if (v) p.lang = v;
         if (ea) p.langEastAsia = ea;
+        if (bidi) p.langBidi = bidi;
         break;
       }
       case 'sz': { const n = parseInt(wVal(child) ?? '', 10); if (Number.isFinite(n)) p.sizeHalfPt = n; break; }
       case 'spacing': { const n = parseInt(wVal(child) ?? '', 10); if (Number.isFinite(n)) p.spacingTwip = n; break; }
+      case 'bdr': p.bdr = child; break;
       case 'kern': { const n = parseInt(wVal(child) ?? '', 10); if (Number.isFinite(n)) p.kernHalfPt = n; break; }
       case 'rFonts': {
         const ea = child.getAttributeNS(W, 'eastAsia');
         if (ea) p.fontEastAsia = ea;
+        const cs = child.getAttributeNS(W, 'cs');
+        if (cs) p.fontCs = cs;
         const f = child.getAttributeNS(W, 'ascii') ?? child.getAttributeNS(W, 'hAnsi');
         if (f) { p.font = f; break; }
         // Word's default fonts are theme references (minorHAnsi = body, majorHAnsi = headings).
@@ -182,7 +215,21 @@ export function mergeRunProps(base: RunProps, over: RunProps): RunProps {
     if (!('font' in over)) delete out.font;
     if (!('fontTheme' in over)) delete out.fontTheme;
   }
+  // w14 elements override one by one; a drawn effect replaces the kept tree of its kind.
+  if (base.textFxRaw && (over.textFxRaw || over.textOutline || over.textShadow || over.textGlow)) {
+    const replaced = new Set([...(over.textFxRaw ?? []).map((e) => e.n),
+      ...(['textOutline', 'textShadow', 'textGlow'] as const).filter((k) => over[k]).map((k) => RAW_OF[k])]);
+    const raw = [...base.textFxRaw.filter((e) => !replaced.has(e.n)), ...(over.textFxRaw ?? [])];
+    if (raw.length) out.textFxRaw = raw; else delete out.textFxRaw;
+  }
   return out;
+}
+
+// A w14 colour without the theme: only a plain sRGB value.
+function srgbOnly(holder: Element): string | undefined {
+  const c = Array.from(holder.children).find((k) => k.namespaceURI === W14 && k.localName === 'srgbClr');
+  const v = c?.getAttributeNS(W14, 'val');
+  return v && /^[0-9a-f]{6}$/i.test(v) ? `#${v.toUpperCase()}` : undefined;
 }
 
 export class DocxStyles {
@@ -193,6 +240,7 @@ export class DocxStyles {
   private memoOwn = new Map<string, RunProps>();
   private styleNum = new Map<string, { numId: number; ilvl: number }>();
   private ownNumId = new Map<string, number>(); // style's own w:numPr/w:numId
+  private startOverrides = new Map<string, number>(); // `numId:ilvl` → w:startOverride
   private ownIlvl = new Map<string, number>(); // style's own w:numPr/w:ilvl
   private ownOutline = new Map<string, number>(); // style's own w:outlineLvl (heading marker)
   private ownAlign = new Map<string, string>(); // style's own w:pPr/w:jc
@@ -212,12 +260,15 @@ export class DocxStyles {
   private ownKeepLines = new Map<string, boolean>(); // style's own w:pPr/w:keepLines
   private ownBreakBefore = new Map<string, boolean>(); // style's own w:pPr/w:pageBreakBefore
   private ownBidi = new Map<string, boolean>(); // style's own w:pPr/w:bidi
+  private defaultsBidi: boolean | null = null; // docDefaults w:pPrDefault/w:bidi
   private ownTabs = new Map<string, TabStop[]>(); // style's own w:pPr/w:tabs
   private ownCellMar = new Map<string, Element>(); // table style's own w:tblPr/w:tblCellMar
+  private ownBidiVisual = new Map<string, Element>(); // table style's own w:tblPr/w:bidiVisual
   private ownTblBorders = new Map<string, Element>(); // table style's own w:tblPr/w:tblBorders
   private ownPBdr = new Map<string, Element>(); // style's own w:pPr/w:pBdr (rule lines)
   private ownParaShd = new Map<string, Element>(); // style's own w:pPr/w:shd (colored field)
   private ownCond = new Map<string, Map<string, Element>>(); // table styleId → w:type → w:tblStylePr
+  private ownTcShd = new Map<string, Element>(); // table style's own w:tcPr/w:shd (whole table)
   private ownBandSize = new Map<string, { row: number; col: number }>(); // w:tblStyle*BandSize
   private defaultsWidow: boolean | null = null; // docDefaults w:pPrDefault/w:widowControl
   private numToAbstract = new Map<string, string>();
@@ -228,7 +279,11 @@ export class DocxStyles {
   private minorFont?: string; // theme1.xml body font (e.g. Calibri)
   private majorFont?: string; // theme1.xml heading font (e.g. Calibri Light)
 
-  constructor(stylesDoc: Document | null, numberingDoc: Document | null, themeDoc: Document | null = null) {
+  // Resolves a w14 effect's colour against the theme (parseRunProps).
+  readonly colorOf?: (holder: Element) => string | undefined;
+
+  constructor(stylesDoc: Document | null, numberingDoc: Document | null, themeDoc: Document | null = null, colorOf?: (holder: Element) => string | undefined) {
+    this.colorOf = colorOf;
     if (stylesDoc) this.parseStyles(stylesDoc);
     if (numberingDoc) this.parseNumbering(numberingDoc);
     if (themeDoc) this.parseTheme(themeDoc);
@@ -252,10 +307,12 @@ export class DocxStyles {
     const defs = doc.getElementsByTagNameNS(W, 'docDefaults')[0];
     if (defs) {
       const rPr = defs.getElementsByTagNameNS(W, 'rPrDefault')[0]?.getElementsByTagNameNS(W, 'rPr')[0];
-      this.defaultsRun = { sizeHalfPt: 20, ...parseRunProps(rPr) };
+      this.defaultsRun = { sizeHalfPt: 20, ...parseRunProps(rPr, this.colorOf) };
       const pPr = defs.getElementsByTagNameNS(W, 'pPrDefault')[0]?.getElementsByTagNameNS(W, 'pPr')[0];
       const ddJc = pPr ? firstChild(pPr, 'jc') : null;
       if (ddJc) this.defaultsAlign = wVal(ddJc);
+      const ddBidi = pPr?.getElementsByTagNameNS(W, 'bidi')[0];
+      if (ddBidi) this.defaultsBidi = toggle(ddBidi);
       const ddSp = pPr ? firstChild(pPr, 'spacing') : null;
       if (ddSp) this.defaultsSpacing = readSpacing(ddSp);
       const ddWc = pPr ? firstChild(pPr, 'widowControl') : null;
@@ -266,7 +323,7 @@ export class DocxStyles {
       if (!id) continue;
       this.basedOn.set(id, firstChild(style, 'basedOn') ? wVal(firstChild(style, 'basedOn')!) : null);
       this.next.set(id, firstChild(style, 'next') ? wVal(firstChild(style, 'next')!) : null);
-      this.ownRun.set(id, parseRunProps(firstChild(style, 'rPr')));
+      this.ownRun.set(id, parseRunProps(firstChild(style, 'rPr'), this.colorOf));
       if (style.getAttributeNS(W, 'type') === 'paragraph' && (style.getAttributeNS(W, 'default') === '1' || style.getAttributeNS(W, 'default') === 'true')) {
         this.defaultParaStyle = id;
       }
@@ -317,8 +374,12 @@ export class DocxStyles {
       const tblPr = firstChild(style, 'tblPr');
       const cellMar = tblPr && firstChild(tblPr, 'tblCellMar');
       if (cellMar) this.ownCellMar.set(id, cellMar);
+      const bidiVisual = tblPr && firstChild(tblPr, 'bidiVisual');
+      if (bidiVisual) this.ownBidiVisual.set(id, bidiVisual);
       const tblBorders = tblPr && firstChild(tblPr, 'tblBorders');
       if (tblBorders) this.ownTblBorders.set(id, tblBorders);
+      const tcShd = firstChild(style, 'tcPr') && firstChild(firstChild(style, 'tcPr')!, 'shd');
+      if (tcShd) this.ownTcShd.set(id, tcShd);
       const conds = Array.from(style.children).filter((c) => c.namespaceURI === W && c.localName === 'tblStylePr');
       if (conds.length) {
         const m = new Map<string, Element>();
@@ -426,8 +487,12 @@ export class DocxStyles {
         if (ilvl == null) continue;
         const def: LevelDef = {};
         const fmt = firstChild(lvl, 'numFmt'); if (fmt) def.numFmt = wVal(fmt) ?? undefined;
+        // Arabic-Indic digits have no format in Word: a decimal label set right-to-left.
+        const lvlRPr = firstChild(lvl, 'rPr'), lvlRtl = lvlRPr && firstChild(lvlRPr, 'rtl');
+        if (def.numFmt === 'decimal' && lvlRtl && !/^(0|false|off)$/.test(wVal(lvlRtl) ?? '')) def.numFmt = 'hindiNumbers';
         const txt = firstChild(lvl, 'lvlText'); if (txt) def.lvlText = wVal(txt) ?? undefined;
-        const start = firstChild(lvl, 'start'); if (start) { const n = parseInt(wVal(start) ?? '', 10); if (Number.isFinite(n)) def.start = n; }
+        // An absent w:start is 0: LibreOffice numbers such a level from 0 (probed).
+        const start = firstChild(lvl, 'start'); const n = start ? parseInt(wVal(start) ?? '', 10) : 0; if (Number.isFinite(n)) def.start = n;
         const ind = firstChild(lvl, 'pPr') && firstChild(firstChild(lvl, 'pPr')!, 'ind');
         if (ind) {
           const l = parseInt(ind.getAttributeNS(W, 'left') ?? ind.getAttributeNS(W, 'start') ?? '', 10);
@@ -458,6 +523,11 @@ export class DocxStyles {
       const numId = num.getAttributeNS(W, 'numId');
       const absId = firstChild(num, 'abstractNumId');
       if (numId && absId) this.numToAbstract.set(numId, wVal(absId) ?? '');
+      for (const o of Array.from(num.children).filter((c) => c.localName === 'lvlOverride')) {
+        const so = firstChild(o, 'startOverride');
+        const v = so ? parseInt(wVal(so) ?? '', 10) : NaN;
+        if (numId && Number.isFinite(v)) this.startOverrides.set(`${numId}:${o.getAttributeNS(W, 'ilvl') || 0}`, v);
+      }
     }
   }
 
@@ -582,13 +652,22 @@ export class DocxStyles {
     return this.paragraphKeepLines(this.basedOn.get(styleId) ?? null, seen);
   }
 
-  // w:bidi — the style's base direction. null = it declares none, so the section's holds.
+  // w:bidi — the style's base direction, the document defaults' where its chain has none.
+  // null = nothing declares one, so the section's holds.
   paragraphBidi(styleId: string | null | undefined, seen = new Set<string>()): boolean | null {
-    if (!styleId || seen.has(styleId)) return null;
+    if (!styleId || seen.has(styleId)) return this.defaultsBidi;
     seen.add(styleId);
     const own = this.ownBidi.get(styleId);
     if (own != null) return own;
     return this.paragraphBidi(this.basedOn.get(styleId) ?? null, seen);
+  }
+
+  // w:jc as the physical edge the editor stores. In a w:bidi paragraph Word reads left
+  // and start as the leading edge, the right one, and right and end as the left one.
+  static physicalJc(jc: string | null, bidi: boolean): string | null {
+    const edge = jc === 'right' || jc === 'end' ? 'right' : jc === 'left' || jc === 'start' ? 'left' : jc;
+    if (!bidi || (edge !== 'left' && edge !== 'right')) return edge;
+    return edge === 'left' ? 'right' : 'left';
   }
 
   private styleWidow(styleId: string | null | undefined, seen = new Set<string>()): boolean | null {
@@ -642,6 +721,14 @@ export class DocxStyles {
     return this.ownCellMar.get(styleId) ?? this.tableCellMar(this.basedOn.get(styleId) ?? null, seen);
   }
 
+  // The nearest w:bidiVisual of a table style's w:tblPr along the chain: a table without
+  // its own takes its direction from there.
+  tableBidiVisual(styleId: string | null | undefined, seen = new Set<string>()): Element | null {
+    if (!styleId || seen.has(styleId)) return null;
+    seen.add(styleId);
+    return this.ownBidiVisual.get(styleId) ?? this.tableBidiVisual(this.basedOn.get(styleId) ?? null, seen);
+  }
+
   // Every w:tblBorders along the w:basedOn chain, leaf first. The sides merge one by one,
   // so the caller takes each from the nearest style that declares it.
   tableBorders(styleId: string | null | undefined, seen = new Set<string>()): Element[] {
@@ -667,6 +754,13 @@ export class DocxStyles {
     if (!styleId || seen.has(styleId)) return null;
     seen.add(styleId);
     return this.ownParaShd.get(styleId) ?? this.paragraphShading(this.basedOn.get(styleId) ?? null, seen);
+  }
+
+  // The nearest whole-table cell shading (the style's own w:tcPr/w:shd), under every area.
+  tableCellShading(styleId: string | null | undefined, seen = new Set<string>()): Element | null {
+    if (!styleId || seen.has(styleId)) return null;
+    seen.add(styleId);
+    return this.ownTcShd.get(styleId) ?? this.tableCellShading(this.basedOn.get(styleId) ?? null, seen);
   }
 
   // The table style's conditional areas (w:tblStylePr) along the w:basedOn chain: Word's
@@ -699,6 +793,15 @@ export class DocxStyles {
     const np = linked ? this.styleNum.get(linked) : null;
     if (!np) return abs;
     return this.resolvedAbstract(np.numId, seen) ?? abs;
+  }
+
+  // Numbers count per abstract: numIds sharing one count on from each other (probed).
+  counterKey(numId: number): string {
+    return this.resolvedAbstract(numId) ?? `num:${numId}`;
+  }
+
+  startOverride(numId: number, ilvl: number): number | null {
+    return this.startOverrides.get(`${numId}:${ilvl}`) ?? null;
   }
 
   level(numId: number, ilvl: number): LevelDef {
@@ -747,6 +850,7 @@ export function readNumPr(numPr: Element): { numId: number; ilvl: number } | nul
   const numId = parseInt(wVal(idEl) ?? '', 10);
   if (!Number.isFinite(numId)) return null;
   const ilvlEl = firstChild(numPr, 'ilvl');
+  // w:ilvl ends at 8; a file's deeper one is numbered there.
   const ilvl = ilvlEl ? parseInt(wVal(ilvlEl) ?? '0', 10) : 0;
-  return { numId, ilvl: Number.isFinite(ilvl) ? ilvl : 0 };
+  return { numId, ilvl: Number.isFinite(ilvl) ? Math.min(8, Math.max(0, ilvl)) : 0 };
 }

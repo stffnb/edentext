@@ -1,8 +1,11 @@
-// AGPL-3.0-only with an additional term under section 7(b): see NOTICE.md.
+/*! EdenText embed helper | MIT License | Copyright (c) 2026 Steffen Becker */
 // EdenText embed helper: puts the editor in an iframe and drives it over postMessage.
 // Usage and messages: docs/architecture/embed.md. Load it as a module from the same
 // EdenText instance the iframe shows, e.g. import { EdenTextFrame } from '…/embed.js'.
 const PROTOCOL = 1;
+
+// The instance serving this file; the npm package's copy defaults to /edentext/ instead.
+const defaultUrl = () => new URL('./', import.meta.url);
 
 export class EdenTextFrame {
   #frame;
@@ -14,25 +17,32 @@ export class EdenTextFrame {
 
   /**
    * @param {HTMLElement} container where the iframe goes
-   * @param {{ url?: string, user?: string, locale?: string, theme?: string, chrome?: string, name?: string, accent?: string, ai?: boolean }} [options]
+   * @param {{ url?: string, user?: string, locale?: string, theme?: string, chrome?: string, name?: string, accent?: string, ai?: boolean | object, dictation?: boolean | object }} [options]
    *   `url`: the EdenText instance, by default the one serving this file. Types: embed.d.ts.
    */
   constructor(container, { url, ...settings } = {}) {
-    const src = new URL(url ?? new URL('./', import.meta.url), location.href);
+    const src = new URL(url ?? defaultUrl(), location.href);
     src.searchParams.set('embed', '1');
     this.#origin = src.origin;
     const frame = document.createElement('iframe');
     frame.src = src.href;
     frame.title = 'EdenText';
-    frame.allow = 'clipboard-read; clipboard-write; local-fonts';
+    // The microphone is for dictation, unless the host switches it off from the start.
+    frame.allow = `clipboard-read; clipboard-write; local-fonts${settings.dictation === false ? '' : '; microphone'}`;
     frame.style.cssText = 'border:0;width:100%;height:100%;display:block';
     this.#frame = frame;
     /** Resolves once the editor is up and has taken `settings`. */
     this.ready = new Promise((resolve, reject) => {
       const onMessage = (e) => {
         const m = e.data;
-        if (e.source !== frame.contentWindow || e.origin !== this.#origin || m?.edentext !== PROTOCOL) return;
-        if (m.type === 'ready') {
+        if (e.source !== frame.contentWindow || e.origin !== this.#origin || typeof m?.edentext !== 'number') return;
+        if (m.type === 'ready' && (m.protocol ?? m.edentext) !== PROTOCOL) {
+          reject(new Error(`EdenText ${m.version} at ${this.#origin} speaks protocol ${m.protocol ?? m.edentext}; this helper speaks ${PROTOCOL}. Use the helper from the same release.`));
+        } else if (m.edentext !== PROTOCOL) {
+          return;
+        } else if (m.type === 'refused') {
+          reject(new Error(`EdenText at ${this.#origin} does not accept ${location.origin} as its host: add it to the instance's embed.config.json.`));
+        } else if (m.type === 'ready') {
           this.version = m.version;
           this.#send('init', settings).then(() => resolve(this), reject);
         } else if (m.type === 'response') {
@@ -61,7 +71,7 @@ export class EdenTextFrame {
 
   /**
    * Change user, locale, theme ('light'|'dark'|'allBlack'|'auto'), chrome ('ribbon'|'modern'),
-   * name, accent (a preset name or '#rrggbb') or ai (false hides the assistant).
+   * name, accent (a preset name or '#rrggbb') ai or dictation (false hides it, an object presets its server).
    */
   async configure(settings) {
     await this.#send('configure', settings);

@@ -14,6 +14,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import type { Editor } from '@tiptap/core';
+  import { focusInPlace } from '../editor/extensions/overlay';
   import { comments, type CommentDraft } from '../editor/extensions/comment';
   import { t } from '../i18n/i18n.svelte';
   import { formatMoment } from '../storage/dateFormat.svelte';
@@ -41,14 +42,15 @@
   });
 
   function cancel() {
-    editor?.chain().focus(null, { scrollIntoView: false }).cancelCommentDraft().run();
+    if (editor) { editor.chain().cancelCommentDraft().run(); focusInPlace(editor.view); }
   }
 
   function add() {
     const body = text.trim();
     if (!editor || !body) return;
     const had = new Set(comments(editor.state.doc).map((c) => c.id));
-    editor.chain().focus(null, { scrollIntoView: false }).submitCommentDraft({ author, text: body }).run();
+    editor.chain().submitCommentDraft({ author, text: body }).run();
+    focusInPlace(editor.view);
     const id = comments(editor.state.doc).find((c) => !had.has(c.id))?.id;
     if (id && aiEnabled() && mentionsAi(body)) window.dispatchEvent(new CustomEvent(AI_COMMENT_EVENT, { detail: { id } }));
   }
@@ -76,8 +78,8 @@
 
   .quote {
     margin: 3px 0;
-    padding-left: 6px;
-    border-left: 2px solid var(--color-primary);
+    padding-inline-start: 6px;
+    border-inline-start: 2px solid var(--color-primary);
     color: var(--color-text-muted);
     display: -webkit-box;
     -webkit-line-clamp: 2;

@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { formatDecimal, parseDecimal } from '../i18n/number';
   import type { Editor } from '@tiptap/core';
-  import { uniformBlockAttr } from '../utils/selectionFormat';
+  import { shownAlign, uniformBlockAttr } from '../utils/selectionFormat';
   import { t } from '../i18n/i18n.svelte';
   import { blockFontSize } from '../utils/fontSize';
 
@@ -32,9 +33,9 @@
 
   const ALIGNS = ['left', 'center', 'right', 'justify'] as const;
 
-  // An unset paragraph renders left, so that's what the box shows; a selection
-  // mixing two alignments still reads '' and leaves it blank.
-  let align = $derived(read('textAlign', 'left'));
+  // The edge the paragraph is drawn at, an unset one's included; a selection mixing two
+  // alignments reads '' and leaves the box blank.
+  let align = $derived(tick < 0 || !editor ? 'left' : shownAlign(editor.view));
   // '' is the page's own direction (LibreOffice's "Use superordinate object settings").
   let dir = $derived(read<string | null>('dir', null) ?? '');
   let indent = $derived(read('indent', 0));
@@ -88,13 +89,13 @@
   }
 
   function setNumber(attr: string, raw: string) {
-    const v = parseFloat(raw.replace(',', '.'));
+    const v = parseDecimal(raw);
     if (!isNaN(v)) setAttr(attr, v);
   }
 
   // Through the commands, so a field's two units replace each other.
   function setIndentIn(field: Field, raw: string, unit: Unit) {
-    const v = parseFloat(raw.replace(',', '.'));
+    const v = parseDecimal(raw);
     if (isNaN(v) || !editor) return;
     const c = editor.chain().focus();
     if (field === 'left') (unit === 'chars' ? c.setIndentChars(v) : c.setIndent(v)).run();
@@ -112,7 +113,7 @@
     setIndentIn(field, String(Math.round(next * 100) / 100), unit);
   }
 
-  const num = (v: number | '') => (v === '' ? '' : String(Math.round((v as number) * 100) / 100));
+  const num = (v: number | '') => (v === '' ? '' : formatDecimal(v as number));
 
   const FLOW: { attr: string; on: () => boolean; label: () => string; set: (v: boolean) => void }[] = [
     { attr: 'widowControl', on: () => widowControl, label: () => t().paragraphDialog.widowControl, set: (v) => setAttr('widowControl', v ? null : false) },
@@ -130,7 +131,7 @@
   </select>
 {/snippet}
 
-<dialog bind:this={dialogEl} onclose={() => (open = false)} onclick={(e) => e.target === dialogEl && (open = false)} aria-label={t().paragraphDialog.title}>
+<dialog bind:this={dialogEl} onclose={() => !dialogEl?.open && (open = false)} onclick={(e) => e.target === dialogEl && (open = false)} aria-label={t().paragraphDialog.title}>
   <div class="body">
     <h2>{t().paragraphDialog.title}</h2>
 
@@ -174,7 +175,7 @@
           </select>
         </label>
         {#if fixedLine}
-          <label class="row"><span></span><input type="text" inputmode="decimal" value={num(parseFloat(String(lineHeight)))} onchange={(e) => { const v = parseFloat((e.currentTarget as HTMLInputElement).value.replace(',', '.')); if (v > 0) editor?.chain().focus().setLineHeight(`${v}pt`).run(); }} /><em>pt</em></label>
+          <label class="row"><span></span><input type="text" inputmode="decimal" value={num(parseFloat(String(lineHeight)))} onchange={(e) => { const v = parseDecimal((e.currentTarget as HTMLInputElement).value); if (v > 0) editor?.chain().focus().setLineHeight(`${v}pt`).run(); }} /><em>pt</em></label>
         {/if}
       </div>
       <div class="flow" class:off={pane !== 'breaks'}>

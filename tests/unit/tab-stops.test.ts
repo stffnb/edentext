@@ -1,6 +1,6 @@
-// Tab stops: positions are cm from the left text margin in both formats (probe: a Word
-// stop at 100mm in a 30mm-indented paragraph stays 100mm in ODF and renders there), so
-// neither side shifts them by the paragraph indent.
+// Tab stops: positions are cm from the text margin the block starts at in both formats
+// (probe: a Word stop at 100mm in a 30mm-indented paragraph stays 100mm in ODF and renders
+// there), so neither side shifts them by the paragraph indent or mirrors them for RTL.
 import { describe, it, expect } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
 import { buildOdt } from '../../src/lib/export/odt';
@@ -23,6 +23,7 @@ const doc: N = {
     P('plain'),
     P('left\tcentred\tright\t12.34', { tabStops: '6c;12r;16d' }),
     P('indented\tright', { indent: 3, tabStops: '10r' }),
+    P('rtl\tstart\tend', { dir: 'rtl', tabStops: '5l;10r' }),
   ],
 };
 
@@ -66,6 +67,9 @@ describe('tab stops', () => {
     expect(stopsOf(back, 0)).toBe(null);
     expect(stopsOf(back, 1)).toBe('6c;12r;16d');
     expect(stopsOf(back, 2)).toBe('10r');
+    // A right-to-left block keeps position and kind: both files measure from its start edge.
+    expect(back.content[3].attrs.dir).toBe('rtl');
+    expect(stopsOf(back, 3)).toBe('5l;10r');
   });
 
   it('round-trips through DOCX', async () => {
@@ -80,6 +84,9 @@ describe('tab stops', () => {
     expect(stopsOf(back, 0)).toBe(null);
     expect(stopsOf(back, 1)).toBe('6c;12r;16d');
     expect(stopsOf(back, 2)).toBe('10r');
+    // A right-to-left block keeps position and kind: both files measure from its start edge.
+    expect(back.content[3].attrs.dir).toBe('rtl');
+    expect(stopsOf(back, 3)).toBe('5l;10r');
   });
 });
 
@@ -94,7 +101,8 @@ describe('sameLayout', () => {
   it('ignores a sub-pixel change in an advance', () => {
     expect(sameLayout({ widths: [{ pos: 40, width: 30, leader: '.' }, { pos: 10, width: 72.15, leader: null }], breaks: [55] }, live)).toBe(true);
   });
-  it('sees a moved tab, a wider advance, a new leader or a new wrap', () => {
+  it('sees a moved tab, a wider advance, a new leader, a new wrap or a turned direction', () => {
+    expect(sameLayout({ widths: [{ pos: 10, width: 72.14, leader: null, rtl: true }, { pos: 40, width: 30, leader: '.' }], breaks: [55] }, live)).toBe(false);
     expect(sameLayout({ widths: [{ pos: 11, width: 72.14, leader: null }, { pos: 40, width: 30, leader: '.' }], breaks: [55] }, live)).toBe(false);
     expect(sameLayout({ widths: [{ pos: 10, width: 80, leader: null }, { pos: 40, width: 30, leader: '.' }], breaks: [55] }, live)).toBe(false);
     expect(sameLayout({ widths: [{ pos: 10, width: 72.14, leader: null }, { pos: 40, width: 30, leader: '-' }], breaks: [55] }, live)).toBe(false);

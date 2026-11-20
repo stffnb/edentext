@@ -61,6 +61,7 @@
     <input
       class="rb-combo-input"
       type="text"
+      dir="ltr"
       bind:value
       title={t().toolbarExpanded.fontSize}
       onfocus={(e) => { focused = true; openBox(); (e.currentTarget as HTMLInputElement).select(); }}

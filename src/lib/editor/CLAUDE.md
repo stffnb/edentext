@@ -50,6 +50,7 @@ the tooltips (via `withShortcut`, which localizes Ctrl/Shift/Alt and swaps in ‚å
   collides with zoom; formatting marks use LO's `Ctrl+F10` (Word's `Ctrl+Shift+8` is
   TipTap's bullet list). `Ctrl+N` is unbindable in Chrome and therefore absent.
 - `recordChanges` is LibreOffice's Ctrl+Shift+C; Word's Ctrl+Shift+E is TipTap's centring.
+- `dictate` is Word's Alt+`, matched by `event.code` (`Backquote`): on a Mac Option+` is a dead key.
 - `tests/unit/shortcuts.test.ts` asserts the table has no duplicate combo (the bindings
   are spread over several files, so nothing else can catch a collision) and covers
   `matchesEvent`.
@@ -76,3 +77,4 @@ next measurement.
 On a change (the caret in it, or a selection touching it) the menu starts with Accept and Reject.
 In an ordered list it adds Continue/Restart Numbering on the outermost list (`outerOrderedListAt`,
 `listStyle.ts`): `continueNumbering` counts on from the ordered list before it in the same parent.
+Screen coordinates of a document position go through `coordsAt` (`extensions/overlay.ts`), never `view.coordsAtPos`: WebKit answers 0,0 at the end of a text node of right-to-left text in a right-to-left block, and `coordsAt` takes the caret's place from the character beside it (`caretBeside`).

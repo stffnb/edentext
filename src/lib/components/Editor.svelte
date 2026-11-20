@@ -1,5 +1,6 @@
 <script lang="ts">
   import ReadGate from './ReadGate.svelte';
+  import { caretBeside, coordsAt } from '../editor/extensions/overlay';
   import { onMount, onDestroy, untrack, flushSync } from 'svelte';
   import { Editor } from '@tiptap/core';
   import { extensions } from '../editor/extensions';
@@ -42,6 +43,7 @@ import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbe
 import { DEFAULT_LINE_GRID, type LineGrid } from '../storage/lineGrid';
 import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import Ruler from './Ruler.svelte';
+  import { sectionAt } from './sectionSetup';
   import { saveDocument, loadDocument, markDocumentLoaded, withoutDefaults } from '../storage/autosave';
   import { IDB_SRC } from '../storage/imageStore';
   import { applyMarginVars, cmToPx, PX_PER_CM, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
@@ -55,7 +57,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import { RESYNC_NOTES } from '../editor/extensions/notes';
   import { applyPageSizeVars, pageDimsCm, type PageFormat } from '../storage/pageFormat';
   import { MAX_PAGE_COLUMNS } from '../storage/theme';
-  import { DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, hfIsEmpty, hfUsesChapterField, type HfDoc, type HfZone, type HfDistances, type HfSet, type HfZoneKey } from '../storage/headerFooter';
+  import { DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, NO_HF_FRAMES, hfIsEmpty, hfUsesChapterField, type HfSetFrames, type HfDoc, type HfZone, type HfDistances, type HfSet, type HfZoneKey } from '../storage/headerFooter';
   import { pageStartBlock, type PageBox } from '../utils/pageStrip';
   import { FORCE_PAGE_RECALC, PAGE_GAP, pageOfElement, readVerticalMargins, topInEditor, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { SHEET_CHANGED } from '../editor/extensions/listMarker';
@@ -72,7 +74,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
     zoom = 100, onZoom, onDocumentLost, showFormattingMarks = false, showFieldShading = true, showPageLabels = true, showRuler = true, splitView = false, pageColumns = 1, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
     pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add', spacingAtPageStart = true, documentEpoch = 0, pageRtl = false, hyphenate = false, documentLanguage = 'en', pageNumbering = DEFAULT_PAGE_NUMBERING, pageDecor = EMPTY_PAGE_DECOR, lineNumbering = DEFAULT_LINE_NUMBERING, lineGrid = DEFAULT_LINE_GRID, balanceSpaces = false, foldMarks = false, commentAuthor = '',
-    headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES,
+    headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES, hfFrames = NO_HF_FRAMES,
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
     headerEvenDoc = $bindable(null), footerEvenDoc = $bindable(null), differentOddEven = false,
     hfEditor = $bindable(null), hfActive = $bindable(null), hfTick = $bindable(0),
@@ -109,7 +111,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     balanceSpaces?: boolean;
     /** Fold + punch marks in the left margin (DIN 5008 letter sheets). */
     foldMarks?: boolean;
-    headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances;
+    headerDoc?: HfDoc; footerDoc?: HfDoc; hfDistances?: HfDistances; hfFrames?: HfSetFrames;
     headerFirstDoc?: HfDoc; footerFirstDoc?: HfDoc; differentFirstPage?: boolean;
     headerEvenDoc?: HfDoc; footerEvenDoc?: HfDoc; differentOddEven?: boolean;
     hfEditor?: Editor | null; hfActive?: HfZone | null; hfTick?: number;
@@ -119,6 +121,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // Page each section after the first starts on (pageBreaks reports it); the layer
   // turns it into a per-page set.
   let sectionStartPages = $state<number[]>([]);
+  // The blank pages a section's start side inserts (pageBreaks.ts).
+  let blankPages = $state<number[]>([]);
   // Where each heading starts, for the running head's chapter field. Only collected
   // when a zone actually shows one — it costs a layout read per heading.
   let chapterStarts = $state<ChapterStart[]>([]);
@@ -191,7 +195,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   let hfZoneHeights = $state<number[][]>([]);
   const zoneHeightPx = (section: number, key: HfZoneKey): number =>
     hfZoneHeights[section]?.[HF_ZONE_KEYS.indexOf(key)] ?? 0;
-  // How far a header's frames set against the body push its text down (HeaderFooterLayer).
+  // How far a header's frames set against the body push its text down, and how far a
+  // footer's frames reach above its text (HeaderFooterLayer).
   let hfZoneIntrusions = $state<number[][]>([]);
   const pushed = (top: number, section: number, key: HfZoneKey): number =>
     top + (hfZoneIntrusions[section]?.[HF_ZONE_KEYS.indexOf(key)] ?? 0);
@@ -253,15 +258,15 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // variant folded in (max), since one --pb-content-*-rest covers all of them.
   let evenTopReach = $derived(differentOddEven
     ? pushed(Math.max(mTopPx, hfReachPx(headerEvenDoc ?? null, headerDistPx, false, zoneHeightPx(0, 'headerEven'))), 0, 'headerEven') : 0);
-  let evenBottomReach = $derived(differentOddEven ? hfReachPx(footerEvenDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footerEven')) : 0);
+  let evenBottomReach = $derived(differentOddEven ? pushed(hfReachPx(footerEvenDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footerEven')), 0, 'footerEven') : 0);
   let effTopRest = $derived(Math.max(pushed(Math.max(mTopPx, hfReachPx(headerDoc ?? null, headerDistPx, false, zoneHeightPx(0, 'header'))), 0, 'header'), evenTopReach));
   let effTopFirst = $derived(differentFirstPage
     ? pushed(Math.max(mTopPx, hfReachPx(headerFirstDoc ?? null, headerDistPx, false, zoneHeightPx(0, 'headerFirst'))), 0, 'headerFirst')
     : pushed(Math.max(mTopPx, hfReachPx(headerDoc ?? null, headerDistPx, false, zoneHeightPx(0, 'header'))), 0, 'header'));
-  let effBottomRest = $derived(Math.max(mBottomPx, hfReachPx(footerDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footer')), evenBottomReach));
+  let effBottomRest = $derived(Math.max(mBottomPx, pushed(hfReachPx(footerDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footer')), 0, 'footer'), evenBottomReach));
   let effBottomFirst = $derived(Math.max(mBottomPx, differentFirstPage
-    ? hfReachPx(footerFirstDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footerFirst'))
-    : hfReachPx(footerDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footer'))));
+    ? pushed(hfReachPx(footerFirstDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footerFirst')), 0, 'footerFirst')
+    : pushed(hfReachPx(footerDoc ?? null, footerDistPx, true, zoneHeightPx(0, 'footer')), 0, 'footer')));
   // Per-section reaches for pageBreaks, [topFirst, topRest, bottomFirst, bottomRest] in
   // px. Section 1 repeats the four vars below; a section with page margins of its own
   // measures against those (`marginsFirst` = page 1).
@@ -277,8 +282,10 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       const firstD = s.distancesFirst ?? restD;
       const hDist = (d: HfDistances | null) => (d ? cmToPx(d.header) : headerDistPx);
       const fDist = (d: HfDistances | null) => (d ? cmToPx(d.footer) : footerDistPx);
-      const reach = (key: HfZoneKey, dist: number, footer = false) =>
-        hfReachPx(s[key] ?? null, dist, footer, zoneHeightPx(i + 1, key));
+      const reach = (key: HfZoneKey, dist: number, footer = false) => {
+        const px = hfReachPx(s[key] ?? null, dist, footer, zoneHeightPx(i + 1, key));
+        return footer && px ? pushed(px, i + 1, key) : px;
+      };
       const firstKey = s.differentFirstPage ? 'headerFirst' : 'header';
       return [
         pushed(Math.max(topOf(first), reach(firstKey, hDist(firstD))), i + 1, firstKey),
@@ -332,17 +339,21 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // its blocks inset by the difference ("leftFirst|rightFirst|leftRest|rightRest").
   // A section narrower than the sheet (.paper reserves the widest paper) splits the
   // difference between its sides, so its text sits on the centred page it belongs to.
+  // The left share is rounded as the page box is, and the right one takes the rest, so the
+  // text keeps its page's exact width (a rounded pair widened it 0.8px and moved breaks).
   let sectionInset = $derived.by(() => {
-    const half = (i: number) => Math.round((paperWidth - (sectionPaper[i]?.w ?? paperWidth)) / 2);
+    const spare = (i: number) => paperWidth - (sectionPaper[i]?.w ?? paperWidth);
+    const half = (i: number) => Math.round(spare(i) / 2);
+    const exact = (n: number) => Math.round(n * 1000) / 1000;
     return [
-      [half(0), half(0), half(0), half(0)],
+      [half(0), exact(spare(0) - half(0)), half(0), exact(spare(0) - half(0))],
       ...extraHfSections.map((s, i) => {
         const rest = s.margins ?? null;
         const first = s.marginsFirst ?? rest;
         const d = (m: PageMargins | null, side: 'left' | 'right') =>
-          m ? Math.round(cmToPx(m[side]) - cmToPx(pageMargins[side])) : 0;
-        const narrow = half(i + 1);
-        return [d(first, 'left') + narrow, d(first, 'right') + narrow, d(rest, 'left') + narrow, d(rest, 'right') + narrow];
+          m ? cmToPx(m[side]) - cmToPx(pageMargins[side]) : 0;
+        const left = half(i + 1), right = spare(i + 1) - left;
+        return [d(first, 'left') + left, d(first, 'right') + right, d(rest, 'left') + left, d(rest, 'right') + right].map(exact);
       }),
     ].map((g) => g.join('|')).join(',');
   });
@@ -362,9 +373,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     ...extraHfSections.map((s) => s.pageNumberStart ?? 'x')].join(','));
 
   // The side each section must open on ('x' = wherever it falls): a blank page goes
-  // before one whose flow would open it on the other.
+  // before one whose flow would open it on the other. A restart without a side opens on
+  // the sheet whose side its number has, page 1 setting the parity (LibreOffice, probed).
   let sectionStartsOn = $derived(['x',
-    ...extraHfSections.map((s) => (s.startsOn === 'odd' ? 'o' : s.startsOn === 'even' ? 'e' : 'x'))].join(','));
+    ...extraHfSections.map((s) => (s.startsOn === 'odd' ? 'o' : s.startsOn === 'even' ? 'e'
+      : s.pageNumberStart == null ? 'x' : (s.pageNumberStart - pageNumbering.start) % 2 === 0 ? 'o' : 'e'))].join(','));
 
   // The number a page shows, and from it its side: a left page is an even-numbered one.
   let printedNumberAt = $derived.by(() => {
@@ -381,6 +394,23 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     const s = i > 0 ? extraHfSections[i - 1] : null;
     const first = i === 0 ? 1 : sectionStartPages[i - 1] ?? 1;
     return (page === first ? s?.marginsFirst ?? s?.margins : s?.margins) ?? pageMargins;
+  });
+
+  // The page the ruler measures: the edited zone's, else the caret's. Scrolled away from
+  // the caret's section, it measures that section's first page instead of the one in view.
+  let hfEditingPage = $state(1);
+  let rulerPage = $derived.by(() => {
+    if (hfActive) return hfEditingPage;
+    const section = tick >= 0 && editor ? sectionAt(editor.state) : 0;
+    if ((pageBoxes[currentPage - 1]?.section ?? 0) === section) return currentPage;
+    return section > 0 ? sectionStartPages[section - 1] ?? currentPage : 1;
+  });
+  // That page's own paper and margins, an even page of a mirrored setup swapping its sides.
+  let rulerGeometry = $derived.by(() => {
+    const box = pageBoxes[rulerPage - 1];
+    const m = marginsAt(rulerPage);
+    const margins = m.mirrored && leftPageAt(rulerPage) ? { ...m, left: m.right, right: m.left } : m;
+    return { left: box?.left ?? 0, width: box?.width ?? paperWidth, margins };
   });
 
   $effect(() => {
@@ -422,6 +452,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     void pageFormat;
     // …the tab grid, which changes where a tab lands and so where a line breaks…
     void tabIntervalCm;
+    // …the page's direction, which is the edge every tab stop is measured from…
+    void pageRtl;
     // …and how the space between two blocks is measured.
     void spacingModel;
     // …and the line grid, which sets every line's height.
@@ -471,7 +503,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       styleEl.id = 'document-styles';
       document.head.appendChild(styleEl);
     }
-    styleEl.textContent = css;
+    // An unchanged sheet is not rewritten: any write restyles the whole document.
+    if (styleEl.textContent !== css) styleEl.textContent = css;
     const ed = editor;
     if (!ed) return;
     // Type sizes/margins changed under the layout, so page positions must be re-measured.
@@ -599,12 +632,12 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     scaledHeight = Math.round(h * z);
   }
 
-  // Page cycle (page height + 20px gap) in document px. Format/orientation-dependent,
-  // so read live from --user-page-height (set by applyPageSizeVars). Must match
-  // pageBreaks.ts. Fallback = A4 portrait (1123 + 20).
-  function getCycle(): number {
-    const ph = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--user-page-height'));
-    return (Number.isFinite(ph) ? ph : 1123) + 20;
+  // The page a document y falls on (px from the first page's top); a gap counts to the
+  // page above it. Pages differ in height where a section has its own paper.
+  function pageAtY(y: number): number {
+    let p = 1;
+    while (p < pageBoxes.length && pageBoxes[p].top <= y) p++;
+    return Math.max(1, Math.min(numPages, p));
   }
 
   // --- Right-click context menu (text menu, spelling suggestions merged in) ---
@@ -666,7 +699,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     const cRect = container.getBoundingClientRect();
     ctxMenu = {
       top: event.clientY - cRect.top + container.scrollTop,
-      left: event.clientX - cRect.left + container.scrollLeft,
+      left: event.clientX - cRect.left - container.clientLeft + container.scrollLeft,
       items: buildContextMenu(ed, { spell, grammar }),
     };
   }
@@ -717,7 +750,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     const cRect = container.getBoundingClientRect();
     linkTip = {
       top: rect.top - cRect.top + container.scrollTop,
-      left: rect.left - cRect.left + container.scrollLeft,
+      left: rect.left - cRect.left - container.clientLeft + container.scrollLeft,
       href: el.getAttribute('href') ?? '',
       pane,
     };
@@ -825,7 +858,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     // aligned across zoom; the toolbar is a non-zoomed sibling, rendered constant-size.
     const tRect = dom.getBoundingClientRect();
     const cRect = container.getBoundingClientRect();
-    const left = tRect.left - cRect.left + container.scrollLeft;
+    const left = tRect.left - cRect.left - container.clientLeft + container.scrollLeft;
     // Default: anchor just above the table's top-left corner.
     let top = tRect.top - cRect.top + container.scrollTop;
 
@@ -837,16 +870,13 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       try {
         const z = appliedZoom / 100;
         const tiptapRect = tiptap.getBoundingClientRect();
-        const cycle = getCycle();
         const tableTopDoc = (tRect.top - tiptapRect.top) / z;
-        const coords = view.coordsAtPos(ed.state.selection.head);
+        const coords = coordsAt(view, ed.state.selection.head);
         const cursorDoc = ((coords.top + coords.bottom) / 2 - tiptapRect.top) / z;
-        const tableStartPage = Math.floor(Math.max(0, tableTopDoc) / cycle);
-        const cursorPage = Math.floor(Math.max(0, cursorDoc) / cycle);
+        const tableStartPage = pageAtY(tableTopDoc);
+        const cursorPage = pageAtY(cursorDoc);
         if (cursorPage > tableStartPage) {
-          const marginTopDoc =
-            parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--user-margin-top')) || 96;
-          const pageContentTopDoc = cursorPage * cycle + marginTopDoc;
+          const pageContentTopDoc = (pageBoxes[cursorPage - 1]?.top ?? 0) + cmToPx(marginsAt(cursorPage).top);
           const tiptapTopInContainer = tiptapRect.top - cRect.top + container.scrollTop;
           top = tiptapTopInContainer + pageContentTopDoc * z;
         }
@@ -887,7 +917,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     imageUi = {
       visible: true,
       top: toolbarAnchorTop(dom, r) - cRect.top + container.scrollTop,
-      left: r.left - cRect.left + container.scrollLeft,
+      left: r.left - cRect.left - container.clientLeft + container.scrollLeft,
       wrap: ((sel as NodeSelection).node.attrs.wrap as WrapMode) || 'inline',
       inFront: (sel as NodeSelection).node.attrs.inFront === true,
       wrapDist: (sel as NodeSelection).node.attrs.wrapDist ?? null,
@@ -901,7 +931,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   let textBoxUi = $state<{
     visible: boolean; top: number; left: number;
     wrap: WrapMode; inFront: boolean; wrapAlign: string | null; shapeKind: ShapeKind; fillColor: string | null;
-    strokeColor: string | null; strokeWidthPt: number; textVertical: boolean; textVAlign: TextVAlign; wrapDist: unknown;
+    strokeColor: string | null; strokeWidthPt: number; textVertical: boolean | 'up'; textVAlign: TextVAlign; wrapDist: unknown;
   }>({ visible: false, top: 0, left: 0, wrap: 'inline', inFront: false, wrapAlign: null, shapeKind: 'textbox', fillColor: '#FFFFFF', strokeColor: '#000000', strokeWidthPt: 1, textVertical: false, textVAlign: 'top', wrapDist: null });
 
   function recomputeTextBoxUi() {
@@ -920,7 +950,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     textBoxUi = {
       visible: true,
       top: toolbarAnchorTop(dom, r) - cRect.top + container!.scrollTop,
-      left: r.left - cRect.left + container!.scrollLeft,
+      left: r.left - cRect.left - container!.clientLeft + container!.scrollLeft,
       wrap: (a.wrap as WrapMode) || 'inline',
       inFront: a.inFront === true,
       wrapAlign: (a.wrapAlign as string | null) ?? null,
@@ -928,7 +958,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       fillColor: (a.fillColor as string | null) ?? null,
       strokeColor: (a.strokeColor as string | null) ?? null,
       strokeWidthPt: (a.strokeWidthPt as number) ?? 1,
-      textVertical: a.textVertical === true,
+      textVertical: a.textVertical === 'up' ? 'up' : a.textVertical === true,
       textVAlign: (a.textVAlign as TextVAlign) || 'top',
       wrapDist: a.wrapDist ?? null,
     };
@@ -1151,15 +1181,13 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     // getBoundingClientRect and coordsAtPos return zoomed viewport pixels;
     // divide by zoom factor to convert to document coordinates before comparing with the cycle.
     const zoomFactor = appliedZoom / 100;
-    const cycle = getCycle();
-
     if (editor && view) {
       try {
-        const coords = view.coordsAtPos(editor.state.selection.head);
+        const coords = coordsAt(view, editor.state.selection.head);
         const cursorMidY = (coords.top + coords.bottom) / 2;
         if (cursorMidY >= editorRect.top && cursorMidY <= editorRect.bottom) {
           const cursorInDoc = (cursorMidY - tiptapRect.top) / zoomFactor;
-          currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / cycle) + 1));
+          currentPage = pageAtY(cursorInDoc);
           return;
         }
       } catch {
@@ -1168,21 +1196,24 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     }
 
     const visibleTopInDoc = (editorRect.top - tiptapRect.top) / zoomFactor;
-    currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, visibleTopInDoc) / cycle) + 1));
+    currentPage = pageAtY(visibleTopInDoc);
   }
 
   function onPageCount(e: Event) {
-    const detail = (e as CustomEvent<{ numPages: number; docHeight?: number; tableBreakBands?: TableBreakBand[]; sectionStartPages?: number[] }>).detail;
+    const detail = (e as CustomEvent<{ numPages: number; docHeight?: number; tableBreakBands?: TableBreakBand[]; sectionStartPages?: number[]; blankPages?: number[] }>).detail;
     numPages = detail.numPages;
     if (typeof detail.docHeight === 'number') docHeightDoc = detail.docHeight;
     tableBandsDoc = detail.tableBreakBands ?? [];
     sectionStartPages = detail.sectionStartPages ?? [];
+    const blank = detail.blankPages ?? [];
+    if (blank.join() !== blankPages.join()) blankPages = blank;
     refreshChapterStarts();
     // The document height changed → resize the scaled scroll footprint.
     recomputeScaledSize();
     updateCurrentPage();
-    // A new layout can move the caret onto another page with no selection change.
-    if (multiPage && gridFocused()) scheduleCaretPage();
+    // A new layout can move the caret onto another page with no selection change; the grid
+    // follows only if the reader has not scrolled since it last did, or a late pass undid it.
+    if (multiPage && gridFocused()) scheduleCaretPage(false);
     // Pagination spacers can shift a table's position — re-place the toolbar/bands.
     scheduleTableUi();
   }
@@ -1456,7 +1487,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       return {
         pane, page, live: page <= numPages,
         left: Math.round((pane % gridCols) * pageStride * z),
-        top: Math.round(rowOfSlot(Math.floor(pane / gridCols)) * firstCycle * z),
+        // A slot past the last row is empty and stays on it: below the canvas it would
+        // lengthen the scroll by a row with no page in it.
+        top: Math.round(Math.min(rowOfSlot(Math.floor(pane / gridCols)), gridRows - 1) * firstCycle * z),
         width: Math.round((box?.width ?? paperWidth) * z),
         height: Math.round((box?.height ?? firstCycle - PAGE_GAP) * z),
         // Where the document sits inside the cell: its own page box, at the top left.
@@ -1525,7 +1558,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     const sel = view.dom.ownerDocument.getSelection();
     let node = sel?.focusNode ?? null;
     let offset = sel?.focusOffset ?? 0;
-    if (!node || !view.hasFocus() || !view.dom.contains(node)) return view.coordsAtPos(view.state.selection.head);
+    if (!node || !view.hasFocus() || !view.dom.contains(node)) return coordsAt(view, view.state.selection.head);
     const widget = (n: Node | undefined) => n instanceof HTMLElement && n.contentEditable === 'false';
     while (node.nodeType === Node.ELEMENT_NODE && node.childNodes.length) {
       const kids: NodeListOf<ChildNode> = node.childNodes;
@@ -1537,18 +1570,28 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     range.setStart(node, offset);
     const rect = range.getClientRects()[0];
     if (rect && (rect.top || rect.bottom)) return rect;
+    // WebKit has no rect at the end of right-to-left text: the character beside it has.
+    const beside = node instanceof Text ? caretBeside(node, offset, true) ?? caretBeside(node, offset, false) : null;
+    if (beside) return beside;
     const el = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
-    return el?.getBoundingClientRect() ?? view.coordsAtPos(view.state.selection.head);
+    return el?.getBoundingClientRect() ?? coordsAt(view, view.state.selection.head);
   }
 
   // The page the caret sits on, read one task later: called straight from the selection
   // it would lay the whole document out before anything is painted — half a second on a
   // 460-page file, thrown away by the writes of the load that follow it.
   let caretPageTask: ReturnType<typeof setTimeout> | null = null;
-  function scheduleCaretPage(): void {
+  let caretPageScrolls = false;
+  // Where the last follow left the scroller; NaN until one has.
+  let followedAt = { top: NaN, left: NaN };
+  function scheduleCaretPage(scroll = true): void {
+    caretPageScrolls ||= scroll;
     if (caretPageTask !== null) return;
     caretPageTask = setTimeout(() => {
       caretPageTask = null;
+      const el = scrollers[0];
+      const scrolls = caretPageScrolls || (!!el && Math.abs(el.scrollTop - followedAt.top) < 1 && Math.abs(el.scrollLeft - followedAt.left) < 1);
+      caretPageScrolls = false;
       if (!editor || editor.isDestroyed) return;
       const view = paneView() ?? editor.view;
       const tiptap = view.dom as HTMLElement | null;
@@ -1559,19 +1602,20 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         (view as unknown as { domObserver: { flush(): void } }).domObserver.flush();
         const coords = caretCoords(view);
         const cursorInDoc = ((coords.top + coords.bottom) / 2 - tiptap.getBoundingClientRect().top) / (appliedZoom / 100);
-        currentPage = Math.max(1, Math.min(numPages, Math.floor(Math.max(0, cursorInDoc) / getCycle()) + 1));
-        followCaret(currentPage, onPaper(coords));
+        currentPage = pageAtY(cursorInDoc);
+        followCaret(currentPage, onPaper(coords), scrolls);
+        if (scrolls && el) followedAt = { top: el.scrollTop, left: el.scrollLeft };
       } catch { /* ignore */ }
     }, 0);
   }
 
   // The caret is drawn by whichever view holds the focus, so it has to be the one
   // whose cell shows the caret's page — otherwise it blinks on a clipped page.
-  function followCaret(page: number, caret: { top: number; bottom: number; left: number }) {
+  function followCaret(page: number, caret: { top: number; bottom: number; left: number }, scroll = true) {
     if (!multiPage || hfActive) return;
-    showRowOf(page);
+    if (scroll) showRowOf(page);
     const focused = gridFocused();
-    if (focused) revealInGrid(page, caret);
+    if (focused && scroll) revealInGrid(page, caret);
     const pane = cells.find((c) => c.page === page)?.pane;
     if (!focused || pane === undefined || pane === activePane) return;
     activePane = pane;
@@ -1649,10 +1693,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     return true;
   }
 
-  // A `dir` in markup makes Svelte rewrite it whenever the element's other attributes
-  // change, and Chrome rebuilds the whole view's layout tree for that; set on change only.
+  // The page states its direction either way: the interface's (<html dir>) is not its own.
+  // In markup Svelte would rewrite `dir` with the element's other attributes, and Chrome
+  // rebuilds the whole view's layout tree for that; set on change only.
   function pageDir(node: HTMLElement, rtl: boolean) {
-    const set = (on: boolean) => (on ? node.setAttribute('dir', 'rtl') : node.removeAttribute('dir'));
+    const set = (on: boolean) => node.setAttribute('dir', on ? 'rtl' : 'ltr');
     set(rtl);
     return { update: set };
   }
@@ -1873,7 +1918,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   <!-- Follows the edited header/footer zone: its stops are what a left/centre/right
        running head rides on, and the zone spans the same text column as the body. -->
   {#if showRuler && scaledWidth}
-    <Ruler editor={hfActive ? hfEditor : editor} tick={hfActive ? hfTick : tick} zoom={appliedZoom} width={scaledWidth} margins={pageMargins} gutter={scaledCanvasWidth - scaledWidth} />
+    <Ruler editor={hfActive ? hfEditor : editor} tick={hfActive ? hfTick : tick} zoom={appliedZoom} width={scaledWidth} page={rulerGeometry} gutter={scaledCanvasWidth - scaledWidth} {pageRtl} />
   {/if}
   <!-- Reserves the scaled scroll footprint; the transform on .paper reserves none.
        Before the first measure (size 0) it's left unsized so .paper isn't clipped. -->
@@ -1913,8 +1958,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
           {/each}
         </div>
       {/if}
-      <PageSheetLayer {pageBoxes} />
-      <PageDecorLayer decor={pageDecor} {pageBoxes} {marginsAt} hfInsets={decorHfInsets} isLeft={leftPageAt} />
+      <PageSheetLayer {pageBoxes} {blankPages} />
+      <PageDecorLayer decor={pageDecor} {pageBoxes} {marginsAt} hfInsets={decorHfInsets} isLeft={leftPageAt} {blankPages} />
       {#if foldMarks}
         <FoldMarkLayer {pageBoxes} />
       {/if}
@@ -1933,6 +1978,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         {differentOddEven}
         bind:hfEditor
         bind:hfActive
+        bind:activePage={hfEditingPage}
         bind:hfTick
         bodyEditor={editor}
         {numPages}
@@ -1942,8 +1988,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         {orientation}
         {pageFormat}
         {hfDistances}
+        {hfFrames}
         bind:extraHfSections
         {sectionStartPages}
+        {blankPages}
+        {pageRtl}
         {chapterStarts}
         {pageNumbering}
         bind:zoneHeights={hfZoneHeights}
@@ -2037,7 +2086,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   <!-- The grid has one scroller, so its hint is placed there whichever cell it is over. -->
   {#if linkTip && (multiPage || linkTip.pane === i)}
     <div class="link-tooltip" style="top: {linkTip.top}px; left: {linkTip.left}px;">
-      {#if linkTip.href}<span class="link-tooltip-url">{linkTip.href}</span>{/if}
+      {#if linkTip.href}<span class="link-tooltip-url" dir="ltr">{linkTip.href}</span>{/if}
       <span class="link-tooltip-hint">
         {linkTip.href ? t().link.openHint(withShortcut('Ctrl')) : t().bookmark.openHint(withShortcut('Ctrl'))}
       </span>
@@ -2061,6 +2110,12 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   .editor-panes :global(.editor.pane-below) {
     padding-top: 1.25rem;
     border-top: 1px solid var(--color-border);
+  }
+
+  /* The cells hold every page in its place, so the browser's scroll anchoring would
+     add a layout shift to the scroll that the cells have already taken up. */
+  .editor-panes.grid > .editor {
+    overflow-anchor: none;
   }
 
   /* A cell is a window of exactly one page onto its own view of the document. */

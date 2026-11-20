@@ -6,7 +6,7 @@ import type { OdtImportResult } from '../import/odt';
 import { loadPageMargins, savePageMargins, DEFAULT_MARGINS } from './pageMargins';
 import { loadOrientation, saveOrientation, type Orientation } from './pageOrientation';
 import { loadPageFormat, savePageFormat, type PageFormat } from './pageFormat';
-import { loadHfDistances, saveHfDistances, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, DEFAULT_HF_DISTANCES } from './headerFooter';
+import { loadHfDistances, saveHfDistances, loadHfFrames, saveHfFrames, loadDifferentFirstPage, saveDifferentFirstPage, loadDifferentOddEven, saveDifferentOddEven, DEFAULT_HF_DISTANCES, NO_HF_FRAMES, type HfSetFrames } from './headerFooter';
 import { loadPageNumbering, savePageNumbering, DEFAULT_PAGE_NUMBERING } from './pageNumbering';
 import { loadPageDecor, savePageDecor, EMPTY_PAGE_DECOR } from './pageDecor';
 import { loadLineNumbering, saveLineNumbering, DEFAULT_LINE_NUMBERING } from './lineNumbering';
@@ -36,6 +36,10 @@ const FIELDS = {
   hfDistances: field({
     load: loadHfDistances, save: saveHfDistances, blank: () => ({ ...DEFAULT_HF_DISTANCES }),
     opened: (f) => ({ header: f.headerDistanceCm ?? DEFAULT_HF_DISTANCES.header, footer: f.footerDistanceCm ?? DEFAULT_HF_DISTANCES.footer }),
+  }),
+  hfFrames: field<HfSetFrames>({
+    load: loadHfFrames, save: saveHfFrames, blank: () => ({ ...NO_HF_FRAMES }),
+    opened: (f) => ({ frames: f.hfSections?.[0]?.frames ?? null, framesFirst: f.hfSections?.[0]?.framesFirst ?? null }),
   }),
   differentFirstPage: field({ load: loadDifferentFirstPage, save: saveDifferentFirstPage, blank: () => false, opened: (f) => f.differentFirstPage }),
   differentOddEven: field({ load: loadDifferentOddEven, save: saveDifferentOddEven, blank: () => false, opened: (f) => f.differentOddEven }),

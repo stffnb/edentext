@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_SHORTCUTS, matchesEvent, shortcutHint } from '../../src/lib/editor/shortcuts';
 import { open, select } from '../trackChangesCases';
+import { setLocale } from '../../src/lib/i18n/i18n.svelte';
+import { LOCALES, isRtlLocale } from '../../src/lib/i18n/config';
 
 // Two ids on one combo means one of them silently never fires — the table is the only
 // place that can catch it, since the bindings are spread over extensions and App.svelte.
@@ -17,6 +19,18 @@ describe('shortcut table', () => {
     expect(shortcutHint('heading1')).toBe('Ctrl+Alt+1');
     expect(shortcutHint('alignCenter')).toBe('Ctrl+E');
     expect(shortcutHint('softHyphen')).toBe('Ctrl+Shift+-');
+  });
+
+  // The interface runs the way its language is written, and a key combination keeps
+  // its order inside it: bare where the UI reads left to right, isolated where it does not.
+  it('keeps a hint left to right in every UI language', async () => {
+    for (const l of LOCALES) {
+      await setLocale(l, false);
+      const rtl = isRtlLocale(l);
+      expect(document.documentElement.dir, l).toBe(rtl ? 'rtl' : 'ltr');
+      expect(shortcutHint('alignCenter').replace(/^\u2066(.*)\u2069$/, rtl ? '$1' : '$&'), l).toMatch(/^\S+\+E$/);
+    }
+    await setLocale('en', false);
   });
 });
 

@@ -107,6 +107,7 @@ export const STROKED = {
   orderBack: ['M1.5 1.5h6v6h-6z', 'M8.5 8.5h6v6h-6z'],
   // A capital T beside an arrow running down: the text sets vertically.
   textDirection: ['M3 3.75h6M6 3.75v8.5', 'M12.5 4v7.5M10.9 10l1.6 1.6 1.6-1.6'],
+  textDirectionUp: ['M3 3.75h6M6 3.75v8.5', 'M12.5 11.5V4M10.9 5.6l1.6-1.6 1.6 1.6'],
   toc: ['M2 3h6M2 6.5h5M2 10h6M2 13.5h4', 'M11 3h3M10 6.5h4M11 10h3M10 13.5h4'],
   tocLevels: ['M2.5 3.5h11M4.5 7h9M6.5 10.5h7M8.5 14h5'],
   headingNumbering: ['M2 3.5h1.5M3.5 7.5h2.5M5 11.5h3.5', 'M5.5 3.5h8M8 7.5h5.5M10.5 11.5h3'],
@@ -131,6 +132,7 @@ export const STROKED = {
   // Two speech bubbles, one behind the other: a conversation, not a note on the text.
   chat: ['M1.75 2.25h8.5v5.5H5.5L3.25 9.75v-2H1.75z', 'M12.25 5.75h2v5.5h-1.5v2l-2.25-2H7v-1.5'],
   // A word broken at a hyphen: two stubs with the dash between them.
+  pageRtl: ['M14 4H6M14 8H9M14 12H6', 'M6.5 8H2M3.6 6.4 2 8l1.6 1.6'],
   hyphenation: ['M2 8h3M11 8h3', 'M6.5 8h3', 'M2 4.5h12M2 11.5h6'],
   // An A with a tick beside it: the letter AutoCorrect fixes, corrected.
   autoCorrect: ['M1.5 12 5 3.5 8.5 12', 'M2.9 9.2h4.2', 'M10 8.5l2 2 3.5-4.5'],
@@ -140,6 +142,7 @@ export const STROKED = {
   zoomReset: ['M7.25 12.5a5.25 5.25 0 1 0 0-10.5 5.25 5.25 0 0 0 0 10.5z', 'M11.2 11.2 14 14'],
   find: ['M7.25 12.5a5.25 5.25 0 1 0 0-10.5 5.25 5.25 0 0 0 0 10.5z', 'M11.2 11.2 14 14'],
   replace: ['M2 4.5h6.5M2 4.5 4 2.5M2 4.5l2 2', 'M14 11.5H7.5M14 11.5l-2-2M14 11.5l-2 2'],
+  mic: ['M8 1.75a2.25 2.25 0 0 0-2.25 2.25v3.75a2.25 2.25 0 0 0 4.5 0V4A2.25 2.25 0 0 0 8 1.75z', 'M3.75 7.5a4.25 4.25 0 0 0 8.5 0', 'M8 11.75v2.5', 'M5.75 14.25h4.5'],
   margins: ['M1.75 1.75h12.5v12.5H1.75z', 'M4.5 1.75v12.5M11.5 1.75v12.5', 'M1.75 4.5h12.5M1.75 11.5h12.5'],
   // One page turned: the same 6.5 × 9.2 sheet upright behind and on its side in
   // front, overlapping so both stay full size. The upright one is traced only where
@@ -204,3 +207,15 @@ export function pinnedStroke(size: number): number {
   const painted = size >= 20 ? 1.5 : size >= 13 ? 1.25 : 1.1;
   return (painted * 16) / size;
 }
+
+// Glyphs that show reading direction or sequence (back/forward, undo/redo, indent, lists,
+// lines of text) and so mirror in a right-to-left interface. One that names a physical
+// side of the page or an object (alignment, borders, wrap, a table's columns) stays.
+export const MIRRORED: ReadonlySet<IconName> = new Set<IconName>([
+  'chevronRight', 'chevronLeft', 'undo', 'redo', 'bulletList', 'orderedList', 'indentMore', 'indentLess',
+  'lineSpacing', 'toc', 'tocLevels', 'headingNumbering', 'crossRef', 'trackChanges', 'wordCount',
+  'hyphenation', 'quickParts', 'caption', 'footnote', 'endnote', 'header', 'footer',
+]);
+
+// Paths of a mirrored glyph that keep their own handedness, as digits must.
+export const UPRIGHT: Partial<Record<IconName, readonly number[]>> = { orderedList: [1, 2, 3] };

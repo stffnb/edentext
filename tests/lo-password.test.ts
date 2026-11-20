@@ -2,7 +2,9 @@
 // open what it encrypts. Needs soffice and python3-uno; self-skips without either, so
 // plain `npm test` / CI stay green.
 import { describe, it, expect } from 'vitest';
-import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { execFileSync, execSync } from 'node:child_process';
 import { buildOdt } from '../src/lib/export/odt';
 import { buildDocx } from '../src/lib/export/docx';
@@ -17,7 +19,8 @@ function has(command: string): boolean {
 }
 const READY = has('command -v soffice') && has('python3 -c "import uno"');
 
-const DIR = '/tmp/lo-password';
+// A fresh directory per run, so two checkouts can run this leg at once.
+const DIR = mkdtempSync(join(tmpdir(), 'lo-password-'));
 const PW = 'geheim123';
 const TEXT = 'Ein Satz hinter Schloss und Riegel';
 const doc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: TEXT }] }] };

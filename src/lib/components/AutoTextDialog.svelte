@@ -42,7 +42,7 @@
 
 <dialog
   bind:this={dialogEl}
-  onclose={() => (open = false)}
+  onclose={() => !dialogEl?.open && (open = false)}
   onclick={(e) => e.target === dialogEl && (open = false)}
   aria-label={t().autoText.title}
 >
@@ -113,7 +113,7 @@
     color: var(--color-text);
     padding: 4px 8px;
     font: inherit;
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
   .entry:hover { background: var(--color-btn-hover); }

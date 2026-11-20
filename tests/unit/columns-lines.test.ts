@@ -4,6 +4,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { extensions } from '../../src/lib/editor/extensions';
 import { linesWithin, rowsWithin } from '../../src/lib/editor/extensions/columnsFlow';
 import { groupLines, type LineRect } from '../../src/lib/editor/extensions/columns';
+import { roundTrips } from '../docxFixture';
 
 const HEIGHT = 24;
 const ADVANCE = 22.1;
@@ -114,5 +115,34 @@ describe('setColumns', () => {
     ['changes nothing that has no columns to remove', '<p>a</p><p>b</p>', 'b', 1, 'refused'],
   ])('%s', (_, html, select, count, want) => {
     expect(run(html, select, count)).toBe(want);
+  });
+});
+
+// A table the columns flow cut at a page holds together only while both parts are in one
+// section: an edit giving the second part's fragment other columns leaves two tables, as
+// the editor shows them and both files hold them.
+describe('a table cut by the columns flow', () => {
+  const p = (text: string) => ({ type: 'paragraph', content: [{ type: 'text', text }] });
+  const table = (text: string, joinPrev = false) => ({ type: 'table', attrs: { joinPrev }, content: [{ type: 'tableRow', content: [{ type: 'tableCell', content: [p(text)] }] }] });
+  const cut = { type: 'doc', content: [
+    { type: 'columns', attrs: { count: 2, gapCm: 0.5 }, content: [p('a'), table('row one')] },
+    { type: 'columns', attrs: { count: 2, gapCm: 0.5 }, content: [table('row two', true), p('b')] },
+    p('tail'),
+  ] };
+  const tables = (doc: any): string[] => (doc.content ?? []).flatMap((n: any) =>
+    n.type === 'table' ? [`${n.attrs?.joinPrev ? '+' : ''}${n.content.length}`] : tables(n));
+  it.each<[string, (e: Editor) => void, string[], string[]]>([
+    ['stays one when the whole section changes', (e) => { e.commands.setTextSelection(3); e.commands.setColumnGap(1.5); }, ['1', '+1'], ['2']],
+    ['parts when only the second fragment does', (e) => {
+      const at = e.state.doc.child(0).nodeSize;
+      e.view.dispatch(e.state.tr.setNodeMarkup(at, undefined, { count: 2, gapCm: 1.5 }));
+    }, ['1', '1'], ['1', '1']],
+  ])('%s', async (_, edit, held, read) => {
+    const editor = new Editor({ element: document.createElement('div'), extensions, content: cut });
+    edit(editor);
+    const doc = editor.getJSON();
+    editor.destroy();
+    expect(tables(doc)).toEqual(held);
+    for (const back of await roundTrips(doc)) expect(tables(back)).toEqual(read);
   });
 });

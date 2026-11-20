@@ -37,6 +37,12 @@ export const FontWeight = Extension.create({
               return { style: `font-weight: ${attributes.fontWeight}; -webkit-text-stroke-width: 0` };
             },
           },
+          // The un-italic channel: 'normal' takes a run out of its style's italic.
+          fontStyle: {
+            default: null,
+            parseHTML: element => (element.style.fontStyle === 'normal' ? 'normal' : null),
+            renderHTML: attributes => (attributes.fontStyle === 'normal' ? { style: 'font-style: normal' } : {}),
+          },
         },
       },
     ];

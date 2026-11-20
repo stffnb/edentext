@@ -11,3 +11,5 @@ RUN npm ci && VITE_COLLAB_RELAY=$VITE_COLLAB_RELAY npm run build
 
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
+# AI and dictation presets and proxies from EDENTEXT_* variables (docs/self-hosting.md).
+COPY --chmod=755 docker/40-edentext.sh /docker-entrypoint.d/40-edentext.sh

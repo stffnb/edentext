@@ -100,7 +100,7 @@ export async function openApp(port, opts = {}) {
     console.error(`CSP blocked ${e.blockedURI || 'inline'} (${e.violatedDirective}) at ${e.sourceFile}:${e.lineNumber}:${e.columnNumber}`);
   }));
   page.on('console', (msg) => { if (msg.type() === 'error' && msg.text().startsWith('CSP blocked')) pageErrors.push(msg.text()); });
-  page.on('dialog', (d) => d.accept());
+  page.on('dialog', (d) => d.accept().catch(() => {}));
   // Chromium can leave a close unanswered for good (after a download still running, or
   // the page grid), idle as the page is; a run then ends anyway and Playwright's exit
   // hook takes the browser down with the process.

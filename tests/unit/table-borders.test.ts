@@ -231,7 +231,12 @@ describe('border attr helpers', () => {
   it('parseBorderAttr inverts borderAttrValue', () => {
     expect(parseBorderAttr(null)).toBe(null);
     expect(parseBorderAttr('none')).toBe('none');
-    expect(parseBorderAttr('2.25pt solid #FF0000')).toEqual({ widthPt: 2.25, color: '#FF0000' });
+    expect(parseBorderAttr('2.25pt solid #FF0000')).toEqual({ widthPt: 2.25, color: '#FF0000', line: 'solid' });
+    for (const line of ['double', 'dotted', 'dashed'] as const) {
+      const v = borderAttrValue({ widthPt: 0.5, color: '#000000', line });
+      expect(v).toBe(`0.5pt ${line} #000000`);
+      expect(parseBorderAttr(v)).toEqual({ widthPt: 0.5, color: '#000000', line });
+    }
   });
 
   it('borderAttrFromOdf: absent/none → "none", the 0.5pt-black default → null (unit tolerance)', () => {
@@ -240,6 +245,9 @@ describe('border attr helpers', () => {
     expect(borderAttrFromOdf('0.5pt solid #000000')).toBe(null);
     expect(borderAttrFromOdf('0.018cm solid #000000')).toBe(null); // LibreOffice cm form
     expect(borderAttrFromOdf('2.25pt solid #ff0000')).toBe('2.25pt solid #FF0000');
-    expect(borderAttrFromOdf('0.06pt double #808080')).toBe('0.06pt solid #808080'); // style coerced
+    expect(borderAttrFromOdf('1.5pt double #808080')).toBe('1.5pt double #808080');
+    expect(borderAttrFromOdf('0.5pt dotted #000000')).toBe('0.5pt dotted #000000'); // not the default
+    expect(borderAttrFromOdf('1pt dash-dot #000000')).toBe('1pt dashed #000000');
+    expect(borderAttrFromOdf('3pt ridge #000000')).toBe('3pt solid #000000');
   });
 });

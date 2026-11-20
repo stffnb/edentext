@@ -2,6 +2,7 @@
   import type { Editor, ChainedCommands } from '@tiptap/core';
   import { isInTable, selectedRect } from '@tiptap/pm/tables';
   import { cellAttr, cellPadding, repeatsHeader } from '../../tableCells';
+  import { cellSideIndex } from '../../../editor/extensions/tableView';
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
   import Icon from '../Icon.svelte';
@@ -21,6 +22,7 @@
   import type { CellFormat } from '../../../utils/cellFormat';
   import { numberRecognition, setNumberRecognition } from '../../../storage/tableOptions.svelte';
   import { t } from '../../../i18n/i18n.svelte';
+  import { formatDecimal, parseDecimal } from '../../../i18n/number';
 
   // Word splits the table's contextual tabs in two: Design paints it, Layout
   // changes its shape.
@@ -60,6 +62,9 @@
   const cellColor = $derived(tick >= 0 && editor ? cellAttr(editor.state, 'backgroundColor') : null);
   const vAlign = $derived(tick >= 0 && editor ? cellAttr(editor.state, 'verticalAlign') : null);
   const padding = $derived(tick >= 0 && editor ? cellPadding(editor.state) : null);
+
+  // Left and right are what the reader sees; a right-to-left table's columns run mirrored.
+  const sideIndex = (i: number) => (editor ? cellSideIndex(editor.view, i) : i);
 
   function setPaddingEdge(i: number, cm: number) {
     if (!editor || !padding) return;
@@ -158,8 +163,8 @@
     <div class="inserts">
       <RibbonButton variant="big" icon="rowAbove" cmd="insertAbove" label={t().ribbon.insertAbove} onclick={() => run((c) => c.addRowBefore())} />
       <RibbonButton variant="big" icon="rowBelow" cmd="insertBelow" label={t().ribbon.insertBelow} onclick={() => run((c) => c.addRowAfter())} />
-      <RibbonButton variant="big" icon="colLeft" cmd="insertLeft" label={t().ribbon.insertLeft} onclick={() => run((c) => c.addColumnBefore())} />
-      <RibbonButton variant="big" icon="colRight" cmd="insertRight" label={t().ribbon.insertRight} onclick={() => run((c) => c.addColumnAfter())} />
+      <RibbonButton variant="big" icon="colLeft" cmd="insertLeft" label={t().ribbon.insertLeft} onclick={() => run((c) => c.addColumnLeft())} />
+      <RibbonButton variant="big" icon="colRight" cmd="insertRight" label={t().ribbon.insertRight} onclick={() => run((c) => c.addColumnRight())} />
     </div>
   </RibbonGroup>
 
@@ -221,10 +226,10 @@
                 <input
                   type="text"
                   inputmode="decimal"
-                  value={padding[i]}
+                  value={formatDecimal(padding[sideIndex(i)])}
                   onchange={(e) => {
-                    const v = parseFloat((e.currentTarget as HTMLInputElement).value.replace(',', '.'));
-                    if (!isNaN(v)) setPaddingEdge(i, Math.max(0, v));
+                    const v = parseDecimal((e.currentTarget as HTMLInputElement).value);
+                    if (!isNaN(v)) setPaddingEdge(sideIndex(i), Math.max(0, v));
                   }}
                 />
               </label>

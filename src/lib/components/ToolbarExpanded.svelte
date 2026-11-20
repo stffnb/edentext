@@ -8,7 +8,7 @@
   import ReviewTools from './toolbar/ReviewTools.svelte';
   import ViewTools from './toolbar/ViewTools.svelte';
   import ParagraphDialog from './ParagraphDialog.svelte';
-  import TabsDialog from './TabsDialog.svelte';
+  import { OPEN_TABS_DIALOG_EVENT } from '../editor/extensions/tabStops';
   import { CATEGORIES, type Category } from './toolbar/island';
   import { closeMenu } from './ribbon/menu.svelte';
   import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
@@ -18,7 +18,6 @@
   import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
   import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbering';
-  import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
   import type { DocumentLanguage } from '../storage/documentLanguage';
   import type { StyleFamily } from '../styles/styleSheet';
   import { t } from '../i18n/i18n.svelte';
@@ -33,7 +32,6 @@
     showRuler = $bindable(true),
     splitView = $bindable(false),
     pageColumns = $bindable(1),
-    tabIntervalCm = $bindable(DEFAULT_TAB_INTERVAL_CM),
     pageMargins = $bindable(DEFAULT_MARGINS),
     pageOrientation = $bindable<Orientation>('portrait'),
     pageFormat = $bindable<PageFormat>('A4'),
@@ -42,6 +40,7 @@
     differentFirstPage = $bindable(false),
     differentOddEven = $bindable(false),
     hyphenate = $bindable(false),
+    pageRtl = $bindable(false),
     pageNumbering = $bindable(DEFAULT_PAGE_NUMBERING),
     pageDecor = $bindable(EMPTY_PAGE_DECOR),
     lineNumbering = $bindable(DEFAULT_LINE_NUMBERING),
@@ -63,7 +62,6 @@
     showRuler?: boolean;
     splitView?: boolean;
     pageColumns?: number;
-    tabIntervalCm?: number;
     pageMargins?: PageMargins;
     pageOrientation?: Orientation;
     pageFormat?: PageFormat;
@@ -72,6 +70,7 @@
     differentFirstPage?: boolean;
     differentOddEven?: boolean;
     hyphenate?: boolean;
+    pageRtl?: boolean;
     pageNumbering?: PageNumbering;
     pageDecor?: PageDecor;
     lineNumbering?: LineNumbering;
@@ -98,7 +97,7 @@
   } = $props();
 
   let paragraphDialogOpen = $state(false);
-  let tabsDialogOpen = $state(false);
+  const openTabs = () => window.dispatchEvent(new CustomEvent(OPEN_TABS_DIALOG_EVENT));
 </script>
 
 <div class="toolbar-expanded">
@@ -123,11 +122,11 @@
     {:else if category === 'insert'}
       <ReadGate>
       <InsertTools {editor} {tick} {hfActive} {pageMargins} {pageOrientation} {pageFormat} bind:hfDistances bind:differentFirstPage bind:differentOddEven
-        {onEditZone} onManageTableStyles={() => onManageTableStyles?.('table')} {onAutoText} onTabsDialog={() => (tabsDialogOpen = true)} />
+        {onEditZone} onManageTableStyles={() => onManageTableStyles?.('table')} {onAutoText} onTabsDialog={openTabs} />
       </ReadGate>
     {:else if category === 'layout'}
       <ReadGate>
-      <LayoutTools {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:extraHfSections bind:hyphenate
+      <LayoutTools {editor} {tick} {hfActive} bind:pageMargins bind:pageOrientation bind:pageFormat bind:extraHfSections bind:hyphenate bind:pageRtl
         bind:pageNumbering bind:pageDecor bind:lineNumbering bind:foldMarks onParagraphDialog={() => (paragraphDialogOpen = true)} />
       </ReadGate>
     {:else if category === 'references'}
@@ -142,8 +141,7 @@
   {/if}
 </div>
 
-<ParagraphDialog bind:open={paragraphDialogOpen} {editor} {tick} onTabs={() => (tabsDialogOpen = true)} />
-<TabsDialog bind:open={tabsDialogOpen} {editor} {tick} bind:tabIntervalCm />
+<ParagraphDialog bind:open={paragraphDialogOpen} {editor} {tick} onTabs={openTabs} />
 
 <style>
   /* Inner content of the second toolbar row; the surrounding .toolbar-secondary

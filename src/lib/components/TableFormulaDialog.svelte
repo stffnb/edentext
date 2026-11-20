@@ -50,7 +50,7 @@
 <div class="formula-dialog" role="dialog" tabindex="-1" aria-label={t().table.formulaDialogLabel}>
   <label class="formula-row">
     <span>{cell ? t().table.formulaCell(cell) : t().table.formulaField}</span>
-    <input bind:this={field} bind:value={text} type="text" spellcheck="false" onkeydown={onKeydown} />
+    <input bind:this={field} bind:value={text} type="text" dir="ltr" spellcheck="false" onkeydown={onKeydown} />
   </label>
   <label class="formula-row">
     <span>{t().table.numberFormat}</span>

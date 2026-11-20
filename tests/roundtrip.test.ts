@@ -8,7 +8,7 @@ import { Node as PMNode } from '@tiptap/pm/model';
 import { buildOdt } from '../src/lib/export/odt';
 import { MAX_HEADING_LEVEL } from '../src/lib/styles/headings';
 import { importOdt } from '../src/lib/import/odt';
-import { normalize, firstDiff, unhoist, stripFontHoist } from './normalize';
+import { normalize, firstDiff, unhoist, stripFontHoist, odtEffectFallback } from './normalize';
 import { zoneExtensions } from '../src/lib/editor/extensions';
 import { HEADER_SHADE } from '../src/lib/editor/extensions/tableHeaderRow';
 import { builtinStyleSheet } from '../src/lib/styles/styleSheet';
@@ -86,6 +86,13 @@ const fixture: N = {
       T('crossed ', { type: 'strike', attrs: { lineStyle: 'double' } }),
       T('waved ', { type: 'strike', attrs: { lineStyle: 'wavy' } }),
       T('stressed ', { type: 'textStyle', attrs: { emphasis: 'dot below' } }),
+      T('outlined ', { type: 'textStyle', attrs: { outline: true } }),
+      T('shadowed ', { type: 'textStyle', attrs: { shadow: true } }),
+      T('both ', { type: 'textStyle', attrs: { outline: true, shadow: true } }),
+      T('embossed ', { type: 'textStyle', attrs: { relief: 'embossed' } }),
+      T('engraved ', { type: 'textStyle', attrs: { relief: 'engraved' } }),
+      T('spaced ', { type: 'textStyle', attrs: { letterSpacing: 1.5 } }),
+      T('boxed ', { type: 'textStyle', attrs: { textBorder: '1.5pt solid #FF0000', textBorderPadding: 4 } }),
       T('raised', { type: 'textStyle', attrs: { fontSize: '14pt', textPosition: 3 } }),
     ),
     P(null,
@@ -275,6 +282,26 @@ describe('Leg 1: editor → buildOdt → importOdt', () => {
     const fracOut = cwOut.flat().map((w, _, all) => w / all.reduce((a, b) => a + b, 0));
     check('column ratios round-trip', fracIn.length === fracOut.length &&
       fracIn.every((f, i) => Math.abs(f - fracOut[i]) < 0.02), { fracIn, fracOut });
+  });
+});
+
+describe('Leg 1b: text effects ODF has no place for', () => {
+  it('falls back to the plain shadow, drops outline and glow, and leaves the document alone', async () => {
+    const fx = (attrs: N) => ({ type: 'textStyle', attrs });
+    const SHADOW = { color: '#000000', alpha: 0.4, dxPt: 2.12, dyPt: 2.12, blurPt: 4 };
+    const doc: N = { type: 'doc', content: [P(null,
+      T('cast ', fx({ textShadow: SHADOW })),
+      T('rimmed ', fx({ color: '#C00000', textOutline: { color: '#000000', widthPt: 1 } })),
+      T('glowing', fx({ textGlow: { color: '#FFC000', alpha: 0.6, radiusPt: 8 }, textFxRaw: [{ n: 'props3d', a: { extrusionH: '57150' } }] })),
+    )] };
+    const before = JSON.stringify(doc);
+    const bytes = await buildOdt(doc, margins, 'portrait');
+    check('the editor keeps its effects', JSON.stringify(doc) === before);
+    const res = importOdt(bytes);
+    check('no warnings', res.warnings.length === 0, res.warnings);
+    const diff = firstDiff(odtEffectFallback(normalize(doc)), normalize(res.content));
+    check('ODT carries the fallback', diff === null, diff);
+    check('content.xml stays free of w14', !strFromU8(unzipSync(bytes)['content.xml']).includes('w14'));
   });
 });
 
@@ -790,7 +817,9 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
   </text:list-style>
   <style:style style:name="co1" style:family="table-column"><style:table-column-properties style:column-width="5cm"/></style:style>
   <style:style style:name="co2" style:family="table-column"><style:table-column-properties style:column-width="10cm"/></style:style>
-  <style:style style:name="ro1" style:family="table-row"><style:table-row-properties style:min-row-height="2cm"/></style:style>
+  <style:style style:name="ro1" style:family="table-row"><style:table-row-properties style:min-row-height="2cm" fo:background-color="#e6e6e6"/></style:style>
+  <style:style style:name="ta1" style:family="table"><style:table-properties fo:background-color="#ffff00"/></style:style>
+  <style:style style:name="ce1" style:family="table-cell"><style:table-cell-properties fo:background-color="transparent"/></style:style>
  </office:automatic-styles>
  <office:body><office:text>
   <text:p>plain default text</text:p>
@@ -806,14 +835,14 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
   <text:list text:style-name="L2">
    <text:list-item><text:p>wingdings arrow</text:p></text:list-item>
   </text:list>
-  <table:table>
+  <table:table table:style-name="ta1">
    <table:table-column table:style-name="co1"/>
    <table:table-column table:style-name="co2" table:number-columns-repeated="2"/>
    <table:table-header-rows>
     <table:table-row><table:table-cell><text:p>h1</text:p></table:table-cell><table:table-cell table:number-columns-repeated="2"><text:p>hx</text:p></table:table-cell></table:table-row>
    </table:table-header-rows>
    <table:table-row table:style-name="ro1">
-    <table:table-cell table:number-columns-spanned="2"><text:p>spanned</text:p></table:table-cell>
+    <table:table-cell table:style-name="ce1" table:number-columns-spanned="2"><text:p>spanned</text:p></table:table-cell>
     <table:covered-table-cell/>
     <table:table-cell><text:p>c3</text:p></table:table-cell>
    </table:table-row>
@@ -883,7 +912,10 @@ describe('Leg 2: foreign (LibreOffice/Word-style) .odt → importOdt', () => {
     check('foreign: colspan 2 + covered skipped', row.content!.length === 2 && row.content![0].attrs?.colspan === 2, row.content!.map((x: N) => x.attrs));
     check('foreign: col weights 5/10/10cm', JSON.stringify(hdr.content!.map((x: N) => x.attrs.colwidth)) === JSON.stringify([[500], [1000], [1000]]), hdr.content!.map((x: N) => x.attrs.colwidth));
     check('foreign: spanned cell colwidth [500,1000]', JSON.stringify(row.content![0].attrs?.colwidth) === JSON.stringify([500, 1000]), row.content![0].attrs);
-    check('foreign: min-row-height 2cm → 76px', row.attrs?.rowHeight === 76, row.attrs);
+    check('foreign: min-row-height 2cm → 75.59px', row.attrs?.rowHeight === 75.59, row.attrs);
+    // A transparent cell shows its row's background, a row without one the table's.
+    check('foreign: row and table backgrounds reach the cells', row.content![0].attrs?.backgroundColor === '#E6E6E6'
+      && hdr.content![0].attrs?.backgroundColor === '#FFFF00', [row.content![0].attrs, hdr.content![0].attrs]);
 
     const notes = c.find((n: N) => n.type === 'noteSection');
     check('foreign: the note body follows at the document end', notes?.content?.[0]?.content?.[0]?.text === 'note body', notes);
@@ -1614,7 +1646,7 @@ describe('Leg 12: named paragraph styles (ODF)', () => {
   const sheet = builtinStyleSheet();
   sheet.paragraph['Merksatz'] = {
     name: 'Merksatz', parent: 'Standard', next: 'Standard',
-    para: { indent: 2, spaceBefore: 6, lineHeight: '1.15' }, text: { bold: true, color: '#0000AA' },
+    para: { indent: 2, spaceBefore: 6, lineHeight: '1.15' }, text: { bold: true, color: '#0000AA', shadow: true },
   };
 
   const doc: N = {
@@ -1625,6 +1657,8 @@ describe('Leg 12: named paragraph styles (ODF)', () => {
       // Hard formatting on top of the style must stay direct formatting.
       P({ styleName: 'Merksatz', spaceAfter: 20 }, T('mit Abstand')),
       P({ styleName: 'Quotations' }, T('zitiert')),
+      // A run switching off an effect its style draws.
+      P({ styleName: 'Merksatz' }, T('flach', { type: 'textStyle', attrs: { shadow: false } })),
     ],
   };
 
@@ -1651,7 +1685,8 @@ describe('Leg 12: named paragraph styles (ODF)', () => {
     const imported = res.styles.paragraph['Merksatz'];
     check('the style itself round-trips', imported?.parent === 'Standard', imported);
     check('with its own properties', imported?.text.bold === true && imported?.text.color === '#0000AA'
-      && imported?.para.indent === 2 && imported?.para.spaceBefore === 6, imported);
+      && imported?.para.indent === 2 && imported?.para.spaceBefore === 6 && imported?.text.shadow === true, imported);
+    check('a run switches off its style\'s effect', blocks[4]?.content?.[0]?.marks?.[0]?.attrs?.shadow === false, blocks[4]?.content);
     // A style's proportional spacing is a bare factor; the file takes a percentage.
     check('style line spacing round-trips', imported?.para.lineHeight === '1.15', imported?.para);
     const docx = await buildDocx(doc, margins, 'portrait', undefined, null, 'A4', sheet);
@@ -1712,7 +1747,7 @@ describe('Leg 14: named list styles (ODF)', () => {
     levels: [
       { kind: 'number', numType: 'upper-roman-paren', markerAlign: 'right', indentCm: 0.5 },
       { kind: 'bullet', bulletChar: '✓' },
-      { kind: 'number', numType: 'lower-alpha' },
+      { kind: 'number', numType: 'lower-alpha', hanging: 0.3, markerSuffix: 'space' },
     ],
   };
 
@@ -1756,6 +1791,8 @@ describe('Leg 14: named list styles (ODF)', () => {
     check('level 1 survives whole', imported?.levels[0]?.numType === 'upper-roman-paren'
       && imported?.levels[0]?.markerAlign === 'right' && imported?.levels[0]?.indentCm === 0.5, imported?.levels[0]);
     check('level 2 keeps its bullet', imported?.levels[1]?.bulletChar === '✓', imported?.levels[1]);
+    check('level 3 keeps its hang and suffix', imported?.levels[2]?.hanging === 0.3
+      && imported?.levels[2]?.markerSuffix === 'space', imported?.levels[2]);
     expect.soft(res.styles.list['Diamond Bullets'], 'the built-in comes back as itself').toEqual(sheet.list['Diamond Bullets']);
   });
 

@@ -17,3 +17,22 @@ Then visit http://127.0.0.1:8080/.
 {{- end }}
 
 Documents remain in the browser; this release stores no document data.
+{{- with include "edentext.hostConfig" . }}
+
+Presets for the AI assistant and dictation, served as /edentext.config.json:
+{{ . | indent 2 }}
+{{- end }}
+{{- if .Values.ai.proxy.enabled }}
+
+AI requests to /ai/ go to {{ .Values.ai.proxy.upstream }}{{ if .Values.ai.proxy.apiKeySecret.name }} with the key from Secret {{ .Values.ai.proxy.apiKeySecret.name }}{{ end }}.
+{{- end }}
+{{- if .Values.dictation.proxy.enabled }}
+
+Dictation audio to /stt/ goes to {{ .Values.dictation.proxy.upstream }}{{ if .Values.dictation.proxy.apiKeySecret.name }} with the key from Secret {{ .Values.dictation.proxy.apiKeySecret.name }}{{ end }}.
+{{- end }}
+{{- if or .Values.ai.proxy.enabled .Values.dictation.proxy.enabled }}
+
+WARNING: these proxies serve anyone who can reach this site, at the operator's cost.
+Put authentication in front of the ingress (basic auth, an OAuth2/OIDC proxy) or keep
+the site on an internal network. Restart the pods after changing a key's Secret.
+{{- end }}

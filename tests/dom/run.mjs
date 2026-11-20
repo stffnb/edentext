@@ -3,7 +3,10 @@
 // the page count is what every layer on the page is measured against. Fails on any
 // uncaught page error.
 import { join } from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { createServer } from 'node:http';
+import { chromium } from 'playwright-core';
 import { zipSync, strToU8 } from 'fflate';
 import { ROOT, MOD, checker, previewServer, openApp, settle } from '../browser.mjs';
 
@@ -118,6 +121,62 @@ try {
   const full = await rulerClear(100);
   check(full.count >= 3 * 15, `the ruler shows quarter-cm marks at 100% (${full.count})`);
 
+  // A stop dragged past the text edge stays on it, on top of the right indent's handle,
+  // and is still the marker a grab there takes off; a double-click opens the Tabs dialog
+  // without moving its stop, and Clear All empties the paragraph.
+  {
+    const stopsAt = () => page.evaluate(() => document.querySelector('.tiptap').editor.state.selection.$from.parent.attrs.tabStops);
+    const own = await page.evaluate(() => {
+      const ed = document.querySelector('.tiptap').editor;
+      ed.commands.setTextSelection(1);
+      return ed.state.selection.$from.parent.attrs.tabStops;
+    });
+    const strip = await page.locator('.ruler .strip').boundingBox();
+    const y = strip.y + strip.height - 4;
+    const edge = await page.locator('.ruler .strip [title="Right indent"]').boundingBox();
+    const edgeX = edge.x + edge.width / 2;
+    const drag = async (from, x, dy = 0) => {
+      await page.mouse.move(from.x, from.y); await page.mouse.down();
+      await page.mouse.move(x, from.y + dy, { steps: 6 }); await page.mouse.up();
+      await page.waitForTimeout(300);
+    };
+    await page.mouse.click(edgeX - 60, y);
+    await page.waitForTimeout(300);
+    const added = await stopsAt();
+    const marker = await page.locator('.ruler .stop').last().boundingBox();
+    await drag({ x: marker.x + marker.width / 2, y }, edgeX + 40);
+    const atEdge = await stopsAt();
+    const textCm = await page.evaluate(() => {
+      const tip = document.querySelector('.tiptap');
+      const cs = getComputedStyle(tip);
+      return (tip.offsetWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) / (96 / 2.54);
+    });
+    const edgeCm = Math.max(...(atEdge ?? '').split(';').map((s) => parseFloat(s)));
+    check(added && Math.abs(edgeCm - textCm) < 0.1, `a stop dragged past the text edge stays on it (${atEdge}, column ${textCm.toFixed(2)} cm)`);
+    await drag({ x: edgeX, y }, edgeX, 80);
+    check((await stopsAt()) === own, `a stop on the right indent's handle pulls off the ruler (${await stopsAt()})`);
+
+    await page.mouse.click(edgeX - 60, y);
+    await page.waitForTimeout(300);
+    const placed = await stopsAt();
+    const m2 = await page.locator('.ruler .stop').last().boundingBox();
+    await page.mouse.dblclick(m2.x + m2.width / 2 + 2, m2.y + m2.height / 2);
+    const dialog = page.locator('dialog[open]', { hasText: 'Clear All' });
+    const opened = await dialog.waitFor({ timeout: 3000 }).then(() => true).catch(() => false);
+    check(opened && (await stopsAt()) === placed, `a double-click on a stop opens the Tabs dialog and leaves the stop (${placed} → ${await stopsAt()})`);
+    if (opened) {
+      await dialog.getByRole('button', { name: 'Clear All' }).click();
+      await page.waitForTimeout(200);
+      check(!(await stopsAt()) && await dialog.locator('.list .stop').count() === 0, 'Clear All removes every stop of the paragraph');
+      await dialog.getByRole('button', { name: 'Close' }).click();
+    }
+    await page.evaluate((s) => {
+      const ed = document.querySelector('.tiptap').editor;
+      ed.chain().setTextSelection(1).setTabStops([]).run();
+      if (s) ed.chain().updateAttributes('paragraph', { tabStops: s }).run();
+    }, own);
+  }
+
   // A language for all text rewrites every block's attrs, the blocks on both sides of each
   // page break included; the breaks have to stay where they were, and through the undo.
   // Kept-together paragraphs break between blocks, and a language of their own first
@@ -191,9 +250,9 @@ try {
   check(rebuilt === opened + 1 && await settled(opened) === opened,
     `pagination survives its plugin view being rebuilt mid-pass (${opened} → ${rebuilt})`);
 
-  // The unsaved dot: an edit raises it, an undo back to the saved text clears it
-  // again (it is a checksum, not the document's identity), and so does opening a file.
-  // It follows on the next idle beat, so wait for the state rather than a fixed pause.
+  // The unsaved dot: an edit raises it, opening a file clears it, and so does an undo back
+  // to the opened text (a checksum, not the document's identity; the steps above leave
+  // their own edits). It follows on the next idle beat, so wait for the state.
   const dot = async (want) => {
     await page.waitForFunction((w) => !!document.querySelector('.doc-dirty') === w, want, { timeout: 10_000 })
       .catch(() => {});
@@ -201,15 +260,18 @@ try {
   };
   await caretTo('end');
   await page.keyboard.type('nachtrag');
-  const marked = await dot(true);
-  await page.keyboard.press(`${MOD}+z`);
-  const backToSaved = await dot(false);
+  const raised = await dot(true);
   await page.setInputFiles('input.file-input[accept*=".odt"]', join(ROOT, 'tests/corpus/04-table.odt'));
   await page.waitForFunction(() => document.querySelector('.tiptap table td')?.textContent.trim(),
     null, { timeout: 30_000 });
   const opened2 = await dot(false);
-  check(marked && !backToSaved && !opened2,
-    `the dot follows the text (edit: ${marked}, undone: ${backToSaved}, after open: ${opened2})`);
+  await caretTo('end');
+  await page.keyboard.type('nachtrag');
+  const marked = await dot(true);
+  await page.keyboard.press(`${MOD}+z`);
+  const backToSaved = await dot(false);
+  check(raised && !opened2 && marked && !backToSaved,
+    `the dot follows the text (edit: ${raised}, after open: ${opened2}, edit: ${marked}, undone: ${backToSaved})`);
 
   // The page setup is in the file too, so a margin preset marks it as much as text does.
   await page.locator('.ribbon-tab', { hasText: 'Layout' }).first().click();
@@ -578,6 +640,79 @@ try {
     check(mask.lines === 0 && mask.off <= 1 && mask.outside <= 1 && mask.hidden === 0 && mask.enclosed === 0,
       `with ${label}, a borderless table's page-break mask draws no lines and its gap on the sheets', within its pages, over no text and under no note (${mask.lines} lines, ${mask.off.toFixed(1)}px off, ${mask.outside.toFixed(1)}px outside, ${mask.hidden} lines under it, ${mask.enclosed} notes enclosed or hidden)`);
   }
+
+  // A footnote anchored in a table cell goes to its anchor's page, and every note ends above
+  // that page's footer, one below the other.
+  await page.evaluate(([d, f]) => {
+    localStorage.setItem('edentext-doc', JSON.stringify(d));
+    localStorage.setItem('edentext-footer', JSON.stringify(f));
+    localStorage.removeItem('edentext-hf-sections');
+  }, [{ type: 'doc', content: [
+    ...Array.from({ length: 30 }, (_, i) => block(words(`filler ${i}`))),
+    block(words('body anchor'), { type: 'noteRef', attrs: { id: 'n1', kind: 'footnote' } }),
+    { type: 'table', content: [{ type: 'tableRow', content: [{ type: 'tableCell',
+      content: [block(words('cell anchor'), { type: 'noteRef', attrs: { id: 'n2', kind: 'footnote' } })] }] }] },
+    ...Array.from({ length: 40 }, (_, i) => block(words(`more ${i}`))),
+    { type: 'noteSection', content: ['n1', 'n2'].map((id) => ({ type: 'note', attrs: { id, kind: 'footnote' }, content: [words(`note ${id}`)] })) },
+  ] }, tallFooter]);
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
+  await settle(page, true);
+  const noteFit = await page.evaluate(() => {
+    const sheets = Array.from(document.querySelectorAll('.page-sheet'), (s) => s.getBoundingClientRect());
+    const sheetOf = (r) => sheets.findIndex((s) => r.top >= s.top && r.top < s.bottom);
+    const feet = Array.from(document.querySelectorAll('.hf-zone.hf-footer'), (z) => z.getBoundingClientRect());
+    let prevBottom = -Infinity;
+    return ['n1', 'n2'].map((id) => {
+      const note = document.querySelector(`.tiptap-host .note[data-note-id="${id}"]`).getBoundingClientRect();
+      const ref = document.querySelector(`.tiptap-host .note-ref[data-note-ref="${id}"]`).getBoundingClientRect();
+      const foot = feet.find((z) => sheetOf(z) === sheetOf(ref));
+      const ok = sheetOf(note) === sheetOf(ref) && !!foot && note.bottom <= foot.top + 0.5 && note.top >= prevBottom - 0.5;
+      prevBottom = note.bottom;
+      return ok ? '' : `${id}: page ${sheetOf(note)} for anchor page ${sheetOf(ref)}, ${foot ? (note.bottom - foot.top).toFixed(1) : '?'}px into the footer`;
+    }).filter(Boolean);
+  });
+  check(noteFit.length === 0, `footnotes from a paragraph and a table cell sit on their anchors' pages above the footer${noteFit.length ? ` (${noteFit.join('; ')})` : ''}`);
+
+  // The ruler measures the page holding the caret, body or zone: its text column is that
+  // page's own sheet less its own section's margins, a portrait page's beside a landscape one.
+  await page.evaluate((d) => {
+    localStorage.setItem('edentext-doc', JSON.stringify(d));
+    localStorage.setItem('edentext-hf-sections', JSON.stringify([{ orientation: 'landscape', margins: { top: 2, bottom: 2, left: 3, right: 4 } }]));
+    localStorage.setItem('edentext-page-margins', JSON.stringify({ top: 2, bottom: 2, left: 2, right: 2 }));
+  }, { type: 'doc', content: [block(words('portrait')),
+    { type: 'paragraph', attrs: { breakBefore: 'page', sectionBreak: true }, content: [words('landscape')] }] });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
+  await settle(page, true);
+  const rulerOn = (sel) => page.evaluate((sel) => {
+    const [a, b] = Array.from(document.querySelectorAll('.ruler .margin'), (e) => e.getBoundingClientRect());
+    const el = sel === '.hf-active' ? document.querySelector(sel)
+      : Array.from(document.querySelectorAll('.tiptap-host .tiptap > p')).find((e) => e.textContent === sel);
+    const top = el.getBoundingClientRect().top;
+    const sheet = Array.from(document.querySelectorAll('.page-sheet'), (s) => s.getBoundingClientRect()).find((r) => top >= r.top && top < r.bottom);
+    const cm = (px) => +(px / (96 / 2.54)).toFixed(1);
+    return `${cm(a.right - sheet.left)}|${cm(sheet.right - b.left)}`;
+  }, sel);
+  const caretIn = async (text) => {
+    await page.evaluate((text) => {
+      const ed = document.querySelector('.tiptap').editor;
+      const p = Array.from(document.querySelectorAll('.tiptap-host .tiptap > p')).find((e) => e.textContent === text);
+      ed.commands.focus(ed.view.posAtDOM(p, 0) + 1);
+    }, text);
+    await page.waitForTimeout(600);
+    return rulerOn(text);
+  };
+  const rulers = [await caretIn('landscape'), await caretIn('portrait')];
+  const landHeader = page.locator('.hf-zone.hf-header').nth(1);
+  await landHeader.scrollIntoViewIfNeeded();
+  await landHeader.dblclick({ timeout: 5000 }).catch(() => landHeader.dispatchEvent('dblclick'));
+  await page.waitForSelector('.hf-active .tiptap', { timeout: 5000 });
+  await page.waitForTimeout(400);
+  rulers.push(await rulerOn('.hf-active'));
+  await page.keyboard.press('Escape');
+  check(rulers.join(' ') === '3|4 2|2 3|4',
+    `the ruler takes the caret's page and section margins: landscape, portrait, a landscape page's header (${rulers.join(' ')} cm)`);
   await page.evaluate(() => ['edentext-footer', 'edentext-hf-sections', 'edentext-page-margins'].forEach((k) => localStorage.removeItem(k)));
 
   // A row that may not break and is taller than a page starts on a fresh one.
@@ -595,6 +730,35 @@ try {
     return sheets.findIndex((r) => top >= r.top && top < r.bottom) + 1;
   });
   check(keptPage === 2, `a row that may not break, taller than a page, starts on the next one (page ${keptPage})`);
+
+  // A paragraph split while its lines broke elsewhere (a font arriving late) is split again
+  // where its lines break now: the old spacer would hold a word or two alone above it.
+  const longPara = Array.from({ length: 60 }, (_, i) => `word${i} alpha beta gamma`).join(' ');
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
+    ...Array.from({ length: 38 }, (_, i) => block(words(`line ${i + 1}`))), block(words(longPara))] });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
+  await settle(page, true);
+  const splitAt = () => page.evaluate(() => {
+    const sp = document.querySelector('.tiptap-host .tiptap p [data-page-break-spacer]');
+    const r = document.createRange();
+    if (sp) { r.setStart(sp.closest('p'), 0); r.setEndBefore(sp); }
+    return sp ? r.toString().trim().split(' ').pop() : null;
+  });
+  const freshSplit = await splitAt();
+  const reflow = (css) => page.evaluate((c) => {
+    document.getElementById('dom-reflow')?.remove();
+    if (c) document.head.append(Object.assign(document.createElement('style'), { id: 'dom-reflow', textContent: c }));
+    document.fonts.dispatchEvent(new Event('loadingdone'));
+  }, css);
+  await reflow('.tiptap p { letter-spacing: 0.3px }');
+  await settle(page, true);
+  const wideSplit = await splitAt();
+  await reflow(null);
+  await settle(page, true);
+  const againSplit = await splitAt();
+  check(freshSplit && wideSplit !== freshSplit && againSplit === freshSplit,
+    `a paragraph split before its lines re-broke is split where they break now (${freshSplit} / ${wideSplit} / ${againSplit})`);
 
   // In the larger-of spacing model a block's space above is a margin, outside the box the
   // page break moves: a manual break must clear it too, less the space below the block before.
@@ -630,6 +794,39 @@ try {
   });
   check(Math.abs(floatsX[0] - 189) <= 1 && Math.abs(floatsX[1] - 19) <= 1,
     `two left floats in one paragraph sit at their own x (${floatsX.join(', ')}px)`);
+
+  // A float reaching down from an earlier block is overlapped at the next one's own x and
+  // line, not queued beside or below it; an x counts from the column, not a list's indent.
+  const item = (...content) => ({ type: 'listItem', content: [block(...content)] });
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
+    block(frame({ wrap: 'right', wrapOffset: 10, height: 80 }), words('head')),
+    { type: 'bulletList', content: [item(frame({ wrap: 'right', wrapOffset: 9, width: 200 }), words('right')),
+      item(frame({ wrap: 'left', wrapOffset: 1 }), words('left'))] },
+  ] });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
+  await settle(page, true);
+  const overlap = await page.evaluate(() => {
+    const col = document.querySelector('.tiptap-host .tiptap > p').getBoundingClientRect().left;
+    return Array.from(document.querySelectorAll('.tiptap-host .tiptap li > p'), (p) => {
+      const f = p.querySelector('.image-node').getBoundingClientRect();
+      return [Math.round(f.left - col), Math.round(f.top - p.getBoundingClientRect().top)];
+    });
+  });
+  check(Math.abs(overlap[0][0] - 340) <= 1 && Math.abs(overlap[0][1]) <= 1 && Math.abs(overlap[1][0] - 38) <= 1,
+    `side floats overlap an earlier block's at their own x from the column (${overlap.join(' | ')})`);
+
+  // A text box's paragraphs take nothing from the centred, bold heading holding it.
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
+    { type: 'heading', attrs: { level: 1, textAlign: 'center' }, content: [words('Head '),
+      { type: 'textBox', attrs: { width: 300, height: 80 }, content: [block(words('boxed'))] }] }] });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap .textbox-content p', { timeout: 15_000 });
+  const boxed = await page.evaluate(() => {
+    const c = getComputedStyle(document.querySelector('.tiptap-host .textbox-content p'));
+    return `${c.textAlign} ${c.fontWeight}`;
+  });
+  check(/^(start|left) 400$/.test(boxed), `a text box's paragraph keeps its own alignment and weight in a centred heading (${boxed})`);
 
   // An index shows the rows it saved, as both word processors do, until it is updated.
   const heading = (t) => ({ type: 'heading', attrs: { level: 1 }, content: [words(t)] });
@@ -960,6 +1157,37 @@ try {
   });
   check(headRow.header === 1 && headRow.body === 1 && headRow.copies === 0,
     `a repeated header row goes down with the row after it (pages ${headRow.header + 1}/${headRow.body + 1}, ${headRow.copies} copies)`);
+  // An exact row keeps its height, borders included, whatever its cells hold, and an
+  // overflowing cell shows its first line where a top-aligned one does (tableRow.ts).
+  const exactCell = (valign, text) => ({ type: 'tableCell', attrs: { verticalAlign: valign, borderTop: '0.5pt solid #000000', borderBottom: '0.5pt solid #000000' },
+    content: [{ type: 'paragraph', attrs: { spaceAfter: 10 }, content: [words(text)] }] });
+  await page.evaluate((d) => document.querySelector('.tiptap').editor.commands.setContent(d), { type: 'doc', content: [
+    { type: 'table', content: [17, 30].flatMap((h) => [0, 1].map((i) => ({ type: 'tableRow', attrs: { rowHeight: h, fixedHeight: true },
+      content: [exactCell('top', `top ${h} ${i}`), exactCell('bottom', `bottom ${'word '.repeat(i * 12)}`), exactCell('middle', 'middle')] }))) },
+  ] });
+  await settle(page, true);
+  await page.waitForTimeout(300);
+  const exact = await page.evaluate(() => Array.from(document.querySelectorAll('.tiptap table tr'), (tr) => {
+    const [a, b] = Array.from(tr.querySelectorAll('p'), (p) => p.getBoundingClientRect().top);
+    return { h: tr.getBoundingClientRect().height, firstLines: Math.abs(a - b) };
+  }));
+  const wantH = [17, 17, 30, 30];
+  check(exact.length === 4 && exact.every((r, i) => Math.abs(r.h - wantH[i]) < 0.5) && exact.every((r) => r.firstLines < 0.5 || r.h > 20),
+    `an exact row keeps its height and clips what does not fit (${exact.map((r) => `${r.h.toFixed(2)}/${r.firstLines.toFixed(1)}`).join(', ')})`);
+  // Every cell of a row sits below the widest line on the row's top edge, a thin-topped
+  // cell beside a thick-topped one too, as LibreOffice spaces rows (tableCellBorders.ts).
+  const edgeCell = (top, lines) => ({ type: 'tableCell', attrs: { borderTop: top },
+    content: lines.map((t) => ({ type: 'paragraph', content: [words(t)] })) });
+  await page.evaluate((d) => document.querySelector('.tiptap').editor.commands.setContent(d), { type: 'doc', content: [
+    { type: 'table', content: [0, 1].map(() => ({ type: 'tableRow', content: [edgeCell(null, ['two', 'lines']), edgeCell('3pt solid #000000', ['one'])] })) },
+  ] });
+  await settle(page, true);
+  const edges = await page.evaluate(() => Array.from(document.querySelectorAll('.tiptap table tr'), (tr) => {
+    const [a, , b] = Array.from(tr.querySelectorAll('p'), (p) => p.getBoundingClientRect().top);
+    return { h: tr.getBoundingClientRect().height, skew: a - b };
+  }));
+  check(edges.length === 2 && edges.every((r) => Math.abs(r.skew) < 0.6),
+    `a thin-topped cell sits below its row's thick top line (${edges.map((r) => `${r.h.toFixed(2)}/${r.skew.toFixed(2)}`).join(', ')})`);
   // Behind the text: the frame leaves the flow (so the paragraph loses its height again)
   // and is then moved by its own offsets, since there is no text position to re-anchor to.
   await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
@@ -1326,6 +1554,121 @@ try {
   check(/Deutsch/.test(detectedLabel ?? '') && JSON.stringify(appliedLangs) === '[null,"de-DE"]',
     `the status bar names the detected language and the menu applies it (${detectedLabel?.trim()}, ${JSON.stringify(appliedLangs)})`);
 
+  // WebKit draws a struck or underlined word's own line in a highlight's style, so there
+  // a squiggle on such a word is an overlay; every other engine keeps it a highlight.
+  await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.setContent(
+    '<p lang="en-US">A <s>mispeled</s> and an <u>otther</u> and a plian word.</p>'));
+  const lined = await page.waitForFunction(() => {
+    const ranges = [...CSS.highlights.get('spell-error') ?? []];
+    const lines = [...document.querySelectorAll('.tiptap-host .tiptap :is(s, u)')];
+    const inLine = ranges.filter((r) => {
+      const range = document.createRange();
+      range.setStart(r.startContainer, r.startOffset);
+      range.setEnd(r.endContainer, r.endOffset);
+      return lines.some((el) => range.intersectsNode(el.firstChild));
+    }).length;
+    const covers = document.querySelectorAll('.pm-highlight-cover[data-highlight="spell-error"]').length;
+    return ranges.length + covers >= 3 && { ranges: ranges.length, inLine, covers };
+  }, null, { timeout: 30_000 }).then((h) => h.jsonValue(), () => null);
+  const restyles = process.env.BROWSER === 'webkit';
+  check(!!lined && (restyles ? lined.inLine === 0 && lined.covers >= 2 && lined.ranges >= 1 : lined.inLine === 2 && lined.covers === 0),
+    `a squiggle on struck or underlined text keeps the text's own line (${JSON.stringify(lined)})`);
+
+  // Text effects from the ribbon's menu: a gallery tile, then an outline colour, then all
+  // cleared; a misspelled word keeps its outline under the squiggle.
+  await page.evaluate(() => {
+    const ed = document.querySelector('.tiptap-host .tiptap').editor;
+    ed.commands.setContent('<p lang="en-US">Some mispeled words.</p>');
+    ed.commands.selectAll();
+  });
+  const fxOf = () => page.evaluate(() => {
+    const a = document.querySelector('.tiptap-host .tiptap').editor.getAttributes('textStyle');
+    return { color: a.color ?? null, textOutline: a.textOutline ?? null, textShadow: a.textShadow ?? null, textGlow: a.textGlow ?? null };
+  });
+  await page.locator('.ribbon-tab', { hasText: 'Home' }).first().click();
+  await page.click('[data-cmd="textEffects"]');
+  await page.locator('.ribbon-menu .fx-tile').first().click();
+  const tiled = await fxOf();
+  await page.click('[data-cmd="textEffects"]');
+  await page.click('[data-cmd="textEffects-outline"]');
+  await page.locator('.ribbon-menu .fx-swatch[title="#4472C4"]').click();
+  const rimmed = await fxOf();
+  // A page's setting leaves the menu open on that page, the swatch marked.
+  const stays = () => page.evaluate(() => !!document.querySelector('.ribbon-menu .fx-weight'));
+  const keptOpen = [await stays(), await page.evaluate(() => document.querySelector('.ribbon-menu .fx-swatch.selected')?.title === '#4472C4')];
+  await page.click('[data-cmd="textEffects"]');
+  // Focused, or the DOM keeps the whole text selected and the word is drawn in selection colours.
+  await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.chain().focus().setTextSelection(1).run());
+  // The misspelled word's pixels in the outline's blue and in near-black ink.
+  const wordInk = () => page.waitForFunction(() => {
+    const host = document.querySelector('.tiptap-host .tiptap');
+    return [...CSS.highlights.get('spell-error') ?? []].some((r) => host.contains(r.startContainer))
+      || document.querySelector('.pm-highlight-cover[data-highlight="spell-error"]');
+  }, null, { timeout: 30_000 }).then(async () => {
+    const box = await page.evaluate(() => {
+      const host = document.querySelector('.tiptap-host .tiptap');
+      const hit = [...CSS.highlights.get('spell-error') ?? []].find((r) => host.contains(r.startContainer));
+      const range = document.createRange();
+      if (hit) { range.setStart(hit.startContainer, hit.startOffset); range.setEnd(hit.endContainer, hit.endOffset); }
+      hit?.startContainer.parentElement.scrollIntoView({ block: 'center' });
+      const r = range.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    });
+    if (!box.width) return null;
+    const png = (await page.screenshot({ clip: box })).toString('base64');
+    return page.evaluate(async (png) => {
+      const img = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+      const ctx = Object.assign(document.createElement('canvas'), { width: img.width, height: img.height }).getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const d = ctx.getImageData(0, 0, img.width, img.height).data;
+      let blue = 0, dark = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 2] > 150 && d[i] < 120 && d[i + 1] < 160) blue++;
+        if (d[i] < 60 && d[i + 1] < 60 && d[i + 2] < 60) dark++;
+      }
+      return { blue, dark };
+    }, png);
+  }, () => null);
+  const rimInk = await wordInk();
+  // A plain outline's hollow letter keeps its ring in the text colour under the squiggle.
+  await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.chain().selectAll()
+    .setMark('textStyle', { textOutline: null, textShadow: null, outline: true }).setTextSelection(1).run());
+  const hollowInk = await wordInk();
+  await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.selectAll());
+  // A custom colour from the panel's own page, and a typed weight clamped to the model's limit.
+  await page.click('[data-cmd="textEffects"]');
+  await page.click('[data-cmd="textEffects-outline"]');
+  await page.click('.ribbon-menu .fx-more');
+  await page.fill('.ribbon-menu .custom-color-hex', '#12ab34');
+  await page.press('.ribbon-menu .custom-color-hex', 'Enter');
+  const mixed = (await fxOf()).textOutline;
+  keptOpen.push(await stays());
+  await page.fill('.ribbon-menu .fx-weight input', '25');
+  await page.press('.ribbon-menu .fx-weight input', 'Enter');
+  const weighed = (await fxOf()).textOutline;
+  keptOpen.push(await stays(), await page.evaluate(() => !!document.activeElement?.closest('.ribbon-menu')));
+  // The glow page: a size started from no glow takes the defaults, each later setting keeps the rest.
+  await page.click('.ribbon-menu .fx-back');
+  await page.click('[data-cmd="textEffects-glow"]');
+  const glowBox = async (box, value) => {
+    await page.fill(`.ribbon-menu .${box} input`, value);
+    await page.press(`.ribbon-menu .${box} input`, 'Enter');
+    return (await fxOf()).textGlow;
+  };
+  const glows = [await glowBox('fx-glow-size', '80'), await glowBox('fx-glow-alpha', '33')];
+  await page.locator('.ribbon-menu .fx-swatch[title="#C00000"]').click();
+  glows.push((await fxOf()).textGlow);
+  keptOpen.push(await page.evaluate(() => !!document.querySelector('.ribbon-menu .fx-glow-alpha')));
+  await page.click('[data-cmd="textEffects"]');
+  await page.click('[data-cmd="textEffects"]');
+  await page.click('[data-cmd="textEffects-clear"]');
+  const cleared = await fxOf();
+  check(!!tiled.textShadow && tiled.color === '#000000' && rimmed.textOutline?.color === '#4472C4' && !!rimmed.textShadow
+    && mixed?.color === '#12AB34' && weighed?.widthPt === 20 && weighed?.color === '#12AB34' && keptOpen.every(Boolean)
+    && JSON.stringify(glows) === JSON.stringify([{ color: '#4472C4', alpha: 0.4, radiusPt: 40 }, { color: '#4472C4', alpha: 0.67, radiusPt: 40 }, { color: '#C00000', alpha: 0.67, radiusPt: 40 }])
+    && !cleared.textOutline && !cleared.textShadow && !cleared.textGlow && !!rimInk && rimInk.blue > 5 && rimInk.dark > 5 && hollowInk?.dark > 5,
+    `the text effects menu sets a tile, an outline colour, a custom colour, a typed weight and a glow's size, transparency and colour, staying open for them, and clears them, and a misspelled word keeps its outline, a plain one too (${JSON.stringify({ tiled, rimmed, mixed, weighed, glows, keptOpen, cleared, rimInk, hollowInk })})`);
+
   const priorDoc = await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.getJSON());
   // Pagination settles on any document: each layout-dependent feature (an index's and a
   // reference's page numbers, notes, frames beside a table, kept and cantSplit blocks,
@@ -1399,6 +1742,9 @@ try {
     document.querySelector('.tiptap').editor.commands.setContent({ type: 'doc', content: Array.from({ length: 300 },
       (_, i) => ({ type: 'paragraph', content: [{ type: 'text', text: `${i + 1}. ${text.repeat(1 + (i % 4))}` }] })) });
   });
+  // The caret's page is followed a task after the content lands, behind the layout:
+  // a scroll written before that is one it undoes.
+  await settle(page, true);
   const gridPages = await settled();
   const gridState = (scrolledAway) => page.evaluate((scrolledAway) => {
     const bad = [];
@@ -1414,14 +1760,22 @@ try {
     const pages = live.map(sheetAt);
     if (pages.includes(0)) bad.push(`a cell shows no whole page (${pages})`);
     if (new Set(pages).size !== pages.length) bad.push(`a page shows twice (${pages})`);
-    // Every row the viewport shows, even a sliver of, has its pages in cells.
+    // Every row whose pages the viewport shows, even a sliver of, has them in cells. The
+    // gap below a row shows no page, and the canvas height is rounded, so a row the
+    // scroller's top edge meets to within a pixel is not on screen.
     const scroller = document.querySelector('.editor-panes.grid > .editor').getBoundingClientRect();
     const canvas = document.querySelector('.grid-canvas').getBoundingClientRect();
     const total = +/of (\d+)/.exec(document.querySelector('.statusbar').textContent)[1];
-    const cols = 3, rowH = canvas.height / Math.ceil(total / cols);
-    for (let row = Math.max(0, Math.floor((scroller.top - canvas.top) / rowH)); row * rowH < scroller.bottom - canvas.top && row * cols < total; row++)
+    const cols = 3, rowH = canvas.height / Math.ceil(total / cols), pageH = live[0]?.getBoundingClientRect().height ?? rowH;
+    for (let row = 0; row * cols < total && canvas.top + row * rowH < scroller.bottom - 1; row++) {
+      if (canvas.top + row * rowH + pageH <= scroller.top + 1) continue;
       for (let p = row * cols + 1; p <= Math.min(total, row * cols + cols); p++)
         if (!pages.includes(p)) bad.push(`page ${p} on screen has no cell (${pages})`);
+    }
+    // The scroll ends with the canvas, less the scroller's own padding: no empty row below it.
+    const el = document.querySelector('.editor-panes.grid > .editor'), sheet = document.querySelector('.grid-canvas');
+    const past = el.scrollHeight - sheet.offsetTop - sheet.offsetHeight;
+    if (past > pageH / 2) bad.push(`the grid scrolls ${Math.round(past)}px past its last row`);
     const cell = document.activeElement?.closest('.page-cell');
     const sel = getSelection();
     if (!cell || !sel.rangeCount) return [...bad, 'no cell has the focus'];
@@ -1459,6 +1813,8 @@ try {
       faults = await gridState(scrolledAway);
     }
     for (const fault of faults) gridFaults.push(`${label}: ${fault}`);
+    // Keys typed with no cell focused go to the browser, where Backspace leaves the page.
+    if (faults.includes('no cell has the focus')) throw new Error(`the page grid lost the focus (${gridFaults.join('; ')})`);
   };
   const docEnd = process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End';
   const docStart = process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home';
@@ -1522,6 +1878,30 @@ try {
     await page.mouse.wheel(0, 600);
     await gridStep(`wheel ${i}`, true);
   }
+  // A layout pass with the caret unmoved leaves where the reader scrolled to, short of
+  // a scroll range that got shorter under it.
+  const gridScroll = () => page.evaluate(() => {
+    const el = document.querySelector('.editor-panes.grid > .editor');
+    return { top: el.scrollTop, max: el.scrollHeight - el.clientHeight, pages: document.querySelector('.statusbar').textContent.match(/Page \d+ of \d+/)?.[0], zoom: document.querySelector('.statusbar').textContent.match(/\d+%/)?.[0] };
+  });
+  const relayout = (space) => page.evaluate((space) => {
+    const ed = document.querySelector('.tiptap').editor;
+    ed.view.dispatch(ed.state.tr.setNodeMarkup(0, undefined, { ...ed.state.doc.child(0).attrs, spaceAfter: space }));
+  }, space);
+  // The wheel scrolls smoothly in Firefox, for longer than a grid step waits.
+  let scrolledTo = await gridScroll();
+  for (let was = NaN, i = 0; was !== scrolledTo.top && i < 20; i++) {
+    was = scrolledTo.top;
+    await page.waitForTimeout(150);
+    scrolledTo = await gridScroll();
+  }
+  await relayout(40);
+  await page.waitForTimeout(700);
+  const afterLayout = await gridScroll();
+  await relayout(null);
+  await page.waitForTimeout(700);
+  check(Math.abs(afterLayout.top - Math.min(scrolledTo.top, afterLayout.max)) < 2,
+    `a layout pass in the page grid keeps the reader's scroll (${JSON.stringify(scrolledTo)} -> ${JSON.stringify(afterLayout)})`);
   await page.keyboard.type('y');
   await gridStep('typing after scrolling away');
   await page.keyboard.press('PageUp');
@@ -1624,8 +2004,9 @@ try {
       return true;
     };
     const out = [];
-    // The column previews' page frame is a hairline on purpose, in every theme.
-    for (const el of document.querySelectorAll('body *:not(.paper *, .col-preview > rect:first-child)')) {
+    // The column previews' page frame is a hairline on purpose, in every theme, and a text
+    // effect's sample letter is in the colours the effect gives the document's text.
+    for (const el of document.querySelectorAll('body *:not(.paper *, .col-preview > rect:first-child, .fx-sample)')) {
       if (!shown(el)) continue;
       let fg;
       if (el instanceof SVGGeometryElement) {
@@ -1890,8 +2271,172 @@ try {
   await page.waitForFunction((n) => document.querySelectorAll('.revisions-pane li').length < n, lockedRows, { timeout: 3000 }).catch(() => {});
   check(await page.locator('[data-cmd="trackChanges"]').first().isEnabled() && await paneRows() < lockedRows, 'the right password lifts it, and the rejection goes through');
 
+  // Dictation through the button on a stand-in recognizer: words still being heard stay
+  // off the document, a settled phrase lands at the caret, in the body and in a header.
+  const dict = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
+  dict.on('pageerror', (err) => pageErrors.push(String(err)));
+  await dict.addInitScript(() => {
+    class FakeRecognition {
+      constructor() { window.__rec = this; this.running = false; }
+      start() { this.running = true; }
+      stop() { this.running = false; }
+      abort() { this.running = false; }
+      hear(text, isFinal) {
+        const result = Object.assign([{ transcript: text }], { isFinal });
+        this.onresult?.({ resultIndex: 0, results: Object.assign([result], { length: 1 }) });
+      }
+    }
+    window.SpeechRecognition = window.webkitSpeechRecognition = FakeRecognition;
+  });
+  await dict.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
+  await dict.waitForSelector('.tiptap', { timeout: 15_000 });
+  const body = dict.locator('.tiptap-host .tiptap').first();
+  const hear = (text, isFinal) => dict.evaluate(([t, f]) => window.__rec.hear(t, f), [text, isFinal]);
+  const running = () => dict.evaluate(() => !!window.__rec?.running);
+  await body.click();
+  await dict.keyboard.type('Hello');
+  await dict.locator('[data-cmd="dictate"]').first().click();
+  await dict.locator('dialog[open] button.primary').click();
+  await dict.waitForFunction(() => window.__rec?.running, null, { timeout: 3000 }).catch(() => {});
+  await hear('world', false);
+  const interim = await dict.evaluate(() => ({ shown: document.querySelector('.dictation-interim')?.textContent, doc: document.querySelector('.tiptap-host .tiptap').textContent }));
+  check(interim.shown === 'world' && interim.doc === 'Hello', `words still being heard are drawn, not inserted (${JSON.stringify(interim)})`);
+  await hear('world period', true);
+  check(await body.textContent() === 'Hello world.', `a settled phrase lands at the caret (${await body.textContent()})`);
+  await dict.keyboard.press('Escape');
+  check(!(await running()) && !(await dict.locator('[data-cmd="dictate"].active').count()), 'Esc stops dictation');
+
+  const header = dict.locator('.hf-zone.hf-header').first();
+  await header.dblclick({ timeout: 5000 }).catch(() => header.dispatchEvent('dblclick'));
+  await dict.waitForFunction(() => document.activeElement?.closest?.('.hf-active'), null, { timeout: 5000 }).catch(() => {});
+  await dict.keyboard.press('Alt+Backquote');
+  await dict.waitForFunction(() => window.__rec?.running, null, { timeout: 3000 }).catch(() => {});
+  await hear('running head', true);
+  const headText = await dict.evaluate(() => document.querySelector('.hf-active .tiptap')?.textContent);
+  check(headText === 'Running head', `dictation follows the caret into a header (${headText})`);
+  await dict.locator('.hf-bar-done').click();
+
+  await body.click();
+  await dict.keyboard.press('Alt+Backquote');
+  await dict.waitForFunction(() => window.__rec?.running, null, { timeout: 3000 }).catch(() => {});
+  await dict.setInputFiles('input.file-input[accept*=".odt"]', join(ROOT, 'tests/corpus/01-flow.odt'));
+  await dict.waitForFunction(() => !window.__rec?.running, null, { timeout: 15_000 }).catch(() => {});
+  check(!(await running()), 'opening another document stops dictation');
+  await dict.close();
+
+  // Dictation through a speech server, in Chromium only (its fake microphone plays a WAV):
+  // a browser without Web Speech still gets the button, every burst of sound is posted to
+  // the server at its pause, and the answers land in the order spoken.
+  if ((process.env.BROWSER ?? 'chromium') === 'chromium') {
+    const posted = [];
+    const speech = createServer((req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      if (req.method !== 'POST') return res.end();
+      const parts = [];
+      req.on('data', (c) => parts.push(c));
+      req.on('end', () => {
+        const body = Buffer.concat(parts).toString('latin1');
+        posted.push({ path: req.url, wav: body.includes('RIFF') && body.includes('WAVE'), language: /name="language"\r\n\r\n(\w+)/.exec(body)?.[1] });
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ text: `Word ${posted.length}.` }));
+      });
+    });
+    await new Promise((r) => speech.listen(0, '127.0.0.1', r));
+    // 48 kHz mono: half a second of quiet, then three voiced bursts with a second's pause after each.
+    const RATE = 48000, plan = [[0.5, 0], [0.8, 1], [1, 0], [0.6, 1], [1, 0], [0.9, 1], [1.2, 0]];
+    const samples = plan.flatMap(([sec, on]) => Array.from({ length: sec * RATE }, (_, i) =>
+      on ? 0.4 * Math.sin(2 * Math.PI * 4 * i / RATE) ** 2 * (Math.sin(2 * Math.PI * 180 * i / RATE) + 0.5 * Math.sin(2 * Math.PI * 540 * i / RATE)) : 0));
+    const wav = Buffer.alloc(44 + samples.length * 2);
+    wav.write('RIFF', 0); wav.writeUInt32LE(36 + samples.length * 2, 4); wav.write('WAVEfmt ', 8);
+    wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(RATE, 24);
+    wav.writeUInt32LE(RATE * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(samples.length * 2, 40);
+    samples.forEach((v, i) => wav.writeInt16LE(Math.round(v * 0x7fff), 44 + i * 2));
+    const wavFile = join(await mkdtemp(join(tmpdir(), 'edentext-dictation-')), 'speech.wav');
+    await writeFile(wavFile, wav);
+    const mic = await chromium.launch({ executablePath: chromium.executablePath(), args: ['--no-sandbox',
+      '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', `--use-file-for-fake-audio-capture=${wavFile}%noloop`] });
+    try {
+      const sp = await mic.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
+      sp.on('pageerror', (err) => pageErrors.push(String(err)));
+      await sp.addInitScript((address) => {
+        delete window.SpeechRecognition;
+        delete window.webkitSpeechRecognition;
+        localStorage.setItem('edentext-dictation', JSON.stringify({ server: address }));
+      }, `http://localhost:${speech.address().port}`);
+      await sp.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
+      await sp.waitForSelector('.tiptap', { timeout: 15_000 });
+      await sp.locator('.tiptap-host .tiptap').first().click();
+      const button = sp.locator('[data-cmd="dictate"]').first();
+      check(await button.isVisible(), 'a speech server shows the dictation button without Web Speech');
+      await button.click();
+      await sp.waitForFunction(() => /Word 3\./.test(document.querySelector('.tiptap-host .tiptap')?.textContent ?? ''), null, { timeout: 20_000 }).catch(() => {});
+      const said = await sp.evaluate(() => document.querySelector('.tiptap-host .tiptap').textContent);
+      check(said === 'Word 1. Word 2. Word 3.', `each pause sends a phrase, inserted in order (${said})`);
+      check(posted.length === 3 && posted.every((p) => p.path === '/v1/audio/transcriptions' && p.wav && p.language === 'en'),
+        `phrases go to the OpenAI route as WAV with the language (${JSON.stringify(posted)})`);
+      await sp.keyboard.press('Escape');
+
+      // An installation's presets on the page's own origin: edentext.config.json, a
+      // streaming AI proxy and a speech proxy, while the user has entered nothing.
+      const hp = await mic.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
+      hp.on('pageerror', (err) => pageErrors.push(String(err)));
+      const hosted = { ai: [], stt: [] };
+      await hp.route('**/edentext.config.json', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        ai: { endpoint: '/ai/v1', model: 'host-model', locked: true },
+        dictation: { server: '/stt/v1', model: 'host-stt', locked: true },
+      }) }));
+      await hp.route('**/ai/v1/chat/completions', (route) => {
+        const { authorization, 'x-api-key': key } = route.request().headers();
+        hosted.ai.push({ model: JSON.parse(route.request().postData() ?? '{}').model, authorization, key });
+        const sse = ['Hello from ', 'the host.'].map((t) => `data: ${JSON.stringify({ choices: [{ delta: { content: t } }] })}\n\n`).join('') + 'data: [DONE]\n\n';
+        return route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body: sse });
+      });
+      await hp.route('**/stt/v1/audio/transcriptions', (route) => {
+        hosted.stt.push(/name="model"\r\n\r\n([\w-]+)/.exec(route.request().postDataBuffer()?.toString('latin1') ?? '')?.[1]);
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ text: `Hosted ${hosted.stt.length}.` }) });
+      });
+      await hp.addInitScript(() => { delete window.SpeechRecognition; delete window.webkitSpeechRecognition; });
+      await hp.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
+      await hp.waitForSelector('.tiptap', { timeout: 15_000 });
+      await hp.waitForTimeout(500);
+      await hp.click('.qa-btn[aria-label="Settings"]');
+      await hp.locator('dialog[open] .nav-item', { hasText: /^\s*AI$/ }).click();
+      const aiRows = await hp.evaluate(() => {
+        const d = document.querySelector('dialog[open]');
+        const url = d.querySelector('input[type="url"]');
+        return { text: d.textContent, endpoint: url?.value, locked: url?.disabled, key: !!d.querySelector('input[type="password"]') };
+      });
+      check(aiRows.text.includes('Set up by the administrator') && aiRows.endpoint === '/ai/v1' && aiRows.locked && !aiRows.key,
+        `Settings ▸ AI shows the installation's locked provider without a key field (${JSON.stringify({ ...aiRows, text: undefined })})`);
+      await hp.locator('dialog[open] .nav-item', { hasText: /^\s*Editing$/ }).click();
+      const stt = await hp.$eval('dialog[open]', (d) => ({ shown: d.textContent.includes('Set up by the administrator'), ownField: !!d.querySelector('input[type="url"]') }));
+      check(stt.shown && !stt.ownField, `Settings ▸ Editing names the installation's locked speech server and offers no field for an own one (${JSON.stringify(stt)})`);
+      await hp.keyboard.press('Escape');
+
+      await hp.click('[data-cmd="aiPane"]');
+      await hp.fill('.ai-pane textarea', 'Hi');
+      await hp.keyboard.press('Enter');
+      await hp.waitForFunction(() => /Hello from the host\./.test(document.querySelector('.ai-pane .msg.assistant')?.textContent ?? ''), null, { timeout: 15_000 }).catch(() => {});
+      const reply = await hp.evaluate(() => document.querySelector('.ai-pane .msg.assistant')?.textContent?.trim());
+      check(/Hello from the host\./.test(reply ?? '') && hosted.ai.length > 0 && hosted.ai.every((r) => r.model === 'host-model' && !r.authorization && !r.key),
+        `an AI reply streams in from the installation's proxy, sent without a key (${reply}; ${JSON.stringify(hosted.ai)})`);
+
+      await hp.locator('.tiptap-host .tiptap').first().click();
+      await hp.locator('[data-cmd="dictate"]').first().click();
+      await hp.waitForFunction(() => /Hosted 3\./.test(document.querySelector('.tiptap-host .tiptap')?.textContent ?? ''), null, { timeout: 20_000 }).catch(() => {});
+      const dictated = await hp.evaluate(() => document.querySelector('.tiptap-host .tiptap').textContent);
+      check(/Hosted 1\. Hosted 2\. Hosted 3\./.test(dictated) && hosted.stt.every((m) => m === 'host-stt'),
+        `dictation goes to the installation's speech server with its model (${dictated}; ${JSON.stringify(hosted.stt)})`);
+      await hp.keyboard.press('Escape');
+    } finally {
+      await mic.close();
+      speech.close();
+    }
+  }
+
 } catch (err) {
-  check(false, `dom run threw: ${err.message ?? err}`);
+  const at = (err.stack ?? '').split('\n').filter((l) => l.includes('dom/run.mjs')).map((l) => l.trim().replace(/^at /, '')).join(' ← ');
+  check(false, `dom run threw: ${err.message ?? err}${at ? ` (at ${at})` : ''}`);
 } finally {
   check(pageErrors.length === 0, pageErrors.length ? `no uncaught page errors — got: ${pageErrors.join(' | ')}` : 'no uncaught page errors');
   await browser.close();

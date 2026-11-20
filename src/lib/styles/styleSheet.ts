@@ -5,8 +5,8 @@
 import { builtinTableStyles, tableStyleCss, type TableStyle } from './tableStyles';
 import { outlineCss, type OutlineNumbering } from './outlineNumbering';
 import { builtinListStyles, type ListStyle } from './listStyles';
-import type { CapsMode } from '../editor/extensions/textEffects';
-import { normalizeColor } from '../utils/color';
+import { effectCss, type CapsMode, type Relief, type TextGlow, type TextOutline, type TextShadow, type W14El } from '../editor/extensions/textEffects';
+import { cssColor, normalizeColor } from '../utils/color';
 import { parseBorderAttr } from '../editor/extensions/tableCellBorders';
 
 const MAX_STYLE_NAME_LENGTH = 256;
@@ -42,6 +42,8 @@ export type ParaProps = {
   // pt between the text and its own rule lines (Word's w:pBdr w:space, ODF fo:padding).
   // Only the sides that draw a border take it.
   borderPadding?: number;
+  // false: like neighbours of the style keep a box each (ODF join-border, DOCX w:between).
+  borderJoin?: false;
 };
 
 export type TextProps = {
@@ -58,7 +60,16 @@ export type TextProps = {
   underline?: boolean;
   strike?: boolean;
   color?: string;
-  caps?: CapsMode; // all caps / small caps (Word w:caps + w:smallCaps, ODF fo:text-transform)
+  caps?: CapsMode | false; // false: explicitly off over a parent's; all caps / small caps (Word w:caps + w:smallCaps, ODF fo:text-transform)
+  // Outline, shadow, relief (textEffects.ts); false/'none' switches a parent style's off.
+  outline?: boolean;
+  shadow?: boolean;
+  relief?: Relief | 'none';
+  // Coloured outline, shadow and glow (DOCX w14), and the w14 elements kept undrawn.
+  textOutline?: TextOutline;
+  textShadow?: TextShadow;
+  textGlow?: TextGlow;
+  textFxRaw?: W14El[];
   // Language tags ('en-US'), western and asian. Carried here so a paragraph's languages
   // can be baked onto its runs, which is the only place Word reads one from.
   lang?: string;
@@ -267,7 +278,13 @@ export function screenFontName(family: string): string {
 export function cssFontFamily(name: string): string {
   if (name === 'Liberation Serif') return 'var(--font-serif)';
   if (name === 'Liberation Sans' || name === 'Arial') return 'var(--font-heading)';
-  return `"${cssString(name)}", var(--font-serif)`;
+  return `"${cssString(name)}", ${genericTail(name)}`;
+}
+
+// A fixed-pitch family falls back to a fixed-pitch face, as LibreOffice substitutes one.
+function genericTail(name: string): string {
+  const p = fontProfile(name);
+  return `var(${p.mono ? '--font-mono' : p.sans ? '--font-heading' : '--font-serif'})`;
 }
 
 // What a family's substitute does differently, one row per family. `stack`: the names it
@@ -279,6 +296,7 @@ export function cssFontFamily(name: string): string {
 interface FontProfile {
   stack?: string;
   sans?: boolean;
+  mono?: boolean;
   singleLine?: number;
   noBold?: boolean;
   wideQuotes?: boolean;
@@ -302,14 +320,14 @@ const FONT_PROFILES: Record<string, FontProfile> = {
   'Segoe UI Black': SEGOE, Selawik: SEGOE,
   // Office faces often missing where the file is opened, as Word sets them: win ascent +
   // descent + the hhea gap they leave out, read from the fonts Word ships.
-  Cambria: line(1.1724), Caladea: line(1.1724), Aptos: line(1.2847), Consolas: line(1.1709),
+  Cambria: line(1.1724), Caladea: line(1.1724), Aptos: line(1.2847), Consolas: { singleLine: 1.1709, mono: true },
   Candara: line(1.2207), Constantia: line(1.2207), Corbel: line(1.2207), Tahoma: line(1.207),
   Verdana: line(1.2153), Georgia: line(1.1362), 'Trebuchet MS': line(1.1611),
   'Century Gothic': line(1.2261), Garamond: line(1.125), 'Book Antiqua': line(1.2427),
   'Palatino Linotype': line(1.3491), 'Lucida Sans Unicode': line(1.5366),
   'Microsoft YaHei': line(1.3198), 'Malgun Gothic': line(1.3301),
-  'Courier New': { singleLine: 1.1333 },
-  'Liberation Mono': { singleLine: 1.1333 },
+  'Courier New': { singleLine: 1.1333, mono: true },
+  'Liberation Mono': { stack: "'Liberation Mono', 'Courier New'", singleLine: 1.1333, mono: true },
   SimSun: SONG, 宋体: SONG, NSimSun: SONG, 新宋体: SONG, FangSong: SONG, 仿宋: SONG, 仿宋_GB2312: SONG,
   FangSong_GB2312: CJK_NO_BOLD, SimHei: CJK_NO_BOLD, 黑体: CJK_NO_BOLD, KaiTi: CJK_NO_BOLD,
   KaiTi_GB2312: CJK_NO_BOLD, 楷体: CJK_NO_BOLD, 楷体_GB2312: CJK_NO_BOLD, MingLiU: CJK_NO_BOLD,
@@ -317,9 +335,30 @@ const FONT_PROFILES: Record<string, FontProfile> = {
   'MS PMincho': CJK_NO_BOLD, 'MS Gothic': CJK_NO_BOLD, 'MS PGothic': CJK_NO_BOLD,
 };
 
+// A face name with a weight, width, slant or vendor suffix (`Arial Bold`, `Arial-BoldMT`)
+// that is not installed falls back, as in LibreOffice, to its base family's substitute;
+// probed: the suffix's weight is not applied, and only the substitute's class is kept.
+const FACE_SUFFIX = /(?:[\s_-]*(?:MT|PS|MS)|(?:[\s_-]+|(?<=\p{Ll}))(?:(?:Extra|Ultra|Semi|Demi)?(?:Bold|Light|Condensed|Expanded)|Thin|Book|Regular|Normal|Medium|Black|Heavy|Narrow|Italic|Oblique))$/u;
+const PROFILE_KEYS = new Map(Object.keys(FONT_PROFILES).map((k) => [k.replace(/\s/g, '').toLowerCase(), k]));
+function baseProfile(name: string): FontProfile {
+  let base = name;
+  for (let next = base.replace(FACE_SUFFIX, ''); next && next !== base; next = base.replace(FACE_SUFFIX, '')) {
+    base = next;
+    const own = FONT_PROFILES[base] ?? FONT_PROFILES[PROFILE_KEYS.get(base.replace(/[\s_-]/g, '').toLowerCase()) ?? ''];
+    if (own) return { stack: own.stack, sans: own.sans, mono: own.mono };
+  }
+  return MONO_NAME.test(name) ? { mono: true } : {};
+}
+// The names LibreOffice substitutes a missing family by a fixed-pitch face for (probed;
+// not by the declared style:font-pitch, and not for Inconsolata or Source Code Pro).
+const MONO_NAME = /\bMono\b|Courier|Consolas|Console|Cousine|Typewriter/i;
+
 // A family named in Han is a Chinese face all the same.
 function fontProfile(name: string): FontProfile {
-  return FONT_PROFILES[name] ?? (/\p{sc=Han}/u.test(name) ? { wideQuotes: true } : {});
+  const own = FONT_PROFILES[name] ?? (/\p{sc=Han}/u.test(name) ? { wideQuotes: true } : undefined);
+  if (own) return own;
+  const base = baseProfile(name);
+  return base.stack ? { ...base, stack: `"${cssString(name)}", ${base.stack}` } : base;
 }
 
 export function fauxBold(asian: string): boolean {
@@ -337,7 +376,7 @@ function westNames(name: string): string {
 export function fontPairDeclarations(west?: string | null, asian?: string | null): string[] {
   if (!west && !asian) return [];
   const out: string[] = [];
-  const tail = `var(${west && fontProfile(west).sans ? '--font-heading' : '--font-serif'})`;
+  const tail = west ? genericTail(west) : 'var(--font-serif)';
   if (west) out.push(`--font-west: ${westNames(west)}`, `--font-tail: ${tail}`);
   if (asian) {
     out.push(`--font-asian: "${cssString(asian)}"`);
@@ -385,7 +424,9 @@ function measuredLine(name: string): number {
 // height in pt (Word's "exactly", ODF's fo:line-height length). Each clears the other,
 // so a paragraph's own spacing beats its style's of either kind.
 export function lineSpacingDeclarations(value: string): string[] {
-  return /pt$/.test(value) ? [`--line-fixed: ${value}`, '--line-factor: 1'] : [`--line-factor: ${value}`, '--line-fixed: initial'];
+  return /pt$/.test(value)
+    ? [`--line-fixed: ${value}`, '--line-factor: 1', '--marker-line: 0']
+    : [`--line-factor: ${value}`, '--line-fixed: initial', '--marker-line: initial'];
 }
 
 // The text half of a rule, shared with the table-style family (tableStyles.ts). A block
@@ -399,7 +440,7 @@ export function textDeclarations(t: TextProps, asBlock = false): string[] {
     if (lh !== 1.15) out.push(`${asBlock ? '--natural-line' : 'line-height'}: ${lh}`);
   }
   if (finite(t.fontSizePt)) out.push(`font-size: ${t.fontSizePt}pt`);
-  if (finite(t.letterSpacingPt) && t.letterSpacingPt) out.push(`letter-spacing: ${t.letterSpacingPt}pt`);
+  if (finite(t.letterSpacingPt)) out.push(`letter-spacing: ${t.letterSpacingPt}pt`);
   if (t.kerning != null) out.push(`font-kerning: ${t.kerning ? 'normal' : 'none'}`);
   if (t.bold != null) {
     out.push(`font-weight: ${t.bold ? 'var(--bold-weight, 700)' : 400}`, `-webkit-text-stroke-width: ${t.bold ? 'var(--bold-stroke, 0)' : 0}`);
@@ -408,9 +449,13 @@ export function textDeclarations(t: TextProps, asBlock = false): string[] {
   if (t.underline || t.strike) {
     out.push(`text-decoration: ${[t.underline && 'underline', t.strike && 'line-through'].filter(Boolean).join(' ')}`);
   }
-  const color = normalizeColor(t.color);
-  if (color) out.push(`color: ${color}`);
+  const color = cssColor(t.color);
+  // --font-color names it for what currentcolor cannot reach (a plain outline's ring).
+  if (color) out.push(`color: ${color}`, `--font-color: ${color}`);
   if (t.caps && CAPS.has(t.caps)) out.push(t.caps === 'smallCaps' ? 'font-variant-caps: small-caps' : `text-transform: ${t.caps}`);
+  else if (t.caps === false) out.push('text-transform: none', 'font-variant-caps: normal');
+  const fx = effectCss(t);
+  if (fx) out.push(...fx.split('; '));
   return out;
 }
 
@@ -431,13 +476,14 @@ function declarations(r: ResolvedStyle): string[] {
   for (const [key, side] of [['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left']] as const) {
     const b = parseBorderAttr(p[key]);
     drawn[side] = !!b && b !== 'none';
-    if (b && b !== 'none') out.push(`border-${side}: ${b.widthPt}pt solid ${b.color}`);
+    // A double line needs 3px (2.25pt) to show its two strokes.
+    if (b && b !== 'none') out.push(`border-${side}: ${b.line === 'double' ? Math.max(b.widthPt, 2.25) : b.widthPt}pt ${b.line} ${b.color}`);
   }
   const boxed = !!background || Object.values(drawn).some(Boolean);
   // The rule and shading start where a hanging first line does (editor.css --box-hang).
   if (boxed) out.push('--box-hang: min(0px, var(--indent-first, 0px))');
   // Plus the section inset, which .tiptap's own padding can't draw (editor.css).
-  if (p.indent != null || boxed) out.push('margin-left: calc(var(--sec-inset-left, 0px) + var(--ind, 0px) + var(--box-hang, 0px))');
+  if (p.indent != null || boxed) out.push('margin-inline-start: calc(var(--sec-inset-start, 0px) + var(--ind, 0px) + var(--box-hang, 0px))');
   // The gap the file puts between the text and its rule, on the ruled sides only —
   // a bottom rule must not indent the paragraph or push its first line down.
   const left = 'calc(var(--pad-left, 0px) - var(--box-hang, 0px))';
@@ -476,6 +522,13 @@ export function styleCss(sheet: StyleSheet): string {
     // the rest in; :where keeps the selector's weight what it was.
     if (style.name === DEFAULT_STYLE) selectors.push('.paper .tiptap p:not([data-style]):where(:not(.hf-zone *))', '.paper .tiptap .toc');
     rules.push(`${selectors.join(',\n')} {\n  ${decls.join(';\n  ')};\n}`);
+    // Blocks of one ruled style in a row are one box (editor.css data-pjoin-*): the rule
+    // and its gap are drawn above the first and below the last only.
+    const p = resolved.para;
+    if (p.borderJoin !== false && [p.borderTop, p.borderRight, p.borderBottom, p.borderLeft].some((b) => b && b !== 'none')) {
+      rules.push(`.paper .tiptap ${attr}:has(+ ${attr}) {\n  border-bottom-style: none;\n  padding-bottom: 0;\n}`,
+        `.paper .tiptap ${attr} + ${attr} {\n  border-top-style: none;\n  padding-top: 0;\n}`);
+    }
 
     // A list marker inherits the item's own font, never its paragraph's, so the item
     // carries the style's text half too — else the number renders in the editor
@@ -543,6 +596,7 @@ export function propsFromBlock(node: BlockNode, marks: BlockMark[] = []): Resolv
       if (typeof attrs.fontSize === 'string' && attrs.fontSize) text.fontSizePt = parseFloat(attrs.fontSize);
       if (typeof attrs.color === 'string' && attrs.color) text.color = attrs.color;
       if (attrs.fontWeight === 'normal') text.bold = false;
+      if (attrs.fontStyle === 'normal') text.italic = false;
     }
   }
   return { para, text };

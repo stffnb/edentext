@@ -71,7 +71,10 @@ ODF sections write their own page layout and master-page variants. Header/footer
 part of page geometry, not body margins. Each master writes an explicit zone, including blank
 ones where needed, so a section cannot inherit an unintended prior zone. Mirrored margins,
 right-to-left pages, running fields, and page-number formats travel with their applicable page
-layout or master.
+layout or master. A first page with its own margins, distances or area frames gets a one-page
+master on its own layout, handing over by `style:next-style-name` (LibreOffice's title page;
+section 1 splits Standard). DOCX has no first-page margins: `w:titlePg` switches zones only, and
+LibreOffice splits such a page into a section of its own, which needs the layout's page end.
 
 ## DOCX post-pack
 
@@ -84,11 +87,13 @@ DOCX sections use explicit header/footer references, including empty parts, to p
 "Link to Previous" behavior from leaking a prior section's zones. Section page breaks, odd/even
 and first-page variants, mirror margins, right-to-left layout, footnote settings, and page-number
 format belong on the relevant section properties.
-The `docx` package ends a section in an empty paragraph holding its `w:sectPr`, which Word shows
-as a blank line and LibreOffice folds into the paragraph before, losing that paragraph's space
-below. `applySectionMarksDocx` moves the `w:sectPr` onto the preceding paragraph, where Word writes
-it, unless that paragraph is empty (the importers drop such a marker paragraph) or ends in a line
-break (LibreOffice drops a break ending a section).
+The `docx` package writes a section's `w:sectPr` into the section's last paragraph, or into an
+empty paragraph of its own after a table, which Word shows as a blank line and LibreOffice folds
+into the paragraph before, losing that paragraph's space below. `applySectionMarksDocx` first moves
+every mark into a paragraph of its own, then onto the preceding paragraph, where Word writes it,
+unless that paragraph holds no run (LibreOffice and the importer drop an empty paragraph carrying a
+`w:sectPr`, probed, so the document's own blank line would vanish) or ends in a line break
+(LibreOffice drops a break ending a section). A run inside a revision or field counts as content.
 
 Named styles use Word-compatible identifiers and built-in factory slots. Do not create a second
 factory definition for a built-in style: readers may discard the inheritance chain. Numbering
@@ -109,11 +114,37 @@ paragraph and the document therefore carry a western and an asian language (`lan
 (`w:rFonts w:eastAsia`, `style:font-name-asian`) the one that applies. The document keeps a main
 language (spell check, dates, number formats) and the other slot's tag (`documentLanguageOther`);
 the spell check reads the western one, so a Chinese document checks its Latin words. Both word
-processors write an asian default (`zh-CN`) into every file whatever it is written in, so on
-import that slot leads only where the body has more East Asian characters than Latin letters
-(`mainOfPair`); a Chinese document re-saved by LibreOffice, which adds its own western default,
-still reads as Chinese. LibreOffice lifts a run language spanning its paragraph onto the
-paragraph.
+processors write an asian and a complex default (`zh-CN`, `ar-SA`, `hi-IN`) into every file
+whatever it is written in, so on import such a slot leads only where the body has more
+characters of its script than Latin letters (`mainOfSlots`, `dominantScript`); a Chinese
+document re-saved by LibreOffice, which adds its own western default, still reads as Chinese.
+LibreOffice lifts a run language spanning its paragraph onto the paragraph.
+
+The **complex** slot (`w:lang w:bidi`, `style:language-complex`) is where Arabic, Hebrew,
+Indic and Thai text has its language. The model has no attribute of its own for it: such a tag
+sits in `lang` and `langSlot` sends it to the complex slot on export. On import a text node of
+complex script reads its language from that slot and is measured against the slot's default
+(`BlockDefaults.langComplex`), so an Arabic document's runs carry no mark. The spell check
+routes each word by its script (`SpellController.checkerOfScript`): Latin words in an Arabic
+document go to its western language (`documentLanguageOther`) or stay unchecked, Arabic words
+in a western document likewise. DOCX reads weight, slant, size and font of complex-script
+text from `w:bCs`, `w:iCs`, `w:szCs` and `w:rFonts w:cs`, as Word does; `w:rtl` is read as
+"this run is complex script". Word orders a paragraph by its runs' `w:rtl`, not by the
+characters: a run is an embedding of its direction, resolved inside by the Unicode algorithm
+(seen in Word: an unflagged run in a `w:bidi` paragraph is laid out left to right, label first,
+full stop last). So `directionCuts` cuts every text node where the level the editor shows
+turns (`utils/bidi.ts`): in a right-to-left paragraph the text at its level is flagged and
+Latin words and numbers are not (what LibreOffice writes), in a left-to-right one a whole
+right-to-left stretch with its numbers is. The import joins equal neighbours again. ODF has the three slots for size, weight and
+slant as well: `fillScriptSlots`, the last ODT pass, repeats each western value of a
+`style:text-properties` block (named and default styles, list labels, index templates, notes)
+in the asian and complex slots it leaves open, and a font in the complex one. On import a slot
+a style leaves open falls back to the western value.
+
+### Alignment and direction
+
+How `textAlign`, a block's `dir` and the page direction are written and read back is in
+`docs/architecture/formatting.md`, "Alignment and direction".
 
 ### Font pair
 
@@ -137,6 +168,14 @@ and list content; see `tables.md`. Frames preserve inline versus floating anchor
 wrap, captions, and shape semantics; see `frames.md`. Formulas, bookmarks, cross-references,
 captions, indexes, bibliography, ruby, placeholders, revisions, and notes retain their semantic
 nodes where the format supports them; their focused documents define fallback behavior.
+
+List levels: DOCX numbers nine (`w:ilvl` 0–8), ODF ten. The editor indents to the ninth
+(`sinkListItemWithin`, `DOCX_LIST_LEVELS`), so its own lists fit both. A file's deeper list
+is moved up onto the last level the format has (`clampListLevels`): its items follow the
+item they were in and take that level's kind, which is how LibreOffice shows such a list.
+The ODT keeps all ten, LibreOffice's own ceiling, since a file from it may use the tenth; both
+importers read no deeper than their format. odf-kit writes six levels of each list style,
+so `extendKitListLevels` adds the other four before the per-level passes rewrite them.
 
 Review printing renders the visible markup mode consistently. Raster paths clone live paper;
 the vector path rebuilds document markup. Comment bodies print as a final list when markup

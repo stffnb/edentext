@@ -1,0 +1,19 @@
+Hunspell-ar — Arabic Hunspell dictionary (Ayaspell project)
+http://ayaspell.sourceforge.net/, as shipped in LibreOffice's dictionaries (ar/)
+SPDX-License-Identifier: GPL-2.0-or-later OR LGPL-2.1-or-later OR MPL-1.1
+
+Author of Hunspell-ar, the arabic dictionary for Hunspell (spellchecker):
+2006-2008, Mohamed Kebdani, med.kebdani (at) gmail.com
+Arabic Thesaurus
+2006-2009, Taha Zerrouki, taha_zerrouki at gawab.com
+
+
+GPL 2.0/LGPL 2.1/MPL 1.1 tri-license
+
+The contents of this software may be used under the terms of the GNU General Public License Version 2 or later (the "GPL"), or the GNU Lesser General Public License Version 2.1 or later (the "LGPL") the Mozilla Public License Version 1.1 or later (the "MPL").
+
+Software distributed under these licenses is distributed on an "AS IS" basis,
+WITHOUT WARRANTY OF ANY KIND, either express or implied. See the licences
+for the specific language governing rights and limitations under the licenses.
+
+

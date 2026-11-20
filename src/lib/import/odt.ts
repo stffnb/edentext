@@ -3,23 +3,24 @@ import { markerFormatFromText, pruneImportedMarkers, type MarkerFormat } from '.
 import en from '../i18n/locales/en';
 import { StyleResolver, NS, WATERMARK_NAME, lengthToPt, lengthToCm, layerTextProps, langTagsOfProps, type PropMap } from './styleResolver';
 import { cjkDocFont, odfFromTag, tagFromOdf } from '../storage/documentLanguage';
-import { ASIAN_SCRIPT_RE } from '../utils/script';
-import { ODF_LOOK_ATTRS, normalizeColor, labelledItems } from '../export/odt';
+import { ASIAN_SCRIPT_RE, COMPLEX_SCRIPT_RE } from '../utils/script';
+import { GENERATOR, ODF_LOOK_ATTRS, normalizeColor, labelledItems } from '../export/odt';
+import { AUTO_COLOR } from '../utils/color';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL } from '../styles/headings';
 import { isAllowedUri } from '@tiptap/extension-link';
 import { builtinStyleSheet, DEFAULT_STYLE, screenFontName, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
 import { DEFAULT_OUTLINE_LEVEL, MAX_OUTLINE_LEVELS, type OutlineLevel, type OutlineNumbering } from '../styles/outlineNumbering';
-import { LIST_LEVEL_STEP_CM, MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
+import { clampListLevels, LIST_LEVEL_STEP_CM, MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { colorModeOf, cropOf, fitInlineImage, framePx, stackRank, wrapGap, wrapGapAttr, type Crop } from '../editor/extensions/image';
 import { odfChartDataUrl } from './chart';
 import { formatTabStops, normalizeLeader } from '../editor/extensions/tabStops';
-import { isEmphasis, type CapsMode, type LineStyle } from '../editor/extensions/textEffects';
+import { isEmphasis, type CapsMode, type LineStyle, type Relief } from '../editor/extensions/textEffects';
 import {
   TABLE_REGIONS, builtinTableStyles, parseTableLook, resolveTableCell, tableLookAttr,
   type TableLook, type TableRegion,
 } from '../styles/tableStyles';
-import { knownNumFormat, odfNumFormatOf, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
+import { knownNumFormat, listStart, odfNumFormatOf, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromOdf } from '../utils/bulletListTypes';
 import { docxPicture, matchFormat, toDateValue, type Token } from '../utils/dateTime';
 import {
@@ -38,7 +39,7 @@ import type { RecordLock } from '../storage/trackChanges.svelte';
 import type { SpacingModel } from '../storage/spacingModel';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { languageFromOdf, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
-import { hfIsEmpty, type HfDistances, type HfDoc, type HfSet } from '../storage/headerFooter';
+import { hfIsEmpty, type HfDistances, type HfDoc, type HfFrame, type HfFrames, type HfSet } from '../storage/headerFooter';
 import { NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
 import { clampPageStart, type PageNumbering } from '../storage/pageNumbering';
@@ -53,7 +54,8 @@ import { FOLD_MARK_NAME } from '../storage/foldMarks';
 import type { LineNumbering } from '../storage/lineNumbering';
 import type { LineGrid } from '../storage/lineGrid';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
-import { cellPaddingAttr, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
+import { cellPaddingAttr, DEFAULT_CELL_PADDING, parseCellPadding, type CellPadding } from '../editor/extensions/tableCellPadding';
+import { DEFAULT_BORDER_WIDTH_PT, borderLineOf, borderValue, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { fromWriterFormula } from '../utils/tableFormula';
 import { cellFormatFromSpec, type CellFormat, type FormatKind } from '../utils/cellFormat';
 import { TEXTBOX_PADDING_CM, boxTextWidthCm } from '../editor/extensions/textBox';
@@ -176,6 +178,8 @@ type Ctx = {
   docContentWidthCm: number;
   // Text width (cm) of the cell being converted: what a table nested in it measures against.
   cellWidthCm?: number;
+  // The direction of the table being converted, which one nested in it runs in too.
+  tableRtl?: boolean;
   // The columns of the section being walked: a table there fills one column.
   sectionCols?: { count: number; gapCm: number } | null;
   // The section's left page margin: a frame placed against the page is kept against the
@@ -189,6 +193,9 @@ type Ctx = {
   pageRtl: boolean;
   // LibreOffice's Word 2013 layout (TabOverSpacing without TabOverMargin, settings.xml).
   breakDropsSpace: boolean;
+  // settings.xml MinRowHeightInclBorder: a row height leaves the margins and a minimum
+  // row's top border out, the editor's model; without it the height includes them.
+  rowHeightInclBorder: boolean;
   // Master pages the body switches to, in order — one section each past the first.
   masterPages: string[];
   leadingMaster: string; // the master the document opens on: naming it first switches nothing
@@ -290,14 +297,16 @@ function boxWrapAlign(gp: PropMap, attrs: Record<string, unknown>): void {
       && attrs.wrap !== 'left' && attrs.wrap !== 'right') attrs.wrapAlign = hpos;
 }
 
-// Vertical text in any box shape: the style's writing mode, both of ODF's top-to-bottom
-// modes (the editor has the one direction the browser lays out). A text frame carries it
-// in the graphic properties, a drawing shape in its style's paragraph properties.
+// Vertical text in any box shape: the style's writing mode, ODF's top-to-bottom modes
+// and LibreOffice's own tb-rl90 (down) and bt-lr (up). A text frame carries it in the
+// graphic properties, a drawing shape in its style's paragraph properties.
 function boxTextFlow(el: Element, ctx: Ctx, attrs: Record<string, unknown>): void {
   const name = el.getAttributeNS(NS.draw, 'style-name');
   const gp = ctx.resolver.graphicProps(name);
-  const mode = gp['style:writing-mode'] ?? ctx.resolver.graphicParaProps(name)['style:writing-mode'];
-  if (mode === 'tb-rl' || mode === 'tb-lr' || mode === 'tb') attrs.textVertical = true;
+  const pp = ctx.resolver.graphicParaProps(name);
+  const mode = gp['loext:writing-mode'] ?? gp['style:writing-mode'] ?? pp['loext:writing-mode'] ?? pp['style:writing-mode'];
+  if (mode === 'tb-rl' || mode === 'tb-lr' || mode === 'tb' || mode === 'tb-rl90') attrs.textVertical = true;
+  else if (mode === 'bt-lr') attrs.textVertical = 'up';
   // Where the text sits in a box taller than it is; 'justify' spreads it, top-anchored.
   const anchor = gp['draw:textarea-vertical-align'];
   if (anchor === 'middle' || anchor === 'bottom') attrs.textVAlign = anchor;
@@ -508,7 +517,8 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
   const title = frame.getElementsByTagNameNS(NS.svg, 'title')[0]?.textContent;
   if (title) attrs.alt = title;
   const gp = ctx.resolver.frameGraphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
-  const crop = clipCrop(gp['fo:clip'], ctx.files[href]);
+  // The clip is measured against the frame's own picture, which a fallback only replaces.
+  const crop = clipCrop(gp['fo:clip'], ctx.files[hrefs[0]], ctx.files[href]);
   if (crop) attrs.crop = crop;
   const mode = colorModeOf(gp['draw:color-mode']);
   if (mode) attrs.colorMode = mode;
@@ -519,9 +529,9 @@ function convertFrame(frame: Element, ctx: Ctx): Node | null {
 }
 
 // fo:clip="rect(top, right, bottom, left)" cuts lengths off the picture at its own size.
-function clipCrop(clip: unknown, bytes: Uint8Array | undefined): Crop | null {
+function clipCrop(clip: unknown, ...pictures: (Uint8Array | undefined)[]): Crop | null {
   const m = typeof clip === 'string' ? /rect\(([^)]*)\)/.exec(clip) : null;
-  const size = m && bytes ? imageSizeCm(bytes) : null;
+  const size = m ? pictures.reduce<ReturnType<typeof imageSizeCm>>((got, b) => got ?? (b ? imageSizeCm(b) : null), null) : null;
   if (!m || !size) return null;
   const [t, r, b, l] = m[1].split(/[\s,]+/).filter(Boolean).map((v) => Math.max(0, lengthToCm(v) ?? 0));
   return cropOf({ l: l / size.w, t: t / size.h, r: r / size.w, b: b / size.h });
@@ -1064,7 +1074,6 @@ const DEFAULT_HEADING_FONTS = new Set(['arial', 'liberation sans']);
 // odf-kit emits each list level at margin-left = level × 1.27cm (label-alignment).
 // A top-level list's margin beyond this level-1 base is its whole-list indent.
 const LIST_BASE_MARGIN_CM = 1.27;
-const LIST_INDENT_EPS_CM = 0.05;
 const LIST_HANGING_CM = 0.635; // the hang every list export writes (export/docx.ts)
 
 // ---- entry --------------------------------------------------------------------
@@ -1119,8 +1128,10 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   resolver.setDefaultMaster(masters.dominant);
   const first = resolver.hasMasterPage(masters.leading) ? masters.leading : null;
   const geo = resolver.pageGeometry(first) ?? resolver.pageGeometry();
+  resolver.pageRtl = geo?.rtl ?? false;
+  resolver.physicalEdges = odfPhysicalEdges(files);
   const contentWidthCm = contentWidthOf(geo);
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), listEnds: new Map(), warnings, seqRefNames: sequenceRefNames(body), files, imageCache: new Map(), convertedImages, contentWidthCm, docContentWidthCm: contentWidthCm, leftMarginCm: geo?.margins.left ?? 0, ...heightsOf(geo), pageRtl: geo?.rtl ?? false, breakDropsSpace: odfBreakDropsSpace(files), masterPages: [], leadingMaster: masters.leading ?? 'Standard', masterPageStarts: [], bodyBlocks: 0, openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentReplies: odfCommentReplies(body), revisions: odfRevisions(body), openInsertions: new Map(), openFormats: new Map(), notes: [], foldMarks: false };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), listEnds: new Map(), warnings, seqRefNames: sequenceRefNames(body), files, imageCache: new Map(), convertedImages, contentWidthCm, docContentWidthCm: contentWidthCm, leftMarginCm: geo?.margins.left ?? 0, ...heightsOf(geo), pageRtl: geo?.rtl ?? false, breakDropsSpace: odfBreakDropsSpace(files), rowHeightInclBorder: /MinRowHeightInclBorder"[^>]*>true</.test(files['settings.xml'] ? strFromU8(files['settings.xml']) : ''), masterPages: [], leadingMaster: masters.leading ?? 'Standard', masterPageStarts: [], bodyBlocks: 0, openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentReplies: odfCommentReplies(body), revisions: odfRevisions(body), openInsertions: new Map(), openFormats: new Map(), notes: [], foldMarks: false };
   // Whole-document columns declared on the page layout instead of a
   // text:section: the body's wrappable runs are wrapped the way a section's would be.
   const pageCols = resolver.pageColumns();
@@ -1172,10 +1183,10 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   }
 
   const docNumFormat = resolver.pageNumberFormat(first);
-  const zoneOf = (el: Element | null, footer = false) =>
-    (el ? convertHfZone(el, ctx, geo, footer ? hf.footerBandCm : hf.headerBandCm, footer) : null);
-  const headerFirst = zoneOf(hf.headerFirst);
-  const footerFirst = zoneOf(hf.footerFirst, true);
+  const zoneOf = (el: Element | null, footer = false, first = false) =>
+    (el ? convertHfZone(el, ctx, geo, bandOf(hf, footer, first), footer) : null);
+  const headerFirst = zoneOf(hf.headerFirst, false, true);
+  const footerFirst = zoneOf(hf.footerFirst, true, true);
   // The presence of a first-page element is the flag, even when it's empty (an empty
   // first-page zone deliberately blanks page 1 while the default fills later pages).
   const differentFirstPage = !!(hf.headerFirst || hf.footerFirst || hf.firstPageOnly);
@@ -1186,12 +1197,15 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   // repeats its header on left pages. An element that is *there* but empty blanks it.
   const headerEven = hf.headerLeft ? zoneOf(hf.headerLeft) : differentOddEven ? header : null;
   const footerEven = hf.footerLeft ? zoneOf(hf.footerLeft, true) : differentOddEven ? footer : null;
-  // A first-page/even zone reserves the band even if its default counterpart is empty.
-  const hasHeader = hf.header || headerFirst || headerEven;
-  const hasFooter = hf.footer || footerFirst || footerEven;
+  const sections = ctx.masterPages.map((name, i) => ({ ...hfSetOfMasterPage(name, ctx, geometry, docNumFormat, edge), pageNumberStart: ctx.masterPageStarts[i] ?? null }));
+  // A first-page/even zone reserves the band even if its default counterpart is empty. A
+  // later section's zone counts too: it inherits the distances where it matches them.
+  const hasHeader = hf.header || headerFirst || headerEven || sections.some((s) => s.header || s.headerFirst || s.headerEven);
+  const hasFooter = hf.footer || footerFirst || footerEven || sections.some((s) => s.footer || s.footerFirst || s.footerEven);
 
   const result: OdtImportResult = {
-    content: { type: 'doc', content: blocks },
+    // Deeper than ODF's ten levels, LibreOffice shows a list on the tenth.
+    content: clampListLevels({ type: 'doc', content: blocks }, MAX_LIST_LEVELS),
     margins: geometry?.margins ?? null,
     orientation: geometry?.orientation ?? null,
     format: geometry?.format ?? null,
@@ -1217,8 +1231,8 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
     footerEven,
     differentOddEven,
     hfSections: [
-      { header, footer, headerFirst, footerFirst, differentFirstPage, headerEven, footerEven, differentOddEven },
-      ...ctx.masterPages.map((name, i) => ({ ...hfSetOfMasterPage(name, ctx, geometry, docNumFormat, edge), pageNumberStart: ctx.masterPageStarts[i] ?? null })),
+      { header, footer, headerFirst, footerFirst, differentFirstPage, headerEven, footerEven, differentOddEven, ...hfFramesOf(resolver, first, hf.restPage) },
+      ...sections,
     ],
     headerDistanceCm: hasHeader ? edge?.top ?? null : null,
     footerDistanceCm: hasFooter ? edge?.bottom ?? null : null,
@@ -1243,8 +1257,8 @@ function hfSetOfMasterPage(
 ): HfSet {
   const hf = ctx.resolver.masterPageHF(name);
   // Its zones measure against the section's own page layout (`geo`, below).
-  const zone = (el: Element | null, footer = false) =>
-    (el ? convertHfZone(el, ctx, geo, footer ? hf.footerBandCm : hf.headerBandCm, footer) : null);
+  const zone = (el: Element | null, footer = false, first = false) =>
+    (el ? convertHfZone(el, ctx, geo, bandOf(hf, footer, first), footer) : null);
   // Odd/even is per zone: an absent left variant repeats the default one on left pages.
   const oddEven = !!(hf.headerLeft || hf.footerLeft);
   // Its page layout is the section's own geometry; where the master hands over, that
@@ -1272,6 +1286,7 @@ function hfSetOfMasterPage(
   const restDist = distOf(hf.restPage ?? name);
   const firstDist = hf.restPage ? distOf(name) : null;
   return {
+    ...hfFramesOf(ctx.resolver, name, hf.restPage),
     distances: sameDist(restDist, docDist) ? null : restDist,
     distancesFirst: firstDist && !sameDist(firstDist, restDist) ? firstDist : null,
     margins: rest,
@@ -1284,13 +1299,52 @@ function hfSetOfMasterPage(
     orientation: paper && doc && paper.orientation !== doc.orientation ? paper.orientation : null,
     header: zone(hf.header),
     footer: zone(hf.footer, true),
-    headerFirst: zone(hf.headerFirst),
-    footerFirst: zone(hf.footerFirst, true),
+    headerFirst: zone(hf.headerFirst, false, true),
+    footerFirst: zone(hf.footerFirst, true, true),
     differentFirstPage: !!(hf.headerFirst || hf.footerFirst || hf.firstPageOnly),
     headerEven: hf.headerLeft ? zone(hf.headerLeft) : oddEven ? zone(hf.header) : null,
     footerEven: hf.footerLeft ? zone(hf.footerLeft, true) : oddEven ? zone(hf.footer, true) : null,
     differentOddEven: oddEven,
   };
+}
+
+// The space a zone's content carries toward the body: its first page's layout's where
+// that page has zones of its own.
+function bandOf(hf: ReturnType<StyleResolver['masterPageHF']>, footer: boolean, first: boolean): number {
+  if (first) return footer ? hf.footerFirstBandCm : hf.headerFirstBandCm;
+  return footer ? hf.footerBandCm : hf.headerBandCm;
+}
+
+// A master page's framed header/footer areas (HfFrame), from the layout of the pages after
+// its first where it hands over, and the first page's own where those differ.
+function hfFramesOf(resolver: StyleResolver, name: string | null, restPage: string | null): Pick<HfSet, 'frames' | 'framesFirst'> {
+  const of = (page: string | null): HfFrames | null => {
+    const props = resolver.hfFrameProps(page);
+    const frame = (el: Element | null, gapSide: 'bottom' | 'top'): HfFrame | null => {
+      if (!el) return null;
+      const attr = (n: string) => el.getAttributeNS(NS.fo, n);
+      const side = (s: string) => {
+        const b = borderAttrFromOdf(attr(`border-${s}`) ?? attr('border'), false);
+        return b === 'none' ? null : b;
+      };
+      const cm = (v: number | null) => Math.round((v ?? 0) * 1000) / 1000;
+      const pad = (s: string) => cm(lengthToCm(attr(`padding-${s}`)) ?? lengthToCm(attr('padding')));
+      return {
+        border: { top: side('top'), right: side('right'), bottom: side('bottom'), left: side('left') },
+        padding: { top: pad('top'), right: pad('right'), bottom: pad('bottom'), left: pad('left') },
+        gap: cm(lengthToCm(attr(`margin-${gapSide}`))),
+        ...(el.getAttributeNS(NS.style, 'dynamic-spacing') === 'true' ? { dynamic: true } : {}),
+        ...(/^#[0-9a-f]{6}$/i.test(attr('background-color') ?? '') ? { background: attr('background-color')!.toUpperCase() } : {}),
+      };
+    };
+    const header = frame(props.header, 'bottom');
+    const footer = frame(props.footer, 'top');
+    return header || footer ? { header, footer } : null;
+  };
+  const frames = of(restPage ?? name);
+  const first = restPage ? of(name) : frames;
+  // An unframed first page is `{}`: null would inherit the frames of the pages after it.
+  return { frames, framesFirst: JSON.stringify(first) !== JSON.stringify(frames) ? first ?? {} : null };
 }
 
 // A header/footer zone → a zone doc, through the body's block converter at the section's
@@ -1391,6 +1445,17 @@ function odfDocProperties(files: Record<string, Uint8Array>): DocProperties {
   };
 }
 
+// LibreOffice before 26.2 and OpenOffice have no logical alignment and write the physical
+// left and right as start and end; so did this editor, which now writes neither.
+function odfPhysicalEdges(files: Record<string, Uint8Array>): boolean {
+  if (!files['meta.xml']) return false;
+  let gen: string;
+  try { gen = parseXml(strFromU8(files['meta.xml'])).getElementsByTagNameNS(NS.meta, 'generator')[0]?.textContent?.trim() ?? ''; } catch { return false; }
+  if (gen === GENERATOR || /^OpenOffice/.test(gen)) return true;
+  const lo = /^LibreOffice(?:Dev)?\/(\d+)\.(\d+)/.exec(gen);
+  return !!lo && (Number(lo[1]) < 26 || (Number(lo[1]) === 26 && Number(lo[2]) < 2));
+}
+
 function parseXml(xml: string): Document {
   return parseImportXml(xml, 'odt');
 }
@@ -1479,8 +1544,9 @@ function convertBlocks(elements: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         if (headingEls) {
           for (const h of headingEls) out.push(...blocksOf(convertParaLike(h, ctx, 'body')));
         } else {
-          const list = convertList(el, ctx, null, 1, false, ROOT_ORDERED_CYCLE, !isChapterList(el, ctx.resolver));
-          for (const part of list ? liftListTables(list, true) : []) out.push(part.type === 'table' ? part : keepContinuation(out, part));
+          for (const list of convertList(el, ctx, null, 1, false, ROOT_ORDERED_CYCLE, !isChapterList(el, ctx.resolver))) {
+            for (const part of liftListTables(list, true)) out.push(part.type === 'table' ? part : keepContinuation(out, part));
+          }
         }
       } else if (el.localName === 'section') {
         const cols = ctx.resolver.sectionColumns(el.getAttributeNS(NS.text, 'style-name'));
@@ -1730,7 +1796,8 @@ type BlockDefaults = {
   // The named style's line spacing as an ODF factor; a block declaring the same one adds
   // nothing, but a block that declares 100% under a 115% style is direct formatting.
   lineHeight: string;
-  // The style's own alignment and flow flags (Title centres, Heading keeps with next).
+  // The style's own alignment and flow flags (Title centres, Heading keeps with next);
+  // null too where it names the edge its direction starts at, which a block follows.
   textAlign: string | null;
   keepNext: boolean;
   keepLines: boolean;
@@ -1739,19 +1806,24 @@ type BlockDefaults = {
   // The asian fonts the block already renders its CJK text in.
   asianFonts: Set<string>;
   color: string;
-  // Marks the style already provides. A run that opts *out* of one can't be expressed
-  // (only bold has fontWeight:'normal'), so it keeps the style's rendering.
-  // ponytail: per-mark "off" overrides need mark attrs like fontWeight's; add if files need it.
+  // Marks the style already provides. A run opts out of bold and italic through
+  // fontWeight/fontStyle 'normal'; out of a style's line it cannot (CSS draws it through).
   italic: boolean;
   // The line the style draws (lineSig), null where it draws none.
   underline: string | null;
   strike: string | null;
   caps: CapsMode | null;
+  letterSpacingPt: number; // fo:letter-spacing the style gives its runs
+  // The effects the style draws (textEffects.ts).
+  outline: boolean;
+  shadow: boolean;
+  relief: Relief | null;
   // The languages in force for the block's runs — its own, else the document's.
   lang: string | null;
   langAsian: string | null;
+  langComplex: string | null;
   // The style's own paragraph background and rule lines (paraBoxAttrs).
-  box: Record<string, string>;
+  box: Record<string, string | number | boolean>;
 };
 
 
@@ -1762,6 +1834,12 @@ const FONT_TWINS: Record<string, string[]> = {
   arial: ['liberation sans'],
   'liberation sans': ['arial'],
 };
+
+// The family a style sets replaces the one the block rendered before (a run naming that
+// one again leaves the style's), with its metric twin.
+function ownFont(set: Set<string>, family: string | null | undefined): Set<string> {
+  return family ? withFont(new Set(), family) : set;
+}
 
 // The set plus the family and its metric twin, lower-cased as the sets compare.
 function withFont(set: Set<string>, family: string | null | undefined): Set<string> {
@@ -1784,14 +1862,6 @@ function lineSpacing(lh: string | undefined): string | null {
   }
   const pt = lengthToPt(lh);
   return pt != null && pt > 0 ? `${snapPt(pt)}pt` : null;
-}
-
-// fo:text-align → the editor's four values (start/end read as an LTR page), or null.
-function odfTextAlign(ta: string | undefined): string | null {
-  if (ta === 'center' || ta === 'justify') return ta;
-  if (ta === 'right' || ta === 'end') return 'right';
-  if (ta === 'left' || ta === 'start') return 'left';
-  return null;
 }
 
 function blockDefaults(resolver: StyleResolver, named: string | null, headingLevel: number | null, boldByDefault: boolean): BlockDefaults {
@@ -1818,14 +1888,19 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     underline: null,
     strike: null,
     caps: null,
+    letterSpacingPt: 0,
+    outline: false,
+    shadow: false,
+    relief: null,
     lang: doc.west,
     langAsian: doc.asian,
+    langComplex: doc.complex,
     box: {},
   };
   if (!named) return fallback;
   const para = resolver.paraProps(named);
   const text = resolver.paraTextProps(named);
-  const fonts = withFont(fallback.fonts, resolver.fontFamilyOf(text));
+  const fonts = ownFont(fallback.fonts, resolver.fontFamilyOf(text));
   const asianFonts = withFont(fallback.asianFonts, resolver.asianFontOf(text));
   const weight = text['fo:font-weight'];
   const fontStyle = text['fo:font-style'];
@@ -1836,7 +1911,7 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     marginBottomPt: lengthToPt(para['fo:margin-bottom']) ?? 0,
     indentPt: lengthToPt(para['fo:margin-left']) ?? 0,
     lineHeight: lineSpacing(para['fo:line-height']) ?? '1',
-    textAlign: odfTextAlign(para['fo:text-align']),
+    textAlign: resolver.textAlign(para) === startEdge(resolver, para) ? null : resolver.textAlign(para),
     keepNext: para['fo:keep-with-next'] === 'always',
     keepLines: para['fo:keep-together'] === 'always',
     boldByDefault: weight ? weight === 'bold' || parseInt(weight, 10) >= 600 : fallback.boldByDefault,
@@ -1846,9 +1921,12 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     italic: fontStyle === 'italic' || fontStyle === 'oblique',
     underline: lineSig(text, 'underline'),
     strike: lineSig(text, 'line-through'),
-    caps: capsFromOdf(text),
+    caps: capsFromOdf(text) || null,
+    letterSpacingPt: letterSpacingOf(text) ?? 0,
+    ...effectDefaults(text, fallback),
     lang: langs.west ?? doc.west,
     langAsian: langs.asian ?? doc.asian,
+    langComplex: langs.complex ?? doc.complex,
     box: paraBoxAttrs(para),
   };
 }
@@ -1863,12 +1941,15 @@ export function decodeStyleName(odfName: string): string {
   return odfName.replace(/_([0-9a-fA-F]{2,6})_/g, (_m, hex: string) => String.fromCodePoint(parseInt(hex, 16)));
 }
 
-function paraPropsFromOdf(props: PropMap): ParaProps {
+// The edge a paragraph of these props starts at, which is its alignment when it has none.
+function startEdge(resolver: StyleResolver, para: PropMap): 'left' | 'right' {
+  return resolver.paraRtl(para) ? 'right' : 'left';
+}
+
+function paraPropsFromOdf(props: PropMap, resolver: StyleResolver): ParaProps {
   const out: ParaProps = {};
-  const ta = props['fo:text-align'];
-  if (ta === 'center' || ta === 'justify') out.textAlign = ta;
-  else if (ta === 'right' || ta === 'end') out.textAlign = 'right';
-  else if (ta === 'left' || ta === 'start') out.textAlign = 'left';
+  const ta = resolver.textAlign(props);
+  if (ta) out.textAlign = ta as ParaProps['textAlign'];
   const mt = lengthToPt(props['fo:margin-top']);
   const mb = lengthToPt(props['fo:margin-bottom']);
   const ml = lengthToCm(props['fo:margin-left']);
@@ -1892,6 +1973,7 @@ function paraPropsFromOdf(props: PropMap): ParaProps {
     if (p) pad = Math.max(pad ?? 0, p);
   }
   if (pad) out.borderPadding = snapPt(pad);
+  if (props['style:join-border'] === 'false' && (out.borderTop || out.borderRight || out.borderBottom || out.borderLeft)) out.borderJoin = false;
   return out;
 }
 
@@ -1905,8 +1987,9 @@ function textPropsFromOdf(props: PropMap, resolver: StyleResolver): TextProps {
   if (asian) out.fontFamilyAsian = screenFontName(asian);
   const size = lengthToPt(props['fo:font-size']);
   if (size != null) out.fontSizePt = Math.round(size * 10) / 10;
-  const spacing = lengthToPt(props['fo:letter-spacing']);
-  if (spacing) out.letterSpacingPt = Math.round(spacing * 100) / 100;
+  // 0 (`normal`) is kept: it switches off the spacing of the style above.
+  const spacing = letterSpacingOf(props);
+  if (spacing != null) out.letterSpacingPt = spacing;
   // Kerning is on unless the file says otherwise (probed), which is the browser default
   // too — but a style under one that turns it off has to say so to get it back.
   const kerning = props['style:letter-kerning'];
@@ -1921,10 +2004,18 @@ function textPropsFromOdf(props: PropMap, resolver: StyleResolver): TextProps {
   if (lt) out.strike = lt !== 'none';
   const color = props['fo:color'] ? normalizeColor(props['fo:color']) : undefined;
   if (color) out.color = color;
+  else if (autoColor(props)) out.color = AUTO_COLOR;
   const caps = capsFromOdf(props);
-  if (caps) out.caps = caps;
+  if (caps != null) out.caps = caps;
+  const fx = effectsFromOdf(props);
+  if (fx.outline != null) out.outline = fx.outline;
+  if (fx.shadow != null) out.shadow = fx.shadow;
+  if (fx.relief != null) out.relief = fx.relief;
   return out;
 }
+
+// ODF's automatic font colour; a style that names a colour as well keeps it.
+const autoColor = (props: PropMap): boolean => props['style:use-window-font-color'] === 'true' && !props['fo:color'];
 
 // What a style declares itself: its resolved props minus the parent's.
 function ownProps<T extends object>(resolved: T, parent: T): T {
@@ -1960,6 +2051,9 @@ function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
       cur = defs.get(cur)!.parent;
     }
   }
+  // A right-to-left page's default is the right edge (LibreOffice writes it into Standard,
+  // this editor into the default-style), so a style without a parent does not own it.
+  const rootBase: PropMap = resolver.pageRtl ? { 'fo:text-align': 'right' } : {};
   for (const odfName of keep) {
     const def = defs.get(odfName)!;
     const name = displayStyleName(odfName, def.display);
@@ -1973,7 +2067,7 @@ function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
       parent: parent && parent !== name ? parent : builtin?.parent ?? null,
       next: def.next ? displayStyleName(def.next, defs.get(def.next)?.display) : builtin?.next ?? null,
       builtin: builtin?.builtin,
-      para: ownProps(paraPropsFromOdf(resolver.paraProps(odfName)), paraPropsFromOdf(def.parent ? resolver.paraProps(def.parent) : {})),
+      para: ownProps(paraPropsFromOdf(resolver.paraProps(odfName), resolver), paraPropsFromOdf(def.parent ? resolver.paraProps(def.parent) : rootBase, resolver)),
       text: ownProps(textPropsFromOdf(resolver.paraTextProps(odfName), resolver), textPropsFromOdf(def.parent ? resolver.paraTextProps(def.parent) : {}, resolver)),
     };
     const level = /^Heading (\d+)$/.exec(name);
@@ -2001,7 +2095,7 @@ function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
     const el = resolver.listStyle(odfName);
     if (!el) continue;
     const name = displayStyleName(odfName, resolver.listStyleDisplayName(odfName));
-    sheet.list[name] = listStyleFromOdf(name, el, sheet.list[name]?.builtin);
+    sheet.list[name] = listStyleFromOdf(name, el, sheet.list[name]?.builtin, resolver);
   }
   sheet.outline = outlineFromOdf(resolver.outlineStyle(), ctx);
   return sheet;
@@ -2031,7 +2125,7 @@ function outlineFromOdf(el: Element | null, ctx: Ctx): OutlineNumbering | null {
       prefix: def.getAttributeNS(NS.style, 'num-prefix') ?? '',
       suffix: (def.getAttributeNS(NS.style, 'num-suffix') ?? '') + geometry.pad,
       displayLevels: Math.max(1, parseInt(def.getAttributeNS(NS.text, 'display-levels') ?? '1', 10) || 1),
-      start: Math.max(0, parseInt(def.getAttributeNS(NS.text, 'start-value') ?? '1', 10) || 1),
+      start: Math.max(0, listStart(parseInt(def.getAttributeNS(NS.text, 'start-value') ?? '1', 10))),
       ...(name ? { charStyle: name } : {}),
       ...(labelText && Object.keys(labelText).length ? { labelText } : {}),
       ...geometry.pos,
@@ -2074,7 +2168,7 @@ function outlineLevelGeometry(def: Element): { pos: Partial<OutlineLevel>; pad: 
 
 // A named <text:list-style> element → the registry's shape. Each level's indentCm is
 // its margin step past the level above minus the 1.27cm base (the export's inverse).
-function listStyleFromOdf(name: string, el: Element, builtin?: boolean): ListStyle {
+function listStyleFromOdf(name: string, el: Element, builtin?: boolean, resolver?: StyleResolver): ListStyle {
   const levels: ListLevelStyle[] = [];
   let multilevel = false;
   let prevMargin = 0;
@@ -2088,14 +2182,15 @@ function listStyleFromOdf(name: string, el: Element, builtin?: boolean): ListSty
     if (extra) level.indentCm = extra;
     prevMargin = margin;
     if (listLevelRightAligned(def)) level.markerAlign = 'right';
+    Object.assign(level, listLevelLabel(def, d));
     if (ordered) {
       if (parseInt(def.getAttributeNS(NS.text, 'display-levels') ?? '1', 10) > 1) multilevel = true;
       const key = orderedTypeFromFormat(odfNumFormatOf(def), def.getAttributeNS(NS.style, 'num-suffix'));
       level.numType = key === 'multilevel' ? 'decimal' : key;
       const sv = parseInt(def.getAttributeNS(NS.text, 'start-value') ?? '', 10);
-      if (Number.isFinite(sv) && sv > 1) level.startAt = sv;
+      if (Number.isFinite(sv) && sv >= 0 && sv !== 1) level.startAt = sv;
     } else {
-      const ch = bulletCharFromOdf(def.getAttributeNS(NS.text, 'bullet-char'), listLevelFontName(def));
+      const ch = bulletCharFromOdf(def.getAttributeNS(NS.text, 'bullet-char'), listLevelFontName(def, resolver));
       if (ch) level.bulletChar = ch;
     }
     levels.push(level);
@@ -2109,7 +2204,7 @@ function listStyleFromOdf(name: string, el: Element, builtin?: boolean): ListSty
 // The block's yardstick plus what the run's character style provides.
 function charDefaults(ctx: Ctx, base: BlockDefaults, odfName: string): BlockDefaults {
   const props = ctx.resolver.spanTextProps(odfName);
-  const fonts = withFont(base.fonts, ctx.resolver.fontFamilyOf(props));
+  const fonts = ownFont(base.fonts, ctx.resolver.fontFamilyOf(props));
   const asianFonts = withFont(base.asianFonts, ctx.resolver.asianFontOf(props));
   const weight = props['fo:font-weight'];
   const fontStyle = props['fo:font-style'];
@@ -2119,11 +2214,13 @@ function charDefaults(ctx: Ctx, base: BlockDefaults, odfName: string): BlockDefa
     boldByDefault: weight ? weight === 'bold' || parseInt(weight, 10) >= 600 : base.boldByDefault,
     fonts,
     asianFonts,
-    color: (props['fo:color'] && normalizeColor(props['fo:color'])) || base.color,
+    color: (props['fo:color'] && normalizeColor(props['fo:color'])) || (autoColor(props) ? '#000000' : base.color),
     italic: fontStyle ? fontStyle === 'italic' || fontStyle === 'oblique' : base.italic,
     underline: props['style:text-underline-style'] ? lineSig(props, 'underline') : base.underline,
     strike: props['style:text-line-through-style'] ? lineSig(props, 'line-through') : base.strike,
-    caps: capsFromOdf(props) ?? base.caps,
+    caps: (capsFromOdf(props) ?? base.caps) || null,
+    letterSpacingPt: letterSpacingOf(props) ?? base.letterSpacingPt,
+    ...effectDefaults(props, base),
   };
 }
 
@@ -2174,7 +2271,7 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
     const geo = resolver.pageGeometry(master!);
     if (geo) { ctx.contentWidthCm = contentWidthOf(geo); ctx.leftMarginCm = geo.margins.left; Object.assign(ctx, heightsOf(geo)); }
   }
-  const attrs = blockAttrs(paraProps, baseTextProps, defaults, kind);
+  const attrs = blockAttrs(paraProps, baseTextProps, defaults, kind, resolver);
   // A paragraph breaking itself onto a page under LibreOffice's Word 2013 layout opens it
   // without its space above (probed; a master page or the first page keeps it). It always
   // sits there: a 0.
@@ -2202,12 +2299,16 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   const ownLangs = langTagsOfProps(baseTextProps);
   const blockLang = ownLangs.west ?? defaults.lang;
   const blockLangAsian = ownLangs.asian ?? defaults.langAsian;
+  // A block in a complex-script language says so in that slot alone, or beside a western
+  // default every block repeats; its runs are measured against the block's.
+  const blockLangComplex = ownLangs.complex ?? defaults.langComplex;
   const runDefaults = {
     ...(markSizePt != null && Math.abs(markSizePt - defaults.fontSizePt) > 0.05
       ? { ...defaults, fontSizePt: markSizePt }
       : defaults),
     lang: blockLang,
     langAsian: blockLangAsian,
+    langComplex: blockLangComplex,
   };
   const content = convertInline(el, ctx, baseTextProps, runDefaults);
 
@@ -2323,15 +2424,14 @@ function withParagraphMarks(node: Node, ctx: Ctx, kind: BlockKind): Node {
 
 // textAlign / lineHeight / spaceBefore / spaceAfter from resolved paragraph
 // props, suppressing values that match the editor's defaults for this context.
-function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefaults, kind: BlockKind): Record<string, unknown> {
+function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefaults, kind: BlockKind, resolver: StyleResolver): Record<string, unknown> {
   const attrs: Record<string, unknown> = {};
 
   // Measured against the named style's own alignment: what the style supplies is not
-  // direct formatting, and a block overriding it back to left needs the attr to win.
-  // An RTL block renders right by default — LibreOffice pairs the mode with
-  // fo:text-align="end" for exactly that look, which is no direct formatting either.
-  const ta = odfTextAlign(paraProps['fo:text-align']);
-  const base = paraProps['style:writing-mode'] === 'rl-tb' ? 'right' : defaults.textAlign ?? 'left';
+  // direct formatting, and a block overriding it back needs the attr to win. Where the
+  // style has none, the edge the block's direction starts at is no formatting either.
+  const ta = resolver.textAlign(paraProps);
+  const base = defaults.textAlign ?? startEdge(resolver, paraProps);
   if (ta !== null && ta !== base) attrs.textAlign = ta;
 
   // A header/footer's proportional spacing is left out: LibreOffice lays the band out at
@@ -2370,7 +2470,7 @@ function blockAttrs(paraProps: PropMap, textProps: PropMap, defaults: BlockDefau
   const mr = lengthToCm(paraProps['fo:margin-right']);
   const rightChars = ic(paraProps['loext:margin-right']);
   if (rightChars > 0) attrs.indentRightChars = rightChars;
-  else if (mr != null && (mr > 0.02 || (kind !== 'cell' && mr < -0.02))) attrs.indentRight = Math.round(mr * 100) / 100;
+  else if (mr != null && Math.abs(mr) > 0.02) attrs.indentRight = Math.round(mr * 100) / 100;
 
   // Manual page break (fo:break-before); the editor has no column breaks, so only
   // "page". A cell block can't carry one — LibreOffice ignores it inside a table.
@@ -2433,8 +2533,8 @@ function flowSibling(el: Element, dir: 'previous' | 'next'): Element | null {
 // Paragraph background + per-side border attrs (paragraphBox.ts) from resolved paraProps.
 // Each key is omitted when absent so a paragraph with no box props stays clean. Borders:
 // a per-side fo:border-* overrides the all-sides fo:border; 'none' ⇒ no border (undefined).
-export function paraBoxAttrs(paraProps: PropMap): Record<string, string> {
-  const out: Record<string, string> = {};
+export function paraBoxAttrs(paraProps: PropMap): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {};
   const bg = paraProps['fo:background-color'];
   if (bg && bg !== 'transparent') {
     const c = normalizeColor(bg);
@@ -2447,12 +2547,20 @@ export function paraBoxAttrs(paraProps: PropMap): Record<string, string> {
     ['borderBottom', 'fo:border-bottom'],
     ['borderLeft', 'fo:border-left'],
   ];
+  let pad = 0;
   for (const [attr, key] of sides) {
     const raw = paraProps[key] ?? all;
     if (raw == null) continue;
     const v = borderAttrFromOdf(raw, false);
-    if (v && v !== 'none') out[attr] = v;
+    if (v && v !== 'none') {
+      out[attr] = v;
+      // The gap to the rule; the widest ruled side's is the paragraph's, as on styles.
+      pad = Math.max(pad, lengthToPt(paraProps[key.replace('border', 'padding')] ?? paraProps['fo:padding']) ?? 0);
+    }
   }
+  if (pad) out.borderPadding = snapPt(pad);
+  // Only a ruled block has rules to merge.
+  if (sides.some(([attr]) => out[attr]) && paraProps['style:join-border'] === 'false') out.borderJoin = false;
   return out;
 }
 
@@ -2703,7 +2811,7 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
     }
     if (!clean) return;
     const marks = marksFor(scriptProps(clean, props), ctx.resolver,
-      charStyle ? charDefaults(ctx, defaults, charStyle) : defaults);
+      scriptDefaults(clean, charStyle ? charDefaults(ctx, defaults, charStyle) : defaults));
     if (charStyle) {
       const display = ctx.charStyleNames.get(charStyle) ?? charStyle;
       ctx.usedCharStyles.add(charStyle);
@@ -3130,16 +3238,45 @@ function lineSig(props: PropMap, kind: 'underline' | 'line-through'): string | n
   return JSON.stringify(lineAttrs(style, props[`style:text-${kind}-type`], color) ?? {});
 }
 
-function capsFromOdf(props: PropMap): CapsMode | null {
+function capsFromOdf(props: PropMap): CapsMode | false | null {
   if (props['fo:font-variant'] === 'small-caps') return 'smallCaps';
   const t = props['fo:text-transform'];
+  if (t === 'none') return props['fo:font-variant'] === 'small-caps' ? 'smallCaps' : false;
   return t === 'uppercase' || t === 'lowercase' || t === 'capitalize' ? t : null;
+}
+
+// Outline, shadow and relief where the props name them, null where they leave them open.
+// Any text shadow but none is LibreOffice's on/off shadow.
+function effectsFromOdf(props: PropMap): { outline: boolean | null; shadow: boolean | null; relief: Relief | 'none' | null } {
+  const o = props['style:text-outline'], sh = props['fo:text-shadow'], r = props['style:font-relief'];
+  return {
+    outline: o === 'true' ? true : o === 'false' ? false : null,
+    shadow: sh ? sh !== 'none' : null,
+    relief: r === 'embossed' || r === 'engraved' || r === 'none' ? r : null,
+  };
+}
+
+// fo:letter-spacing in pt (`normal` is 0); null where the props name none.
+function letterSpacingOf(props: PropMap): number | null {
+  const v = props['fo:letter-spacing'];
+  if (!v) return null;
+  if (v === 'normal') return 0;
+  const pt = lengthToPt(v);
+  return pt == null ? null : Math.round(pt * 100) / 100;
+}
+
+function effectDefaults(props: PropMap, base: Pick<BlockDefaults, 'outline' | 'shadow' | 'relief'>): Pick<BlockDefaults, 'outline' | 'shadow' | 'relief'> {
+  const fx = effectsFromOdf(props);
+  return {
+    outline: fx.outline ?? base.outline,
+    shadow: fx.shadow ?? base.shadow,
+    relief: fx.relief == null ? base.relief : fx.relief === 'none' ? null : fx.relief,
+  };
 }
 
 // Hebrew, Arabic, Indic, Thai and CJK: a style carries western, asian and complex-script
 // fonts side by side, and text is set from the set its own script belongs to. A file that
 // leaves them at the defaults sets Hebrew at 12pt Times, not the 16pt the style declares.
-const COMPLEX_SCRIPT_RE = /[֐-ࣿऀ-෿฀-๿ក-៿יִ-﷿ﹰ-ﻼ]/;
 
 
 // The three property sets differ only by suffix; the western one has none.
@@ -3170,7 +3307,19 @@ function scriptProps(text: string, props: PropMap): PropMap {
     const value = props[`${stem}${suffix}`];
     if (value) out[western] = value;
   }
+  // Complex-script text is in the complex language, never in the western one beside it.
+  if (suffix === '-complex') {
+    delete out['fo:language'];
+    delete out['fo:country'];
+    if (props['style:language-complex']) out['fo:language'] = props['style:language-complex'];
+    if (props['style:country-complex']) out['fo:country'] = props['style:country-complex'];
+  }
   return out;
+}
+
+// What a text node's language is measured against: the default of its own script's slot.
+function scriptDefaults(text: string, defaults: BlockDefaults): BlockDefaults {
+  return COMPLEX_SCRIPT_RE.test(text) ? { ...defaults, lang: defaults.langComplex } : defaults;
 }
 
 function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaults): Mark[] {
@@ -3190,6 +3339,7 @@ function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaul
   // Marks the block's named style already renders need no mark of their own.
   const fs = props['fo:font-style'];
   if ((fs === 'italic' || fs === 'oblique') && !defaults.italic) marks.push({ type: 'italic' });
+  else if (fs === 'normal' && defaults.italic) textStyle.fontStyle = 'normal';
   const ul = props['style:text-underline-style'];
   if (ul && ul !== 'none' && lineSig(props, 'underline') !== defaults.underline) {
     const line = lineAttrs(ul, props['style:text-underline-type'], props['style:text-underline-color']);
@@ -3216,8 +3366,21 @@ function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaul
 
   const caps = capsFromOdf(props);
   if (caps && caps !== defaults.caps) textStyle.caps = caps;
+  const spacing = letterSpacingOf(props) ?? 0;
+  if (spacing !== defaults.letterSpacingPt) textStyle.letterSpacing = spacing;
+  // LibreOffice writes a run's box as loext:, and reads fo: as well (probed).
+  const box = borderAttrFromOdf(props['loext:border'] ?? props['fo:border'], false);
+  if (box && box !== 'none') {
+    textStyle.textBorder = box;
+    const pad = lengthToPt(props['loext:padding'] ?? props['fo:padding']);
+    if (pad) textStyle.textBorderPadding = snapPt(pad);
+  }
   const em = props['style:text-emphasize'];
   if (isEmphasis(em)) textStyle.emphasis = em;
+  const fx = effectsFromOdf(props);
+  if (fx.outline != null && fx.outline !== defaults.outline) textStyle.outline = fx.outline;
+  if (fx.shadow != null && fx.shadow !== defaults.shadow) textStyle.shadow = fx.shadow;
+  if (fx.relief != null && (fx.relief === 'none' ? null : fx.relief) !== defaults.relief) textStyle.relief = fx.relief;
 
   const langs = langTagsOfProps(props);
   if (langs.west && langs.west !== defaults.lang) textStyle.lang = langs.west;
@@ -3232,6 +3395,7 @@ function marksFor(props: PropMap, resolver: StyleResolver, defaults: BlockDefaul
   const color = props['fo:color'] ? normalizeColor(props['fo:color']) : undefined;
   // The style's own color (black by default; an explicit black mark would fight dark/allBlack).
   if (color && color !== defaults.color) textStyle.color = color;
+  else if (!color && autoColor(props) && defaults.color !== '#000000') textStyle.color = AUTO_COLOR;
 
   const sizePt = lengthToPt(props['fo:font-size']);
   if (sizePt != null && Math.abs(sizePt - defaults.fontSizePt) > 0.05) textStyle.fontSize = formatPt(sizePt);
@@ -3333,7 +3497,7 @@ function headingLeaves(listEl: Element): Element[] | null {
 // outermost list's style governs, one level def per depth. `govMultilevel`: inside a
 // display-levels chain, so an explicit numbering here is never suppressed (null = rejoin).
 // `keepHeadings`: the list is no chapter numbering, so a heading opening an item stays one.
-function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, depth: number, govMultilevel = false, baseCycle: OrderedCycle = ROOT_ORDERED_CYCLE, keepHeadings = false): Node | null {
+function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, depth: number, govMultilevel = false, baseCycle: OrderedCycle = ROOT_ORDERED_CYCLE, keepHeadings = false): Node[] {
   const styleName = el.getAttributeNS(NS.text, 'style-name') ?? inheritedStyleName;
   // A named list style travels as `listStyleName` on the outermost list; everything the
   // style's levels say stays in the registry, so no per-level attrs are derived.
@@ -3354,13 +3518,14 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
 
   const items: Node[] = [];
   let start: number | null = null;
+  // A later item's own start value restarts the count there: the list splits before it.
+  const restartAt: { at: number; start: number }[] = [];
   for (const item of Array.from(el.children)) {
     if (item.namespaceURI !== NS.text || (item.localName !== 'list-item' && item.localName !== 'list-header')) continue;
 
-    if (ordered && items.length === 0) {
-      const sv = parseInt(item.getAttributeNS(NS.text, 'start-value') ?? '', 10);
-      if (Number.isFinite(sv) && sv > 1) start = sv;
-    }
+    // An item's own start value restarts the count, even one a continue-list names.
+    const sv = ordered ? parseInt(item.getAttributeNS(NS.text, 'start-value') ?? '', 10) : NaN;
+    if (items.length === 0 && Number.isFinite(sv) && sv >= 0) start = sv;
 
     const blocks: Node[] = [];
     for (const child of Array.from(item.children)) {
@@ -3372,8 +3537,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
           blocks.push(part);
         }
       } else if (child.namespaceURI === NS.text && child.localName === 'list') {
-        const nested = convertList(child, ctx, styleName, depth + 1, inChain, childBaseCycle, keepHeadings);
-        if (nested) blocks.push(nested);
+        blocks.push(...convertList(child, ctx, styleName, depth + 1, inChain, childBaseCycle, keepHeadings));
       } else if (child.namespaceURI === NS.table && child.localName === 'table') {
         // Kept in place for now; liftListTables cuts the list around it.
         const table = convertTable(child, ctx);
@@ -3392,18 +3556,22 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
       continue;
     }
     if (!blocks.length) blocks.push({ type: 'paragraph' });
+    if (items.length && Number.isFinite(sv) && sv >= 0) restartAt.push({ at: items.length, start: sv });
     items.push({ type: 'listItem', content: blocks });
   }
-  if (items.length === 0) return null;
+  if (items.length === 0) return [];
   let continued = false;
+  const levelStartRaw = ordered ? parseInt(levelDef!.getAttributeNS(NS.text, 'start-value') ?? '', 10) : NaN;
+  const levelStart = Number.isFinite(levelStartRaw) && levelStartRaw >= 0 ? levelStartRaw : 1;
   if (ordered && depth === 1 && styleName) {
     // LibreOffice continues the latest list of the same style, or the one continue-list names.
     const ref = el.getAttributeNS(NS.text, 'continue-list');
     const prev = ref ? ctx.listEnds.get(`id:${ref}`)
       : el.getAttributeNS(NS.text, 'continue-numbering') === 'true' ? ctx.listEnds.get(`style:${styleName}`) : undefined;
     if (start == null && prev != null) { start = prev + 1; continued = true; }
-    const styleStart = parseInt(levelDef!.getAttributeNS(NS.text, 'start-value') ?? '', 10);
-    const end = (start ?? (styleStart > 0 ? styleStart : 1)) + labelledItems({ type: 'orderedList', content: items }) - 1;
+    const last = restartAt[restartAt.length - 1];
+    const end = last ? last.start + labelledItems({ type: 'orderedList', content: items.slice(last.at) }) - 1
+      : (start ?? levelStart) + labelledItems({ type: 'orderedList', content: items }) - 1;
     ctx.listEnds.set(`style:${styleName}`, end);
     const id = el.getAttribute('xml:id');
     if (id) ctx.listEnds.set(`id:${id}`, end);
@@ -3418,7 +3586,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
       listLevelMarginLeftCm(listLevelDef(ctx.resolver.listStyle(styleName), d)) ?? d * LIST_BASE_MARGIN_CM;
     const step = marginCm(depth) - (depth > 1 ? marginCm(depth - 1) : 0);
     const extra = Math.round(Math.max(-LIST_BASE_MARGIN_CM, step - LIST_BASE_MARGIN_CM) * 100) / 100;
-    if (Math.abs(extra) > LIST_INDENT_EPS_CM) indent = extra;
+    if (extra !== 0) indent = extra;
   }
 
   if (!ordered) {
@@ -3427,7 +3595,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
       if (depth === 1) attrs.listStyleName = displayStyleName(styleName!, ctx.resolver.listStyleDisplayName(styleName!));
     } else {
       const raw = levelDef?.getAttributeNS(NS.text, 'bullet-char') ?? null;
-      const bulletChar = bulletCharAttr(bulletCharFromOdf(raw, listLevelFontName(levelDef)), depth - 1);
+      const bulletChar = bulletCharAttr(bulletCharFromOdf(raw, listLevelFontName(levelDef, ctx.resolver)), depth - 1);
       if (bulletChar) attrs.bulletChar = bulletChar;
       if (indent != null) attrs.indent = indent;
       if (listLevelRightAligned(levelDef)) attrs.markerAlign = 'right';
@@ -3435,7 +3603,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
     }
     const node: Node = { type: 'bulletList', content: items };
     if (Object.keys(attrs).length) node.attrs = attrs;
-    return node;
+    return [node];
   }
 
   let listStyleType: string | null;
@@ -3449,8 +3617,11 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
     // (re-anchored per ancestor) imports as null so round trips don't accrete attrs.
     listStyleType = govMultilevel ? key : orderedTypeAttrAt(key, baseCycle);
   }
+  // An automatic level's own start value is the list's; a named style's registry holds it.
+  const ownStart = named ? levelStart : 1;
+  if (start == null && !named && levelStart !== 1) start = levelStart;
   const attrs: Record<string, unknown> = {};
-  if (start != null) attrs.start = start;
+  if (start != null && (start !== ownStart || continued)) attrs.start = start;
   if (continued) attrs.continueNumbering = true;
   if (named) {
     if (depth === 1) attrs.listStyleName = displayStyleName(styleName!, ctx.resolver.listStyleDisplayName(styleName!));
@@ -3460,9 +3631,14 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
     if (listLevelRightAligned(levelDef)) attrs.markerAlign = 'right';
     Object.assign(attrs, listLevelLabel(levelDef, depth), listLevelMarker(levelDef, ctx));
   }
-  const node: Node = { type: 'orderedList', content: items };
-  if (Object.keys(attrs).length) node.attrs = attrs;
-  return node;
+  // Each restart opens a list of its own, the same but for its start.
+  const { start: _s, continueNumbering: _c, ...rest } = attrs;
+  return [0, ...restartAt.map((r) => r.at)].map((at, i, cuts) => {
+    const node: Node = { type: 'orderedList', content: items.slice(at, cuts[i + 1]) };
+    const own = i ? { ...rest, ...(restartAt[i - 1].start !== ownStart ? { start: restartAt[i - 1].start } : {}) } : attrs;
+    if (Object.keys(own).length) node.attrs = own;
+    return node;
+  });
 }
 
 // The text style a level formats its label with, as the list's own marker format.
@@ -3494,8 +3670,9 @@ function listLevelLabel(levelDef: Element | null, depth: number): { hanging?: nu
   if (!la) return {};
   const out: { hanging?: number; markerSuffix?: 'space' | 'nothing' } = {};
   const ti = lengthToCm(la.getAttributeNS(NS.fo, 'text-indent'));
-  const hang = ti == null ? null : Math.round(-ti * 100) / 100;
-  if (hang != null && ![LIST_HANGING_CM, depth * LIST_HANGING_CM].some((d) => Math.abs(hang - d) <= LIST_INDENT_EPS_CM)) out.hanging = hang;
+  // Exact: a hang a quarter millimetre off the default is the file's own, and LibreOffice draws it.
+  const hang = ti == null ? null : -ti;
+  if (hang != null && ![LIST_HANGING_CM, depth * LIST_HANGING_CM].some((d) => Math.abs(hang - d) < 0.001)) out.hanging = Math.round(hang * 100) / 100;
   const follow = la.getAttributeNS(NS.text, 'label-followed-by');
   if (follow === 'space' || follow === 'nothing') out.markerSuffix = follow;
   return out;
@@ -3518,13 +3695,16 @@ function listLevelMarginLeftCm(levelDef: Element | null): number | null {
 
 // The level def's declared font (Word-written .odt puts Wingdings/Symbol here for
 // its private-use bullet chars; LibreOffice writes real Unicode chars instead).
-function listLevelFontName(levelDef: Element | null): string | null {
+// The label's font: the level's own text properties, else the text style it names.
+function listLevelFontName(levelDef: Element | null, resolver?: StyleResolver): string | null {
   if (!levelDef) return null;
   for (const props of Array.from(levelDef.children)) {
     if (props.namespaceURI !== NS.style || props.localName !== 'text-properties') continue;
-    return props.getAttributeNS(NS.style, 'font-name') ?? props.getAttributeNS(NS.fo, 'font-family');
+    const own = props.getAttributeNS(NS.style, 'font-name') ?? props.getAttributeNS(NS.fo, 'font-family');
+    if (own) return own;
   }
-  return null;
+  const label = levelDef.getAttributeNS(NS.text, 'style-name');
+  return (label && resolver?.fontFamilyOf(resolver.spanTextProps(label))) || null;
 }
 
 function listLevelDef(listStyle: Element | null, depth: number): Element | null {
@@ -3539,9 +3719,9 @@ function listLevelDef(listStyle: Element | null, depth: number): Element | null 
 
 // ---- tables ------------------------------------------------------------------------
 
-// ODF border ("0.5pt solid #000000" / "none" / absent) → the canonical '<W>pt solid
-// #RRGGBB', 'none', or null; non-solid styles coerce to solid. treatDefaultAsNull folds
-// the 0.5pt-black default to null — cells inherit the table's, paragraph borders don't.
+// ODF border ("0.5pt solid #000000" / "none" / absent) → the canonical '<W>pt <line>
+// #RRGGBB', 'none', or null; dash variants read as dashed, other styles as solid.
+// treatDefaultAsNull folds the 0.5pt-black solid default to null (cells inherit the table's).
 export function borderAttrFromOdf(raw: string | null | undefined, treatDefaultAsNull = true): string | null {
   if (!raw || raw === 'none' || raw === 'hidden') return 'none';
   let widthPt: number | null = null;
@@ -3556,8 +3736,9 @@ export function borderAttrFromOdf(raw: string | null | undefined, treatDefaultAs
   if (widthPt != null && widthPt <= 0) return 'none';
   const w = Math.round((widthPt ?? 0.5) * 100) / 100;
   const c = (color ?? '#000000').toUpperCase();
-  if (treatDefaultAsNull && Math.abs(w - 0.5) < 0.11 && c === '#000000') return null;
-  return `${w}pt solid ${c}`;
+  const line = borderLineOf(styleTok);
+  if (treatDefaultAsNull && Math.abs(w - 0.5) < 0.11 && c === '#000000' && line === 'solid') return null;
+  return borderValue(w, c, line);
 }
 
 // A formula cell's number format: its style points at a data style, whose shape is
@@ -3675,6 +3856,10 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
     }
   }
 
+  // The table's own mode, else that of the table or page around it. ODF's sides are the
+  // drawn ones; a cell's left faces the column before it, so a right-to-left table swaps.
+  const mode = ctx.resolver.tableProps(el.getAttributeNS(NS.table, 'style-name'))['style:writing-mode'];
+  const rtl = mode === 'rl-tb' ? true : mode === 'lr-tb' ? false : ctx.tableRtl ?? ctx.pageRtl;
   const margins = tableMargins(el, ctx);
   const tableCm = ctx.contentWidthCm - (margins?.marginLeft ?? 0) - (margins?.marginRight ?? 0);
   const rows: Node[] = [];
@@ -3684,8 +3869,10 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
   const dropped: number[] = [];
   let srcRow = 0;
   let cellPad: CellPadding | null | undefined;
+  const tableBg = ctx.resolver.cellBackgroundColor(el.getAttributeNS(NS.table, 'style-name'), 'table');
   const addRow = (rowEl: Element, header: boolean) => {
     const rowIdx = srcRow++;
+    const rowBg = ctx.resolver.cellBackgroundColor(rowEl.getAttributeNS(NS.table, 'style-name'), 'table-row');
     const cells: Node[] = [];
     let colIndex = 0;
     for (const cellEl of Array.from(rowEl.children)) {
@@ -3703,11 +3890,13 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       // ODF has no table-level cell margin: it sits on each cell's style, and fo:padding
       // defaults to 0, so a side nobody declares really is zero — left open, the cell
       // would take Word's implicit 0.19cm instead (probed).
-      const padSides = ctx.resolver.cellPadding(cellStyleName).map((v) => v ?? 0);
+      const drawnPad = ctx.resolver.cellPadding(cellStyleName).map((v) => v ?? 0);
+      const padSides = rtl ? [drawnPad[0], drawnPad[3], drawnPad[2], drawnPad[1]] : drawnPad;
       if (cellPad === undefined) cellPad = cellPaddingAttr(padSides);
       const ownPad = cellPaddingAttr(padSides, cellPad ?? DEFAULT_CELL_PADDING);
       const verticalAlign = ctx.resolver.cellVerticalAlign(cellStyleName);
-      const rawBg = ctx.resolver.cellBackgroundColor(cellStyleName);
+      // A transparent cell shows its row's background, a transparent row the table's (probed).
+      const rawBg = ctx.resolver.cellBackgroundColor(cellStyleName) ?? rowBg ?? tableBg;
       const backgroundColor = normalizeColor(rawBg) ?? null;
       // Per-side borders; an undeclared side means no border in ODF → 'none'.
       // Only null (= the editor's 0.5pt-black default) is left off the attrs.
@@ -3716,7 +3905,7 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       for (const [attr, side] of [
         ['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left'],
       ] as const) {
-        const v = borderAttrFromOdf(rawBorders[side]);
+        const v = borderAttrFromOdf(rawBorders[rtl && side === 'left' ? 'right' : rtl && side === 'right' ? 'left' : side]);
         if (v !== null) borders[attr] = v;
       }
       // Header-shaded cells and a bold region render bold by default (CSS); convert their
@@ -3728,12 +3917,14 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
       const share = weights ? weights.slice(colIndex, colIndex + colspan).reduce((a, b) => a + b, 0)
         / weights.reduce((a, b) => a + b, 0) : colspan / Math.max(1, gridCols);
       const outerCellCm = ctx.cellWidthCm;
+      const outerRtl = ctx.tableRtl;
       ctx.cellWidthCm = tableCm * share - padSides[1] - padSides[3];
+      ctx.tableRtl = rtl;
       let blocks: Node[];
       try {
         blocks = convertBlocks(Array.from(cellEl.children), ctx, 'cell',
           backgroundColor === HEADER_SHADE || paint?.text.bold === true);
-      } finally { ctx.cellWidthCm = outerCellCm; }
+      } finally { ctx.cellWidthCm = outerCellCm; ctx.tableRtl = outerRtl; }
       if (paint?.text.color) unbakeRegionColor(blocks, paint.text.color);
       // LibreOffice writes the formula in its own language behind an `ooow:` prefix;
       // the cached result is the cell's text and needs nothing here.
@@ -3750,6 +3941,8 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
         if (ownPad) attrs.cellPadding = ownPad;
         if (backgroundColor) attrs.backgroundColor = backgroundColor;
         if (verticalAlign) attrs.verticalAlign = verticalAlign;
+        const textFlow = ctx.resolver.cellTextFlow(cellStyleName);
+        if (textFlow) attrs.textFlow = textFlow;
         if (weights) attrs.colwidth = weights.slice(colIndex, colIndex + colspan);
         const content = blocks.length ? structuredClone(blocks) : [{ type: 'paragraph' }];
         const revMark = ctx.resolver.recordedLine('table-cell', cellStyleName) ? lineChange(content) : undefined;
@@ -3761,8 +3954,23 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
     if (cells.length === 0) { dropped.push(rowIdx); return; }
 
     const row: Node = { type: 'tableRow', content: cells };
-    const heightCm = ctx.resolver.rowMinHeightCm(rowEl.getAttributeNS(NS.table, 'style-name'));
-    if (heightCm != null && heightCm > 0) row.attrs = { rowHeight: Math.round(heightCm * PX_PER_CM) };
+    const height = ctx.resolver.rowHeightCm(rowEl.getAttributeNS(NS.table, 'style-name'));
+    if (height && height.cm > 0) {
+      // A native row's height holds what the editor draws around it (tableRow.ts): an exact
+      // row its bottom margin, a minimum row both margins and its top border (probed).
+      let cm = height.cm;
+      if (!ctx.rowHeightInclBorder) {
+        const pads = cells.map((c) => parseCellPadding(c.attrs?.cellPadding) ?? cellPad ?? DEFAULT_CELL_PADDING);
+        const bottom = Math.max(...pads.map((p) => p[2]));
+        const top = Math.max(...pads.map((p) => p[0]));
+        const border = Math.max(...cells.map((c) => {
+          const b = parseBorderAttr(c.attrs?.borderTop as string | null);
+          return b === 'none' ? 0 : b ? b.widthPt : DEFAULT_BORDER_WIDTH_PT;
+        })) * 2.54 / 72;
+        cm = Math.max(0.01, cm - bottom - (height.exact ? 0 : top + border));
+      }
+      row.attrs = { rowHeight: Math.round(cm * PX_PER_CM * 100) / 100, ...(height.exact ? { fixedHeight: true } : {}) };
+    }
     if (ctx.resolver.rowKeepTogether(rowEl.getAttributeNS(NS.table, 'style-name'))) row.attrs = { ...row.attrs, cantSplit: true };
     const revMark = ctx.resolver.recordedLine('table-row', rowEl.getAttributeNS(NS.table, 'style-name')) ? lineChange(cells) : undefined;
     if (revMark) row.attrs = { ...row.attrs, revMark };
@@ -3778,10 +3986,11 @@ function convertTable(el: Element, ctx: Ctx): Node | null {
   }
   const attrs: Record<string, unknown> = { ...(margins ?? {}), ...tableSpacing(el, ctx) };
   if (cellPad) attrs.cellPadding = cellPad;
+  if (rtl !== ctx.pageRtl) attrs.dir = rtl ? 'rtl' : 'ltr';
   // The default is to allow a break, so only the explicit "no" is worth an attr.
-  if (ctx.resolver.tableProps(el.getAttributeNS(NS.table, 'style-name'))['style:may-break-between-rows'] === 'false') {
-    attrs.keepRows = true;
-  }
+  const tableProps = ctx.resolver.tableProps(el.getAttributeNS(NS.table, 'style-name'));
+  if (tableProps['style:may-break-between-rows'] === 'false') attrs.keepRows = true;
+  if (tableProps['fo:keep-with-next'] === 'always') attrs.keepNext = true;
   // <table:table-header-rows> is what makes both word processors repeat the first row
   // on every page the table continues on.
   if (Array.from(el.children).some(c => c.namespaceURI === NS.table && c.localName === 'table-header-rows')) {
@@ -3898,12 +4107,12 @@ function liftListTables(list: Node, outer: boolean): Node[] {
   if (!JSON.stringify(list).includes('"type":"table"')) return [list];
   const out: Node[] = [];
   let part: Node = { ...list, content: [] };
-  let end = (Number(list.attrs?.start) || 1) - 1;
+  let end = listStart(list.attrs?.start) - 1;
   const cut = (table: Node, it: Node, item: Node[]) => {
     if (item.length) part.content!.push({ ...it, content: item.splice(0) });
     if (part.content!.length) {
       out.push(part);
-      end = (Number(part.attrs?.start) || 1) + labelledItems(part) - 1;
+      end = listStart(part.attrs?.start) + labelledItems(part) - 1;
     }
     out.push(table);
     const { start: _s, ...attrs } = list.attrs ?? {};
@@ -3927,7 +4136,7 @@ function liftListTables(list: Node, outer: boolean): Node[] {
 function keepContinuation(out: Node[], list: Node): Node {
   if (!list.attrs?.continueNumbering) return list;
   const prev = out.findLast((n) => n.type === 'orderedList');
-  const end = prev ? (Number(prev.attrs?.start) || 1) + labelledItems(prev) - 1 : 0;
+  const end = prev ? listStart(prev.attrs?.start) + labelledItems(prev) - 1 : 0;
   if (end + 1 !== list.attrs.start) delete list.attrs.continueNumbering;
   return list;
 }

@@ -10,7 +10,7 @@ import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import { placeFrameSoon, placeInColumn, placeTogether, freeDragX } from './pageBreaks';
-import { HANDLES, MIN_SIZE_PX, clamp, parsePx, frameMargins, parseWrapGap, BOX_WRAP_GAP, type WrapGap, unstackFloat, pageContentHeightPx, sinkToOffset, applyRunThrough, clearPagePlace, startFreeMove, droppedFrameAttrs, type WrapMode } from './image';
+import { HANDLES, MIN_SIZE_PX, clamp, parsePx, frameMargins, parseWrapGap, BOX_WRAP_GAP, type WrapGap, unstackFloat, pageContentHeightPx, sinkToOffset, applyRunThrough, runInZone, clearPagePlace, startFreeMove, droppedFrameAttrs, type WrapMode } from './image';
 import { SHAPES, shapePath, linePaths, pathHeadPaths, arrowHeadPx, isShapeKind, isLineKind, outlineLayers, shadeColor, asShapePreset, asTextArea, type PathHeads, type ShapeKind, type DrawingMlPreset, type TextArea } from '../../utils/shapes';
 import type { ResolvedGeometry } from '../../utils/enhancedGeometry';
 import { cmToPx } from '../../storage/pageMargins';
@@ -34,6 +34,7 @@ export type TextVAlign = 'top' | 'middle' | 'bottom';
 
 // Fixed text inset inside the frame; exported as fo:padding / wps:bodyPr insets.
 export const TEXTBOX_PADDING_CM = 0.15;
+const SIDEWAYS_LR = typeof CSS !== 'undefined' && !!CSS.supports?.('writing-mode', 'sideways-lr');
 const paddingPx = (cm: unknown) => ((typeof cm === 'number' ? cm : TEXTBOX_PADDING_CM) * 96) / 2.54;
 
 // Extra per-axis inset that fits the text area into an ellipse's inscribed
@@ -76,7 +77,7 @@ export interface TextBoxAttrs {
   arrowHeads: PathHeads | null; // the ends of that outline carrying an arrow head
   flipV: boolean;             // a line runs bottom-left → top-right instead
   flipH: boolean;             // a line starts at the right, so its head ends on the left
-  textVertical: boolean;      // text runs top-to-bottom, right-to-left
+  textVertical: boolean | 'up';  // true: top-to-bottom, right-to-left; 'up': bottom-to-top
   textVAlign: TextVAlign;     // where the text sits in a box taller than it is
   fixedHeight: boolean;       // exactly `height` tall, clipping what overflows
   fillColor: string | null;
@@ -334,10 +335,14 @@ export const TextBox = Node.create({
         renderHTML: () => ({}),
       },
       // The text runs top-to-bottom, right-to-left instead of across (Word's
-      // `w:bodyPr vert`, ODF's tb-rl writing mode on the frame's style).
+      // `w:bodyPr vert`, ODF's tb-rl writing mode on the frame's style), or with 'up'
+      // bottom-to-top (`vert270`, LibreOffice's bt-lr).
       textVertical: {
         default: false,
-        parseHTML: el => (el as HTMLElement).getAttribute('data-text-vertical') === 'true',
+        parseHTML: el => {
+          const v = (el as HTMLElement).getAttribute('data-text-vertical');
+          return v === 'up' ? 'up' : v === 'true';
+        },
         renderHTML: () => ({}),
       },
       // Where the text sits in a box taller than the text: both formats anchor it
@@ -419,7 +424,7 @@ export const TextBox = Node.create({
       ...(a.arrowHeads ? { 'data-arrow-heads': a.arrowHeads } : {}),
       ...(a.flipV ? { 'data-flip-v': 'true' } : {}),
       ...(a.flipH ? { 'data-flip-h': 'true' } : {}),
-      ...(a.textVertical ? { 'data-text-vertical': 'true' } : {}),
+      ...(a.textVertical ? { 'data-text-vertical': a.textVertical === 'up' ? 'up' : 'true' } : {}),
       ...(a.textVAlign !== 'top' ? { 'data-text-valign': a.textVAlign } : {}),
       ...(a.fixedHeight ? { 'data-fixed-height': '' } : {}),
       ...(fill ? { 'data-fill': fill } : {}),
@@ -609,7 +614,9 @@ function boxRanges(doc: PMNode): [number, number][] {
 
 type Size = { w: number; h: number };
 
-const rotorSize = (el: HTMLElement): Size => ({ w: el.offsetWidth, h: el.offsetHeight });
+// A view still being built has no size, and the observer reports it once mounted; WebKit
+// lays out the whole document even to answer 0 for a detached element.
+const rotorSize = (el: HTMLElement): Size => el.isConnected ? { w: el.offsetWidth, h: el.offsetHeight } : { w: 0, h: 0 };
 
 // One observer for every frame in the document: a per-view one is delivered in a
 // callback of its own, so the browser lays the document out again between any two
@@ -732,9 +739,14 @@ class TextBoxView {
   // Past its zone, as on an image (ImageView.pastZone).
   private pastZone(): boolean {
     const a = this.attrs();
-    // The mount, not editor.view: that is not there yet while a saved document builds.
-    const mount = this.editor.options.element as HTMLElement | null;
-    return a.wrap !== 'inline' && (a.wrapFromBody || a.wrapFromPage) && !!mount?.closest?.('.hf-zone');
+    return (a.wrapFromBody || a.wrapFromPage) && this.inZone();
+  }
+  // Any box of a zone's own that is not in its line is out of the zone's text flow.
+  // The mount, not editor.view: that is not there yet while a saved document builds.
+  private inZone(): boolean {
+    const el = this.editor.options.element as Element | { mount: HTMLElement } | null;
+    const mount = el && 'mount' in el ? el.mount : el;
+    return this.attrs().wrap !== 'inline' && !!mount?.closest?.('.hf-zone');
   }
 
   // A fixed box is exactly that tall and clips its overflow; any other grows with its text.
@@ -773,7 +785,9 @@ class TextBoxView {
     // (and in both exports' anchor), it just takes no room.
     this.contentDOM.style.display = line ? 'none' : '';
     // Vertical text: the browser flows it, so the box needs nothing but the mode.
-    this.contentDOM.style.writingMode = a.textVertical ? 'vertical-rl' : '';
+    // WebKit has no sideways-lr: upward text reads top-down there (vertical-rl).
+    this.contentDOM.style.writingMode = a.textVertical === 'up' && SIDEWAYS_LR ? 'sideways-lr'
+      : a.textVertical ? 'vertical-rl' : '';
     // Vertical anchor: the handles are absolute, so the rotor can flex its one child.
     this.rotor.style.display = a.textVAlign === 'top' ? '' : 'flex';
     this.rotor.style.flexDirection = 'column';
@@ -963,7 +977,7 @@ class TextBoxView {
     if (isLineKind(this.attrs().shapeKind) ? !w && !h : !w || !h) return;
     // Out of the flow nothing is reserved and the offsets place the unrotated box, as
     // both formats do, so it turns about a centre that stays put.
-    const rad = this.attrs().wrap === 'through' || this.pastZone() ? 0 : (this.attrs().rotation * Math.PI) / 180;
+    const rad = this.attrs().wrap === 'through' || this.inZone() ? 0 : (this.attrs().rotation * Math.PI) / 180;
     const bw = Math.abs(w * Math.cos(rad)) + Math.abs(h * Math.sin(rad));
     const bh = Math.abs(w * Math.sin(rad)) + Math.abs(h * Math.cos(rad));
     // A band-wrapped frame spans the column instead (applyWrap), which is what keeps
@@ -993,10 +1007,12 @@ class TextBoxView {
     clearPagePlace(d);
     if (a.wrap !== 'through' && this.pastZone()) {
       applyRunThrough(d, this.offX(), this.offY(), true, a.wrapFromPage, a.wrapFromBody, a.zIndex);
+    } else if (a.wrap !== 'through' && this.inZone()) {
+      runInZone(this.view, d, this.offX(), this.offY(), a.wrapDist, a.zIndex);
     } else if (a.wrap === 'left' || a.wrap === 'right') {
       d.style.float = a.wrap;
       d.style.margin = frameMargins(a.wrap, a.wrapOffset, this.wrapperWidth(), null, a.wrapDist);
-      unstackFloat(d, a.wrap, a.wrapOffset);
+      unstackFloat(d, a.wrap, a.wrapOffset, a.wrapDist);
     } else if (a.wrap === 'through') {
       // Behind the text, which is what a shape with no run-through of its own exports as
       // — and under a picture behind the text too (-1), which is the order LibreOffice
@@ -1092,7 +1108,7 @@ class TextBoxView {
       if (!already) { e.preventDefault(); view.focus(); }
       // Out of the flow there is no text position to re-anchor to, so the ring drag
       // moves the box by its own offsets instead of PM's native node move.
-      if (this.attrs().wrap === 'through' || this.pastZone()) {
+      if (this.attrs().wrap === 'through' || this.inZone()) {
         this.dragX = freeDragX(view, this.dom, this.attrs().wrapOffset);
         startFreeMove(e, this.dom, { ...this.node.attrs, wrapOffset: this.dragX }, by => { this.dragBy = by; this.applyWrap(); },
           offsets => { if (offsets) this.commit(offsets); });
@@ -1243,7 +1259,7 @@ class TextBoxView {
     const p0 = [a.flipH ? w : 0, a.flipV ? h : 0];
     const ends = [turn(p0), turn([w - p0[0], h - p0[1]])];
     const [moving, fixed] = end === 'start' ? [ends[0], ends[1]] : [ends[1], ends[0]];
-    const free = a.wrap === 'through' || this.pastZone();
+    const free = a.wrap === 'through' || this.inZone();
     const view = this.view;
     if (free) this.dragX = freeDragX(view, this.dom, a.wrapOffset);
     const zoom = this.dom.getBoundingClientRect().width / this.dom.offsetWidth || 1;

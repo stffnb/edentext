@@ -1,10 +1,11 @@
-import { Extension, type CommandProps } from '@tiptap/core';
+import { Extension, getNodeType, type CommandProps, type RawCommands } from '@tiptap/core';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { ResolvedPos } from '@tiptap/pm/model';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { childCycle, defaultOrderedTypeAt, formatOrdinal, orderedTypeDef, ROOT_ORDERED_CYCLE, type OrderedCycle, type OrderedListType } from '../../utils/orderedListTypes';
-import { effectiveListLevel } from '../../styles/listStyles';
+import { childCycle, defaultOrderedTypeAt, formatOrdinal, listStart, orderedTypeDef, ROOT_ORDERED_CYCLE, type OrderedCycle, type OrderedListType } from '../../utils/orderedListTypes';
+import { sinkListItem } from '@tiptap/pm/schema-list';
+import { DOCX_LIST_LEVELS, effectiveListLevel } from '../../styles/listStyles';
 import type { ListStyle as ListStyleDef } from '../../styles/listStyles';
 import type { StyleSheet } from '../../styles/styleSheet';
 import { SHEET_CHANGED, touchesList } from './listMarker';
@@ -59,7 +60,9 @@ export function listStyleDecos(doc: ProseMirrorNode, sheet: StyleSheet): Decorat
         css.push(`--bullet: "${eff.bulletChar}"`);
       }
       if (!node.attrs.markerAlign && eff.markerAlign) attrs['data-marker-align'] = eff.markerAlign;
-      if (node.attrs.indent == null && eff.indent) css.push(`margin-left: calc(var(--sec-inset-left, 0px) + ${eff.indent}cm)`);
+      if (typeof node.attrs.hanging !== 'number' && eff.hanging != null) css.push(`--list-hang: ${eff.hanging}cm`);
+      if (!node.attrs.markerSuffix && eff.markerSuffix) attrs['data-marker-suffix'] = eff.markerSuffix;
+      if (node.attrs.indent == null && eff.indent) css.push(`margin-inline-start: calc(var(--sec-inset-start, 0px) + ${eff.indent}cm)`);
       if (css.length) attrs.style = css.join(';');
       if (Object.keys(attrs).length) decos.push(Decoration.node(pos, pos + node.nodeSize, attrs));
       nextCycle = childCycle(listCycle, eff.listStyleType as OrderedListType | null, eff.kind === 'number');
@@ -126,7 +129,7 @@ export function listNumberAt(
     }
     const own = eff.listStyleType;
     const type: OrderedListType = own === 'multilevel' || (multilevel && !own) ? 'multilevel' : own ?? defaultOrderedTypeAt(cycle);
-    const attrStart = Number(list.attrs.start) || 1;
+    const attrStart = listStart(list.attrs.start);
     const start = implicit.get(listPos) ?? (attrStart !== 1 ? attrStart : eff.startAt ?? 1);
     parts.push(formatOrdinal(start + index, orderedTypeDef(type).numFormat));
     cycle = childCycle(cycle, own as OrderedListType | null, true);
@@ -176,6 +179,30 @@ export function splitListAt(tr: Transaction, $from: ResolvedPos, itemDepth: numb
   return pos + depth - top + 1;
 }
 
+// The levels the lists below `node` reach down, 0 for none.
+function levelsBelow(node: ProseMirrorNode): number {
+  let max = 0;
+  node.forEach((list) => { if (isListNode(list)) list.forEach((item) => { max = Math.max(max, 1 + levelsBelow(item)); }); });
+  return max;
+}
+
+/** sinkListItem that leaves every item it moves, and their sub-lists, within DOCX_LIST_LEVELS. */
+export const sinkListItemWithin: RawCommands['sinkListItem'] = (typeOrName) => ({ state, dispatch }) => {
+  const type = getNodeType(typeOrName, state.schema);
+  const { $from, $to } = state.selection;
+  const range = $from.blockRange($to, (n) => n.childCount > 0 && n.firstChild!.type === type);
+  if (range) {
+    let level = 0;
+    for (let d = range.depth; d > 0 && (isListNode($from.node(d)) || $from.node(d).type.name === 'listItem'); d--) {
+      if (isListNode($from.node(d))) level++;
+    }
+    for (let i = range.startIndex; i < range.endIndex; i++) {
+      if (level + 1 + levelsBelow(range.parent.child(i)) > DOCX_LIST_LEVELS) return false;
+    }
+  }
+  return sinkListItem(type)(state, dispatch);
+};
+
 /** An item of sub-lists only — ODF's item without a paragraph: no label, no count. */
 export const isLabelless = (item: ProseMirrorNode) => !!item.firstChild && isListNode(item.firstChild);
 
@@ -192,7 +219,7 @@ export function listStarts(doc: ProseMirrorNode, sheet: StyleSheet): { fixes: { 
   // A list's last number, then those of its open deeper levels after its last item.
   const visitList = (list: ProseMirrorNode, pos: number, from: number[] | null, how: 'attr' | 'implicit' | null, depth: number): number[] => {
     const ordered = list.type.name === 'orderedList';
-    let start = Number(list.attrs.start) || 1;
+    let start = listStart(list.attrs.start);
     let carry: number[] = [];
     if (from) {
       if (ordered && how === 'attr' && start !== (from[0] ?? 0) + 1) fixes.push({ pos, start: (from[0] ?? 0) + 1 });
