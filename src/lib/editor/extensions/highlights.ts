@@ -14,7 +14,16 @@ export const HIGHLIGHTS = typeof CSS !== 'undefined' && 'highlights' in CSS;
 // struck word's line in the squiggle's red), so there a range over such text is an overlay.
 const RESTYLES_LINES = HIGHLIGHTS && /AppleWebKit/.test(navigator.userAgent) && !/Chrome\/|Chromium\//.test(navigator.userAgent);
 
-const hasLines = (range: AbstractRange, root: Element) => textsIn(range).some(({ node }) => {
+// A boundary between nodes as the text offset beside it: WebKit paints nothing for a range
+// ending after a text node in a right-to-left block (a paragraph's last word, a word whose
+// end is bold), though it paints the same range ending inside that text node.
+function intoText(node: Node, offset: number, end: boolean): [Node, number] {
+  let n: Node | null = node.nodeType === Node.ELEMENT_NODE ? node.childNodes[end ? offset - 1 : offset] ?? null : null;
+  while (n && n.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).contentEditable !== 'false') n = end ? n.lastChild : n.firstChild;
+  return n?.nodeType === Node.TEXT_NODE ? [n, end ? (n as Text).length : 0] : [node, offset];
+}
+
+const hasLines =(range: AbstractRange, root: Element) => textsIn(range).some(({ node }) => {
   for (let el = node.parentElement; el && el !== root; el = el.parentElement) {
     if (getComputedStyle(el).textDecorationLine !== 'none') return true;
   }
@@ -126,7 +135,9 @@ export function paintHighlight(view: EditorView, name: string, setOf: SetOf, pri
       const ranges: StaticRange[] = [], over: StaticRange[] = [];
       for (const d of inBlock) {
         const from = view.domAtPos(d.from), to = view.domAtPos(d.to);
-        const r = new StaticRange({ startContainer: from.node, startOffset: from.offset, endContainer: to.node, endOffset: to.offset });
+        const [startContainer, startOffset] = intoText(from.node, from.offset, false);
+        const [endContainer, endOffset] = intoText(to.node, to.offset, true);
+        const r = new StaticRange({ startContainer, startOffset, endContainer, endOffset });
         if (RESTYLES_LINES && hasLines(r, view.dom)) over.push(r);
         else { highlight.add(r); ranges.push(r); }
       }

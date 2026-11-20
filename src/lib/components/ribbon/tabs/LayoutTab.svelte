@@ -126,7 +126,7 @@
   let spaceBefore = $derived(tick >= 0 && editor ? uniformBlockAttr<number>(editor.state, 'spaceBefore', 0) : 0);
   let spaceAfter = $derived(tick >= 0 && editor ? uniformBlockAttr<number>(editor.state, 'spaceAfter', 0) : 0);
 
-  const num = (v: number | '') => (v === '' ? '' : String(Math.round(v * 100) / 100));
+  const num = (v: number | '') => (v === '' ? '' : formatDecimal(v));
 
   function apply(fn: (v: number) => void, raw: string) {
     const v = parseDecimal(raw);

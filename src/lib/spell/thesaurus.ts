@@ -58,8 +58,9 @@ function groupsOf(text: string, term: string): string[][] | null {
 }
 
 // Arabic writes the article and the one-letter proclitics onto the word, while the
-// thesaurus lists bare lemmas: conjunction (و ف), preposition (ب ك ل), article (ال; ل+ال is لل).
-const AR_PROCLITICS = /^([وف]?)([بكل]?)(ال)?/;
+// thesaurus lists bare lemmas: conjunction (و ف), preposition (ب ك ل), article (ال; ل+ال is لل,
+// so after ل a lone ل may be the article).
+const AR_PROCLITICS = /^([وف]?)([بكل]?)(ال|(?<=ل)ل)?/;
 
 // The proclitics put back on a synonym: no article on a phrase or a word that has one,
 // and ل before an article swallows its alef (لل).
@@ -82,11 +83,10 @@ export async function synonyms(code: DocumentLanguage, word: string): Promise<st
   if (exact || code !== 'ar') return exact ?? [];
   // An Arabic word with clitics: the least stripped stem the thesaurus knows, its
   // synonyms given the same clitics back, so a replacement keeps them.
-  const full = term.replace(/^لل/, 'لال');
-  const [, conj, prep, article = ''] = AR_PROCLITICS.exec(full)!;
+  const [, conj, prep, article = ''] = AR_PROCLITICS.exec(term)!;
   const cuts = [[conj, '', ''], [conj, prep, ''], [conj, prep, article]];
   for (const [c, p, a] of cuts) {
-    const stem = full.slice(c.length + p.length + a.length);
+    const stem = term.slice(c.length + p.length + a.length);
     if (!(c || p || a) || stem.length < 3) continue;
     const found = groupsOf(text, stem);
     if (found) return found.map((g) => g.map((syn) => attach(c, p, a, syn)));

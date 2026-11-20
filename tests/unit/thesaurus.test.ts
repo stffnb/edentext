@@ -85,6 +85,7 @@ describe('synonyms', () => {
     expect((await synonyms('ar', 'وفاسد')).flat()).toContain('ورديء');
     expect((await synonyms('ar', 'بالفاسد')).flat()).toContain('بالرديء');
     expect((await synonyms('ar', 'للفاسد')).flat()).toContain('للرديء');
+    expect((await synonyms('ar', 'وللفاسد')).flat()).toContain('وللرديء');
     expect((await synonyms('ar', 'والفاسد')).flat()).toContain('والرديء');
     // A stem the thesaurus does not know is no match, however the word begins.
     expect(await synonyms('ar', 'بلابلابل')).toEqual([]);
