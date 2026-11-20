@@ -4,6 +4,7 @@
   import { heldZones } from '../collab/zones.svelte';
   import { follow, following, jumpTo, whereIs } from '../collab/presence.svelte';
   import { t } from '../i18n/i18n.svelte';
+  import { nameIsland } from '../i18n/shortcut';
 
   // Who else is in the session, as circles beside the session button: writers filled,
   // readers as rings. A click goes to that person's caret and offers to follow it; a
@@ -27,8 +28,8 @@
   const shown = $derived(people.length > max ? people.slice(0, max) : people);
 
   function label(p: Person): string {
-    if (following() === p.id && !p.reader) return t().collab.following(p.name);
-    return [p.name, p.reader ? t().collab.readingAlong : p.zone, p.where ? '' : t().collab.noCaret].filter(Boolean).join(' · ');
+    if (following() === p.id && !p.reader) return t().collab.following(nameIsland(p.name));
+    return [nameIsland(p.name), p.reader ? t().collab.readingAlong : p.zone, p.where ? '' : t().collab.noCaret].filter(Boolean).join(' · ');
   }
 
   function pick(p: Person) {
@@ -78,7 +79,7 @@
 <style>
   .collab-people { display: flex; align-items: center; }
   .slot { position: relative; display: flex; }
-  .slot + .slot, .slot + .more { margin-left: -3px; }
+  .slot + .slot, .slot + .more { margin-inline-start: -3px; }
   .person {
     width: 20px;
     height: 20px;
@@ -103,7 +104,7 @@
   .menu {
     position: absolute;
     bottom: 26px;
-    right: 0;
+    inset-inline-end: 0;
     z-index: 60;
     display: flex;
     flex-direction: column;

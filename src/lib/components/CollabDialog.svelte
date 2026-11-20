@@ -133,7 +133,7 @@
           {#each links as l (l.which)}
             <label class="row" data-link={l.which}>
               <span>{l.which === 'edit' ? t().collab.editLink : t().collab.viewLink}</span>
-              <input readonly value={l.url} onfocus={(e) => e.currentTarget.select()} />
+              <input readonly dir="ltr" value={l.url} onfocus={(e) => e.currentTarget.select()} />
               <button onclick={() => copy(l.which, l.url)}>{copied === l.which ? t().collab.copied : t().collab.copy}</button>
             </label>
           {/each}
@@ -148,14 +148,14 @@
               <li data-writer={p.id}>
                 <span class="dot" style:background={p.color}></span>
                 {#if whereIs(p.id)}
-                  <button class="link" title={t().collab.goTo} onclick={() => { open = false; requestAnimationFrame(() => jumpTo(p.id)); }}>{p.name}</button>
+                  <button class="link" title={t().collab.goTo} onclick={() => { open = false; requestAnimationFrame(() => jumpTo(p.id)); }}><bdi>{p.name}</bdi></button>
                   <button class="link muted" data-cmd="collabFollow" onclick={() => { open = false; requestAnimationFrame(() => follow(following() === p.id ? null : p.id)); }}>
                     {following() === p.id ? t().collab.stopFollow : t().collab.follow}</button>
-                {:else}{p.name}<span class="muted">{t().collab.noCaret}</span>{/if}
+                {:else}<bdi>{p.name}</bdi><span class="muted">{t().collab.noCaret}</span>{/if}
               </li>
             {/each}
             {#each view.readers as p (p.id)}
-              <li data-reader><span class="dot ring" style:border-color={p.color}></span>{p.name}<span class="muted">{t().collab.readingAlong}</span></li>
+              <li data-reader><span class="dot ring" style:border-color={p.color}></span><bdi>{p.name}</bdi><span class="muted">{t().collab.readingAlong}</span></li>
             {/each}
           </ul>
         {:else}
@@ -201,14 +201,14 @@
   .status { font-weight: 600; }
   .notice {
     padding: 8px 10px;
-    border-left: 3px solid var(--color-primary);
+    border-inline-start: 3px solid var(--color-primary);
     background: var(--color-surface);
   }
 
   /* Floats over the page's corner like the resume card, and takes no focus. */
   .collab-notice {
     position: fixed;
-    right: 16px;
+    inset-inline-end: 16px;
     bottom: 40px;
     z-index: 50;
     display: flex;
@@ -217,7 +217,7 @@
     width: min(340px, calc(100vw - 32px));
     padding: 12px 14px 10px;
     border: 1px solid var(--w-border-strong);
-    border-left: 3px solid var(--color-primary);
+    border-inline-start: 3px solid var(--color-primary);
     border-radius: 8px;
     background: var(--w-surface);
     color: var(--w-text);

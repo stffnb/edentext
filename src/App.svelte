@@ -3275,11 +3275,11 @@
     line-height: 14px;
     text-align: center;
   }
-  /* Above the status bar's right end, where the session button is; it takes no focus. */
+  /* Above the status bar's end, where the session button is; it takes no focus. */
   .chat-unread.mention { background: var(--color-text); color: var(--color-bg, #fff); }
   .collab-hint {
     position: fixed;
-    right: 16px;
+    inset-inline-end: 16px;
     bottom: 34px;
     z-index: 50;
     padding: 5px 10px;

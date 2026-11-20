@@ -71,7 +71,7 @@
   <ul class="mention-list" role="listbox" aria-label={t().collab.mentionList}>
     {#each list as name, i (name)}
       <li role="option" aria-selected={i === index} class:active={i === index}>
-        <button tabindex="-1" onmousedown={(e) => { e.preventDefault(); choose(name); }}>@{name}</button>
+        <button tabindex="-1" onmousedown={(e) => { e.preventDefault(); choose(name); }}><bdi>@{name}</bdi></button>
       </li>
     {/each}
   </ul>

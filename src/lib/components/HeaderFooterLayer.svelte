@@ -21,6 +21,7 @@
   import { cssBorder } from '../editor/extensions/tableCellBorders';
   import { chapterOn, type ChapterStart } from '../utils/chapterField';
   import { t } from '../i18n/i18n.svelte';
+  import { nameIsland } from '../i18n/shortcut';
   import { allPagesDrawn } from './pageWindow.svelte';
   import { claimZone, heldZones, yieldsZone, zoneHolder } from '../collab/zones.svelte';
   import { reading } from '../collab/reading.svelte';
@@ -824,7 +825,7 @@
         ></div>
         {@const holder = zoneHolder(`hf:${id}`)}
         {#if holder}
-          <div class="hf-tag hf-held" class:hf-refused={refused === `hf:${id}`} style="top: {zb.top}px; left: {zb.left}px; --hf-held: {holder.color || 'var(--color-primary)'};">{t().hf.heldBy(holder.name)}</div>
+          <div class="hf-tag hf-held ui-dir" class:hf-refused={refused === `hf:${id}`} style="top: {zb.top}px; left: {zb.left}px; --hf-held: {holder.color || 'var(--color-primary)'};">{t().hf.heldBy(nameIsland(holder.name))}</div>
         {/if}
       {/if}
     {/each}
