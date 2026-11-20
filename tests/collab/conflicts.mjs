@@ -12,7 +12,7 @@ const { browser, page: a, pageErrors } = await openApp(PORT);
 const b = await (await browser.newContext({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' })).newPage();
 collectErrors(b, pageErrors, 'B: ');
 if (process.env.VERBOSE) for (const [p, n] of [[a, 'A'], [b, 'B']]) p.on('console', (m) => { if (/collab/.test(m.text())) console.log(n, m.text().slice(0, 200)); });
-b.on('dialog', (d) => d.accept());
+b.on('dialog', (d) => d.accept().catch(() => {}));
 
 const open = async (page, name) => {
   await page.goto(`http://localhost:${PORT}/?undo=yjs-join`, { waitUntil: 'load' });

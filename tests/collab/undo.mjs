@@ -10,7 +10,7 @@ const server = await devServer(PORT);
 const { browser, page: a, pageErrors } = await openApp(PORT);
 const b = await (await browser.newContext({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' })).newPage();
 collectErrors(b, pageErrors, 'B: ');
-b.on('dialog', (d) => d.accept());
+b.on('dialog', (d) => d.accept().catch(() => {}));
 
 const open = async (page, mode) => {
   await page.goto(`http://localhost:${PORT}/?undo=${mode}`, { waitUntil: 'load' });

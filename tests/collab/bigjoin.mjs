@@ -160,7 +160,7 @@ async function tab(name, { viaProxy = false, cdpRate = 0, down = 0, ctx = null }
       send(d) { if (!line.deaf) super.send(d); }
     };
   }, viaProxy ? PROXY_PORT : RELAY_PORT);
-  page.on('dialog', (d) => d.accept());
+  page.on('dialog', (d) => d.accept().catch(() => {}));
   page.on('pageerror', (e) => log(`${name} pageerror`, String(e).slice(0, 160)));
   if (cdpRate || down) {
     const s = await ctx.newCDPSession(page);
