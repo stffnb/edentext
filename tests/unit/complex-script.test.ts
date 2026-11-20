@@ -362,6 +362,50 @@ describe('complex-script language and run formatting', () => {
     expect(run.marks?.some((m) => m.type === 'bold')).toBe(false);
     expect(textStyle(run).fontSize).toBe('14pt');
   });
+
+  // Word orders a paragraph by its runs' w:rtl, so the export cuts runs where the direction
+  // the editor shows turns; the import joins them again.
+  const RTL_PAGE = [MARGINS, 'portrait', undefined, AR_EN, 'A4', undefined, undefined, undefined, true] as const;
+  const runFlags = (xml: string) => [...xml.matchAll(/<w:r>(?:<w:rPr>(.*?)<\/w:rPr>)?<w:t[^>]*>(.*?)<\/w:t><\/w:r>/g)]
+    .map((m) => [m[2], /<w:rtl\/>/.test(m[1] ?? '')] as const);
+  const mixed = para(
+    { type: 'text', text: '12a نستخدم EdenText منذ عام 2026 و ١٢٣ (مقدمة) ' },
+    { type: 'text', text: 'عريض bold', marks: [{ type: 'bold' }, { type: 'italic' }] },
+    { type: 'text', text: ' ثم ' },
+    { type: 'text', text: 'To jest', marks: [{ type: 'textStyle', attrs: { lang: 'pl-PL' } }] },
+    { type: 'text', text: '.' });
+
+  it('flags the right-to-left stretches of a mixed paragraph and reads them back as written', async () => {
+    const bytes = await buildDocx(mixed as never, ...RTL_PAGE);
+    const flags = runFlags(strFromU8(unzipSync(bytes)['word/document.xml']));
+    expect(flags.filter(([, rtl]) => !rtl).map(([text]) => text)).toEqual(['12a', 'EdenText', '2026', '١٢٣', 'bold', 'To jest']);
+    expect(flags.map(([text]) => text).join('')).toBe(runs(mixed as Doc).map((r) => r.text).join(''));
+    const back = runs(importDocx(bytes).content as Doc);
+    expect(back.map((r) => [r.text, (r.marks ?? []).map((m) => m.type).sort().join()]))
+      .toEqual(runs(mixed as Doc).map((r) => [r.text, (r.marks ?? []).map((m) => m.type).sort().join()]));
+    expect(back.map((r) => textStyle(r).lang)).toEqual([undefined, undefined, undefined, 'pl-PL', undefined]);
+  });
+
+  it('flags an Arabic phrase with its number in a left-to-right paragraph, and nothing without one', async () => {
+    const xml = async (text: string) => strFromU8(unzipSync(await buildDocx(para({ type: 'text', text }) as never, MARGINS, 'portrait', undefined, EN_AR))['word/document.xml']);
+    expect(runFlags(await xml('The phrase مرحبا 15 بكم (see p. 3) ends.')).filter(([, rtl]) => rtl).map(([text]) => text)).toEqual(['مرحبا 15 بكم']);
+    expect(await xml('Plain text, 15 (see p. 3).')).not.toContain('w:rtl');
+  });
+
+  // Word numbers Arabic-Indic digits as a decimal label set right-to-left; its hindiNumbers
+  // are Devanagari, read as before.
+  it('writes an Arabic-Indic list as a right-to-left decimal level', async () => {
+    const list = { type: 'doc', content: [{ type: 'orderedList', attrs: { listStyleType: 'arabic-indic' }, content: [
+      { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: ARABIC }] }] }] }] };
+    const files = unzipSync(await buildDocx(list as never, ...RTL_PAGE));
+    const numbering = strFromU8(files['word/numbering.xml']);
+    expect(numbering).not.toContain('hindiNumbers');
+    expect(numbering).toMatch(/<w:numFmt w:val="decimal"\/>(?:(?!<\/w:lvl>).)*<w:rPr><w:rtl\/>/);
+    const typeOf = (bytes: Uint8Array) => (importDocx(bytes).content as Doc).content?.[0].attrs?.listStyleType;
+    expect(typeOf(zipSync(files))).toBe('arabic-indic');
+    const hindi = numbering.replace(/<w:numFmt w:val="decimal"\/>((?:(?!<\/w:lvl>).)*)<w:rPr><w:rtl\/><\/w:rPr>/, '<w:numFmt w:val="hindiNumbers"/>$1');
+    expect(typeOf(zipSync({ ...files, 'word/numbering.xml': strToU8(hindi) }))).toBe('arabic-indic');
+  });
 });
 
 // The pair itself: each half goes to its own slot and comes back as itself, and a run

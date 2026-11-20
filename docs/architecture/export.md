@@ -129,7 +129,13 @@ routes each word by its script (`SpellController.checkerOfScript`): Latin words 
 document go to its western language (`documentLanguageOther`) or stay unchecked, Arabic words
 in a western document likewise. DOCX reads weight, slant, size and font of complex-script
 text from `w:bCs`, `w:iCs`, `w:szCs` and `w:rFonts w:cs`, as Word does; `w:rtl` is read as
-"this run is complex script" and not written. ODF has the three slots for size, weight and
+"this run is complex script". Word orders a paragraph by its runs' `w:rtl`, not by the
+characters: a run is an embedding of its direction, resolved inside by the Unicode algorithm
+(seen in Word: an unflagged run in a `w:bidi` paragraph is laid out left to right, label first,
+full stop last). So `directionCuts` cuts every text node where the level the editor shows
+turns (`utils/bidi.ts`): in a right-to-left paragraph the text at its level is flagged and
+Latin words and numbers are not (what LibreOffice writes), in a left-to-right one a whole
+right-to-left stretch with its numbers is. The import joins equal neighbours again. ODF has the three slots for size, weight and
 slant as well: `fillScriptSlots`, the last ODT pass, repeats each western value of a
 `style:text-properties` block (named and default styles, list labels, index templates, notes)
 in the asian and complex slots it leaves open, and a font in the complex one. On import a slot

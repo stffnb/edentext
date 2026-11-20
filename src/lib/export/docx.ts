@@ -24,6 +24,7 @@ import { TEXTBOX_PADDING_CM, boxTextWidthCm, type TextVAlign } from '../editor/e
 import { colorModeOf, cropOf, wrapGap, wrapGapAttr, type ColorMode, type Crop, type WrapGap } from '../editor/extensions/image';
 import { SHAPES, boxHeads, isShapeKind, isLineKind, drawingMlPath, asShapePreset, asTextArea, type PathHeads, type ShapeKind, type DrawingMlPreset, type TextArea } from '../utils/shapes';
 import { cellFormatCode, isCellFormat } from '../utils/cellFormat';
+import { rtlRunFlags } from '../utils/bidi';
 import { cjkDocFont, langSlot, type ExportLanguage } from '../storage/documentLanguage';
 import { DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -706,13 +707,39 @@ function runPropsFromMarks(marks: TiptapNode['marks'] = [], force: TextProps = {
 
 // A text node → one run; tab chars become <w:tab/> via mixed children (a literal \t
 // would otherwise be dropped). Returned as an array so a link wrapper can adopt it.
-function textNodeToRuns(node: TiptapNode, force: TextProps): Inline[] {
-  const text = node.text ?? '';
+function textNodeToRuns(node: TiptapNode, force: TextProps, cuts?: DirectionCut[]): Inline[] {
   const props = runPropsFromMarks(node.marks, force);
-  const opts = text.includes('\t')
-    ? { children: tabbedChildren(text), ...props }
-    : { text, ...props };
-  return [revisedRun(node, opts, force)];
+  return (cuts ?? [{ text: node.text ?? '', rtl: false }]).map(({ text, rtl }) => {
+    const own = rtl ? { ...props, rightToLeft: true } : props;
+    const opts = text.includes('\t')
+      ? { children: tabbedChildren(text), ...own }
+      : { text, ...own };
+    return revisedRun(node, opts, force);
+  });
+}
+
+// Word orders a paragraph by its runs' w:rtl and resolves only inside a run by the
+// characters, so a text node is cut where the direction the editor shows turns
+// (`rtlRunFlags`). A paragraph without right-to-left text or direction has no cuts.
+type DirectionCut = { text: string; rtl: boolean };
+function directionCuts(content: TiptapNode[] = [], rtl: boolean): Map<TiptapNode, DirectionCut[]> {
+  const cuts = new Map<TiptapNode, DirectionCut[]>();
+  const flat = content.map((n) => (n.type === 'text' ? n.text ?? '' : n.type === 'hardBreak' ? '\n' : '\uFFFC')).join('');
+  const flags = rtlRunFlags(flat, rtl);
+  if (!flags) return cuts;
+  let at = 0;
+  for (const n of content) {
+    const text = n.type === 'text' ? n.text ?? '' : '';
+    const parts: DirectionCut[] = [];
+    for (let i = 0; i < text.length; i++) {
+      const last = parts[parts.length - 1];
+      if (last && last.rtl === flags[at + i]) last.text += text[i];
+      else parts.push({ text: text[i], rtl: flags[at + i] });
+    }
+    if (parts.some((c) => c.rtl)) cuts.set(n, parts);
+    at += n.type === 'text' ? text.length : 1;
+  }
+  return cuts;
 }
 
 // A format change is the run's w:rPrChange, the earlier properties from the same builder.
@@ -951,8 +978,9 @@ function docxBookmarkName(raw: string): string {
   return name;
 }
 
-function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline[] {
+function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}, rtl = exportPageRtl): Inline[] {
   const out: Inline[] = [];
+  const cuts = directionCuts(content, rtl);
   // A bookmark brackets its runs as two points, not as a wrapper: ranges overlap — a
   // heading's own name inside the contents' one — and no nesting holds them all. Its
   // edges come from `stampBookmarkEdges`, so a range across paragraphs is written once.
@@ -999,7 +1027,7 @@ function inlineToRuns(content: TiptapNode[] = [], force: TextProps = {}): Inline
     if (atom) out.push(new TextRun({ text: atom[0] }));
     closeAtom = atom?.[1] ?? null;
     if (node.type === 'text' && node.text) {
-      const runs = textNodeToRuns(node, force);
+      const runs = textNodeToRuns(node, force, cuts.get(node));
       const href = node.marks?.find((m) => m.type === 'link')?.attrs?.href;
       const link = href ? String(href) : '';
       // An internal href targets a bookmark in this document, not a URL.
@@ -1337,7 +1365,7 @@ function szXml(size: unknown): string {
   return hp ? `<w:sz w:val="${hp}"/><w:szCs w:val="${hp}"/>` : '';
 }
 
-function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLangs: unknown[] = [], block: TiptapNode['attrs'] = {}): string {
+function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLangs: unknown[] = [], block: TiptapNode['attrs'] = {}, rtl = false): string {
   const ts = marks.find((m) => m.type === 'textStyle');
   const parts: string[] = [];
   // w:rStyle leads w:rPr; the run's own properties below still win, as in the body.
@@ -1393,6 +1421,7 @@ function txbxRunPropsXml(marks: TiptapNode['marks'] = [], blockLangs: unknown[] 
   }
   if (markPresent(marks, 'superscript')) parts.push('<w:vertAlign w:val="superscript"/>');
   else if (markPresent(marks, 'subscript')) parts.push('<w:vertAlign w:val="subscript"/>');
+  if (rtl) parts.push('<w:rtl/>');
   // Last in CT_RPr's order, and the only place Word reads a run's language from.
   const lang = langXml(...blockLangs, ts?.attrs?.lang, ts?.attrs?.langAsian);
   if (lang) parts.push(lang);
@@ -1526,7 +1555,8 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
     const old = txbxBlockPPr({ ...node, ...format.old }, indentTwip, madeList ? '' : numPr).replace(/<w:rPr>.*<\/w:rPr>$/, '');
     pPr.push(`<w:pPrChange ${txbxRevAttrs(format)}><w:pPr>${old}</w:pPr></w:pPrChange>`);
   }
-  const runProps = (marks: TiptapNode['marks']) => txbxRunPropsXml(marks, [attrs.lang, attrs.langAsian], attrs);
+  const runProps = (marks: TiptapNode['marks'], rtl = false) => txbxRunPropsXml(marks, [attrs.lang, attrs.langAsian], attrs, rtl);
+  const cuts = directionCuts(node.content, isRtl(attrs));
   let runs = '';
   // Comment ranges and bookmarks bracket consecutive runs sharing the mark, as
   // inlineToRuns does for the body; the reference run is what Word draws the bubble from.
@@ -1620,17 +1650,19 @@ function txbxParagraphXml(node: TiptapNode, parts: TxbxParts, indentTwip = 0, nu
       docPlaceholders.push(String(child.attrs?.text ?? ''));
       runs += `<w:r>${runProps(child.marks)}<w:t xml:space="preserve">${PLH}${docPlaceholders.length - 1}${PLH}</w:t></w:r>`;
     } else if (child.type === 'text' && child.text) {
-      const rPr = runProps(child.marks);
       // A recorded revision wraps the run; a deletion's text sits in w:delText.
       const rev = revisionOf(child);
       const tag = rev?.kind === 'deletion' ? 'w:delText' : 'w:t';
-      let inner = '';
-      child.text.split('\t').forEach((seg, i) => {
-        if (i > 0) inner += '<w:tab/>';
-        if (seg) inner += `<${tag} xml:space="preserve">${escapeXml(seg)}</${tag}>`;
-      });
-      let run = `<w:r>${rPr}${inner}</w:r>`;
-      if (rev) run = wrapRevisionXml(run, rev, stackedOf(child));
+      let run = '';
+      for (const cut of cuts.get(child) ?? [{ text: child.text, rtl: false }]) {
+        let inner = '';
+        cut.text.split('\t').forEach((seg, i) => {
+          if (i > 0) inner += '<w:tab/>';
+          if (seg) inner += `<${tag} xml:space="preserve">${escapeXml(seg)}</${tag}>`;
+        });
+        const one = `<w:r>${runProps(child.marks, cut.rtl)}${inner}</w:r>`;
+        run += rev ? wrapRevisionXml(one, rev, stackedOf(child)) : one;
+      }
       const href = child.marks?.find((m) => m.type === 'link')?.attrs?.href;
       const link = href ? String(href) : '';
       if (link.startsWith('#')) {
@@ -3113,7 +3145,7 @@ function paragraphToDocx(node: TiptapNode, opts: ParaOpts = {}): Paragraph {
       ...(attrs.noHyphenation === true ? [new TextRun(NOHYP)] : []),
       ...(attrs.snapToGrid === false ? [new TextRun(NOSNAP)] : []),
       ...(indChars ? [new TextRun(`${INDC}${indChars}${INDC}`)] : []),
-      ...inlineToRuns(node.content, runForce),
+      ...inlineToRuns(node.content, runForce, isRtl(attrs)),
     ],
   });
 }

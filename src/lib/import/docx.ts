@@ -2241,8 +2241,11 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     const ours = !!linkHref && hexColor(props.color)?.toUpperCase() === LINK_BLUE;
     // Complex-script text is set from Word's complex set (w:bCs, w:iCs, w:szCs, the cs
     // font, the bidi language), a slot left out being Word's default and not the western one.
-    const complex = props.complex || COMPLEX_SCRIPT_RE.test(r.textContent ?? '');
-    const langBidi = own.langBidi ?? styleRun.langBidi ?? runDefaults.langComplex ?? undefined;
+    const ownScript = COMPLEX_SCRIPT_RE.test(r.textContent ?? '');
+    const complex = props.complex || ownScript;
+    // Spaces and punctuation flagged right-to-left between western words keep the
+    // language the run names itself, so a paragraph's language stays one mark.
+    const langBidi = own.langBidi ?? (ownScript ? undefined : own.lang) ?? styleRun.langBidi ?? runDefaults.langComplex ?? undefined;
     const marks = complex
       ? marksFor({ ...props, bold: props.boldCs ?? false, italic: props.italicCs ?? false, sizeHalfPt: props.sizeCsHalfPt ?? 20, font: props.fontCs ?? props.font, lang: langBidi },
         { ...runDefaults, lang: runDefaults.langComplex }, ours)
