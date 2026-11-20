@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { Editor } from '@tiptap/core';
 import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
@@ -80,9 +80,13 @@ describe('regular expressions', () => {
   });
 });
 
+const editors: Editor[] = [];
+afterEach(() => { while (editors.length) editors.pop()!.destroy(); });
+
 // What the editor's own search finds in a paragraph, as the texts it would select.
 function found(html: string, term: string, wholeWord = false, useRegex = false): { hits: string[]; editor: Editor } {
   const editor = new Editor({ extensions: [Document, Paragraph, Text, Bold, SearchReplace], content: html });
+  editors.push(editor);
   editor.commands.setSearch({ term, matchCase: false, wholeWord, useRegex });
   const hits = searchMatches(editor.state).matches.map((m) => editor.state.doc.textBetween(m.from, m.to));
   return { hits, editor };
