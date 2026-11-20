@@ -946,7 +946,7 @@ try {
       `a reader's hundred asks, pulls and pings and 20,000 picture keys get each writer's answers only up to its limits, and typing still arrives (${JSON.stringify(answers)} in ${secs.toFixed(1)} s)`);
 
     // A message in parts is long only from whom a client expects one: the reader's 9 MiB is
-    // dropped at the writer, its 4 MiB and a writer's 9 MiB arrive.
+    // dropped at the writer, its 4 MiB and a writer's 9 MiB arrive, in either order.
     await a.evaluate(() => { window.__long = []; window.__collab.session.debug.tap = (d) => { if (d.length > 1 << 20) window.__long.push(d.length); }; });
     const long = (page, n, to) => page.evaluate(([n, to]) => { const m = new Uint8Array(n); m[0] = 200; crypto.getRandomValues(m.subarray(1, 65537)); window.__collab.session.debug.send(m, to); }, [n, to]);
     await long(r, 9 << 20, ids.Anna);
@@ -956,7 +956,7 @@ try {
     for (let i = 0; i < 40 && longs.length < 2; i++) { await a.waitForTimeout(500); longs = await a.evaluate(() => window.__long); }
     await a.waitForTimeout(1000);
     longs = await a.evaluate(() => { window.__collab.session.debug.tap = null; return window.__long; });
-    check(longs.join() === `${4 << 20},${9 << 20}`, `a reader's long message in parts stops at the small limit, a short one and a writer's long one arrive (${longs})`);
+    check([...longs].sort((x, y) => x - y).join() === `${4 << 20},${9 << 20}`, `a reader's long message in parts stops at the small limit, a short one and a writer's long one arrive (${longs})`);
 
     // A writer holds the footer and lets it go while the reader records; replayed then, and
     // after the writer left to a newcomer that never saw it, the footer stays free.
