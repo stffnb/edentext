@@ -40,7 +40,7 @@ export function markerFormat(marks: MarkLike[], blockFontSize: unknown, charProp
     fontFamily: str(ts.fontFamily) ?? cs.fontFamily ?? null,
     // An explicit fontWeight is the un-bold channel, so it outranks the bold mark.
     fontWeight: ts.fontWeight != null ? String(ts.fontWeight) : bold ? 'bold' : null,
-    fontStyle: marks.some((m) => m.type === 'italic') || cs.italic ? 'italic' : null,
+    fontStyle: ts.fontStyle === 'normal' ? 'normal' : marks.some((m) => m.type === 'italic') || cs.italic ? 'italic' : null,
     fontSize: str(size),
     color: str(ts.color) ?? cs.color ?? null,
   };
@@ -60,11 +60,11 @@ export function withOwnMarker(own: unknown, portion: MarkerFormat | null): Marke
   return KEYS.some((key) => out[key]) ? out : null;
 }
 
-// A level's text formatting as a marker's. A symbol font's glyphs are already mapped to
-// the character the bullet shows, so the family is left to the text's.
+// A level's text formatting as a marker's. A symbol font's glyph is stored as its Unicode
+// character but the family stays: the label is drawn in it, and its height counts in the line.
 export function markerFormatFromText(t: TextProps): Partial<MarkerFormat> | null {
   const out: Partial<MarkerFormat> = {};
-  if (t.fontFamily && !/^(symbol|wingdings|webdings|opensymbol)/i.test(t.fontFamily)) out.fontFamily = t.fontFamily;
+  if (t.fontFamily) out.fontFamily = t.fontFamily;
   if (t.bold != null) out.fontWeight = t.bold ? 'bold' : 'normal';
   if (t.italic) out.fontStyle = 'italic';
   if (t.fontSizePt != null) out.fontSize = `${t.fontSizePt}pt`;
@@ -141,9 +141,10 @@ export function listMarkerDecos(doc: ProseMirrorNode, charProps?: CharStyleProps
     if (node.type.name !== 'listItem') return;
     const own = parent?.attrs.markerFormat as Partial<MarkerFormat> | null | undefined;
     const format = withOwnMarker(own, itemMarkerFormat(node, charProps));
-    // A level sized apart from its text raises the item's first line, as both word
-    // processors set it; editor.css puts that marker in the line instead of floating it.
-    decos.push(Decoration.node(pos, pos + node.nodeSize, { style: markerStyle(format), ...(own?.fontSize ? { class: 'marker-sized' } : {}) }));
+    // A level sized or set in a font apart from its text counts in the item's first line,
+    // as both word processors set it; editor.css puts that marker in the line, not floated.
+    const cls = [own?.fontSize && 'marker-sized', own?.fontFamily && 'marker-font'].filter(Boolean).join(' ');
+    decos.push(Decoration.node(pos, pos + node.nodeSize, { style: markerStyle(format), ...(cls ? { class: cls } : {}) }));
   });
   return DecorationSet.create(doc, decos);
 }

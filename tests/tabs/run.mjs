@@ -17,7 +17,7 @@ const text = (p) => p.textContent('.tiptap');
 
 async function openTab() {
   const p = await ctx.newPage();
-  p.on('dialog', (d) => d.accept());
+  p.on('dialog', (d) => d.accept().catch(() => {}));
   collectErrors(p, pageErrors);
   await p.goto(URL, { waitUntil: 'load' });
   await p.waitForSelector('.tiptap', { timeout: 15_000 });

@@ -49,6 +49,20 @@ describe('a text box with vertical text', () => {
     expect(boxOf(importDocx(bytes))?.attrs.textVertical).toBe(true);
   });
 
+  it('keeps upward text in both formats', async () => {
+    const up: N = { ...doc, content: [doc.content[0], { type: 'paragraph', content: [box({ textVertical: 'up' })] },
+      { type: 'paragraph', content: [box({ textVertical: 'up', shapeKind: 'roundRect' })] }] };
+    const boxes = (r: N): N[] => {
+      const out: N[] = [];
+      const walk = (n: N) => { if (n?.type === 'textBox') out.push(n); (n?.content ?? []).forEach(walk); };
+      walk(r.content); return out;
+    };
+    const odt = boxes(importOdt(await buildOdt(up, margins, 'portrait')));
+    const docx = boxes(importDocx(await buildDocx(up, margins, 'portrait')));
+    expect(odt.map((b) => b.attrs.textVertical)).toEqual(['up', 'up']);
+    expect(docx.map((b) => b.attrs.textVertical)).toEqual(['up', 'up']);
+  });
+
   it('leaves a horizontal box alone', async () => {
     const flat: N = { ...doc, content: [doc.content[0], { type: 'paragraph', content: [box({})] }] };
     const odt = strFromU8(unzipSync(await buildOdt(flat, margins, 'portrait'))['content.xml']);

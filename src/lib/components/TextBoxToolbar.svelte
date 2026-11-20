@@ -36,7 +36,7 @@
     fillColor: string | null;
     strokeColor: string | null;
     strokeWidthPt: number;
-    textVertical: boolean;
+    textVertical: boolean | 'up';
     textVAlign?: TextVAlign;
     wrapDist?: unknown;
     tick: number;
@@ -183,15 +183,28 @@
 
   <button
     class="tb-btn"
-    class:active={textVertical}
+    class:active={textVertical === true}
     title={t().textBox.verticalText}
     data-cmd="verticalText"
-    aria-pressed={textVertical}
-    onclick={() => set({ textVertical: !textVertical })}
+    aria-pressed={textVertical === true}
+    onclick={() => set({ textVertical: textVertical !== true })}
   >
     <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
       <path d="M6.5 3.5h5M9 3.5v11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
       <path d="M14.5 6.5v5M12.6 9.6 14.5 11.5l1.9-1.9" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  </button>
+  <button
+    class="tb-btn"
+    class:active={textVertical === 'up'}
+    title={t().textBox.verticalTextUp}
+    data-cmd="verticalTextUp"
+    aria-pressed={textVertical === 'up'}
+    onclick={() => set({ textVertical: textVertical === 'up' ? false : 'up' })}
+  >
+    <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M6.5 3.5h5M9 3.5v11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+      <path d="M14.5 11.5v-5M12.6 8.4 14.5 6.5l1.9 1.9" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
   </button>
 

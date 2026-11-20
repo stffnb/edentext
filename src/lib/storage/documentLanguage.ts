@@ -19,6 +19,8 @@ export interface LanguageDef {
   // A language the document can be in without a bundled dictionary: the picker offers
   // it so the file names its language, spell-checking simply stays off.
   noDict?: true;
+  // A dictionary without synonym data under public/thesaurus/.
+  noThesaurus?: true;
 }
 
 // The languages a document can be in. Most carry a bundled Hunspell dictionary — add one
@@ -36,7 +38,11 @@ export const LANGUAGES: LanguageDef[] = [
   { code: 'el', label: 'Ελληνικά', odf: { language: 'el', country: 'GR' } },
   { code: 'ru', label: 'Русский', odf: { language: 'ru', country: 'RU' } },
   { code: 'uk', label: 'Українська', odf: { language: 'uk', country: 'UA' } },
+  { code: 'pl', label: 'Polski', odf: { language: 'pl', country: 'PL' } },
+  { code: 'id', label: 'Bahasa Indonesia', odf: { language: 'id', country: 'ID' } },
+  { code: 'ar', label: 'العربية', odf: { language: 'ar', country: 'SA' } },
   { code: 'ja-JP', label: '日本語', odf: { language: 'ja', country: 'JP' }, noDict: true },
+  { code: 'ko-KR', label: '한국어', odf: { language: 'ko', country: 'KR' }, noThesaurus: true },
   { code: 'zh-CN', label: '中文（简体）', odf: { language: 'zh', country: 'CN' }, noDict: true },
   { code: 'zh-TW', label: '中文（繁體）', odf: { language: 'zh', country: 'TW' }, noDict: true },
 ];
@@ -59,10 +65,37 @@ export function hasDictionary(code: DocumentLanguage): boolean {
   return !!def && def.noDict !== true;
 }
 
+// Synonym data exists for every dictionary but the ones that say otherwise.
+export function hasThesaurus(code: DocumentLanguage): boolean {
+  return hasDictionary(code) && findLanguage(code)?.noThesaurus !== true;
+}
+
 // East Asian text: both formats keep its language in their own asian slot, and both word
 // processors read it only from there. The complex slot (Hebrew, Arabic) is separate.
 export function isAsianTag(tag: string): boolean {
   return /^(zh|ja|ko)\b/i.test(tag.trim());
+}
+
+// Complex-script languages: both formats keep theirs in a third slot (w:lang w:bidi,
+// style:language-complex), the only one either word processor reads such text from.
+export function isComplexTag(tag: string): boolean {
+  return /^(ar|he|fa|ur|ps|sd|ug|yi|dv|ckb|th|lo|km|hi|bn|ta|te|kn|ml|gu|pa|mr|ne|si)\b/i.test(tag.trim());
+}
+
+// Languages written from right to left: a new document in one starts with such a page.
+export function isRtlTag(tag: string): boolean {
+  return /^(ar|he|fa|ur|ps|sd|ug|yi|dv|ckb)\b/i.test(tag.trim());
+}
+
+// The slot of the file a tag is written to and read from.
+export type LangSlot = 'west' | 'asian' | 'complex';
+export function langSlot(tag: string): LangSlot {
+  return isAsianTag(tag) ? 'asian' : isComplexTag(tag) ? 'complex' : 'west';
+}
+
+// Languages written in Arabic script, which number lists in its digits and letters.
+export function isArabicTag(tag: string): boolean {
+  return /^(ar|fa|ur|ps|sd|ug|ckb)\b/i.test(tag.trim());
 }
 
 export function isCyrillicTag(tag: string): boolean {
@@ -70,9 +103,10 @@ export function isCyrillicTag(tag: string): boolean {
 }
 
 // The scripts whose list numbering the menus offer: the UI's and the document's.
-export function numberingScripts(main: DocumentLanguage, other: string | null, uiLocale: string): { cjk: boolean; cyrillic: boolean } {
+export function numberingScripts(main: DocumentLanguage, other: string | null, uiLocale: string): { cjk: boolean; cyrillic: boolean; arabic: boolean; korean: boolean } {
   const tags = [tagForLanguage(main) ?? '', other ?? '', uiLocale];
-  return { cjk: tags.some(isAsianTag), cyrillic: tags.some(isCyrillicTag) };
+  const korean = tags.some((t) => /^ko\b/i.test(t.trim()));
+  return { cjk: tags.some(isAsianTag), cyrillic: tags.some(isCyrillicTag), arabic: tags.some(isArabicTag), korean };
 }
 
 // A tag's slot: a paragraph or a run carries a western and an asian language, and a tag
@@ -97,25 +131,46 @@ export function westernCode(main: DocumentLanguage, other: string | null): Docum
   return (west && codeForTag(west)) || main;
 }
 
-// A file's main language from its two defaults. Both word processors write an asian
-// default into every file whatever it is written in, so that one leads only where the
-// text is mostly East Asian, or where there is no western one.
-export function mainOfPair(west: string | null, asian: string | null, asianText: boolean): { main: string | null; other: string | null } {
-  return asian && (asianText || !west) ? { main: asian, other: west } : { main: west, other: asian };
+// The dictionary for the Latin words of a complex-script document: its other slot's, else
+// the UI language where that is a western one with a dictionary, else English — as
+// LibreOffice's western default follows the locale. Only checked with, never saved.
+export function spellAltCode(main: DocumentLanguage, other: string | null, uiLocale: string): DocumentLanguage | null {
+  // An East Asian document checks in its western language first: its own is the other one.
+  if (isAsianTag(tagForLanguage(main) ?? '')) return westernCode(main, other) === main ? null : main;
+  if (main === NO_LANGUAGE || !isComplexTag(tagForLanguage(main) ?? main)) return codeForTag(other ?? '');
+  const own = other && langSlot(other) === 'west' ? codeForTag(other) : null;
+  if (own) return own;
+  const ui = codeForTag(uiLocale) ?? uiLocale;
+  return hasDictionary(ui) && langSlot(ui) === 'west' ? ui : 'en';
 }
 
-// "For all text": the pick becomes the main language, and a main language of the other
-// script moves to the other slot, so the text in that script keeps its language. No
+// A file's main language from its three defaults. Both word processors write an asian and
+// a complex default into every file whatever it is written in, so one of those leads only
+// where most of the text is in its script, or where there is no western one. The other
+// slot keeps the default of the script the text also holds.
+export function mainOfSlots(
+  langs: { west: string | null; asian: string | null; complex: string | null },
+  script: 'asian' | 'complex' | null,
+  hasComplexText = script === 'complex',
+): { main: string | null; other: string | null } {
+  const { west, asian, complex } = langs;
+  if (asian && (script === 'asian' || (!west && !complex))) return { main: asian, other: west };
+  if (complex && (script === 'complex' || !west)) return { main: complex, other: west ?? asian };
+  return { main: west, other: (hasComplexText && complex) || asian };
+}
+
+// "For all text": the pick becomes the main language, and a main language of another
+// slot moves to the other slot, so the text in that script keeps its language. No
 // language clears both slots, as LibreOffice's "None" does.
 export function pickDocumentLanguage(main: DocumentLanguage, other: string | null, code: DocumentLanguage): { main: DocumentLanguage; other: string | null } {
   if (code === NO_LANGUAGE) return { main: code, other: null };
   const was = tagForLanguage(main);
   const next = tagForLanguage(code);
-  return { main: code, other: was && next && isAsianTag(was) !== isAsianTag(next) ? was : other };
+  return { main: code, other: was && next && langSlot(was) !== langSlot(next) ? was : other };
 }
 
 // The Han font an East Asian document defaults to, by region; null for any other language.
-const CJK_DOC_FONT: Record<string, string> = { TW: 'PMingLiU', HK: 'PMingLiU', MO: 'PMingLiU', JP: 'Yu Mincho' };
+const CJK_DOC_FONT: Record<string, string> = { TW: 'PMingLiU', HK: 'PMingLiU', MO: 'PMingLiU', JP: 'Yu Mincho', KR: 'Malgun Gothic' };
 export function cjkDocFont(tag: string): string | null {
   if (!isAsianTag(tag)) return null;
   return CJK_DOC_FONT[odfFromTag(tag)?.country ?? ''] ?? 'SimSun';

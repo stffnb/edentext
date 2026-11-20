@@ -4,7 +4,8 @@ import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { DEFAULT_SHORTCUTS } from '../shortcuts';
 import { blockFontSize } from '../../utils/fontSize';
 
-// Left indent in cm: maps to fo:margin-left on paragraphs/headings; on lists it shifts
+// Indent before the text in cm (the right side of a right-to-left block, as in both
+// formats): maps to fo:margin-left on paragraphs/headings; on lists it shifts
 // the whole list block (list items nest instead via sinkListItem/liftListItem).
 
 export const INDENT_STEP_CM = 1.25; // LibreOffice's default indent increment
@@ -171,7 +172,7 @@ export const Indent = Extension.create({
                 'data-indent': String(cm),
                 // Plus the section inset, which .tiptap's own padding can't draw, and a
                 // boxed paragraph's hang (editor.css).
-                style: `margin-left: calc(var(--sec-inset-left, 0px) + ${cm}cm + var(--box-hang, 0px)); --ind: ${cm}cm`,
+                style: `margin-inline-start: calc(var(--sec-inset-start, 0px) + ${cm}cm + var(--box-hang, 0px)); --ind: ${cm}cm`,
               };
             },
           },
@@ -184,7 +185,7 @@ export const Indent = Extension.create({
               if (attributes.indentChars == null) return {};
               const n = Number(attributes.indentChars);
               const ind = `calc(${n} * var(--char-unit, 1em))`;
-              return { 'data-indent-chars': String(n), style: `margin-left: calc(var(--sec-inset-left, 0px) + ${ind} + var(--box-hang, 0px)); --ind: ${ind}` };
+              return { 'data-indent-chars': String(n), style: `margin-inline-start: calc(var(--sec-inset-start, 0px) + ${ind} + var(--box-hang, 0px)); --ind: ${ind}` };
             },
           },
           // Right indent in characters, the mirror of `indentChars`.
@@ -194,7 +195,7 @@ export const Indent = Extension.create({
             renderHTML: (attributes: Record<string, unknown>) => {
               if (attributes.indentRightChars == null) return {};
               const n = Number(attributes.indentRightChars);
-              return { 'data-indent-right-chars': String(n), style: `margin-right: calc(var(--sec-inset-right, 0px) + ${n} * var(--char-unit, 1em))` };
+              return { 'data-indent-right-chars': String(n), style: `margin-inline-end: calc(var(--sec-inset-end, 0px) + ${n} * var(--char-unit, 1em)); --ind-r: calc(${n} * var(--char-unit, 1em))` };
             },
           },
           // Right indent in cm (fo:margin-right / w:ind w:right), the mirror of `indent`.
@@ -206,7 +207,7 @@ export const Indent = Extension.create({
               const cm = Number(attributes.indentRight);
               return {
                 'data-indent-right': String(cm),
-                style: `margin-right: calc(var(--sec-inset-right, 0px) + ${cm}cm)`,
+                style: `margin-inline-end: calc(var(--sec-inset-end, 0px) + ${cm}cm); --ind-r: ${cm}cm`,
               };
             },
           },
@@ -247,7 +248,7 @@ export const Indent = Extension.create({
 
     // Rewrite one indent attr on every paragraph/heading in the selection; 0 clears it.
     // `next` gets the block's own value, so a relative step keeps each block's offset in
-    // a mixed selection. List-item paragraphs are skipped (lists indent by nesting).
+    // a mixed selection. List-item paragraphs take only a right indent (lists indent by nesting).
     // `clear` names an attr the written one excludes, dropped from every block written;
     // a step from a character indent starts from its size in cm.
     type IndentAttr = 'indent' | 'indentChars' | 'indentRight' | 'indentRightChars' | 'indentFirst' | 'indentFirstChars';
@@ -257,7 +258,7 @@ export const Indent = Extension.create({
         let changed = false;
         state.doc.nodesBetween(from, to, (node: PMNode, pos: number, parent: PMNode | null) => {
           if (!types.includes(node.type.name)) return;
-          if (parent?.type.name === 'listItem') return;
+          if (parent?.type.name === 'listItem' && attr !== 'indentRight' && attr !== 'indentRightChars') return;
           const current = attr === 'indent' ? leftCm(node.attrs, parseFloat(blockFontSize(node)))
             : typeof node.attrs[attr] === 'number' ? node.attrs[attr] : 0;
           const value = next(current) || null;
@@ -351,11 +352,11 @@ export const Indent = Extension.create({
     };
   },
 
-  // A list indents by nesting, so an item's paragraph carries no indent of its own —
-  // the commands above refuse to set one, and neither file can express it. Wrapping an
-  // indented paragraph into a list (or pasting one in) is the door this closes.
+  // A list indents by nesting, so an item's paragraph carries no left or first-line
+  // indent of its own (wrapping or pasting one in is the door this closes). The right
+  // indent is the paragraph's in both formats and LibreOffice applies it in a list.
   addProseMirrorPlugins() {
-    const attrs = ['indent', 'indentChars', 'indentRight', 'indentRightChars', 'indentFirst', 'indentFirstChars'] as const;
+    const attrs = ['indent', 'indentChars', 'indentFirst', 'indentFirstChars'] as const;
     return [new Plugin({
       appendTransaction: (trs, _old, state) => {
         if (!trs.some((t) => t.docChanged)) return null;
@@ -365,7 +366,7 @@ export const Indent = Extension.create({
           // frame — a list inside a text box is a list all the same.
           if (node.isInline && node.isAtom) return false;
           if (parent?.type.name !== 'listItem' || attrs.every((a) => node.attrs[a] == null)) return;
-          tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: null, indentChars: null, indentRight: null, indentRightChars: null, indentFirst: null, indentFirstChars: null });
+          tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: null, indentChars: null, indentFirst: null, indentFirstChars: null });
         });
         return tr.steps.length ? tr : null;
       },

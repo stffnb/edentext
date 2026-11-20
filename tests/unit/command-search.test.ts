@@ -36,7 +36,10 @@ describe('command search', () => {
 
   it('indexes only ids a control carries', () => {
     const dir = 'src/lib/components/ribbon/';
-    const has = carries([dir + 'Ribbon.svelte', ...readdirSync(dir + 'tabs').map((f) => `${dir}tabs/${f}`)]);
+    const tabs = readdirSync(dir + 'tabs').map((f) => `${dir}tabs/${f}`);
+    // A panel both chromes share lives in toolbar/ and is imported by the tab.
+    const shared = tabs.flatMap((f) => [...readFileSync(f, 'utf8').matchAll(/from '\.\.\/\.\.\/toolbar\/(\w+\.svelte)'/g)].map((m) => `src/lib/components/toolbar/${m[1]}`));
+    const has = carries([dir + 'Ribbon.svelte', ...tabs, ...shared]);
     const missing = RIBBON_COMMANDS.filter((c) => !has(c.id) || (c.via && !has(c.via))).map((c) => c.id);
     expect(missing).toEqual([]);
     expect(new Set(RIBBON_COMMANDS.map((c) => c.id)).size).toBe(RIBBON_COMMANDS.length);

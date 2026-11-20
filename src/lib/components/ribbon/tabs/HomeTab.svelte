@@ -3,6 +3,7 @@
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
   import ReadGate from '../../ReadGate.svelte';
+  import DictationButton from '../../DictationButton.svelte';
   import Icon from '../Icon.svelte';
   import FontFamilyBox from '../controls/FontFamilyBox.svelte';
   import FontSizeBox from '../controls/FontSizeBox.svelte';
@@ -10,13 +11,14 @@
   import ColorPicker from '../../ColorPicker.svelte';
   import ParagraphBorderPicker from '../../ParagraphBorderPicker.svelte';
   import { anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
-  import { uniformMarkColor, uniformBlockAttr, hasAsianLanguage } from '../../../utils/selectionFormat';
+  import { formatDecimal } from '../../../i18n/number';
+  import { uniformMarkColor, uniformBlockAttr, hasAsianLanguage, shownAlign } from '../../../utils/selectionFormat';
   import { stepFontSize } from '../../../editor/extensions/shortcuts';
 
   import { clipboardCommand, readClipboard } from '../../../editor/contextMenuItems';
   import { LINE_STYLES, changeIndent as stepIndent, setLineStyle as applyLineStyle } from '../../formatCommands';
   import { BULLET_TYPES } from '../../../utils/bulletListTypes';
-  import { formatOrdinal, orderedTypeDef, orderedTypesFor, type OrderedListType } from '../../../utils/orderedListTypes';
+  import { formatOrdinal, orderedTypeDef, orderedTypesFor, sampleDir, type OrderedListType } from '../../../utils/orderedListTypes';
   import { effectiveOrderedTypeAt, inChapterHeading } from '../../../editor/extensions/orderedList';
   import { outlineIsEmpty } from '../../../styles/outlineNumbering';
   import { listStyleNameAt } from '../../../editor/extensions/listStyle';
@@ -24,7 +26,9 @@
   import { isInHeaderCell } from '../../../editor/extensions/tableHeaderRow';
   import { cellRegionText } from '../../../editor/extensions/tableStyle';
   import { styleSheet } from '../../../styles/sheet.svelte';
-  import { emphasisCss, type CapsMode, type Emphasis, type LineStyle } from '../../../editor/extensions/textEffects';
+  import { emphasisCss, hasTextEffect, type CapsMode, type Emphasis, type LineStyle } from '../../../editor/extensions/textEffects';
+  import TextEffectsMenu from '../../toolbar/TextEffectsMenu.svelte';
+  import TextEffectsIcon from '../../toolbar/TextEffectsIcon.svelte';
   import type { StyleFamily } from '../../../styles/styleSheet';
   import { styleLabel, t } from '../../../i18n/i18n.svelte';
   import { withShortcut } from '../../../i18n/shortcut';
@@ -67,13 +71,14 @@
   let isStrike = $derived(tick >= 0 && !!editor?.isActive('strike'));
   let asianSelection = $derived(tick >= 0 && !!editor && hasAsianLanguage(editor.state));
   let emphasis = $derived(tick >= 0 ? editor?.getAttributes('textStyle').emphasis ?? null : null);
+  let hasEffect = $derived(tick >= 0 && !!editor && hasTextEffect(editor.getAttributes('textStyle')));
   let isSuper = $derived(tick >= 0 && !!editor?.isActive('superscript'));
   let isSub = $derived(tick >= 0 && !!editor?.isActive('subscript'));
   let isBulletList = $derived(tick >= 0 && !!editor?.isActive('bulletList'));
   // On a heading the button stands for the chapter numbering it switches.
   let isOrderedList = $derived(tick >= 0 && !!editor
     && (editor.isActive('orderedList') || (inChapterHeading(editor.state) && !outlineIsEmpty(sheet.outline))));
-  let align = $derived(tick >= 0 && editor ? (['left', 'center', 'right', 'justify'].find((a) => editor!.isActive({ textAlign: a })) ?? '') : '');
+  let align = $derived(tick >= 0 && editor ? shownAlign(editor.view) : '');
 
   let fontColor = $derived(tick >= 0 && editor ? uniformMarkColor(editor.state, 'textStyle') : null);
   let highlight = $derived(tick >= 0 && editor ? uniformMarkColor(editor.state, 'highlight') : null);
@@ -134,7 +139,7 @@
   function lineHeightLabel(v: string): string {
     if (v === '1') return t().toolbarExpanded.lineSingle;
     if (v === '2') return t().toolbarExpanded.lineDouble;
-    return v;
+    return formatDecimal(Number(v));
   }
 
   let currentBulletChar = $derived.by<string | null>(() => {
@@ -247,6 +252,14 @@
           </div>
         {/if}
       </div>
+      <div class="rb-menu-wrap" use:clickOutside={'textEffects'}>
+        <RibbonButton cmd="textEffects" content={effectsIcon} title={t().ribbon.textEffects.title} active={hasEffect || isMenuOpen('textEffects')} caret onclick={() => toggleMenu('textEffects')} />
+        {#if isMenuOpen('textEffects')}
+          <div class="ribbon-menu" use:anchored role="menu">
+            <TextEffectsMenu {editor} {tick} onDone={closeMenu} />
+          </div>
+        {/if}
+      </div>
     </div>
     <div class="rb-row">
       <RibbonButton cmd="bold" content={boldIcon} title={`${t().toolbar.bold} (${withShortcut('Ctrl+B')})`} active={isBold} onclick={toggleBold} />
@@ -356,7 +369,7 @@
             <div class="rb-menu-label">{t().toolbar.numbering}</div>
             {#each orderedTypesFor(scripts, currentOrderedType) as o}
               <button class:selected={currentOrderedType === o.key} onclick={() => applyOrderedType(o.key)}>
-                <span class="marker">{o.preview}</span>{o.label}
+                <span class="marker" dir={sampleDir(o)}>{o.preview}</span><span dir={sampleDir(o)}>{o.label}</span>
               </button>
             {/each}
             {#if orderedListStyles.length}
@@ -430,12 +443,14 @@
     <RibbonButton variant="small" icon="find" cmd="find" label={t().ribbon.find} title={`${t().ribbon.find} (${shortcutHint('find')})`} onclick={() => onFind?.('find')} />
     <ReadGate><RibbonButton variant="small" icon="replace" cmd="replace" label={t().ribbon.replace} title={`${t().ribbon.replace} (${shortcutHint('replace')})`} onclick={() => onFind?.('replace')} /></ReadGate>
   </div>
+  <ReadGate><DictationButton variant="ribbon" cmd="dictate" disabled={!editor} /></ReadGate>
 </RibbonGroup>
 
 {#snippet boldIcon()}<span class="glyph" style="font-weight: 800">{t().toolbar.glyphs.bold}</span>{/snippet}
 {#snippet italicIcon()}<span class="glyph" style="font-style: italic; font-family: serif">{t().toolbar.glyphs.italic}</span>{/snippet}
 {#snippet underlineIcon()}<span class="glyph" style="text-decoration: underline">{t().toolbar.glyphs.underline}</span>{/snippet}
 {#snippet emphasisIcon()}<span class="glyph" style="text-emphasis: filled dot; text-emphasis-position: under right">文</span>{/snippet}
+{#snippet effectsIcon()}<TextEffectsIcon />{/snippet}
 {#snippet strikeIcon()}<span class="glyph" style="text-decoration: line-through">ab</span>{/snippet}
 {#snippet subIcon()}<span class="glyph">X<span class="glyph-script down">2</span></span>{/snippet}
 {#snippet superIcon()}<span class="glyph">X<span class="glyph-script up">2</span></span>{/snippet}

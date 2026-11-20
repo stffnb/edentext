@@ -30,6 +30,7 @@ import { loadPageMargins } from '../storage/pageMargins';
 import { loadPageNumbering } from '../storage/pageNumbering';
 import { loadLineNumbering } from '../storage/lineNumbering';
 import { loadHyphenation } from '../storage/hyphenation';
+import { loadPageRtl } from '../storage/writingMode';
 import { loadFoldMarks } from '../storage/foldMarks';
 import { loadPageDecor } from '../storage/pageDecor';
 import { loadDocProperties } from '../storage/docProperties';
@@ -157,7 +158,14 @@ function runLabels(child: PMNode, base: ResolvedStyle): string[] {
       if (color) out.push(`color ${color}`);
       if (m.attrs.caps) out.push(m.attrs.caps === 'smallCaps' ? 'small caps' : `case ${m.attrs.caps}`);
       if (m.attrs.textPosition) out.push(`raised ${m.attrs.textPosition}pt`);
+      if (m.attrs.letterSpacing != null) out.push(`letter-spacing ${m.attrs.letterSpacing}pt`);
       if (m.attrs.emphasis) out.push(`emphasis ${m.attrs.emphasis}`);
+      if (m.attrs.outline != null) out.push(m.attrs.outline ? 'outline' : 'no outline');
+      if (m.attrs.shadow != null) out.push(m.attrs.shadow ? 'shadow' : 'no shadow');
+      if (m.attrs.relief) out.push(m.attrs.relief === 'none' ? 'no relief' : m.attrs.relief);
+      if (m.attrs.textOutline) out.push(`outline ${m.attrs.textOutline.color} ${m.attrs.textOutline.widthPt}pt`);
+      if (m.attrs.textShadow) out.push(`shadow ${m.attrs.textShadow.color}`);
+      if (m.attrs.textGlow) out.push(`glow ${m.attrs.textGlow.color} ${m.attrs.textGlow.radiusPt}pt`);
     }
   }
   return out;
@@ -413,9 +421,10 @@ function documentSettings(): string[] {
   if (loadLineNumbering().on) out.push('line numbers');
   if (loadHyphenation()) out.push('hyphenation');
   if (loadFoldMarks()) out.push('fold marks');
+  if (loadPageRtl()) out.push('right-to-left page');
   const decor = loadPageDecor();
   if (decor.background) out.push(`background ${decor.background}`);
-  if (decor.border) out.push(`border ${decor.border.widthPt}pt solid ${decor.border.color}`);
+  if (decor.border) out.push(`border ${decor.border.widthPt}pt ${decor.border.line ?? 'solid'} ${decor.border.color}`);
   if (decor.watermark) out.push(`watermark ${JSON.stringify(decor.watermark.text)}`);
   const props = loadDocProperties();
   for (const k of ['title', 'subject', 'keywords'] as const) if (props[k]) out.push(`${k} ${JSON.stringify(props[k])}`);

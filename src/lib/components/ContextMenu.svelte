@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { MenuEntry } from '../editor/contextMenuItems';
+  import { uiRtl } from '../i18n/i18n.svelte';
 
   let {
     top,
@@ -14,10 +15,12 @@
   } = $props();
 
   let menuEl: HTMLDivElement | undefined = $state();
-  // Flips set after measuring: the menu opens up/left when it would leave the viewport.
+  // Flips set after measuring: the menu opens towards the interface's end side and down,
+  // or the other way when it would leave the viewport. `flipX` is the leftward opening.
   let flipX = $state(false);
   let flipY = $state(false);
-  // The one open submenu, by index in items; it opens left or up when it would leave the window.
+  // The one open submenu, by index in items; it opens back over the start side (`subLeft`)
+  // or up when it would leave the window.
   let openSub = $state<number | null>(null);
   let subEl: HTMLDivElement | undefined = $state();
   let subLeft = $state(false);
@@ -55,7 +58,7 @@
     const pr = parent?.getBoundingClientRect();
     const x = (pr?.left ?? 0) + menuEl.offsetLeft - (parent?.scrollLeft ?? 0);
     const y = (pr?.top ?? 0) + menuEl.offsetTop - (parent?.scrollTop ?? 0);
-    flipX = x + menuEl.offsetWidth > window.innerWidth - 4;
+    flipX = uiRtl() ? x - menuEl.offsetWidth >= 4 : x + menuEl.offsetWidth > window.innerWidth - 4;
     flipY = y + menuEl.offsetHeight > window.innerHeight - 4;
     menuEl.focus({ preventScroll: true });
   });
@@ -64,7 +67,7 @@
   $effect(() => {
     if (!subEl) return;
     const trigger = subEl.parentElement!.getBoundingClientRect();
-    subLeft = trigger.right + subEl.offsetWidth > window.innerWidth - 4;
+    subLeft = uiRtl() ? trigger.left - subEl.offsetWidth < 4 : trigger.right + subEl.offsetWidth > window.innerWidth - 4;
     subUp = trigger.top + subEl.offsetHeight > window.innerHeight - 4;
   });
 
@@ -77,16 +80,17 @@
   }
 
   // Roving focus with the arrow keys within the focused panel, as in a native menu;
-  // right opens a submenu, left goes back to its trigger.
+  // the arrow towards the end side opens a submenu, the other goes back to its trigger.
   function onKeydown(e: KeyboardEvent) {
     const focused = document.activeElement as HTMLElement | null;
     const panel = focused?.closest<HTMLElement>('[role=menu]') ?? menuEl;
-    if (e.key === 'ArrowRight' && focused?.dataset.sub) {
+    const [into, back] = uiRtl() ? ['ArrowLeft', 'ArrowRight'] : ['ArrowRight', 'ArrowLeft'];
+    if (e.key === into && focused?.dataset.sub) {
       e.preventDefault();
       showSub(Number(focused.dataset.sub), true);
       return;
     }
-    if (e.key === 'ArrowLeft' && panel && panel === subEl) {
+    if (e.key === back && panel && panel === subEl) {
       e.preventDefault();
       (panel.previousElementSibling as HTMLElement | null)?.focus();
       openSub = null;
@@ -130,7 +134,7 @@
           onclick={() => showSub(i, true)}
         >
           <span class="cm-label">{entry.label}</span>
-          <svg class="cm-hint" width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M2.5 1l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+          <svg class="cm-hint icon-flip" width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M2.5 1l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
         </button>
         {#if openSub === i}
           <div bind:this={subEl} class="cm-menu cm-sub" class:checks={hasChecks(entry.items)} class:left={subLeft} class:up={subUp} role="menu" tabindex="-1">
@@ -192,19 +196,19 @@
     background: transparent;
     color: var(--color-text);
     cursor: pointer;
-    text-align: left;
+    text-align: start;
     white-space: nowrap;
   }
 
   /* A panel with a checkable entry keeps a column for the tick, so its labels align. */
-  .cm-menu.checks > .cm-item, .cm-menu.checks > .cm-subwrap > .cm-item { position: relative; padding-left: 26px; }
+  .cm-menu.checks > .cm-item, .cm-menu.checks > .cm-subwrap > .cm-item { position: relative; padding-inline-start: 26px; }
   /* In the label's colour: the ribbon and panes map --color-primary to a fill accent,
      too faint on their dark surfaces for a thin tick. */
-  .cm-check { position: absolute; left: 9px; }
+  .cm-check { position: absolute; inset-inline-start: 9px; }
 
   .cm-subwrap { position: relative; }
-  .cm-sub { top: -5px; left: 100%; }
-  .cm-sub.left { left: auto; right: 100%; }
+  .cm-sub { top: -5px; inset-inline-start: 100%; }
+  .cm-sub.left { inset-inline: auto 100%; }
   .cm-sub.up { top: auto; bottom: -5px; }
 
   .cm-item:hover:not(:disabled, [aria-disabled='true']),

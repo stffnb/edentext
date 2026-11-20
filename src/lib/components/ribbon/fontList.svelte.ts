@@ -65,10 +65,10 @@ export async function listAllFonts(): Promise<void> {
   if (list && list.length > 0) allInstalled = list;
 }
 
-// A Chinese user looks for 宋体, a Japanese one for ＭＳ 明朝, not the Latin name. Only the
-// **label** changes: the run and the file keep the Latin family, which CSS and both formats
-// resolve. Simplified and Traditional name the same faces differently.
-type LabelLocale = 'zh-Hans' | 'zh-Hant' | 'ja';
+// A Chinese user looks for 宋体, a Japanese one for ＭＳ 明朝, a Korean one for 맑은 고딕, not
+// the Latin name. Only the **label** changes: the run and the file keep the Latin family, which
+// CSS and both formats resolve; Simplified and Traditional name the same faces differently.
+type LabelLocale = 'zh-Hans' | 'zh-Hant' | 'ja' | 'ko';
 const CJK_FONT_LABELS: Record<string, Partial<Record<LabelLocale, string>>> = {
   SimSun: { 'zh-Hans': '宋体', 'zh-Hant': '宋體' },
   NSimSun: { 'zh-Hans': '新宋体', 'zh-Hant': '新宋體' },
@@ -106,16 +106,21 @@ const CJK_FONT_LABELS: Record<string, Partial<Record<LabelLocale, string>>> = {
   'Hiragino Sans': { ja: 'ヒラギノ角ゴシック' },
   'Hiragino Kaku Gothic ProN': { ja: 'ヒラギノ角ゴ ProN' },
   'Hiragino Maru Gothic Pro': { ja: 'ヒラギノ丸ゴ Pro' },
+  'Malgun Gothic': { ko: '맑은 고딕' },
+  Batang: { ko: '바탕' },
+  Gulim: { ko: '굴림' },
+  Dotum: { ko: '돋움' },
+  Gungsuh: { ko: '궁서' },
+  'Apple SD Gothic Neo': { ko: 'Apple SD 산돌고딕 Neo' },
+  AppleGothic: { ko: '애플고딕' },
+  AppleMyungjo: { ko: '애플명조' },
 };
-
-// Korean faces have no label here (there is no Korean UI), but are asian all the same.
-const KOREAN_FONTS = ['Malgun Gothic', 'Batang', 'Gulim', 'Dotum', 'Gungsuh', 'Apple SD Gothic Neo', 'AppleGothic', 'AppleMyungjo'];
 
 // Whether picking the font sets the asian half of the pair, as Word decides by the font's
 // own script. Known faces, a name written in CJK, or a region tag (Noto Sans CJK SC,
 // Source Han Serif JP). ponytail: a CJK face named otherwise lands in the western slot.
 export function isAsianFont(family: string): boolean {
-  return family in CJK_FONT_LABELS || KOREAN_FONTS.includes(family)
+  return family in CJK_FONT_LABELS
     || /[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}]|\b(CJK|SC|TC|HK|JP|KR)\b/u.test(family);
 }
 

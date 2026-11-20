@@ -9,6 +9,7 @@
   import { styleLabel, t } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
   import FontSizeField from './FontSizeField.svelte';
+  import ColorPicker from './ColorPicker.svelte';
 
   let { editor, tick, mode, focusNonce, onClose }:
     { editor: Editor | null; tick: number; mode: 'find' | 'replace'; focusNonce: number; onClose: () => void } = $props();
@@ -88,7 +89,7 @@
 
 <div class="find-bar" role="dialog" aria-label={t().findReplace.dialogLabel}>
   <button class="fb-expand" onclick={() => (showReplace = !showReplace)} title={showReplace ? t().findReplace.hideReplace : t().findReplace.showReplace} aria-label={t().findReplace.toggleReplace}>
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style="transform: rotate({showReplace ? 90 : 0}deg)">
+    <svg class="icon-flip" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style="transform: rotate({showReplace ? 90 : 0}deg)">
       <path d="M3 1.5l3.5 3.5L3 8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
@@ -114,7 +115,7 @@
       <button class="fb-opt fb-word" class:on={wholeWord} onclick={toggleWord} title={t().findReplace.wholeWord} aria-pressed={wholeWord}>
         <span>W</span>
       </button>
-      <button class="fb-opt" class:on={useRegex} onclick={toggleRegex} title={t().findReplace.regex} aria-pressed={useRegex}>.*</button>
+      <button class="fb-opt" class:on={useRegex} onclick={toggleRegex} title={t().findReplace.regex} aria-pressed={useRegex} dir="ltr">.*</button>
       <button class="fb-opt" class:on={showFormat} onclick={() => (showFormat = !showFormat)} title={t().findReplace.format} aria-pressed={showFormat}>¶</button>
       <button class="fb-nav" onclick={prev} disabled={!results.count} title={`${t().findReplace.previous} (${withShortcut('Shift+Enter')})`} aria-label={t().findReplace.previousAria}>
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 7.5L6 4l3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -180,12 +181,15 @@
             style="flex: none; width: 4rem; height: 1.7rem"
             onChange={(pt) => setFormat(find, { sizePt: pt })}
           />
-          <input
-            class="fb-color"
-            type="color"
-            value={spec(find).color ?? '#000000'}
-            aria-label={t().findReplace.color}
-            onchange={(e) => setFormat(find, { color: e.currentTarget.value })}
+          <ColorPicker
+            editor={null}
+            currentColor={spec(find).color ?? null}
+            defaultColor={spec(find).color ?? '#000000'}
+            title={t().findReplace.color}
+            chevronTitle={t().findReplace.color}
+            clearLabel={t().findReplace.noColor}
+            onApply={(c) => setFormat(find, { color: c })}
+            onClear={() => setFormat(find, { color: undefined })}
           />
           {#if spec(find).color}
             <button class="fb-opt" title={t().findReplace.noColor} onclick={() => setFormat(find, { color: undefined })}>×</button>
@@ -256,13 +260,6 @@
   .fb-fmt-underline { text-decoration: underline; }
 
   .fb-font { width: 6rem; }
-  .fb-color {
-    width: 1.9rem;
-    height: 1.7rem;
-    padding: 1px;
-    cursor: pointer;
-  }
-
   .fb-fmt-label {
     min-width: 4.6rem;
     font-size: 0.72rem;

@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <a href="../../README.md">English</a> · <b>Deutsch</b> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.it.md">Italiano</a> · <a href="README.pt.md">Português</a> · <a href="README.el.md">Ελληνικά</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.ja.md">日本語</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a>
+  <a href="../../README.md">English</a> · <b>Deutsch</b> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.it.md">Italiano</a> · <a href="README.pt.md">Português</a> · <a href="README.el.md">Ελληνικά</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.pl.md">Polski</a> · <a href="README.id.md">Bahasa Indonesia</a> · <a href="README.ar.md">العربية</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a>
 </p>
 
 <picture>
@@ -33,7 +33,7 @@
 
 ---
 
-EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von der schnellen Notiz bis zum ganzen Buch. Kein Server, kein Konto: Alles wird lokal verarbeitet, die Dokumente verlassen nie den eigenen Rechner. Einfach den Link öffnen oder EdenText als App installieren und offline nutzen. Der erste Download ist für die meisten Sprachen etwa 2 MB groß; Wörterbücher und Schriften werden erst bei Bedarf geladen[^1]. Die Oberfläche gibt es auf Englisch, Deutsch, Spanisch, Französisch, Italienisch, Portugiesisch, Griechisch, Russisch, Ukrainisch, Japanisch und Chinesisch (vereinfacht und traditionell).
+EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von der schnellen Notiz bis zum ganzen Buch. Kein Server, kein Konto: Alles wird lokal verarbeitet, die Dokumente verlassen nie den eigenen Rechner. Einfach den Link öffnen oder EdenText als App installieren und offline nutzen. Der erste Download ist für die meisten Sprachen etwa 2 MB groß; Wörterbücher und Schriften werden erst bei Bedarf geladen[^1]. Die Oberfläche gibt es auf Englisch, Deutsch, Spanisch, Französisch, Italienisch, Portugiesisch, Griechisch, Russisch, Ukrainisch, Polnisch, Indonesisch, Arabisch, Japanisch, Koreanisch und Chinesisch (vereinfacht und traditionell).
 
 > [!NOTE]
 > EdenText ist noch in der **Beta**-Phase und wird laufend weiterentwickelt. Tests und
@@ -70,14 +70,18 @@ EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von de
 - **Überarbeiten** – Änderungsverfolgung und Kommentar-Threads in Sprechblasen am Rand,
   Vergleichen und Zusammenführen mit einer anderen Datei,
   druckbares Markup, Rechtschreibprüfung (Englisch, Deutsch, Spanisch, Französisch, Italienisch,
-  Portugiesisch, Griechisch, Russisch und Ukrainisch), Synonyme (dieselben Sprachen
-  ohne Griechisch), Grammatikprüfung (Englisch)
+  Portugiesisch, Griechisch, Russisch, Ukrainisch, Polnisch, Indonesisch, Arabisch und Koreanisch), Synonyme (dieselben Sprachen
+  ohne Griechisch und Koreanisch), Grammatikprüfung (Englisch)
 - **Optionaler KI-Assistent** – mit einem frei wählbaren Anbieter oder einem lokalen Modell;
   beantwortet Fragen zum Dokument und bearbeitet es mit Änderungsverfolgung. Lässt sich
   abschalten; Anfragen gehen direkt an den Anbieter, ohne Umweg über einen EdenText-Server
+- **Diktieren** – Gesprochenes erscheint am Cursor, auf Deutsch und Englisch mit
+  gesprochenen Satzzeichen. Nutzt die Spracherkennung des Browsers (Chrome, Edge, Safari),
+  die den Ton an ihren Sprachdienst schicken kann; EdenText fragt vor dem ersten Mal; oder einen
+  eigenen Spracherkennungsserver, etwa Whisper auf dem eigenen Rechner, in jedem Browser und in der Desktop-App
 - **Private by Design** – Dokumente verlassen nie den Rechner, alles läuft lokal; als
   installierte App auch offline. Der Editor selbst sendet nichts, außer bei eingeschaltetem
-  KI-Assistenten an den gewählten Anbieter. Dokumente werden automatisch im Browser
+  KI-Assistenten an den gewählten Anbieter. Beim Diktieren kann der Browser den Ton an seinen Sprachdienst schicken. Dokumente werden automatisch im Browser
   gesichert; unter „Zuletzt verwendete Dokumente“ lässt sich einstellen, dass geschlossene
   Dokumente beim nächsten Start gelöscht oder gar nicht erst gespeichert werden. Ein
   privates Fenster hinterlässt nach dem Schließen keine Spuren
@@ -149,6 +153,7 @@ Alternativ enthält jedes Release die Datei `edentext-<tag>.zip` mit der fertige
 Webserver bereitstellen. Das Container-Image kann auch lokal mit
 `docker build -t edentext .` gebaut werden.
 Für Kubernetes gibt es in [`charts/edentext`](../../charts/edentext) ein von der Community gepflegtes Helm-Chart.
+Wie man den KI-Assistenten und das Diktat für alle Nutzer vorab einrichtet, steht in [`docs/self-hosting.md`](../self-hosting.md) (englisch).
 
 Für ein Update empfiehlt es sich, die neuen Dateien über die alten zu kopieren, statt den
 Ordner vorher zu leeren. Tabs, die vor dem Update geöffnet wurden, laden bis zum Neuladen
@@ -177,6 +182,16 @@ Im Embed-Modus zeigt der Editor das EdenText-Logo und den Hinweis „Powered by 
 Beides muss nach den AGPL-Bedingungen erhalten bleiben ([NOTICE.md](../../NOTICE.md)); nur
 ein White-Label-Build unter der [kommerziellen Lizenz](../../LICENSE.commercial.md)
 lässt es weg (`VITE_EDENTEXT_ATTRIBUTION=off`).
+
+Wer den Editor vom eigenen Server ausliefern will, installiert die beiden npm-Pakete.
+`@edentext/app` enthält den fertig gebauten Editor und kopiert ihn zu den statischen Dateien
+(alternativ per Vite-Plugin); `@edentext/embed` ist das Hilfsskript, dazu ein Element
+`<eden-text>` und eine React-Komponente.
+
+```sh
+npm install @edentext/app @edentext/embed
+npx edentext-copy public/edentext --languages en,de
+```
 
 ## Architektur
 
@@ -230,6 +245,8 @@ Copyright © 2026 Steffen Becker · Made in Germany
 [AGPL-3.0](../../LICENSE), mit einer Zusatzbedingung nach deren Abschnitt 7(b) für den Embed-Modus ([NOTICE.md](../../NOTICE.md)). Wo die AGPL nicht passt, gibt es eine
 [kommerzielle Lizenz](../../LICENSE.commercial.md). Mitgelieferte Schriften und Sprachdaten
 behalten ihre eigenen Lizenzen – siehe [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
+Das Hilfsskript und die npm-Werkzeuge stehen unter der MIT-Lizenz, eine Host-Seite kann
+sie also unabhängig von ihrer eigenen Lizenz nutzen ([NOTICE.md](../../NOTICE.md)).
 
 *EdenText ist ein unabhängiges Projekt und weder mit Microsoft noch mit The Document
 Foundation verbunden. `.docx` und `.odt` werden aus Gründen der Interoperabilität unterstützt.*
@@ -240,5 +257,5 @@ Foundation verbunden. `.docx` und `.odt` werden aus Gründen der Interoperabilit
     dem Wörterbuch für die Sprache des Browsers und die Schriften der angezeigten Seite.
     Das griechische Wörterbuch bringt ~2,5 MB zusätzlich mit, das ukrainische ~1,5 MB.
     Alles andere wird erst bei Bedarf geladen und danach für die Offline-Nutzung gespeichert; alle
-    Schriften, Wörterbücher und Thesauri zusammen sind ~20 MB groß, mit der englischen
-    Grammatikprüfung ~28 MB.
+    Schriften, Wörterbücher und Thesauri zusammen sind ~22 MB groß, mit der englischen
+    Grammatikprüfung ~31 MB.

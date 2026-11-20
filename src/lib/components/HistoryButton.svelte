@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { popover } from './ribbon/menu.svelte';
   import type { Editor } from '@tiptap/core';
   import { historyLog, undoSteps, redoSteps } from '../utils/historyLog.svelte';
   import { flushPending } from '../editor/extensions/stateHistory';
@@ -49,26 +50,9 @@
     if (open && displayed.length === 0) close();
   });
 
-  // Close on outside-click or Escape (mirrors TablePicker's clickOutside action).
-  function popover(node: HTMLElement) {
-    function onDown(e: MouseEvent) {
-      if (!node.contains(e.target as Node)) close();
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') close();
-    }
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
-    return {
-      destroy() {
-        window.removeEventListener('mousedown', onDown);
-        window.removeEventListener('keydown', onKey);
-      },
-    };
-  }
 </script>
 
-<div class="history-split" use:popover>
+<div class="history-split" use:popover={close}>
   <div class="history-control">
     <button
       class="history-main"
@@ -76,7 +60,7 @@
       disabled={!canRun}
       title={`${direction === 'undo' ? t().history.undo : t().history.redo} (${withShortcut(direction === 'undo' ? 'Ctrl+Z' : 'Ctrl+Shift+Z')})`}
     >
-      {direction === 'undo' ? '↩' : '↪'}
+      <span class="icon-flip">{direction === 'undo' ? '↩' : '↪'}</span>
     </button>
     <button
       class="history-caret"
@@ -144,7 +128,7 @@
   }
 
   .history-control:hover:not(:has(:disabled)) .history-caret {
-    border-left-color: var(--color-border);
+    border-inline-start-color: var(--color-border);
   }
 
   .history-main,
@@ -171,7 +155,7 @@
   .history-caret {
     min-width: 1.1rem;
     padding: 0 0.2rem;
-    border-left: 1px solid transparent;
+    border-inline-start: 1px solid transparent;
     border-radius: 0;
   }
 
@@ -190,7 +174,7 @@
   .history-dropdown {
     position: absolute;
     top: calc(100% + 3px);
-    left: 0;
+    inset-inline-start: 0;
     min-width: 190px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -230,7 +214,7 @@
     color: var(--color-text);
     font-size: 0.82rem;
     font-family: var(--font-sans);
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
 

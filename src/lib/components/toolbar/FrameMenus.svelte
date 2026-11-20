@@ -7,6 +7,7 @@
   import { GAP_LABEL, GAP_SIDES, ORDERS, ORDER_ICON, ORDER_LABEL, hasWrapGap, setFrameGap, type FrameKind } from '../frameCommands';
   import { wrapGap, type WrapMode } from '../../editor/extensions/image';
   import { t } from '../../i18n/i18n.svelte';
+  import { formatDecimal } from '../../i18n/number';
 
   // What the ribbon's picture and shape tabs add to the floating frame toolbars: the
   // stacking order, the gap to the text, the alt text and a caption.
@@ -38,7 +39,7 @@
     {#each GAP_SIDES as side}
       <label class="im-field" data-cmd={`wrapGap-${side}`}>
         <span>{GAP_LABEL[side]()}</span>
-        <input type="text" inputmode="decimal" value={gap[side]} onchange={(e) => setFrameGap(editor, kind, wrapDist, side, e.currentTarget.value)} />
+        <input type="text" inputmode="decimal" value={formatDecimal(gap[side])} onchange={(e) => setFrameGap(editor, kind, wrapDist, side, e.currentTarget.value)} />
       </label>
     {/each}
   </div>

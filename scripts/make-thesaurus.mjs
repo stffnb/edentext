@@ -13,25 +13,39 @@ const SOURCES = [
   { code: 'pt', dat: 'pt_PT/th_pt_PT.dat', license: 'pt_PT/README_th_pt_PT.txt' },
   { code: 'ru', dat: 'ru_RU/th_ru_RU_M_aot_and_v2.dat', license: 'ru_RU/README_thes_ru_RU_M_aot_and_v2.txt' },
   { code: 'uk', dat: 'uk_UA/th_uk_UA.dat', license: 'uk_UA/README_th_uk_UA.txt' },
+  { code: 'id', dat: 'id/th_id_ID_v2.dat', license: 'id/README-thes' },
+  { code: 'ar', dat: 'ar/th_ar.dat', license: 'ar/COPYING.txt' },
+  { code: 'pl', dat: 'pl_PL/th_pl_PL_v2.dat', license: 'pl_PL/README_en.txt' },
 ];
 
-// "(noun)", "(ugs.)", "(generic term)" — a label to read, not a word to insert.
-const clean = (word) => word.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+// "(noun)", "(ugs.)", "(generic term)" — a label to read, not a word to insert. Arabic
+// vowel marks go too: running text is written without them, and so is the word looked up.
+const clean = (word) => word.replace(/\([^)]*\)/g, ' ').replace(/[\u064B-\u0652\u0670]/g, '').replace(/\s+/g, ' ').trim();
 
-// MyThes: a "headword|senseCount" line, then that many "(pos)|syn|syn|…" lines.
+// An antonym, as a sense line's tag (id "[ant]", ru) or a word's label (en, es): not a synonym.
+const ANTONYM = /\((antonym|антоним|ant[oó]nimo)\)|^\[ant\]/i;
+
+// MyThes: a "headword|senseCount" line, then that many "(pos)|syn|syn|…" lines. Most
+// sources leave the headword out of its own senses, so it leads the group here; the
+// same members under another headword are one group.
 function groups(dat) {
   const lines = dat.split('\n');
-  const out = new Set();
+  const out = new Map();
   for (let i = 1; i < lines.length; i++) {
     const head = lines[i].split('|');
     const senses = Number(head.at(-1));
     if (head.length < 2 || !Number.isInteger(senses) || senses < 1) continue;
+    const headword = clean(head[0]);
     for (let s = 0; s < senses; s++) {
-      const words = [...new Set((lines[++i] ?? '').split('|').slice(1).map(clean).filter(Boolean))];
-      if (words.length > 1) out.add(words.join(';'));
+      const [tag, ...fields] = (lines[++i] ?? '').split('|');
+      if (ANTONYM.test(tag)) continue;
+      const words = [...new Set(fields.filter((w) => !ANTONYM.test(w)).map(clean).filter(Boolean))];
+      if (headword && !words.some((w) => w.toLowerCase() === headword.toLowerCase())) words.unshift(headword);
+      const key = words.map((w) => w.toLowerCase()).sort().join(';');
+      if (words.length > 1 && !out.has(key)) out.set(key, words.join(';'));
     }
   }
-  return [...out].sort();
+  return [...out.values()].sort();
 }
 
 const bytes = async (path) => {

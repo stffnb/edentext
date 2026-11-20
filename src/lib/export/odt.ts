@@ -6,7 +6,7 @@ import type { RecordLock } from '../storage/trackChanges.svelte';
 import type { SpacingModel } from '../storage/spacingModel';
 import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
 import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
-import { HF_DISTANCE_CM, HF_ZONE_KEYS, hfIsEmpty, type HfDoc, type HfSet, type HfZoneKey } from '../storage/headerFooter';
+import { HF_DISTANCE_CM, HF_ZONE_KEYS, hfIsEmpty, type HfDoc, type HfFrame, type HfFrames, type HfSet, type HfZoneKey } from '../storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS, NOTE_FONT_SIZE_PT, NOTE_INDENT_CM, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, keywordList, type DocProperties } from '../storage/docProperties';
 import { DEFAULT_PAGE_NUMBERING, type PageNumbering } from '../storage/pageNumbering';
@@ -14,23 +14,24 @@ import { EMPTY_PAGE_DECOR, type PageDecor, type Watermark } from '../storage/pag
 import { FOLD_MARK_MM, PUNCH_MARK_MM, MARK_START_MM, FOLD_MARK_LEN_MM, PUNCH_MARK_LEN_MM, FOLD_MARK_NAME } from '../storage/foldMarks';
 import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbering';
 import { DEFAULT_LINE_GRID, type LineGrid } from '../storage/lineGrid';
-import { asianLang, cjkDocFont, isAsianTag, odfFromTag, tagFromOdf, westLang, type ExportLanguage } from '../storage/documentLanguage';
+import { asianLang, cjkDocFont, langSlot, odfFromTag, tagFromOdf, westLang, type ExportLanguage } from '../storage/documentLanguage';
 import { builtinStyleSheet, DEFAULT_STYLE, resolveStyle, type StyleSheet, type TextProps, type ParaProps } from '../styles/styleSheet';
 import type { EmbeddedFont } from '../fonts/embeddedFonts';
 import { HEADING_STYLE_OVERRIDES, HEADING_FONT, HEADING_LEVELS, MAX_HEADING_LEVEL } from '../styles/headings';
 import {
   TABLE_REGIONS, parseTableLook, regionText, type TableLook, type TableRegion,
 } from '../styles/tableStyles';
-import { effectiveListLevel, listStyleMarginCm, listStyleOverridden, MAX_LIST_LEVELS, type ListStyle } from '../styles/listStyles';
+import { clampListLevels, effectiveListLevel, listStyleMarginCm, listStyleOverridden, MAX_LIST_LEVELS, type ListStyle } from '../styles/listStyles';
 import { outlineIsEmpty, type OutlineLevel, type OutlineNumbering } from '../styles/outlineNumbering';
 
 // A table's named style plus the conditional areas it opts into (Word's Table Style
 // Options), collected by exportTable in document order.
 type TableStyleRef = { name: string; look: TableLook };
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
-import { isEmphasis } from '../editor/extensions/textEffects';
+import { effectsToOdf, isEmphasis } from '../editor/extensions/textEffects';
 import { BORDER_SIDES, parseBorderAttr } from '../editor/extensions/tableCellBorders';
 import { parseCellPadding, DEFAULT_CELL_PADDING, type CellPadding } from '../editor/extensions/tableCellPadding';
+import { cellTextFlow } from '../editor/extensions/tableCellAlign';
 import { TEXTBOX_PADDING_CM, boxTextWidthCm, type TextVAlign } from '../editor/extensions/textBox';
 import { colorModeOf, cropOf, wrapGap, wrapGapAttr, type ColorMode, type Crop, type WrapGap } from '../editor/extensions/image';
 import { imageSizeCm } from '../import/imageFormats';
@@ -46,13 +47,13 @@ import { stampBookmarkEdges, bookmarkEdgesOf } from '../editor/extensions/bookma
 import { indexKindOf, INDEX_TITLES, INDEX_COLUMN_GAP_CM, type IndexKind } from '../editor/extensions/tableOfContents';
 import { citationText, isBibType } from '../editor/extensions/bibliographyEntry';
 import { isCitationStyle, rowTemplate, type CitationStyle } from '../utils/citationStyle';
-import { DEFAULT_BULLET_CYCLE, defaultBulletChar } from '../utils/bulletListTypes';
+import { defaultBulletChar, isSymbolFont, symbolFontChar } from '../utils/bulletListTypes';
 import { CELL_FORMAT_SPECS, currencyParts, datePattern, isCellFormat, type CellFormat } from '../utils/cellFormat';
 import { findFormat, renderFormat, odfNumberStyle, toDateValue, localeTag, DEFAULT_DATE_FORMAT, DEFAULT_TIME_FORMAT, type DtFormat } from '../utils/dateTime';
 import { parseLatex } from '../math/latex';
 import { mathmlDocument } from '../math/mathml';
 export { normalizeColor } from '../utils/color';
-import { normalizeColor } from '../utils/color';
+import { AUTO_COLOR, normalizeColor } from '../utils/color';
 
 type AlignValue = 'left' | 'center' | 'right' | 'justify';
 
@@ -447,7 +448,8 @@ function replacePageBreaks(doc: TiptapNode): TiptapNode {
 }
 
 // An item's sub-lists after its first each open an item of their own, from the blocks
-// before the next one on, behind an NLI paragraph (applyNestedListItems drops it).
+// before the next one on, behind an NLI paragraph (applyNestedListItems drops it). A
+// sub-list's own start rides an NLI#n paragraph, as only top-level lists carry an L# style.
 function splitNestedLists(node: TiptapNode): TiptapNode {
   if (!node.content?.length) return node;
   const isList = (b: TiptapNode) => b.type === 'bulletList' || b.type === 'orderedList';
@@ -462,6 +464,8 @@ function splitNestedLists(node: TiptapNode): TiptapNode {
         items.push({ ...item, content: cur });
         cur = [{ type: 'paragraph', content: [{ type: 'text', text: NLI }] }];
       }
+      const start = b.type === 'orderedList' && !b.attrs?.continueNumbering && typeof b.attrs?.start === 'number' ? b.attrs.start : null;
+      if (start != null) cur.push({ type: 'paragraph', content: [{ type: 'text', text: `${NLI}#${start}` }] });
       cur.push(isList(b) ? splitNestedLists(b) : b);
     }
     items.push({ ...item, content: cur });
@@ -475,7 +479,8 @@ function applyNestedListItems(odtBytes: Uint8Array): Uint8Array {
   if (!content.includes(NLI)) return odtBytes;
   // The sub-list starts its own count, as in the editor: LibreOffice would carry the
   // level's count on from the item's first sub-list — which an item without a label does.
-  files['content.xml'] = strToU8(content.replace(new RegExp(`<text:p\\b[^>]*>\\s*${NLI}${NLI}\\s*</text:p>`, 'g'), '').replace(new RegExp(`<text:p\\b[^>]*>\\s*${NLI}\\s*</text:p>(\\s*<text:list\\b[^>]*>\\s*<text:list-item)(?![^>]*start-value)`, 'g'),
+  files['content.xml'] = strToU8(content.replace(new RegExp(`<text:p\\b[^>]*>\\s*${NLI}#(\\d+)\\s*</text:p>(\\s*<text:list\\b[^>]*>\\s*<text:list-item)`, 'g'), '$2 text:start-value="$1"')
+    .replace(new RegExp(`<text:p\\b[^>]*>\\s*${NLI}${NLI}\\s*</text:p>`, 'g'), '').replace(new RegExp(`<text:p\\b[^>]*>\\s*${NLI}\\s*</text:p>(\\s*<text:list\\b[^>]*>\\s*<text:list-item)(?![^>]*start-value)`, 'g'),
     '$1 text:start-value="1"').replace(new RegExp(`<text:p\\b[^>]*>\\s*${NLI}\\s*</text:p>`, 'g'), ''));
   return rezipOdt(files);
 }
@@ -1288,7 +1293,7 @@ type TextBoxExport = {
   arrowHeads: PathHeads | null;
   flipV: boolean;
   flipH: boolean;
-  textVertical: boolean;
+  textVertical: boolean | 'up';
   textVAlign: TextVAlign;
   fill: string | null;
   stroke: string | null;
@@ -1327,7 +1332,7 @@ function textBoxDescriptor(node: TiptapNode): TextBoxExport {
     arrowHeads: a.arrowHeads === 'start' || a.arrowHeads === 'end' || a.arrowHeads === 'both' ? a.arrowHeads : null,
     flipV: a.flipV === true,
     flipH: a.flipH === true,
-    textVertical: a.textVertical === true,
+    textVertical: a.textVertical === 'up' ? 'up' : a.textVertical === true,
     textVAlign: a.textVAlign === 'middle' || a.textVAlign === 'bottom' ? a.textVAlign : 'top',
     fill: typeof a.fillColor === 'string' && a.fillColor ? a.fillColor : null,
     stroke: typeof a.strokeColor === 'string' && a.strokeColor ? a.strokeColor : null,
@@ -1669,12 +1674,15 @@ type ParaStyle = {
   spaceAfter: number | null;
   lineHeight: number | string | null;
   // Paragraph background ("colored field") + per-side border ("rule line"). The border
-  // attr value ('<W>pt solid #RRGGBB') is already a valid ODF fo:border value.
+  // attr value ('<W>pt <line> #RRGGBB') is already a valid ODF fo:border value.
   background: string | null;
   borderTop: string | null;
   borderRight: string | null;
   borderBottom: string | null;
   borderLeft: string | null;
+  // pt between the text and its rules, on the ruled sides (fo:padding-*).
+  borderPadding: number | null;
+  borderJoin: false | null; // style:join-border="false" (paragraphBox.ts)
   // The block's own base direction (textDirection.ts); null inherits the page's.
   dir: 'ltr' | 'rtl' | null;
   // Left/first-line/right indents in cm — cell blocks only: a list item's indent
@@ -1764,8 +1772,14 @@ function paraStyleFromAttrs(attrs: TiptapNode['attrs'], withIndents = true): Par
     lineHeight = isNaN(lhNum) ? String(lh) : lhNum;
   }
   const border = (v: unknown) => (typeof v === 'string' && v && v !== 'none' ? v : null);
+  // A block of its own direction whose styles leave it unaligned names its edge: nothing
+  // in LibreOffice follows the direction, and it reads start/end by the file's producer.
+  const named = typeof attrs?.styleName === 'string' && attrs.styleName ? attrs.styleName
+    : typeof attrs?.level === 'number' ? `Heading ${attrs.level}` : DEFAULT_STYLE;
+  const ownEdge = attrs?.dir === 'rtl' ? 'right' : attrs?.dir === 'ltr' && exportPageRtl ? 'left' : null;
+  const dirEdge = ownEdge && !resolveStyle(exportSheet, named, 'paragraph').para.textAlign ? ownEdge : null;
   return {
-    align: ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify' ? ta : null,
+    align: ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify' ? ta : dirEdge,
     spaceBefore: typeof sb === 'number' ? sb : null,
     spaceAfter: typeof sa === 'number' ? sa : null,
     lineHeight,
@@ -1774,6 +1788,8 @@ function paraStyleFromAttrs(attrs: TiptapNode['attrs'], withIndents = true): Par
     borderRight: border(attrs?.borderRight),
     borderBottom: border(attrs?.borderBottom),
     borderLeft: border(attrs?.borderLeft),
+    borderPadding: typeof attrs?.borderPadding === 'number' && attrs.borderPadding > 0 ? attrs.borderPadding : null,
+    borderJoin: attrs?.borderJoin === false ? false : null,
     dir: attrs?.dir === 'rtl' || attrs?.dir === 'ltr' ? attrs.dir : null,
     // An explicit 0 is kept: it overrides the named style's indent.
     indent: withIndents && attrs?.indent === 0 ? 0 : cm(attrs?.indent),
@@ -1822,17 +1838,17 @@ function paraStyleProps(style: ParaStyle): string[] {
   if (style.breakBefore) props.push('fo:break-before="page"');
   if (style.keepNext != null) props.push(`fo:keep-with-next="${style.keepNext ? 'always' : 'auto'}"`);
   if (style.background) props.push(`fo:background-color="${style.background}"`);
-  // The canonical border attr ('<W>pt solid #RRGGBB') is itself a valid fo:border value.
+  // The canonical border attr ('<W>pt <line> #RRGGBB') is itself a valid fo:border value.
   for (const [attr, side] of [
     ['borderTop', 'top'], ['borderRight', 'right'], ['borderBottom', 'bottom'], ['borderLeft', 'left'],
   ] as const) {
     const v = style[attr];
     if (v) props.push(`fo:border-${side}="${v}"`);
+    if (v && style.borderPadding != null) props.push(`fo:padding-${side}="${style.borderPadding}pt"`);
   }
+  if (style.borderJoin === false) props.push('style:join-border="false"');
   const wm = writingModeOf(style.dir);
   if (wm) props.push(`style:writing-mode="${wm}"`);
-  // The pair LibreOffice writes: the mode alone leaves the block left-aligned (probed).
-  if (style.dir === 'rtl' && !style.align) props.push('fo:text-align="end"');
   if (style.noSnap) props.push('style:snap-to-layout-grid="false"');
   if (style.noWidow) props.push('fo:orphans="0"', 'fo:widows="0"');
   if (style.keepLines) props.push('fo:keep-together="always"');
@@ -1852,10 +1868,12 @@ type CellBlock =
   | { kind: 'heading'; level: number; style: ParaStyle }
   | CellListBlock;
 // A table's own margins in cm (0/0 tables are recorded as null).
-type TableProps = { ml: number; mr: number; mt: number; mb: number; keepRows: boolean; repeatHeader: boolean;
+type TableProps = { ml: number; mr: number; mt: number; mb: number; keepRows: boolean; keepNext: boolean; repeatHeader: boolean;
   // A table can open a section and break the page in front of it like a paragraph:
   // fo:break-before on its own style, style:master-page-name for the section it opens.
-  breakBefore: boolean; sectionIndex: number | null; widthCm: number };
+  breakBefore: boolean; sectionIndex: number | null; widthCm: number;
+  // style:writing-mode of a table running against what it stands in (physicalTables).
+  mode: string | null };
 
 // Collect the alignment + paragraph spacing of each listItem's first paragraph, and in
 // `extras` the same for its further blocks, in DFS order — matching the order odf-kit
@@ -1916,7 +1934,7 @@ function collectTableRowHeights(node: TiptapNode, result: (string | null)[]): vo
       const h = row.attrs?.rowHeight;
       const props = [
         typeof h === 'number' && h > 0
-          ? `style:min-row-height="${Math.round(((h * 2.54) / 96) * 1000) / 1000}cm" style:use-optimal-row-height="false"` : '',
+          ? `style:${row.attrs?.fixedHeight === true ? 'row-height' : 'min-row-height'}="${Math.round(((h * 2.54) / 96) * 10000) / 10000}cm" style:use-optimal-row-height="false"` : '',
         row.attrs?.cantSplit === true ? 'fo:keep-together="always"' : '',
         row.attrs?.revMark ? 'loext:text-changes-only="false"' : '',
       ].filter(Boolean).join(' ');
@@ -1986,11 +2004,13 @@ function expandCellPadding(odtBytes: Uint8Array): Uint8Array {
   const content = strFromU8(contentBytes).replace(
     /(<style:table-cell-properties\b[^>]*?)fo:padding="([^"]*)"/g,
     (_m, head: string, value: string) => {
-      const [top, right, bottom, left, rev] = value.trim().split(/\s+/);
+      const [top, right, bottom, left, ...flags] = value.trim().split(/\s+/);
       if (!left) return head + `fo:padding="${value}"`;
       return head + `fo:padding-top="${top}" fo:padding-right="${right}"`
         + ` fo:padding-bottom="${bottom}" fo:padding-left="${left}"`
-        + (rev === REV_CELL ? ' loext:text-changes-only="false"' : '');
+        + (flags.includes(REV_CELL) ? ' loext:text-changes-only="false"' : '')
+        // Bottom to top is LibreOffice's own value, outside ODF 1.3's list (probed).
+        + (flags.includes('btLr') ? ' loext:writing-mode="bt-lr"' : flags.includes('tbRl') ? ' style:writing-mode="tb-rl"' : '');
     },
   );
 
@@ -2015,8 +2035,8 @@ function applyTableProps(odtBytes: Uint8Array, margins: (TableProps | null)[]): 
     const horiz = m.ml || m.mr
       ? ` style:width="${width}cm" fo:margin-left="${m.ml}cm" fo:margin-right="${m.mr}cm"` : '';
     const vert = `${m.mt ? ` fo:margin-top="${m.mt}cm"` : ''}${m.mb ? ` fo:margin-bottom="${m.mb}cm"` : ''}`;
-    const keep = m.keepRows ? ' style:may-break-between-rows="false"' : '';
-    const brk = m.breakBefore ? ' fo:break-before="page"' : '';
+    const keep = (m.keepRows ? ' style:may-break-between-rows="false"' : '') + (m.keepNext ? ' fo:keep-with-next="always"' : '');
+    const brk = (m.breakBefore ? ' fo:break-before="page"' : '') + (m.mode ? ` style:writing-mode="${m.mode}"` : '');
     content = content.replace(
       new RegExp(`(<style:style[^>]*style:name="Table${i + 1}"[^>]*>\\s*<style:table-properties)`),
       `$1${horiz}${vert}${keep}${brk}`,
@@ -2403,10 +2423,10 @@ function applyEmptyLineFontSizes(odtBytes: Uint8Array): Uint8Array {
 }
 
 // A top-level paragraph's box spec for the PBX sentinel: bg|borderTop|Right|Bottom|Left,
-// each the raw value (canonical border '<W>pt solid #RRGGBB' is a valid fo:border) or '',
+// each the raw value (canonical border '<W>pt <line> #RRGGBB' is a valid fo:border) or '',
 // then a widow flag, the right indent, a keep-with-next flag, the writing mode, a
 // no-hyphenation flag, the paragraph's two language tags, an off-the-grid flag and the
-// first-line and left indents in characters.
+// first-line and left indents in characters, then the gap to the rules.
 // '' when it needs none.
 function paraBoxSpec(attrs: TiptapNode['attrs']): string {
   const s = paraStyleFromAttrs(attrs);
@@ -2427,17 +2447,18 @@ function paraBoxSpec(attrs: TiptapNode['attrs']): string {
   if (!s.background && !s.borderTop && !s.borderRight && !s.borderBottom && !s.borderLeft && !noWidow && !right && !keepNext && !keepLines && !wm && !noHyphen && !lang && !langAsian && !noSnap && !chars && !leftChars) return '';
   return [s.background, s.borderTop, s.borderRight, s.borderBottom, s.borderLeft]
     .map((v) => v ?? '')
-    .concat(noWidow ? 'w0' : '', right, keepNext ? (attrs?.keepNext ? 'k1' : 'k0') : '', keepLines ? 'g1' : '', wm ?? '', noHyphen ? 'h0' : '', lang, langAsian, noSnap ? 's0' : '', chars ? `${chars}ic` : '', leftChars ? `${leftChars}ic` : '').join('|');
+    .concat(noWidow ? 'w0' : '', right, keepNext ? (attrs?.keepNext ? 'k1' : 'k0') : '', keepLines ? 'g1' : '', wm ?? '', noHyphen ? 'h0' : '', lang, langAsian, noSnap ? 's0' : '', chars ? `${chars}ic` : '', leftChars ? `${leftChars}ic` : '', s.borderPadding != null ? `${s.borderPadding}pt` : '', s.borderJoin === false ? 'j0' : '').join('|');
 }
 
 function boxSpecToProps(spec: string): string {
-  const [bg, bt, br, bb, bl, widow, marginRight, keepNext, keepLines, writingMode, , , , snap, firstChars, leftChars] = spec.split('|');
+  const [bg, bt, br, bb, bl, widow, marginRight, keepNext, keepLines, writingMode, , , , snap, firstChars, leftChars, pad, join] = spec.split('|');
   const props: string[] = [];
   if (bg) props.push(`fo:background-color="${bg}"`);
-  if (bt) props.push(`fo:border-top="${bt}"`);
-  if (br) props.push(`fo:border-right="${br}"`);
-  if (bb) props.push(`fo:border-bottom="${bb}"`);
-  if (bl) props.push(`fo:border-left="${bl}"`);
+  for (const [v, side] of [[bt, 'top'], [br, 'right'], [bb, 'bottom'], [bl, 'left']] as const) {
+    if (v) props.push(`fo:border-${side}="${v}"`);
+    if (v && pad) props.push(`fo:padding-${side}="${pad}"`);
+  }
+  if (join === 'j0') props.push('style:join-border="false"');
   // LibreOffice writes 0/0 for "off"; the default style carries the 2 of "on".
   if (widow === 'w0') props.push('fo:orphans="0"', 'fo:widows="0"');
   if (marginRight) props.push(`${marginRight.endsWith('ic') ? 'loext' : 'fo'}:margin-right="${marginRight}"`);
@@ -2521,6 +2542,7 @@ function ownStyleAttrs(style: { para: Record<string, unknown>; text: Record<stri
     para[`fo:border-${side}`] = String(v);
     // The gap to the rule, on the ruled sides only — fo:padding would ring the block.
     if (p.borderPadding != null) para[`fo:padding-${side}`] = `${p.borderPadding}pt`;
+    if (style.para.borderJoin === false) para['style:join-border'] = 'false';
   }
   const text: Record<string, string> = {};
   if (t.fontFamily) {
@@ -2537,15 +2559,18 @@ function ownStyleAttrs(style: { para: Record<string, unknown>; text: Record<stri
     text['style:font-size-asian'] = size;
     text['style:font-size-complex'] = size;
   }
-  if (t.letterSpacingPt) text['fo:letter-spacing'] = `${t.letterSpacingPt}pt`;
+  if (t.letterSpacingPt != null) text['fo:letter-spacing'] = t.letterSpacingPt ? `${t.letterSpacingPt}pt` : 'normal';
   if (t.kerning != null) text['style:letter-kerning'] = String(t.kerning);
   if (t.bold != null) text['fo:font-weight'] = t.bold ? 'bold' : 'normal';
   if (t.italic != null) text['fo:font-style'] = t.italic ? 'italic' : 'normal';
   if (t.underline) text['style:text-underline-style'] = 'solid';
   if (t.strike) text['style:text-line-through-style'] = 'solid';
-  if (t.color) text['fo:color'] = String(t.color);
+  if (t.color === AUTO_COLOR) text['style:use-window-font-color'] = 'true';
+  else if (t.color) text['fo:color'] = String(t.color);
   if (t.caps === 'smallCaps') text['fo:font-variant'] = 'small-caps';
   else if (t.caps) text['fo:text-transform'] = String(t.caps);
+  else if (t.caps === false) Object.assign(text, { 'fo:text-transform': 'none', 'fo:font-variant': 'normal' });
+  Object.assign(text, effectsToOdf(t));
   return { para, text };
 }
 
@@ -2557,7 +2582,7 @@ const MANAGED_STYLE_ATTRS = [
   'fo:font-size', 'style:font-size-asian', 'style:font-size-complex',
   'fo:font-weight', 'style:font-weight-asian', 'style:font-weight-complex',
   'fo:font-style', 'style:font-style-asian', 'style:font-style-complex',
-  'style:text-underline-style', 'style:text-line-through-style', 'fo:color',
+  'style:text-underline-style', 'style:text-line-through-style', 'fo:color', 'style:use-window-font-color',
   'style:font-name', 'style:font-name-asian', 'style:font-name-complex',
 ];
 
@@ -2763,11 +2788,6 @@ function applyParagraphBoxes(odtBytes: Uint8Array): Uint8Array {
     // The language is a text property too; LibreOffice passes it on to the runs.
     const langs = langPairAttrs({ lang: spec.split('|')[11], langAsian: spec.split('|')[12] });
     if (Object.keys(langs).length) style = upsertProps(style, 'text', langs);
-    // An RTL block with no alignment of its own gets the fo:text-align="end" LibreOffice
-    // pairs with the mode — the mode alone leaves it left-aligned (probed).
-    if (spec.split('|')[9] === 'rl-tb' && !/fo:text-align=/.test(style)) {
-      style = upsertProps(style, 'paragraph', { 'fo:text-align': 'end' });
-    }
     minted.push(style);
     return name;
   };
@@ -2803,11 +2823,13 @@ function applyParagraphBoxes(odtBytes: Uint8Array): Uint8Array {
 type OrderedFmt = { numFormat: string; numSuffix: string };
 type OlStyleFix = { fmts: OrderedFmt[]; multilevel: boolean };
 
-const DEFAULT_ORDERED_FMTS: OrderedFmt[] = Array.from({ length: 6 }, (_, i) => {
+const DEFAULT_ORDERED_FMTS: OrderedFmt[] = Array.from({ length: MAX_LIST_LEVELS }, (_, i) => {
   const d = effectiveOrderedDef(null, i);
   return { numFormat: d.numFormat, numSuffix: d.numSuffix };
 });
-const MULTILEVEL_FMTS: OrderedFmt[] = Array.from({ length: 6 }, () => ({ numFormat: '1', numSuffix: '.' }));
+const MULTILEVEL_FMTS: OrderedFmt[] = Array.from({ length: MAX_LIST_LEVELS }, () => ({ numFormat: '1', numSuffix: '.' }));
+// The default bullet of each of ODF's ten levels: the depth cycle, repeated.
+const LEVEL_BULLETS = Array.from({ length: MAX_LIST_LEVELS }, (_, i) => defaultBulletChar(i));
 
 // Effective numbering of an ordered list at a cycle position: its attr, else the
 // cycle default (re-anchoring slot + suffix at explicit styles; 'multilevel' handled
@@ -2874,7 +2896,7 @@ function collectListLevelKinds(doc: TiptapNode, result: (LevelKindFix | null)[][
       const fixAt = (kind: LevelKind, fmt: OrderedFmt, char: string, displayLevels: number): LevelKindFix | null =>
         (kind === 'number') === topOrdered ? null : { kind, fmt, char, displayLevels };
       const walk = (list: TiptapNode, depth: number, cycle: OrderedCycle) => {
-        if (depth > 6) return;
+        if (depth > MAX_LIST_LEVELS) return;
         if (fixes[depth - 1] === undefined) {
           const eff = effectiveListLevel(list.attrs ?? {}, list.type === 'orderedList', style, depth);
           fixes[depth - 1] = fixAt(eff.kind, effOrderedFmt(list, cycle, style, depth), effBulletChar(list, depth, style),
@@ -2891,7 +2913,7 @@ function collectListLevelKinds(doc: TiptapNode, result: (LevelKindFix | null)[][
       walk(child, 1, ROOT_ORDERED_CYCLE);
       // Depths the document never reaches still follow the style, so the clone stays
       // the full definition.
-      for (let d = 1; d <= 6; d++) {
+      for (let d = 1; d <= MAX_LIST_LEVELS; d++) {
         if (fixes[d - 1] !== undefined) continue;
         const lv = style.levels[d - 1];
         if (!lv) { fixes[d - 1] = null; continue; }
@@ -2902,6 +2924,29 @@ function collectListLevelKinds(doc: TiptapNode, result: (LevelKindFix | null)[][
     }
     result.push(fixes);
   }
+}
+
+// odf-kit writes six levels of each L# list style and ODF has ten: the rest follow in its
+// own pattern, before the passes below rewrite them level by level.
+function extendKitListLevels(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  const content = strFromU8(files['content.xml']);
+  const extended = content.replace(/(<text:list-style style:name="L\d+">)([\s\S]*?)(<\/text:list-style>)/g, (m, open: string, body: string, close: string) => {
+    const last = /<text:list-level-style-(bullet|number) text:level="6"[\s\S]*?<\/text:list-level-style-\1>/.exec(body)?.[0];
+    if (!last || body.includes('text:level="7"')) return m;
+    let more = '';
+    for (let level = 7; level <= MAX_LIST_LEVELS; level++) {
+      const indent = level * 0.635;
+      more += last.replace('text:level="6"', `text:level="${level}"`)
+        .replace(/(text:list-tab-stop-position|fo:margin-left)="[^"]*"/g, `$1="${(indent * 2).toFixed(3)}cm"`)
+        .replace(/fo:text-indent="[^"]*"/, `fo:text-indent="-${indent.toFixed(3)}cm"`)
+        .replace(/text:bullet-char="[^"]*"/, `text:bullet-char="${escapeXml(defaultBulletChar(level - 1))}"`);
+    }
+    return open + body + more + close;
+  });
+  if (extended === content) return odtBytes;
+  files['content.xml'] = strToU8(extended);
+  return rezipOdt(files);
 }
 
 function applyListLevelKinds(odtBytes: Uint8Array, kinds: (LevelKindFix | null)[][]): Uint8Array {
@@ -2918,7 +2963,7 @@ function applyListLevelKinds(odtBytes: Uint8Array, kinds: (LevelKindFix | null)[
     content = content.replace(re, (_m, open: string, body: string, close: string) =>
       open +
       body.replace(
-        /<text:list-level-style-(bullet|number)( text:level="(\d)")[^>]*>([\s\S]*?)<\/text:list-level-style-\1>/g,
+        /<text:list-level-style-(bullet|number)( text:level="(\d+)")[^>]*>([\s\S]*?)<\/text:list-level-style-\1>/g,
         (m, _kind: string, lvlAttr: string, lvl: string, inner: string) => {
           const fix = fixes[+lvl - 1];
           if (!fix) return m;
@@ -2969,7 +3014,7 @@ function applyOrderedListFormats(odtBytes: Uint8Array, formats: (OlStyleFix | nu
     content = content.replace(re, (_m, open: string, body: string, close: string) =>
       open +
       body.replace(
-        /(<text:list-level-style-number text:level=")(\d)(" style:num-format=")[^"]*(" style:num-suffix=")[^"]*(")/g,
+        /(<text:list-level-style-number text:level=")(\d+)(" style:num-format=")[^"]*(" style:num-suffix=")[^"]*(")/g,
         (_mm, a: string, lvl: string) => {
           const f = fix.fmts[+lvl - 1] ?? DEFAULT_ORDERED_FMTS[+lvl - 1];
           const disp = fix.multilevel && +lvl > 1 ? ` text:display-levels="${lvl}"` : '';
@@ -3003,7 +3048,7 @@ function collectListStartValues(node: TiptapNode, result: ListStart[]): void {
     } else if (child.type === 'orderedList') {
       const s = typeof child.attrs?.start === 'number' ? child.attrs.start : 1;
       const continues = child.attrs?.continueNumbering === true && prev && prev.end + 1 === s ? prev.slot : null;
-      result.push({ start: s > 1 && continues == null ? s : null, continues });
+      result.push({ start: s !== 1 && continues == null ? s : null, continues });
       prev = { slot: result.length - 1, end: s + labelledItems(child) - 1 };
     }
   }
@@ -3071,8 +3116,8 @@ function collectBulletListChars(node: TiptapNode, result: (string[] | null)[]): 
     if (child.type === 'orderedList') {
       result.push(null);
     } else if (child.type === 'bulletList') {
-      const vec = bulletCharVector(child, 1, DEFAULT_BULLET_CYCLE, listStyleOf(child));
-      result.push(vec.every((c, i) => c === DEFAULT_BULLET_CYCLE[i]) ? null : vec);
+      const vec = bulletCharVector(child, 1, LEVEL_BULLETS, listStyleOf(child));
+      result.push(vec.every((c, i) => c === LEVEL_BULLETS[i]) ? null : vec);
     }
   }
 }
@@ -3087,12 +3132,12 @@ function applyBulletListChars(odtBytes: Uint8Array, chars: (string[] | null)[]):
   let content = strFromU8(contentBytes);
   chars.forEach((vec, i) => {
     if (!vec) return;
-    // Rewrite only inside this list's own <text:list-style> block (all 6 levels).
+    // Rewrite only inside this list's own <text:list-style> block, every level.
     const re = new RegExp(`(<text:list-style style:name="L${i + 1}">)([\\s\\S]*?)(</text:list-style>)`);
     content = content.replace(re, (_m, open: string, body: string, close: string) =>
       open +
       body.replace(
-        /(<text:list-level-style-bullet text:level=")(\d)(" text:bullet-char=")[^"]*(")/g,
+        /(<text:list-level-style-bullet text:level=")(\d+)(" text:bullet-char=")[^"]*(")/g,
         (_mm, a: string, lvl: string, b: string, c: string) => a + lvl + b + escapeXml(vec[+lvl - 1] ?? defaultBulletChar(+lvl - 1)) + c,
       ) +
       close,
@@ -3227,9 +3272,19 @@ function applyListMarkerFormats(odtBytes: Uint8Array, formats: (MarkerFormat | n
     const re = new RegExp(`(<text:list-style style:name="L${i + 1}">)([\\s\\S]*?)(</text:list-style>)`);
     content = content.replace(re, (_m, open: string, body: string, close: string) =>
       open +
-      body.replace(/<text:list-level-style-(number|bullet) text:level="(\d)"/g, (match, kind: string, level: string) => {
-        const format = levels[Number(level) - 1];
-        return format ? `<text:list-level-style-${kind} text:level="${level}" text:style-name="${styleFor(format)}"` : match;
+      body.replace(/<text:list-level-style-(number|bullet) text:level="(\d+)"([^>]*)/g, (match, kind: string, level: string, rest: string) => {
+        let format = levels[Number(level) - 1];
+        if (!format) return match;
+        // A symbol font addresses the bullet by its private-use code; a label it has no
+        // glyph for is left in the text's font.
+        if (isSymbolFont(format.fontFamily)) {
+          const char = /text:bullet-char="([^"]*)"/.exec(rest)?.[1];
+          const code = kind === 'bullet' && char ? symbolFontChar(unescapeXml(char), format.fontFamily) : null;
+          if (code) rest = rest.replace(/text:bullet-char="[^"]*"/, `text:bullet-char="${code}"`);
+          else format = { ...format, fontFamily: null };
+          if (!Object.values(format).some(Boolean)) return match;
+        }
+        return `<text:list-level-style-${kind} text:level="${level}" text:style-name="${styleFor(format)}"${rest}`;
       }) +
       close,
     );
@@ -3246,7 +3301,7 @@ function applyListMarkerFormats(odtBytes: Uint8Array, formats: (MarkerFormat | n
 
 // odf-kit emits nested lists as bare <text:list> sharing the top-level L# style, so a
 // nested list of a different kind/format/marker loses its look. Mint it its own
-// 6-level list style (same pattern applyCellBlocks uses for cell lists).
+// ten-level list style (same pattern applyCellBlocks uses for cell lists).
 type ListDef = { kinds: LevelKind[]; multilevel: boolean; fmts: OrderedFmt[]; bulletChars: string[] };
 
 // Per-level kind for a list subtree, same DFS-first model as the char/format vectors.
@@ -3276,8 +3331,8 @@ function listDefOf(node: TiptapNode, depth: number, cycle: OrderedCycle, baseCha
   // The top def mirrors its L# levels: homogeneous by species, unless a style made
   // applyListLevelKinds convert them (then: visited eff kind, unvisited style kind).
   const kinds = !baseKinds && !style
-    ? Array.from({ length: 6 }, () => species)
-    : kindVector(node, depth, baseKinds ?? Array.from({ length: 6 }, (_, i): LevelKind => style?.levels[i]?.kind ?? species), style);
+    ? Array.from({ length: MAX_LIST_LEVELS }, () => species)
+    : kindVector(node, depth, baseKinds ?? Array.from({ length: MAX_LIST_LEVELS }, (_, i): LevelKind => style?.levels[i]?.kind ?? species), style);
   return {
     kinds,
     multilevel,
@@ -3333,7 +3388,7 @@ function collectNestedListFixes(doc: TiptapNode, result: (ListDef | null)[], rep
     if (child.type === 'bulletList' || child.type === 'orderedList') {
       if (repoints[listIdx++]) { skipNested(child); continue; }
       const style = listStyleOf(child);
-      walkList(child, listDefOf(child, 1, ROOT_ORDERED_CYCLE, DEFAULT_BULLET_CYCLE, DEFAULT_ORDERED_FMTS, style), true, 1, ROOT_ORDERED_CYCLE, style);
+      walkList(child, listDefOf(child, 1, ROOT_ORDERED_CYCLE, LEVEL_BULLETS, DEFAULT_ORDERED_FMTS, style), true, 1, ROOT_ORDERED_CYCLE, style);
     }
   }
 }
@@ -3405,22 +3460,25 @@ function applyListStyleNames(odtBytes: Uint8Array, names: (string | null)[]): Ui
 }
 
 // The full 10-level definition of a named list style for styles.xml. Undefined levels
-// fall back to decimal, as LibreOffice fills them in (probed); the hanging indent is
-// the flat 0.635cm every list export uses.
+// fall back to decimal, as LibreOffice fills them in (probed); a level without its own
+// hang takes the flat 0.635cm every list export uses.
 function buildNamedListStyleXml(style: ListStyle): string {
   let levels = '';
   for (let level = 1; level <= MAX_LIST_LEVELS; level++) {
     const def = style.levels[level - 1];
     const margin = `${listStyleMarginCm(style, level).toFixed(3)}cm`;
     const right = def?.markerAlign === 'right' ? ' fo:text-align="end"' : '';
-    const labelAlign = `<style:list-level-properties text:list-level-position-and-space-mode="label-alignment"${right}><style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="${margin}" fo:text-indent="-0.635cm" fo:margin-left="${margin}"/></style:list-level-properties>`;
+    const follow = def?.markerSuffix ?? 'listtab';
+    const tab = follow === 'listtab' ? ` text:list-tab-stop-position="${margin}"` : '';
+    const indent = `${(-(def?.hanging ?? 0.635)).toFixed(3)}cm`;
+    const labelAlign = `<style:list-level-properties text:list-level-position-and-space-mode="label-alignment"${right}><style:list-level-label-alignment text:label-followed-by="${follow}"${tab} fo:text-indent="${indent}" fo:margin-left="${margin}"/></style:list-level-properties>`;
     if (def?.kind === 'bullet') {
       const ch = escapeXml(def.bulletChar ?? defaultBulletChar(level - 1));
       levels += `<text:list-level-style-bullet text:level="${level}" text:bullet-char="${ch}">${labelAlign}</text:list-level-style-bullet>`;
     } else {
       const t = orderedTypeDef(style.multilevel ? 'decimal' : def?.numType ?? 'decimal');
       const disp = style.multilevel && level > 1 ? ` text:display-levels="${level}"` : '';
-      const start = def?.startAt && def.startAt !== 1 ? ` text:start-value="${def.startAt}"` : '';
+      const start = def?.startAt != null && def.startAt !== 1 ? ` text:start-value="${def.startAt}"` : '';
       levels += `<text:list-level-style-number text:level="${level}" ${odfNumFormatAttrs(t.numFormat)} style:num-suffix="${t.numSuffix}"${disp}${start}>${labelAlign}</text:list-level-style-number>`;
     }
   }
@@ -3428,7 +3486,7 @@ function buildNamedListStyleXml(style: ListStyle): string {
 }
 
 // Mirror odf-kit's buildListStyle (content.js) for the automatic list style our
-// in-cell lists reference. Six nesting levels with the given bullet chars /
+// in-cell lists reference. Ten nesting levels with the given bullet chars /
 // indents / numbering, so cell lists match the editor's top-level lists.
 function buildCellListStyle(
   styleName: string,
@@ -3436,9 +3494,9 @@ function buildCellListStyle(
   opts: { fmts?: OrderedFmt[]; multilevel?: boolean; bulletChars?: string[]; kinds?: LevelKind[] } = {},
 ): string {
   const fmts = opts.multilevel ? MULTILEVEL_FMTS : opts.fmts ?? MULTILEVEL_FMTS;
-  const bulletChars = opts.bulletChars ?? DEFAULT_BULLET_CYCLE;
+  const bulletChars = opts.bulletChars ?? LEVEL_BULLETS;
   let levels = '';
-  for (let level = 1; level <= 6; level++) {
+  for (let level = 1; level <= MAX_LIST_LEVELS; level++) {
     const indent = level * 0.635;
     const marginLeft = `${(indent * 2).toFixed(3)}cm`;
     const textIndent = `-${indent.toFixed(3)}cm`;
@@ -3513,7 +3571,7 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
     if (!name) {
       name = `${CELL_LIST_BULLET_STYLE}${bulletStyleByKey.size + 1}`;
       bulletStyleByKey.set(key, name);
-      const chars = [...DEFAULT_BULLET_CYCLE];
+      const chars = [...LEVEL_BULLETS];
       chars[(depth - 1) % chars.length] = ch;
       bulletStyles.push({ name, chars });
     }
@@ -3634,7 +3692,7 @@ function applyCellBlocks(odtBytes: Uint8Array, cellBlocks: CellBlock[][]): Uint8
     additions.push(buildCellListStyle(name, false, { bulletChars: chars }));
   }
   for (const { name, numFormat, numSuffix, multilevel } of numberStyles) {
-    additions.push(buildCellListStyle(name, true, { fmts: Array.from({ length: 6 }, () => ({ numFormat, numSuffix })), multilevel }));
+    additions.push(buildCellListStyle(name, true, { fmts: Array.from({ length: MAX_LIST_LEVELS }, () => ({ numFormat, numSuffix })), multilevel }));
   }
 
   if (additions.length) {
@@ -3652,6 +3710,38 @@ function rezipOdt(files: Record<string, Uint8Array>): Uint8Array {
   const out: Record<string, [Uint8Array, { level: 0 }]> = {};
   for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 0 }];
   return zipSync(out);
+}
+
+// A character property has a western, an asian and a complex-script slot, and text is set
+// from the slot of its own script. The editor keeps one value, so every text-properties
+// block says it in all three; a block naming its own asian or complex value keeps that.
+const SCRIPT_SLOTS: [western: string, stem: string, asian: boolean][] = [
+  ['fo:font-size', 'style:font-size', true],
+  ['fo:font-weight', 'style:font-weight', true],
+  ['fo:font-style', 'style:font-style', true],
+  ['fo:font-family', 'style:font-family', false],
+  ['style:font-name', 'style:font-name', false],
+];
+function fillScriptSlots(odtBytes: Uint8Array): Uint8Array {
+  const files = unzipSync(odtBytes);
+  for (const name of ['content.xml', 'styles.xml']) {
+    const xml = files[name] && strFromU8(files[name]);
+    if (!xml) continue;
+    const filled = xml.replace(/<style:text-properties\b[^>]*?(?=\/?>)/g, (tag) => {
+      let out = tag;
+      const complexFont = /\sstyle:font-(?:name|family)-complex=/.test(tag);
+      for (const [western, stem, asian] of SCRIPT_SLOTS) {
+        const value = new RegExp(`\\s${western}="([^"]*)"`).exec(tag)?.[1];
+        if (value == null) continue;
+        const font = !asian;
+        if (asian && !tag.includes(` ${stem}-asian=`)) out += ` ${stem}-asian="${value}"`;
+        if (font ? !complexFont : !tag.includes(` ${stem}-complex=`)) out += ` ${stem}-complex="${value}"`;
+      }
+      return out;
+    });
+    if (filled !== xml) files[name] = strToU8(filled);
+  }
+  return rezipOdt(files);
 }
 
 // The returned .odt: mimetype first and stored (ODF requirement), already-compressed
@@ -3870,7 +3960,7 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: ExportLanguage | null, pag
   // Page background and page border ride the page layout, exactly where LibreOffice
   // keeps them (probed). The border is offset from the text area by fo:padding.
   const decorProps = [
-    decor.border ? `fo:border="${round3(decor.border.widthPt)}pt solid ${decor.border.color}"` : '',
+    decor.border ? `fo:border="${round3(decor.border.widthPt)}pt ${decor.border.line ?? 'solid'} ${decor.border.color}"` : '',
     decor.border ? `fo:padding="${round3(decor.border.paddingCm)}cm"` : '',
     decor.background ? `fo:background-color="${decor.background}"` : '',
   ].filter(Boolean).join(' ');
@@ -3935,7 +4025,7 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: ExportLanguage | null, pag
   // other slot's.
   if (lang) {
     const main = tagFromOdf(lang.language, lang.country);
-    const attrs = Object.entries(langPairAttrs({ lang: westLang(main) ?? westLang(lang.other), langAsian: asianLang(main) ?? asianLang(lang.other) }))
+    const attrs = Object.entries(langPairAttrs({ lang: lang.other, langAsian: main }))
       .map(([k, v]) => `${k}="${v}"`).join(' ');
     styles = styles.replace(
       /(<style:style style:name="Standard"[\s\S]*?<style:text-properties\b[^>]*?)\/>/,
@@ -3963,12 +4053,16 @@ function rewriteStylesXml(odtBytes: Uint8Array, lang: ExportLanguage | null, pag
     '<style:master-page style:name="Standard"',
   );
 
+  // A right-to-left page's paragraphs take its direction and the edge it starts at from
+  // the default-style: LibreOffice's own default is the physical left in either direction.
+  const pageDir = rtl ? ' fo:text-align="right" style:writing-mode="rl-tb"' : '';
+
   // The document's tab interval, on the paragraph default-style. Always written: a file
   // that declares none falls back to ODF's own 2cm, which is not what the editor shows
   // (measured — LibreOffice puts a bare A⇥X at 2cm, not at its UI default of 1.25).
   // Widow-orphan control too, which a file declaring none does not have (probed).
   styles = styles.replace('<office:styles>', '<office:styles>'
-    + `<style:default-style style:family="paragraph"><style:paragraph-properties fo:orphans="2" fo:widows="2" style:tab-stop-distance="${round3(tabIntervalCm)}cm"/></style:default-style>`
+    + `<style:default-style style:family="paragraph"><style:paragraph-properties fo:orphans="2" fo:widows="2"${pageDir} style:tab-stop-distance="${round3(tabIntervalCm)}cm"/></style:default-style>`
     + notesStyles() + notesConfiguration(notes));
 
   // The separator belongs to the page layout, beside the margins it is measured against.
@@ -4035,7 +4129,7 @@ function formattingFromMarks(marks: TiptapNode['marks'] = []): TextFormatting {
   if (tsm?.attrs?.fontSize)   fmt.fontSize   = String(tsm.attrs.fontSize);
   if (tsm?.attrs?.color) {
     const c = normalizeColor(String(tsm.attrs.color));
-    if (c) fmt.color = c;
+    if (c && c !== AUTO_COLOR) fmt.color = c;
   }
   // Text highlight (background). odf-kit maps highlightColor → fo:background-color
   // natively for normal paragraphs; this covers the custom-attr-paragraph path
@@ -4059,6 +4153,8 @@ function linkHrefOf(marks: TiptapNode['marks'] = []): string | undefined {
 // without threading it through every cell/list helper (mirrors docLangTag in docx.ts).
 let exportSheet: StyleSheet = builtinStyleSheet();
 let exportSpacingModel: SpacingModel = 'add';
+// The page's direction, which the paragraph default-style carries with its edge.
+let exportPageRtl = false;
 // The document language as a tag, for the shape text that inherits none (replaceTextBoxes).
 let exportDocLangs: { lang: string | null; langAsian: string | null } = { lang: null, langAsian: null };
 
@@ -4100,17 +4196,20 @@ function applyRuns(p: ParagraphBuilder | CellBuilder, content: TiptapNode[] = []
 }
 
 // ODF splits a language tag over two attributes; a tag with no region writes only the first.
-// An East Asian language belongs in the asian slot: that is the only one LibreOffice and
-// Word read Chinese, Japanese or Korean text from — fo:language would say it unread.
+// An East Asian or a complex-script language belongs in its own slot: that is the only one
+// LibreOffice and Word read such text from — fo:language would say it unread.
+const LANG_SLOT_ATTRS = {
+  west: ['fo:language', 'fo:country'],
+  asian: ['style:language-asian', 'style:country-asian'],
+  complex: ['style:language-complex', 'style:country-complex'],
+} as const;
 function langAttrs(odf: { language: string; country: string }): Record<string, string> {
-  const [lang, ctry] = isAsianTag(odf.language)
-    ? ['style:language-asian', 'style:country-asian']
-    : ['fo:language', 'fo:country'];
+  const [lang, ctry] = LANG_SLOT_ATTRS[langSlot(odf.language)];
   return odf.country ? { [lang]: odf.language, [ctry]: odf.country } : { [lang]: odf.language };
 }
 
-// A block's or a run's western and asian language, each in the slot of its script; the
-// asian attribute comes last, so it wins over an older document's asian `lang`.
+// A block's or a run's languages, each in the slot of its script; the later tag wins
+// its slot, so `langAsian` outranks an older document's asian `lang`.
 function langPairAttrs(attrs: { lang?: unknown; langAsian?: unknown } | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   for (const tag of [attrs?.lang, attrs?.langAsian]) {
@@ -4150,6 +4249,17 @@ export function odfExtraTextProps(marks: TiptapNode['marks'] = [], baseSizePt = 
   }
   const em = marks.find(m => m.type === 'textStyle')?.attrs?.emphasis;
   if (isEmphasis(em)) a.push(`style:text-emphasize="${em}"`);
+  if (marks.find(m => m.type === 'textStyle')?.attrs?.color === AUTO_COLOR) a.push('style:use-window-font-color="true"');
+  if (marks.find(m => m.type === 'textStyle')?.attrs?.fontStyle === 'normal' && !marks.some(m => m.type === 'italic')) a.push('fo:font-style="normal"');
+  a.push(...Object.entries(effectsToOdf(marks.find(m => m.type === 'textStyle')?.attrs ?? {})).map(([k, v]) => `${k}="${v}"`));
+  const ts = marks.find(m => m.type === 'textStyle')?.attrs;
+  const box = parseBorderAttr(ts?.textBorder as string | null);
+  if (box && box !== 'none') {
+    a.push(`loext:border="${box.widthPt}pt ${box.line} ${box.color}"`);
+    if (typeof ts?.textBorderPadding === 'number') a.push(`loext:padding="${ts.textBorderPadding}pt"`);
+  }
+  const spacing = ts?.letterSpacing;
+  if (typeof spacing === 'number') a.push(`fo:letter-spacing="${spacing ? `${spacing}pt` : 'normal'}"`);
   // ODF places a raised run in percent of its font size, Word and the editor in pt.
   const pos = marks.find(m => m.type === 'textStyle')?.attrs?.textPosition;
   if (typeof pos === 'number' && pos) {
@@ -4181,10 +4291,18 @@ function charFormatting(sheet: StyleSheet, name: string): Record<string, unknown
 // reads marks itself on its native paths, so the pre-pass is what reaches all of them.
 function markTextEffects(node: TiptapNode, baseSizePt = DEFAULT_FONT_SIZE_PT, sheet?: StyleSheet): TiptapNode {
   if (node.type === 'text') {
-    const extra = odfExtraTextProps(node.marks, baseSizePt);
+    let extra = odfExtraTextProps(node.marks, baseSizePt);
+    // A character style's automatic colour mints no span of its own: the extra props do.
+    const cs = sheet && charStyleOf(node.marks);
+    if (cs && resolveStyle(sheet, cs, 'character').text.color === AUTO_COLOR && !/use-window-font-color/.test(extra)
+      && !node.marks?.some((m) => m.type === 'textStyle' && m.attrs?.color)) {
+      extra = `${extra} style:use-window-font-color="true"`.trim();
+    }
+    // odf-kit reads the marks itself and has no automatic colour: the extra props carry it.
+    const marks = node.marks?.map((m) => m.type === 'textStyle' && m.attrs?.color === AUTO_COLOR ? { ...m, attrs: { ...m.attrs, color: null } } : m);
     // The empty trailing pair marks where the run ends: a bare run following would
     // otherwise be indistinguishable from the run's own text and get wrapped with it.
-    return extra ? { ...node, text: `${TEF}${extra}${TEF}${node.text ?? ''}${TEF}${TEF}` } : node;
+    return extra ? { ...node, marks, text: `${TEF}${extra}${TEF}${node.text ?? ''}${TEF}${TEF}` } : node;
   }
   if (!node.content?.length) return node;
   // A named style's size is the reference for a raised run's percentage (a Title's
@@ -4224,9 +4342,10 @@ function bakeMarks(marks: TiptapMark[], t: TextProps): TiptapMark[] {
   if (t.fontFamilyAsian) attrs.fontFamilyAsian = t.fontFamilyAsian;
   if (t.fontSizePt != null) attrs.fontSize = `${t.fontSizePt}pt`;
   if (t.color) attrs.color = t.color;
+  for (const key of ['outline', 'shadow', 'relief', 'textOutline', 'textShadow', 'textGlow', 'textFxRaw'] as const) if (t[key] != null) attrs[key] = t[key];
   for (const [key, value] of Object.entries(own)) if (value != null) attrs[key] = value;
   // An explicit weight is the un-bold channel and outranks the style's bold.
-  const flags = [[t.bold && own.fontWeight == null, 'bold'], [t.italic, 'italic'],
+  const flags = [[t.bold && own.fontWeight == null, 'bold'], [t.italic && own.fontStyle == null, 'italic'],
     [t.underline, 'underline'], [t.strike, 'strike']] as const;
   for (const [on, type] of flags) if (on && !marks.some(m => m.type === type)) out.push({ type });
   if (Object.keys(attrs).length) out.push({ type: 'textStyle', attrs });
@@ -4242,7 +4361,7 @@ function textFormatting(t: TextProps): Record<string, unknown> {
   if (t.strike) fmt.strikethrough = true;
   if (t.fontFamily) fmt.fontFamily = directFontName(t.fontFamily);
   if (t.fontSizePt != null) fmt.fontSize = `${t.fontSizePt}pt`;
-  if (t.color) fmt.color = t.color;
+  if (t.color && t.color !== AUTO_COLOR) fmt.color = t.color;
   return fmt;
 }
 
@@ -4278,6 +4397,8 @@ function applyCharacterStyles(odtBytes: Uint8Array): Uint8Array {
   };
 
   const cstRe = new RegExp(`${CST}([^${CST}]*)${CST}`);
+  // A run whose span only its text effects minted has the sentinel just in front of it.
+  content = content.replace(new RegExp(`(${CST}[^${CST}]*${CST})(<text:span\\b[^>]*>)`, 'g'), '$2$1');
   content = content.replace(
     new RegExp(`<text:span\\b((?:[^>]*[^/>])?)>([\\s\\S]*?)</text:span>`, 'g'),
     (m, attrs: string, inner: string) => {
@@ -4512,6 +4633,7 @@ function tablePropsOf(node: TiptapNode, contentWidthCm: number): TableProps | nu
   const mt = Math.max(0, Number(node.attrs?.marginTop) || 0);
   const mb = Math.max(0, Number(node.attrs?.marginBottom) || 0);
   const keepRows = node.attrs?.keepRows === true;
+  const keepNext = node.attrs?.keepNext === true;
   // A header row is one whether the table asked for the repeat or only the row's own
   // cells say they head it — ODF spells both with the one element (docx.ts does the same).
   const firstRow = (node.content ?? []).find(r => r.type === 'tableRow');
@@ -4521,8 +4643,30 @@ function tablePropsOf(node: TiptapNode, contentWidthCm: number): TableProps | nu
   const si = Number(node.attrs?.sectionIndex);
   const sectionIndex = Number.isInteger(si) && si > 0 ? si : null;
   if (ml + mr > contentWidthCm - 1) ml = mr = 0;
-  if (!ml && !mr && !mt && !mb && !keepRows && !repeatHeader && !breakBefore && sectionIndex == null) return null;
-  return { ml: round3(ml), mr: round3(mr), mt: round3(mt), mb: round3(mb), keepRows, repeatHeader, breakBefore, sectionIndex, widthCm: contentWidthCm };
+  const mode = typeof node.attrs?.odtWritingMode === 'string' ? node.attrs.odtWritingMode : null;
+  if (!ml && !mr && !mt && !mb && !keepRows && !keepNext && !repeatHeader && !breakBefore && sectionIndex == null && !mode) return null;
+  return { ml: round3(ml), mr: round3(mr), mt: round3(mt), mb: round3(mb), keepRows, keepNext, repeatHeader, breakBefore, sectionIndex, widthCm: contentWidthCm, mode };
+}
+
+// ODF's sides are the drawn ones, where a cell's left faces the column before it: a
+// right-to-left table swaps them. A table running against its page names its mode, and a
+// nested one always: LibreOffice does not reliably hand it its parent's (probed).
+function physicalTables(node: TiptapNode, around = exportPageRtl, nested = false): TiptapNode {
+  if (!node.content) return node;
+  if (node.type !== 'table') return { ...node, content: node.content.map((c) => physicalTables(c, around, nested)) };
+  const rtl = node.attrs?.dir === 'rtl' || (node.attrs?.dir !== 'ltr' && exportPageRtl);
+  const swapped = (attrs: TiptapNode['attrs']): TiptapNode['attrs'] => {
+    if (!rtl || !attrs) return attrs;
+    const p = parseCellPadding(attrs.cellPadding);
+    return { ...attrs, borderLeft: attrs.borderRight, borderRight: attrs.borderLeft, ...(p ? { cellPadding: [p[0], p[3], p[2], p[1]] } : {}) };
+  };
+  return {
+    ...node,
+    attrs: { ...swapped(node.attrs), ...(rtl !== around || nested ? { odtWritingMode: rtl ? 'rl-tb' : 'lr-tb' } : {}) },
+    content: node.content.map((row) => ({ ...row, content: (row.content ?? []).map((cell) => ({
+      ...cell, attrs: swapped(cell.attrs), content: (cell.content ?? []).map((c) => physicalTables(c, rtl, true)),
+    })) })),
+  };
 }
 
 // A formula cell as ODF writes it: LibreOffice's own formula language behind its
@@ -4716,7 +4860,9 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
           // Emit the cell's runs (SEG-separated) and record its descriptor; addCell is
           // synchronous, so the push stays in document order, matching applyCellBlocks'
           // walk. Spans make odf-kit emit covered cells, which its cell regex never matches.
-          const opts: CellOptions = { padding: padValue(parseCellPadding(cell.attrs?.cellPadding) ?? tablePad) + (cell.attrs?.revMark && !mergedColumn ? ` ${REV_CELL}` : '') };
+          const flow = cellTextFlow(cell.attrs?.textFlow);
+          const opts: CellOptions = { padding: padValue(parseCellPadding(cell.attrs?.cellPadding) ?? tablePad)
+            + (cell.attrs?.revMark && !mergedColumn ? ` ${REV_CELL}` : '') + (flow ? ` ${flow}` : '') };
           const colspan = (cell.attrs?.colspan as number) ?? 1;
           const rowspan = (cell.attrs?.rowspan as number) ?? 1;
           if (colspan > 1) opts.colSpan = colspan;
@@ -4734,7 +4880,7 @@ function exportTable(node: TiptapNode, doc: OdtDocument, contentWidthCm: number,
           for (const side of BORDER_SIDES) {
             const b = parseBorderAttr(cell.attrs?.[side] as string | null);
             if (b === 'none') opts[side] = 'none';
-            else if (b) opts[side] = `${b.widthPt}pt solid ${normalizeColor(b.color) ?? b.color}`;
+            else if (b) opts[side] = `${b.widthPt}pt ${b.line} ${normalizeColor(b.color) ?? b.color}`;
           }
           // Header cells and a table style's regions render bold/font via CSS
           // (presentational), so bake that onto the runs for Word/LibreOffice.
@@ -5261,10 +5407,11 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
   // Vertical text: a frame takes style:writing-mode in its graphic properties (where
   // LibreOffice writes it); a drawing shape drops it there and needs the *paragraph*
   // properties of its style instead (both probed).
-  const vertMode = box.textVertical && isFrame ? ' style:writing-mode="tb-rl"' : '';
-  const vertical = box.textVertical && !isFrame
-    ? '<style:paragraph-properties style:writing-mode="tb-rl"/>'
-    : '';
+  // Upward text is LibreOffice's own bt-lr, which a shape needs in both places (probed).
+  const up = box.textVertical === 'up';
+  const mode = up ? 'loext:writing-mode="bt-lr"' : 'style:writing-mode="tb-rl"';
+  const vertMode = box.textVertical && (isFrame || up) ? ` ${mode}` : '';
+  const vertical = box.textVertical && !isFrame ? `<style:paragraph-properties ${mode}/>` : '';
   const parent = isFrame ? ' style:parent-style-name="Frame"' : '';
   return (
     `<style:style style:name="TbxFr${index + 1}" style:family="graphic"${parent}>` +
@@ -5839,6 +5986,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // the Pictures/ + manifest entries. Text boxes and columns hoist after replacePageBreaks
   // (so PGB misses their blocks) and before the inline passes (which then cover them).
   exportSheet = styles;
+  exportPageRtl = rtl;
   exportSpacingModel = spacingModel;
   const mainLang = language ? tagFromOdf(language.language, language.country) : null;
   exportDocLangs = { lang: westLang(mainLang) ?? westLang(language?.other), langAsian: asianLang(mainLang) ?? asianLang(language?.other) };
@@ -5877,7 +6025,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   const pageWidthCm = pageDimsCm(pageFormat, orientation).w;
   const contentWidthCm = pageWidthCm - margins.left - margins.right;
 
-  const withZones: TiptapNode = splitNestedLists(zoneBlocks.length ? { ...docJson, content: [...(docJson.content ?? []), ...zoneBlocks] } : docJson);
+  const withZones: TiptapNode = physicalTables(splitNestedLists(clampListLevels(zoneBlocks.length ? { ...docJson, content: [...(docJson.content ?? []), ...zoneBlocks] } : docJson, MAX_LIST_LEVELS)));
   const sentinels = replaceRuby(replaceBibEntries(replaceIndexEntries(replaceRevisions(replaceSequenceFields(replaceComments(replaceBookmarks(replaceFormulas(replacePlaceholderFields(replaceDateTimeFields(replaceImages(replaceTabs(replaceHardBreaks(replaceSectionBreaks(replaceNotes(replaceColumns(replaceTextBoxes(replaceNestedTables(replacePageBreaks(replaceTableOfContents(replacePageFields(withZones, hf?.pageCount ?? 1), tocs)), contentWidthCm), textBoxes), columns), notes)))), images), dateFields), placeholderLabels), formulas), crossRefs), commentList), seqFields, seqAnchors), revisionList), indexMarks), bibMarks), rubies);
   const unmerged = markTextEffects(bakeListCharStyles(sentinels, styles), DEFAULT_FONT_SIZE_PT, styles);
   const raw = mergeListItemBlocks(unmerged);
@@ -5963,11 +6111,8 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
         const lhNum = Number(lhRaw);
         opts.lineHeight = isNaN(lhNum) ? lhRaw : lhNum;
       }
-      const ta = node.attrs?.textAlign;
-      if (ta === 'left' || ta === 'center' || ta === 'right' || ta === 'justify') {
-        opts.align = ta;
-      }
       const spacing = pairMargins(paraStyleFromAttrs(node.attrs), styleOf(node));
+      if (spacing.align) opts.align = spacing.align;
       if (spacing.spaceBefore != null) opts.spaceBefore = `${spacing.spaceBefore}pt`;
       if (spacing.spaceAfter != null) opts.spaceAfter = `${spacing.spaceAfter}pt`;
       // Left indent → fo:margin-left (odf-kit emits it natively from indentLeft).
@@ -6024,7 +6169,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // passes below patch elements of the right kind.
   const levelKinds: (LevelKindFix | null)[][] = [];
   collectListLevelKinds(raw, levelKinds);
-  let numberedOdt = applyListLevelKinds(dropKitAsianFonts(odt as Uint8Array), levelKinds);
+  let numberedOdt = applyListLevelKinds(extendKitListLevels(dropKitAsianFonts(odt as Uint8Array)), levelKinds);
 
   // Rewrite odf-kit's default numbering (1.) into per-level formats (depth cycle,
   // explicit types, multilevel chains). Runs before applyListItemStyles, which only
@@ -6114,7 +6259,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   zoneXml = cut.xml;
   const docZoneXml = Object.fromEntries(HF_ZONE_KEYS.map((key) =>
     [key, docZones[key] ? zoneXmlOf(hf?.[key], key.startsWith('header') ? 'header' : 'footer') : null])) as Record<HfZoneKey, string | null>;
-  const withHf = applyHfPostProcess(cut.bytes, margins, docZoneXml, headerDist, footerDist);
+  const withHf = applyHfPostProcess(cut.bytes, margins, docZoneXml, headerDist, footerDist, hf?.sections?.[0]?.frames ?? null, hf?.sections?.[0]?.framesFirst ?? null);
   // Sections past the first get their own master page, which is where ODF keeps a
   // section's header/footer; the SEC-marked block points at it. The page decor goes
   // into every master's header after that, so the section pages show it too.
@@ -6122,7 +6267,7 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
     { header: docZones.header, footer: docZones.footer }, { header: headerDist, footer: footerDist }, borderInsetCm(decor), tableMargins);
   const withWatermark = applyFoldMarksOdf(applyWatermarkOdf(withSections, decor.watermark), foldMarks);
   const withFonts = applyEmbeddedFontsOdf(declareReferencedFonts(withWatermark), fonts);
-  return zipFinal(declareLoext(applyOdfVersion(applyDocProperties(applyPageNumberStart(applySpacingModel(withFonts, spacingModel, spacingAtPageStart, balanceSpaces, recordLock?.key), pageNumbering.start), props))));
+  return zipFinal(fillScriptSlots(declareLoext(applyOdfVersion(applyDocProperties(applyPageNumberStart(applySpacingModel(withFonts, spacingModel, spacingAtPageStart, balanceSpaces, recordLock?.key, rowHeights.some((r) => r?.includes('row-height='))), pageNumbering.start), props)))));
 }
 
 // A pass that writes a loext: attribute (a character indent) or a drawooo: one (a shape's
@@ -6214,15 +6359,17 @@ function applyDocProperties(odtBytes: Uint8Array, props: DocProperties): Uint8Ar
 // AddParaTableSpacing=false — its own default adds them, so without this the space
 // between every pair of blocks would grow when the file is reopened. The same file
 // carries whether a block opening a page keeps its space above, and whether every space is
-// set at half the font size.
-function applySpacingModel(odtBytes: Uint8Array, model: SpacingModel, atPageStart = true, balanceSpaces = false, recordKey?: string): Uint8Array {
-  if (model !== 'max' && atPageStart && !balanceSpaces && !recordKey) return odtBytes;
+// set at half the font size, and that a row height leaves out the cells' margins
+// (tableRow.ts; LibreOffice's MinRowHeightInclBorder, whose ODF default counts them in).
+function applySpacingModel(odtBytes: Uint8Array, model: SpacingModel, atPageStart = true, balanceSpaces = false, recordKey?: string, rowHeights = false): Uint8Array {
+  if (model !== 'max' && atPageStart && !balanceSpaces && !recordKey && !rowHeights) return odtBytes;
   const files = unzipSync(odtBytes);
   const item =
     '<config:config-item-set config:name="ooo:configuration-settings">' +
     (model === 'max' ? '<config:config-item config:name="AddParaTableSpacing" config:type="boolean">false</config:config-item>' : '') +
     (atPageStart ? '' : '<config:config-item config:name="AddParaTableSpacingAtStart" config:type="boolean">false</config:config-item>') +
     (balanceSpaces ? '<config:config-item config:name="BalanceSpacesAndIdeographicSpaces" config:type="boolean">true</config:config-item>' : '') +
+    (rowHeights ? '<config:config-item config:name="MinRowHeightInclBorder" config:type="boolean">true</config:config-item>' : '') +
     (recordKey ? `<config:config-item config:name="RedlineProtectionKey" config:type="base64Binary">${recordKey}</config:config-item>` : '') +
     '</config:config-item-set>';
   const existing = files['settings.xml'];
@@ -6250,7 +6397,18 @@ function applySpacingModel(odtBytes: Uint8Array, model: SpacingModel, atPageStar
 // A zone's band of `minH` up to the body. LibreOffice lays a zone out from the band's
 // body-facing edge, which keeps a header at its distance; a footer stands on its distance,
 // as the editor draws it, only as a dynamic gap the size of the band (probed).
-function hfBandProps(kind: 'header' | 'footer', minH: number): string {
+// A framed area (HfFrame) keeps its gap as the spacing LibreOffice puts outside it.
+function hfBandProps(kind: 'header' | 'footer', minH: number, frame: HfFrame | null = null): string {
+  if (frame) {
+    const b = frame.border;
+    const p = frame.padding;
+    const border = (side: keyof HfFrame['border']) => ` fo:border-${side}="${b[side] ?? 'none'}"`;
+    const pad = (side: keyof HfFrame['padding']) => ` fo:padding-${side}="${Math.round(p[side] * 1000) / 1000}cm"`;
+    return `<style:header-footer-properties fo:min-height="${minH}cm" fo:margin-${kind === 'header' ? 'bottom' : 'top'}="${Math.round(frame.gap * 1000) / 1000}cm"` +
+      border('top') + border('right') + border('bottom') + border('left') +
+      pad('top') + pad('right') + pad('bottom') + pad('left') + ` style:dynamic-spacing="${!!frame.dynamic}"` +
+      (frame.background ? ` fo:background-color="${frame.background}"/>` : '/>');
+  }
   return kind === 'header'
     ? `<style:header-footer-properties fo:min-height="${minH}cm" fo:margin-bottom="0cm" style:dynamic-spacing="false"/>`
     : `<style:header-footer-properties fo:min-height="${minH}cm" fo:margin-top="${minH}cm" style:dynamic-spacing="true"/>`;
@@ -6259,7 +6417,7 @@ function hfBandProps(kind: 'header' | 'footer', minH: number): string {
 // Header/footer post-processing on styles.xml: section 1's zones replace the sentinel
 // paragraphs odf-kit wrote (variants go in beside them), and the geometry is rewritten
 // to ODF's own mapping (page margin = HF distance, min-height fills up to the body margin).
-function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, zones: Record<HfZoneKey, string | null>, headerDist: number, footerDist: number): Uint8Array {
+function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, zones: Record<HfZoneKey, string | null>, headerDist: number, footerDist: number, frames: HfFrames | null = null, framesFirst: HfFrames | null = null): Uint8Array {
   if (!Object.values(zones).some((z) => z != null)) return odtBytes;
   const files = unzipSync(odtBytes);
   const stylesBytes = files['styles.xml'];
@@ -6273,7 +6431,7 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, zones: R
     const minH = round3(Math.max(0.2, bodyMarginCm - distCm));
     styles = styles.replace(
       new RegExp(`<style:${kind}-style>[\\s\\S]*?</style:${kind}-style>`),
-      `<style:${kind}-style>${hfBandProps(kind, minH)}</style:${kind}-style>`,
+      `<style:${kind}-style>${hfBandProps(kind, minH, frames?.[kind] ?? null)}</style:${kind}-style>`,
     );
   };
   if (zones.header != null) band('header', margins.top, headerDist);
@@ -6296,9 +6454,39 @@ function applyHfPostProcess(odtBytes: Uint8Array, margins: PageMargins, zones: R
   injectVariant('header', 'left', zones.headerEven);
   injectVariant('footer', 'first', zones.footerFirst);
   injectVariant('footer', 'left', zones.footerEven);
+  if (framesFirst) styles = splitFirstPageMaster(styles, framesFirst);
 
   files['styles.xml'] = strToU8(styles);
   return rezipOdt(files);
+}
+
+// Page one framed otherwise than the rest: the Standard master governs it alone, on a layout
+// of its own, and hands over to a copy for the rest (LibreOffice's title-page idiom). Page
+// one is a right page, so it shows its first-page zones, else the running ones.
+function splitFirstPageMaster(styles: string, framesFirst: HfFrames): string {
+  const master = /<style:master-page style:name="Standard"[^>]*?(?:\/>|>[\s\S]*?<\/style:master-page>)/.exec(styles)?.[0];
+  const layout = master && /style:page-layout-name="([^"]*)"/.exec(master)?.[1];
+  const layoutXml = layout && new RegExp(`<style:page-layout\\b[^>]*style:name="${layout}"[\\s\\S]*?</style:page-layout>`).exec(styles)?.[0];
+  if (!master || !layoutXml) return styles;
+  const variant = (xml: string, kind: string, suffix: string) =>
+    new RegExp(`<style:${kind}-${suffix}>[\\s\\S]*?</style:${kind}-${suffix}>`).exec(xml)?.[0] ?? null;
+  const drop = (xml: string, suffix: string) => xml.replace(new RegExp(`<style:(header|footer)-${suffix}>[\\s\\S]*?</style:\\1-${suffix}>`, 'g'), '');
+  const rest = drop(master, 'first').replace('style:name="Standard"', 'style:name="Standard_20_Rest" style:display-name="Standard Rest"');
+  let first = drop(master, 'left');
+  const own = { header: variant(first, 'header', 'first'), footer: variant(first, 'footer', 'first') };
+  first = drop(first, 'first');
+  for (const kind of ['header', 'footer'] as const) {
+    const zone = own[kind];
+    if (zone) first = first.replace(new RegExp(`<style:${kind}>[\\s\\S]*?</style:${kind}>`), () => zone.replace(/-first>/g, '>'));
+  }
+  first = first.replace(`style:page-layout-name="${layout}"`, `style:page-layout-name="${layout}First" style:next-style-name="Standard_20_Rest"`);
+  const firstLayout = layoutXml.replace(`style:name="${layout}"`, `style:name="${layout}First"`).replace(
+    /<style:(header|footer)-style>\s*<style:header-footer-properties\b([^>]*?)\/>\s*<\/style:\1-style>/g,
+    (m, kind: 'header' | 'footer', attrs: string) => {
+      const minH = Number(/fo:min-height="([\d.]+)cm"/.exec(attrs)?.[1] ?? NaN);
+      return Number.isFinite(minH) ? `<style:${kind}-style>${hfBandProps(kind, minH, framesFirst[kind] ?? null)}</style:${kind}-style>` : m;
+    });
+  return styles.replace(layoutXml, () => layoutXml + firstLayout).replace(master, () => first + rest);
 }
 
 // styles.xml needs draw/svg/xlink namespaces for an image frame; odf-kit may not declare
@@ -6381,8 +6569,9 @@ function cutZones(odtBytes: Uint8Array, count: number): { bytes: Uint8Array; xml
 
 // A section's own master page: the Standard one cloned under its own name, carrying that
 // section's zones. ODF has no per-section header/footer other than this.
-// `part`: the whole section, the one right/left page it opens on, or the pages after it.
-function masterPageXml(name: string, layoutName: string, set: HfSet, zoneXmlOf: (doc: HfDoc, kind: 'header' | 'footer') => string, part: 'all' | 'right' | 'left' | 'rest' = 'all', next?: string): string {
+// `part`: the whole section, the one right/left page it opens on, its first page of either
+// side (a first-page layout of its own), or the pages after it.
+function masterPageXml(name: string, layoutName: string, set: HfSet, zoneXmlOf: (doc: HfDoc, kind: 'header' | 'footer') => string, part: 'all' | 'right' | 'left' | 'first' | 'rest' = 'all', next?: string): string {
   // A variant and its running zone travel as a pair: ODF allows a first/left zone only
   // under a running one, and an absent left zone repeats the running one. Where either
   // is set both are written, the blank one as an empty paragraph, which blanks its side.
@@ -6400,7 +6589,7 @@ function masterPageXml(name: string, layoutName: string, set: HfSet, zoneXmlOf: 
     footer: !!(set.footer || set.footerFirst || set.footerEven),
   };
   let body: string;
-  if (part === 'right' || part === 'left') {
+  if (part === 'right' || part === 'left' || (part === 'first' && set.differentFirstPage)) {
     // The one page this master governs shows the first-page variant, else the running
     // zone — the left one on a left page.
     const one = (running: HfDoc, first: HfDoc, left: HfDoc): HfDoc =>
@@ -6492,27 +6681,31 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], zoneXmlOf:
   const layoutXml = new RegExp(`<style:page-layout\\b[^>]*style:name="${layout}"[\\s\\S]*?</style:page-layout>`).exec(styles)?.[0] ?? null;
   const layouts: string[] = [];
   const round3 = (v: number) => Math.round(v * 1000) / 1000;
-  const layoutFor = (index: number, set: HfSet, side: 'right' | 'left' | null): string => {
-    const m = set.margins;
+  // `first`: the layout of the section's first page, where that page has a setup of its own.
+  const layoutFor = (index: number, set: HfSet, side: 'right' | 'left' | null, first = false): string => {
+    const m = first ? set.marginsFirst ?? set.margins : set.margins;
+    const distances = first ? set.distancesFirst ?? set.distances : set.distances;
+    const frames = first ? set.framesFirst ?? set.frames : set.frames;
     const paper = set.format || set.orientation ? pageDimsCm(set.format ?? format, set.orientation ?? orientation) : null;
     const numFormat = set.pageNumberFormat ?? null;
     const has = { header: !!(set.header || set.headerFirst || set.headerEven), footer: !!(set.footer || set.footerFirst || set.footerEven) };
-    const sameZones = has.header === docZones.header && has.footer === docZones.footer && !set.distances;
-    if ((!m && !paper && !numFormat && sameZones && !side) || !layoutXml) return layout;
+    const sameZones = has.header === docZones.header && has.footer === docZones.footer && !distances
+      && JSON.stringify(frames ?? null) === JSON.stringify(sets[0]?.frames ?? null);
+    if ((!m && !paper && !numFormat && sameZones && !side && !first) || !layoutXml) return layout;
     const body = m ?? margins;
     const band = (kind: 'header' | 'footer', edge: 'top' | 'bottom'): { margin: number; minH: number | null } => {
       if (!has[kind]) return { margin: body[edge], minH: null };
       // A section's own distance is written as it is: past the body margin, the body
       // starts below the band there, as the editor lays it out.
-      const dist = set.distances?.[kind] ?? dists[kind];
+      const dist = distances?.[kind] ?? dists[kind];
       return { margin: dist, minH: Math.max(0.2, body[edge] - dist) };
     };
     const top = band('header', 'top');
     const bottom = band('footer', 'bottom');
     const bandXml = (kind: 'header' | 'footer', minH: number | null) => (minH == null
       ? `<style:${kind}-style/>`
-      : `<style:${kind}-style>${hfBandProps(kind, round3(minH))}</style:${kind}-style>`);
-    const name = `${layout}Sec${index + 1}${side ? side[0] : ''}`;
+      : `<style:${kind}-style>${hfBandProps(kind, round3(minH), frames?.[kind] ?? null)}</style:${kind}-style>`);
+    const name = `${layout}Sec${index + 1}${side ? side[0] : ''}${first ? 'f' : ''}`;
     // The usage is the section's own: mirrored or not, whatever the document's layout says.
     const usage = side ?? (body.mirrored ? 'mirrored' : null);
     let xml = layoutXml.replace(/\s*style:page-usage="[^"]*"/, '')
@@ -6554,8 +6747,10 @@ function applySectionMasterPages(odtBytes: Uint8Array, sets: HfSet[], zoneXmlOf:
     // for that page alone, handing over to one for the rest — every page of a right-only
     // master is a right page in LibreOffice, with a blank one between any two.
     const side = index > 0 && set.startsOn ? (set.startsOn === 'odd' ? 'right' : 'left') : null;
-    if (side) {
-      pages.push(masterPageXml(name, layoutFor(index, set, side), set, zoneXmlOf, side, `${name}c`));
+    // A first page with a setup of its own is a master of its own too (LibreOffice's title page).
+    const first = !!(set.marginsFirst || set.distancesFirst || set.framesFirst);
+    if (side || first) {
+      pages.push(masterPageXml(name, layoutFor(index, set, side, first), set, zoneXmlOf, side ?? 'first', `${name}c`));
       pages.push(masterPageXml(`${name}c`, layoutFor(index, set, null), set, zoneXmlOf, 'rest'));
     } else {
       pages.push(masterPageXml(name, layoutFor(index, set, null), set, zoneXmlOf));

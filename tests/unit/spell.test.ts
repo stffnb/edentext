@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadModule, type Hunspell } from 'hunspell-asm';
@@ -166,6 +166,64 @@ describe('Ukrainian spell-check (hunspell-asm)', () => {
   });
 });
 
+describe('Indonesian spell-check (hunspell-asm)', () => {
+  let id: Hunspell;
+  beforeAll(async () => {
+    id = await makeChecker('id');
+  });
+
+  // The word list holds roots; prefixes, suffixes and circumfixes come from the .aff.
+  it('accepts affixed and reduplicated forms', () => {
+    for (const w of ['membaca', 'dipelajari', 'perpustakaan', 'mempertanggungjawabkan', 'bukunya', 'buku-buku']) {
+      expect(id.spell(w), w).toBe(true);
+    }
+  });
+
+  it('flags a genuine misspelling and suggests the correction', () => {
+    expect(id.spell('perpustakan')).toBe(false);
+    expect(id.suggest('perpustakan')).toContain('perpustakaan');
+  });
+});
+
+describe('Polish spell-check (hunspell-asm)', () => {
+  let pl: Hunspell;
+  beforeAll(async () => {
+    pl = await makeChecker('pl');
+  });
+
+  // The affix file ships as ISO-8859-2 and is vendored as UTF-8, so the diacritics must match.
+  it('accepts diacritics and inflected forms', () => {
+    for (const w of ['źdźbło', 'zażółcić', 'gęślą', 'jaźń', 'najpiękniejszymi', 'nieprzyjacielskiego', 'Warszawie']) {
+      expect(pl.spell(w), w).toBe(true);
+    }
+  });
+
+  it('flags a genuine misspelling and suggests the correction', () => {
+    expect(pl.spell('zażułcić')).toBe(false);
+    expect(pl.suggest('zażułcić')).toContain('zażółcić');
+  });
+});
+
+describe('Arabic spell-check (hunspell-asm)', () => {
+  let ar: Hunspell;
+  beforeAll(async () => {
+    ar = await makeChecker('ar');
+  });
+
+  // Article, conjunction, preposition and pronoun attach to the word; vowel marks and
+  // the tatweel that stretches a word are optional in writing.
+  it('accepts attached particles, vowelled and stretched words', () => {
+    for (const w of ['كتاب', 'الكتاب', 'والكتاب', 'بالكتاب', 'كتابها', 'يكتبون', 'المدارس', 'كِتَابٌ', 'العـــربية']) {
+      expect(ar.spell(w), w).toBe(true);
+    }
+  });
+
+  it('flags a genuine misspelling and suggests the correction', () => {
+    expect(ar.spell('مدرصة')).toBe(false);
+    expect(ar.suggest('مدرصة')).toContain('مدرسة');
+  });
+});
+
 describe('Italian spell-check (hunspell-asm)', () => {
   let it_: Checker;
   beforeAll(async () => {
@@ -201,5 +259,65 @@ describe('British spell-check (hunspell-asm)', () => {
   it('flags a genuine misspelling and suggests the correction', () => {
     expect(gb.spell('recieve')).toBe(false);
     expect(gb.suggest('recieve')).toContain('receive');
+  });
+});
+describe('Korean spell-check (hunspell-asm)', () => {
+  let ko: Hunspell;
+  beforeAll(async () => {
+    ko = await makeChecker('ko-KR');
+  });
+
+  // The affix file decomposes syllables into jamo on the way in and composes suggestions back.
+  it('accepts conjugated forms and words with particles', () => {
+    for (const w of ['한국어', '사랑합니다', '갔습니다', '먹었다', '학교에서', '며칠']) {
+      expect(ko.spell(w), w).toBe(true);
+    }
+  });
+
+  it('flags a genuine misspelling and suggests the correction', () => {
+    expect(ko.spell('먹엇다')).toBe(false);
+    expect(ko.suggest('먹엇다')).toContain('먹었다');
+    expect(ko.suggest('됬다')).toContain('됐다');
+  });
+});
+
+// A document in Arabic keeps a western language beside it: each word is checked in the
+// language of its own script, and a script without a language is left alone.
+describe('spell-check language by script', () => {
+  it('sends Latin words to the western language and Arabic ones to the Arabic', async () => {
+    const asked: [string, string][] = [];
+    vi.resetModules();
+    vi.doMock('../../src/lib/spell/dictionary', () => ({
+      loadChecker: async (code: string) => ({ correct: (w: string) => { asked.push([code, w]); return false; }, suggest: () => [], add: () => {} }),
+    }));
+    const { spellController } = await import('../../src/lib/spell/controller');
+    const settle = () => new Promise((r) => setTimeout(r, 0));
+
+    await spellController.setLanguage('ar', 'en');
+    spellController.check('hello'); // loads the western dictionary
+    await settle();
+    asked.length = 0;
+    expect(spellController.check('hello')).toBe(false);
+    expect(spellController.check('كتاب')).toBe(false);
+    expect(asked).toEqual([['en', 'hello'], ['ar', 'كتاب']]);
+
+    await spellController.setLanguage('ar', null);
+    expect(spellController.check('hello')).toBe(true);
+    await spellController.setLanguage('en', null);
+    expect(spellController.check('كتاب')).toBe(true);
+
+    // Hangul goes to the asian language wherever the document names it, else nowhere.
+    expect(spellController.check('한국어')).toBe(true);
+    for (const [code, alt] of [['ko-KR', null], ['en', 'ko-KR']] as const) {
+      await spellController.setLanguage(code, alt);
+      spellController.check('한국어');
+      spellController.check('hello');
+      await settle();
+      asked.length = 0;
+      expect(spellController.check('한국어')).toBe(false);
+      spellController.check('hello');
+      expect(asked).toEqual(alt ? [['ko-KR', '한국어'], ['en', 'hello']] : [['ko-KR', '한국어']]);
+    }
+    vi.doUnmock('../../src/lib/spell/dictionary');
   });
 });

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { coordsAt } from '../editor/extensions/overlay';
   import type { Editor } from '@tiptap/core';
   import { cmToPx, type PageMargins } from '../storage/pageMargins';
   import { commentIdAt } from '../editor/extensions/comment';
@@ -89,8 +90,8 @@
       let top: number;
       let bottom: number;
       try {
-        const a = view.coordsAtPos(r.from);
-        const b = view.coordsAtPos(r.to, -1);
+        const a = coordsAt(view, r.from);
+        const b = coordsAt(view, r.to, -1);
         top = (Math.min(a.top, b.top) - origin) / scale;
         bottom = (Math.max(a.bottom, b.bottom) - origin) / scale;
       } catch { continue; }

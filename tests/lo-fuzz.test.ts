@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { buildOdt } from '../src/lib/export/odt';
 import { buildDocx } from '../src/lib/export/docx';
 import { importOdt } from '../src/lib/import/odt';
-import { normalize, stripFontHoist, unhoist } from './normalize';
+import { normalize, stripFontHoist, unhoist, odtEffectFallback } from './normalize';
 import { mulberry32 } from './fuzzDoc';
 import { genCase, exportArgs, expectedOptions, importedOptions, diffLoose, omit, DOCX_LOSSY, docWideOddEven, type FuzzOptions } from './fuzzOptions';
 
@@ -81,6 +81,7 @@ function loNoise(node: N, fmt: Fmt): N {
     const last = node.content?.[node.content.length - 1];
     if (last?.attrs) delete last.attrs.spaceAfter;
   }
+  if (node.type === 'table') canonicalGrid(node);
   if (node.type === 'tableOfContents' && fmt === 'docx' && ['tables', 'figures'].includes(a.index)) { node.attrs = undefined; delete node.content; node.type = 'paragraph'; }
   if (node.type === 'bibliographyEntry' && fmt === 'docx') node.attrs = {};
   // Word centres a display formula's paragraph; LibreOffice reads that as its alignment.
@@ -139,6 +140,33 @@ function loNoise(node: N, fmt: Fmt): N {
   }
   return node;
 }
+// A Writer table is rows of cells with no column grid: a grid line no cell edge meets does
+// not exist there, so a span across it comes back one column less, its width kept (probed,
+// from ODT and DOCX). Both sides compare with such lines taken out.
+function canonicalGrid(table: N): void {
+  const rows: N[] = table.content ?? [];
+  const taken: Set<number>[] = rows.map(() => new Set());
+  const edges = new Set<number>(), placed: { cell: N; at: number }[] = [];
+  rows.forEach((row, ri) => {
+    let col = 0;
+    for (const cell of row.content ?? []) {
+      while (taken[ri].has(col)) col++;
+      const cs = cell.attrs?.colspan ?? 1, rs = cell.attrs?.rowspan ?? 1;
+      for (let r = ri; r < Math.min(ri + rs, rows.length); r++) for (let c = col; c < col + cs; c++) taken[r].add(c);
+      edges.add(col).add(col + cs);
+      placed.push({ cell, at: col });
+      col += cs;
+    }
+  });
+  for (const { cell, at } of placed) {
+    const cs = cell.attrs?.colspan ?? 1;
+    let n = 1;
+    for (let k = at + 1; k < at + cs; k++) if (edges.has(k)) n++;
+    if (n === cs) continue;
+    if (n > 1) cell.attrs.colspan = n; else delete cell.attrs.colspan;
+  }
+}
+
 // A table style is its look baked into the cells on LibreOffice's side, and a formula
 // cell shows the value it recomputes in its locale's format: the authored document's
 // styled tables compare by their text alone, its formula cells by nothing.
@@ -259,7 +287,7 @@ describe.skipIf(!SOFFICE)('fuzz through LibreOffice (needs soffice on PATH)', ()
         if (!existsSync(f)) { expect.soft(f, `seed ${c.seed}: LibreOffice wrote no file`).toBe(''); continue; }
         const res = importOdt(new Uint8Array(readFileSync(f)));
         const marked = markedTables(c.doc);
-        const [want, got] = [loContent(c.doc, fmt, marked), loContent(res.content, fmt, marked)];
+        const want = loContent(odtEffectFallback(structuredClone(c.doc), fmt === 'odt'), fmt, marked), got = loContent(res.content, fmt, marked);
         const skipContent = fmt === 'docx' && hardForDocx(c.doc);
         // Loose on numbers: a size or padding comes back a thousandth off through cm.
         const diff = skipContent ? null : diffLoose(want, got);

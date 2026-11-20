@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { locale, t } from '../i18n/i18n.svelte';
+  import { locale, t, startEdge, uiRtl } from '../i18n/i18n.svelte';
   import { parseSize, sizeLabel, sizeMenu } from '../utils/fontSize';
 
   // A font size in pt as the ribbon's size box offers one: its list, or a typed value in
@@ -37,7 +37,7 @@
   function show() {
     const r = box?.getBoundingClientRect();
     if (!r) return;
-    pos = { top: r.bottom + 3, left: r.left, width: r.width };
+    pos = { top: r.bottom + 3, left: startEdge(r).offset, width: r.width };
     open = true;
   }
 
@@ -85,7 +85,7 @@
   </div>
   {#if open}
     <div class="ribbon-menu fs-menu" role="menu" popover="manual" use:topLayer
-      style="top: {pos.top}px; left: {pos.left}px; min-width: {pos.width}px">
+      style="top: {pos.top}px; {uiRtl() ? 'right' : 'left'}: {pos.left}px; min-width: {pos.width}px">
       <div class="menu-scroll">
         {#each sizeMenu(named) as [name, pt]}
           <!-- mousedown keeps the input's focus, so its blur can't commit the typed text first. -->

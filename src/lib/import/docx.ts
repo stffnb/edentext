@@ -2,7 +2,9 @@ import { UNFORMATTED_MARKS, blockFormat, type RevMark } from '../editor/extensio
 import { strFromU8 } from 'fflate';
 import en from '../i18n/locales/en';
 import { DocxStyles, parseRunProps, mergeRunProps, readNumPr, readSpacing, readTabStops, toggle as onOff, wVal, W, R, WP, A, B, WPS, WPG, MC, VML, O, W10, PKG_REL, type RunProps, type ParaSpacing } from './docxStyles';
-import { mostlyAsian } from '../utils/script';
+import { ASIAN_SCRIPT_RE, COMPLEX_SCRIPT_RE, dominantScript } from '../utils/script';
+import { AUTO_COLOR } from '../utils/color';
+import { W14 } from '../utils/w14Effects';
 import { lengthToPt, WATERMARK_NAME } from './styleResolver';
 import { normalizeColor, labelledItems } from '../export/odt';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL } from '../styles/headings';
@@ -17,9 +19,9 @@ import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
 import { cropOf, fitInlineImage, framePx, stackRank, wrapGap, wrapGapAttr, type ColorMode, type WrapGap } from '../editor/extensions/image';
 import { TEXTBOX_PADDING_CM, boxTextWidthCm } from '../editor/extensions/textBox';
 import { formatTabStops } from '../editor/extensions/tabStops';
-import type { CapsMode, LineStyle } from '../editor/extensions/textEffects';
+import type { CapsMode, LineStyle, Relief } from '../editor/extensions/textEffects';
 import { builtinTableStyles, parseTableLook, resolveTableCell, tableLookAttr } from '../styles/tableStyles';
-import { formatOrdinal, knownNumFormat, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
+import { formatOrdinal, listStart, knownNumFormat, orderedTypeFromFormat, orderedTypeAttrAt, childCycle, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { bulletCharAttr, bulletCharFromDocx } from '../utils/bulletListTypes';
 import { DATE_FORMATS, TIME_FORMATS, docxPicture, findFormat, toDateValue } from '../utils/dateTime';
 import { shapeFromPrst, isLineKind, lineKindFor, parseSvgPath, parseVmlPath, fitPath, pathHeadsFor, isOpenOutline, joinOutlineParts, shadeFromDrawingMl, asTextArea, type OutlinePart, type PathCmd, type DrawingMlPreset } from '../utils/shapes';
@@ -32,7 +34,7 @@ import type { Orientation } from '../storage/pageOrientation';
 import type { RecordLock } from '../storage/trackChanges.svelte';
 import { pageFormatOf, type PageFormat } from '../storage/pageFormat';
 import { clampTabInterval, DOCX_IMPLIED_TAB_CM } from '../storage/tabInterval';
-import { languageFromOdf, mainOfPair, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
+import { languageFromOdf, mainOfSlots, NO_LANGUAGE, type DocumentLanguage } from '../storage/documentLanguage';
 import { EMPTY_HF_SET, HF_DISTANCE_CM, hfIsEmpty, type HfDistances, type HfDoc, type HfSet } from '../storage/headerFooter';
 import { DEFAULT_NOTE_SETTINGS, type NoteKind, type NoteNumFormat, type NoteSettings } from '../storage/noteSettings';
 import { EMPTY_DOC_PROPERTIES, type DocProperties } from '../storage/docProperties';
@@ -54,6 +56,7 @@ import { DEFAULT_LINE_GRID, normalizeLineGrid, type LineGrid } from '../storage/
 import { clampColumnGap } from '../editor/extensions/columns';
 import { astToLatex } from '../math/latex';
 import { parseOmml, OMML_NS } from '../math/omml';
+import { borderValue, type BorderLine } from '../editor/extensions/tableCellBorders';
 
 // Warnings are the English catalog text; localizeImportMessage maps them at display time.
 const WARN = en.importWarn;
@@ -71,7 +74,7 @@ type Ctx = {
   styles: DocxStyles;
   // A page break ending a body run of blocks with nothing after it to move (convertBlocks).
   breakCarry?: boolean;
-  // The document's main language tag (mainOfPair).
+  // The document's main language tag (mainOfSlots).
   mainLang: string | null;
   // Word styleId → registry name, and the ids blocks actually reference.
   styleNames: Map<string, string>;
@@ -83,7 +86,8 @@ type Ctx = {
   rels: Map<string, RelInfo>;
   imageCache: Map<string, string>;
   convertedImages: ConvertedImages;
-  listCounters: Map<number, Map<number, number>>; // numId → ilvl → last number used
+  listCounters: Map<string, Map<number, number>>; // counter (abstract) → ilvl → last number used
+  listOverridden: Set<string>; // `numId:ilvl` whose w:startOverride has been applied
   // Heading level → the first w:numPr a heading of it states on itself, for chapter
   // numbering where the heading style carries none.
   headingNumPr: Map<number, { numId: number; ilvl: number }>;
@@ -103,6 +107,8 @@ type Ctx = {
   // The section's own direction: a block declaring the same one is inheriting, not
   // formatted, so only a block that differs carries a `dir` attr.
   pageRtl: boolean;
+  // Whether a paragraph declaring no direction takes the section's; see sectionDirOnly.
+  sectionDir: boolean;
   // Word's document-wide automatic hyphenation: a paragraph can only turn it off.
   hyphenate: boolean;
   // settings.xml m:defJc: where a math paragraph without its own m:jc stands.
@@ -142,6 +148,8 @@ type Ctx = {
   notes: { id: string; kind: NoteKind; label: string | null; text: string; content: Node[]; styleName: string | null }[];
   // Converting a header/footer part: page fields, no notes, comments or revisions.
   zone?: boolean;
+  // The part is a footer, whose top is where the strip below the body starts.
+  footer?: boolean;
   // The body's open index field. Word may open one in the paragraph that ends a section
   // and fill it in the next, so it outlives the per-section walk.
   bodyField?: BodyField;
@@ -226,7 +234,8 @@ const DEFAULT_FONTS = new Set(['times new roman', 'liberation serif']);
 // Headings render sans (HEADING_FONT); Word writes Arial, LibreOffice Liberation Sans.
 const DEFAULT_HEADING_FONTS = new Set(['arial', 'liberation sans']);
 const LIST_LEFT_STEP_CM = 1.27; // matches export/docx.ts
-const LIST_HANGING_CM = 0.635; // matches export/docx.ts
+// The 0.635cm hang export/docx.ts writes; any other is the file's own, compared exactly.
+const LIST_HANGING_TWIP = 360;
 const LIST_INDENT_EPS_CM = 0.05;
 const LINK_BLUE = '#0563C1'; // the visual the exporter paints on hyperlink runs
 
@@ -305,7 +314,8 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const stylesDoc = files['word/styles.xml'] ? parseXml(strFromU8(files['word/styles.xml'])) : null;
   const numberingDoc = files['word/numbering.xml'] ? parseXml(strFromU8(files['word/numbering.xml'])) : null;
   const themeDoc = files['word/theme/theme1.xml'] ? parseXml(strFromU8(files['word/theme/theme1.xml'])) : null;
-  const styles = new DocxStyles(stylesDoc, numberingDoc, themeDoc);
+  const theme = themeColors(themeDoc);
+  const styles = new DocxStyles(stylesDoc, numberingDoc, themeDoc, (holder) => drawingColor(holder, { themeColors: theme }, W14));
   const warnings = new Set<string>();
 
   const styleNames = new Map<string, string>();
@@ -321,7 +331,7 @@ export function importDocx(bytes: Uint8Array, convertedImages: ConvertedImages =
   const contentWidthCm = sectionContentWidthCm(sectPr);
   const leftMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'left') ?? 1440);
   const rightMarginCm = twipToCm(intAttr(fc(sectPr, 'pgMar'), W, 'right') ?? 1440);
-  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, listCounters: new Map(), headingNumPr: new Map(), bodyNumLevels: new Set(), usedListStyles: new Map(), contentWidthCm, leftMarginCm, rightMarginCm, ...sectionHeightsCm(sectPr), pageRtl: sectPrRtl(sectPr), mainLang: docLangs.main, hyphenate: docSetting(files, 'autoHyphenation'), mathJc: docMathJc(files), cellSpacing: {}, compatMode: wordCompatMode(files), accents: themeAccents(themeDoc), themeColors: themeColors(themeDoc), themeLineWidths: Array.from(themeDoc?.getElementsByTagNameNS(A, 'lnStyleLst')[0]?.children ?? [], (ln) => (Number(ln.getAttribute('w')) || 12700) / 12700), openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentDefs: docxComments(files), moveNames: moveNames(body), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
+  const ctx: Ctx = { styles, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), warnings, files, rels: parseRels(files['word/_rels/document.xml.rels']), imageCache: new Map(), convertedImages, listCounters: new Map(), listOverridden: new Set(), headingNumPr: new Map(), bodyNumLevels: new Set(), usedListStyles: new Map(), contentWidthCm, leftMarginCm, rightMarginCm, ...sectionHeightsCm(sectPr), pageRtl: sectPrRtl(sectPr), sectionDir: sectionDirOnly(files, styles), mainLang: docLangs.main, hyphenate: docSetting(files, 'autoHyphenation'), mathJc: docMathJc(files), cellSpacing: {}, compatMode: wordCompatMode(files), accents: themeAccents(themeDoc), themeColors: theme, themeLineWidths: Array.from(themeDoc?.getElementsByTagNameNS(A, 'lnStyleLst')[0]?.children ?? [], (ln) => (Number(ln.getAttribute('w')) || 12700) / 12700), openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentDefs: docxComments(files), moveNames: moveNames(body), bibSources: docxSources(files), citationStyle: docxCitationStyle(files), notes: [], noteParts: {
     footnote: noteParts(files, 'footnotes', 'footnote'),
     endnote: noteParts(files, 'endnotes', 'endnote'),
   }, noteBookmarks: new Map() };
@@ -506,9 +516,11 @@ function parseRels(bytes: Uint8Array | undefined): Map<string, RelInfo> {
   return map;
 }
 
-// The default style's two languages (docDefaults included), and which is the main one.
+// The default style's three languages (docDefaults included), and which is the main one.
 function documentLanguage(run: RunProps, body: Element, warnings: Set<string>): { language: DocumentLanguage | null; main: string | null; other: string | null } {
-  const { main, other } = mainOfPair(run.lang ?? null, run.langEastAsia ?? null, mostlyAsian(body.textContent ?? ''));
+  const text = body.textContent ?? '';
+  const { main, other } = mainOfSlots({ west: run.lang ?? null, asian: run.langEastAsia ?? null, complex: run.langBidi ?? null },
+    dominantScript(text), COMPLEX_SCRIPT_RE.test(text) && !ASIAN_SCRIPT_RE.test(text));
   if (!main) return { language: null, main, other };
   const [language, country] = main.split('-');
   const code = languageFromOdf(language, country);
@@ -874,10 +886,10 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
           const list = makeListNode(ctx, num.numId, ilvl, ilvl === num.ilvl ? own : EMPTY_ITEM_INDENT);
           // Opened by a deeper paragraph, the first level has no item of its own yet; it
           // continues the list before it where that one ends on the numId's count.
-          const count = ctx.listCounters.get(num.numId)?.get(0);
+          const count = ctx.listCounters.get(ctx.styles.counterKey(num.numId))?.get(0);
           const prev = lastOrdered as Ordered | null;
-          if (ilvl === 0 && num.ilvl > 0 && list.type === 'orderedList' && count != null && prev?.numId === num.numId
-            && (Number(prev.list.attrs?.start) || 1) + labelledItems(prev.list) - 1 === count) {
+          if (ilvl === 0 && num.ilvl > 0 && list.type === 'orderedList' && count != null && prev && sameCount(ctx, prev.numId, num.numId)
+            && listStart(prev.list.attrs?.start) + labelledItems(prev.list) - 1 === count) {
             list.attrs = { ...(list.attrs ?? {}), start: count + 1, continueNumbering: true };
           }
           stack.push({ ilvl, numId: num.numId, list,
@@ -890,13 +902,14 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         // running count onto a fresh ordered node so numbering continues, not restarts at 1.
         // A level opened under an item without a label counts on by itself (listStarts).
         const underLabelless = stack.length > 1 && stack[stack.length - 2].list.content!.length === 0;
-        if (targetList.type === 'orderedList' && targetList.content!.length === 0 && number > 1 && !underLabelless) {
+        const levelStart = ctx.styles.level(num.numId, num.ilvl).start ?? 1;
+        if (targetList.type === 'orderedList' && targetList.content!.length === 0 && number !== levelStart && !underLabelless) {
           targetList.attrs = { ...(targetList.attrs ?? {}), start: number };
           // Word counts the numId on wherever it resumes: the editor's continuation does
-          // the same while the list before it is that numId and ends right before.
+          // the same while the list before it shares that count and ends right before.
           const prev = lastOrdered as Ordered | null;
-          if (stack.length === 1 && prev && prev.numId === num.numId
-            && (Number(prev.list.attrs?.start) || 1) + labelledItems(prev.list) === number) {
+          if (stack.length === 1 && prev && sameCount(ctx, prev.numId, num.numId)
+            && listStart(prev.list.attrs?.start) + labelledItems(prev.list) === number) {
             targetList.attrs.continueNumbering = true;
           }
         }
@@ -995,11 +1008,18 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
 // Word numbering is document-global per numId: a level keeps counting across intervening
 // non-list paragraphs (which split the list into separate nodes here) and resets its deeper
 // levels whenever a shallower level advances. Returns this item's number.
+const sameCount = (ctx: Ctx, a: number, b: number) => ctx.styles.counterKey(a) === ctx.styles.counterKey(b);
+
+// A numId's w:startOverride restarts the shared count where that numId first numbers the level.
 function nextListNumber(ctx: Ctx, numId: number, ilvl: number): number {
-  let per = ctx.listCounters.get(numId);
-  if (!per) { per = new Map(); ctx.listCounters.set(numId, per); }
+  const key = ctx.styles.counterKey(numId);
+  let per = ctx.listCounters.get(key);
+  if (!per) { per = new Map(); ctx.listCounters.set(key, per); }
   const cur = per.get(ilvl);
-  const n = cur == null ? (ctx.styles.level(numId, ilvl).start ?? 1) : cur + 1;
+  const restart = ctx.styles.startOverride(numId, ilvl);
+  const first = !ctx.listOverridden.has(`${numId}:${ilvl}`);
+  ctx.listOverridden.add(`${numId}:${ilvl}`);
+  const n = restart != null && first ? restart : cur == null ? (ctx.styles.level(numId, ilvl).start ?? 1) : cur + 1;
   per.set(ilvl, n);
   for (const l of Array.from(per.keys())) if (l > ilvl) per.delete(l);
   return n;
@@ -1109,7 +1129,7 @@ function makeListNode(ctx: Ctx, numId: number, ilvl: number, own: ItemIndent = E
       const attr = orderedTypeAttrAt(key, listBaseCycle(ctx, numId, ilvl));
       if (attr) attrs.listStyleType = attr;
     }
-    if (def.start != null && def.start > 1) attrs.start = def.start;
+    if (def.start != null && def.start !== 1) attrs.start = def.start;
   }
   const ownLeft = own.left ?? def.leftTwip;
   if (ownLeft != null) {
@@ -1122,14 +1142,14 @@ function makeListNode(ctx: Ctx, numId: number, ilvl: number, own: ItemIndent = E
     };
     const step = leftCm(ilvl) - (ilvl === 0 ? 0 : leftCm(ilvl - 1));
     const extra = round2(Math.max(-LIST_LEFT_STEP_CM, step - LIST_LEFT_STEP_CM));
-    if (Math.abs(extra) > LIST_INDENT_EPS_CM) attrs.indent = extra;
+    if (extra !== 0) attrs.indent = extra;
   }
   if (def.rightAligned) attrs.markerAlign = 'right';
   // The family as a run reads it, which is what the first portion it is held against has.
   const marker = def.run ? markerFormatFromText({ ...runTextProps(def.run), ...(def.run.font ? { fontFamily: def.run.font } : {}) }) : null;
   if (marker) attrs.markerFormat = marker;
   const hang = own.hang ?? def.hangingTwip;
-  if (hang != null && Math.abs(twipToCm(hang) - LIST_HANGING_CM) > LIST_INDENT_EPS_CM) attrs.hanging = round2(twipToCm(hang));
+  if (hang != null && hang !== LIST_HANGING_TWIP) attrs.hanging = round2(twipToCm(hang));
   if (def.suffix === 'space' || def.suffix === 'nothing') attrs.markerSuffix = def.suffix;
   const node: Node = { type: bullet ? 'bulletList' : 'orderedList', content: [] };
   if (Object.keys(attrs).length) node.attrs = attrs;
@@ -1143,6 +1163,9 @@ function wordFmtChar(fmt: string | undefined): string {
     case 'lowerRoman': return 'i';
     case 'upperRoman': return 'I';
     // LibreOffice reads these as the "аа, аб" kind; the letter-repeating kind writes them too.
+    case 'hindiNumbers': return '١, ٢, ٣, ...';
+    case 'arabicAlpha': return 'أ, ب, ت, ...';
+    case 'arabicAbjad': return 'ا, ب, ج, ...';
     case 'russianLower': return 'а, б, .., аа, аб, ... (ru)';
     case 'russianUpper': return 'А, Б, .., Аа, Аб, ... (ru)';
     // Several Word formats render as 一、二、三; LibreOffice folds them together too.
@@ -1155,6 +1178,10 @@ function wordFmtChar(fmt: string | undefined): string {
     // The half-width variants count the same way; the editor keeps the full-width one.
     case 'aiueo': case 'aiueoFullWidth': return 'ア, イ, ウ, ...';
     case 'iroha': case 'irohaFullWidth': return 'イ, ロ, ハ, ...';
+    case 'ganada': return '가, 나, 다, ...';
+    case 'chosung': return 'ㄱ, ㄴ, ㄷ, ...';
+    case 'koreanCounting': return '일, 이, 삼, ...';
+    case 'koreanLegal': return '하나, 둘, 셋, ...';
     default: return '1';
   }
 }
@@ -1218,9 +1245,16 @@ type BlockDefaults = {
   underline: string | null;
   strike: string | null;
   caps: CapsMode | null;
+  letterSpacingPt: number; // w:spacing the style gives its runs
+  // The effects the style draws (textEffects.ts).
+  outline: boolean;
+  shadow: boolean;
+  relief: Relief | null;
+  w14: Pick<RunProps, W14Key>;
   // The languages the style chain (docDefaults included) already gives the runs.
   lang: string | null;
   langAsian: string | null;
+  langComplex: string | null;
 };
 
 const FONT_TWINS: Record<string, string[]> = {
@@ -1238,7 +1272,8 @@ function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDef
     const f = font?.toLowerCase();
     return f ? new Set([...set, f, ...(FONT_TWINS[f] ?? [])]) : set;
   };
-  const fonts = withFont(new Set(headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS), baseRun.font);
+  // The style's family replaces the default: a run naming the default again leaves it.
+  const fonts = withFont(baseRun.font ? new Set() : new Set(headingLevel != null ? DEFAULT_HEADING_FONTS : DEFAULT_FONTS), baseRun.font);
   const asianFonts = withFont(DEFAULT_FONTS, baseRun.fontEastAsia);
   return {
     fontSizePt: baseRun.sizeHalfPt != null ? baseRun.sizeHalfPt / 2
@@ -1251,8 +1286,14 @@ function blockDefaults(baseRun: RunProps, headingLevel: number | null, boldByDef
     underline: lineSig(baseRun).underline,
     strike: lineSig(baseRun).strike,
     caps: baseRun.caps || null,
+    letterSpacingPt: (baseRun.spacingTwip ?? 0) / 20,
+    outline: !!baseRun.outline,
+    shadow: !!baseRun.shadow,
+    relief: baseRun.relief && baseRun.relief !== 'none' ? baseRun.relief : null,
+    w14: Object.fromEntries(W14_KEYS.filter((k) => baseRun[k]).map((k) => [k, baseRun[k]])),
     lang: baseRun.lang ?? null,
     langAsian: baseRun.langEastAsia ?? null,
+    langComplex: baseRun.langBidi ?? null,
   };
 }
 
@@ -1339,8 +1380,10 @@ function stylePara(ctx: Ctx, id: string | null): ParaProps {
   const jc = ctx.styles.paragraphAlign(id);
   if (jc === 'center') out.textAlign = 'center';
   else if (jc === 'both' || jc === 'distribute') out.textAlign = 'justify';
-  else if (jc === 'right' || jc === 'end') out.textAlign = 'right';
-  else if (jc === 'left' || jc === 'start') out.textAlign = 'left';
+  else {
+    const edge = DocxStyles.physicalJc(jc, ctx.styles.paragraphBidi(id) === true);
+    if (edge === 'right' || edge === 'left') out.textAlign = edge;
+  }
   const ind = ctx.styles.styleIndentTwip(id);
   if (ind != null) out.indent = round2(twipToCm(ind));
   const first = ctx.styles.styleFirstLineTwip(id);
@@ -1365,6 +1408,10 @@ function stylePara(ctx: Ctx, id: string | null): ParaProps {
     }
   }
   if (space) out.borderPadding = space;
+  // A style's w:between keeps each of its paragraphs a box of its own, as LibreOffice
+  // draws it and writes it to ODF (join-border="false", probed); nil lets them merge.
+  const between = ctx.styles.paragraphBorders(id).map((pBdr) => fc(pBdr, 'between')).find(Boolean);
+  if (space != null && between && paraBorderAttr(between)) out.borderJoin = false;
   return out;
 }
 
@@ -1374,7 +1421,12 @@ function styleText(ctx: Ctx, id: string | null, own = false): TextProps {
   if (!id) return {};
   // A character style adds to the run it decorates, so its own chain saying nothing
   // about kerning means "unchanged", not Word's off.
-  if (own) { const t = runTextProps(ctx.styles.styleOwn(id)); delete t.kerning; return t; }
+  if (own) {
+    const run = ctx.styles.styleOwn(id), t = runTextProps(run);
+    if (run.kernHalfPt == null) delete t.kerning;
+    if (run.color === AUTO_COLOR) t.color = AUTO_COLOR;
+    return t;
+  }
   // A paragraph style naming no font uses the document's theme (minorHAnsi for body,
   // majorHAnsi for headings) — the family single line spacing is measured against.
   const run = ctx.styles.paragraphRun(id);
@@ -1388,7 +1440,7 @@ function runTextProps(run: RunProps): TextProps {
   if (run.font) out.fontFamily = screenFontName(run.font);
   if (run.fontEastAsia) out.fontFamilyAsian = screenFontName(run.fontEastAsia);
   if (run.sizeHalfPt != null) out.fontSizePt = Math.round((run.sizeHalfPt / 2) * 10) / 10;
-  if (run.spacingTwip) out.letterSpacingPt = Math.round((run.spacingTwip / 20) * 100) / 100;
+  if (run.spacingTwip != null) out.letterSpacingPt = Math.round((run.spacingTwip / 20) * 100) / 100;
   // Word kerns nothing unless w:kern names the size to start at, and a document that
   // says so for headings only leaves body text unkerned (probed against LibreOffice).
   const kern = run.kernHalfPt ?? 0;
@@ -1399,9 +1451,17 @@ function runTextProps(run: RunProps): TextProps {
   if (run.strike != null) out.strike = run.strike;
   const color = hexColor(run.color);
   if (color) out.color = color;
-  if (run.caps) out.caps = run.caps;
+  if (run.caps != null) out.caps = run.caps;
+  if (run.outline != null) out.outline = run.outline;
+  if (run.shadow != null) out.shadow = run.shadow;
+  if (run.relief) out.relief = run.relief;
+  for (const k of W14_KEYS) if (run[k]) (out as Record<string, unknown>)[k] = run[k];
   return out;
 }
+
+// The w14 effects (utils/w14Effects.ts); a run has no way to switch a style's off.
+type W14Key = 'textOutline' | 'textShadow' | 'textGlow' | 'textFxRaw';
+const W14_KEYS: W14Key[] = ['textOutline', 'textShadow', 'textGlow', 'textFxRaw'];
 
 // The document's style registry: the built-ins with the file's own definitions merged
 // over them — only the styles blocks reference, plus their parent chains.
@@ -1521,6 +1581,8 @@ function listStyleFromDocx(name: string, ctx: Ctx, numId: number, builtin?: bool
     if (extra) level.indentCm = extra;
     prevLeftCm = leftCm;
     if (def.rightAligned) level.markerAlign = 'right';
+    if (def.hangingTwip != null && def.hangingTwip !== LIST_HANGING_TWIP) level.hanging = round2(twipToCm(def.hangingTwip));
+    if (def.suffix === 'space' || def.suffix === 'nothing') level.markerSuffix = def.suffix;
     if (bullet) {
       const ch = bulletCharFromDocx(def.lvlText, def.bulletFont);
       if (ch) level.bulletChar = ch;
@@ -1528,7 +1590,7 @@ function listStyleFromDocx(name: string, ctx: Ctx, numId: number, builtin?: bool
       if (((def.lvlText ?? '').match(/%\d/g) ?? []).length > 1) multilevel = true;
       const key = orderedTypeFromFormat(wordFmtChar(def.numFmt), lvlSuffix(def.lvlText));
       level.numType = key === 'multilevel' ? 'decimal' : key;
-      if (def.start != null && def.start > 1) level.startAt = def.start;
+      if (def.start != null && def.start !== 1) level.startAt = def.start;
     }
     levels.push(level);
   }
@@ -1558,9 +1620,15 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // over the table style's w:pPr (probed: that ranks *below* the paragraph style). A
   // header/footer paragraph carries none either, and bakes its Header/Footer style in.
   const baked = kind === 'cell' || kind === 'zone';
-  const attrs = blockAttrs(ppr, kind, level, directJc || baked || kind === 'list' || mathJc ? jcVal : null,
+  // w:jc is an edge by the paragraph's own w:bidi (a formula's m:jc is not); one the style
+  // supplies lands at the other edge in a paragraph of the other direction, so it counts.
+  const physJc = mathJc ?? DocxStyles.physicalJc(jcVal, bidi === true);
+  // Word takes a paragraph's direction from w:bidi alone, never from the section.
+  const rtl = bidi ?? (ctx.sectionDir && ctx.pageRtl);
+  const physStyleJc = DocxStyles.physicalJc(styleJc, ctx.styles.paragraphBidi(styleId) === true);
+  const attrs = blockAttrs(ppr, kind, level, directJc || baked || kind === 'list' || mathJc || physJc !== physStyleJc ? physJc : null,
     baked || kind === 'list' ? ctx.styles.paragraphSpacing(styleId, kind === 'cell' ? ctx.cellSpacing : undefined) : {},
-    bidi ?? ctx.pageRtl, kind === 'zone' ? null : styleJc);
+    rtl, kind === 'zone' ? null : physStyleJc);
   // A list item carries no style name either and renders the default style's spacing,
   // so its own style's spacing rides the block wherever the two differ.
   if (kind === 'list') {
@@ -1637,9 +1705,9 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   // at all; below that switch it says what is already true.
   const directSah = fc(ppr, 'suppressAutoHyphens');
   if (ctx.hyphenate && directSah && onOff(directSah)) attrs.noHyphenation = true;
-  // The section's own base direction is inheritance, not formatting, so only a block
-  // that differs from it carries the attr.
-  if (bidi != null && bidi !== ctx.pageRtl) attrs.dir = bidi ? 'rtl' : 'ltr';
+  // The page's direction is inheritance, not formatting, so only a block that differs
+  // from it carries the attr.
+  if (rtl !== ctx.pageRtl) attrs.dir = rtl ? 'rtl' : 'ltr';
   // Tab stops: a direct w:tabs replaces the style's, which the resolver walks for.
   const directTabs = fc(ppr, 'tabs');
   const stops = formatTabStops(directTabs ? readTabStops(directTabs) : ctx.styles.paragraphTabs(styleId));
@@ -1705,6 +1773,13 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
   if (Object.keys(attrs).length) node.attrs = attrs;
   if (content.length) node.content = content;
   return node;
+}
+
+function tableKeepsNext(rows: Node[]): boolean {
+  const flat = (b: Node): Node[] => (b.type === 'paragraph' || b.type === 'heading' ? [b]
+    : b.type === 'table' ? [] : (b.content ?? []).flatMap(flat));
+  const blocks = rows.flatMap((r) => r.content ?? []).flatMap((c) => c.content ?? []).flatMap(flat);
+  return blocks.length > 0 && blocks.every((b) => b.attrs?.keepNext === true || (b.type === 'heading' && b.attrs?.keepNext !== false));
 }
 
 // w:contextualSpacing drops a paragraph's own spacing towards a neighbour of the same
@@ -1789,7 +1864,7 @@ function uniformRunSize(content: Node[]): string | null | undefined {
 function paragraphMarkFontSize(ppr: Element | null, ctx: Ctx, baseRun: RunProps, defaultPt: number): string | null {
   const rPr = fc(ppr, 'rPr');
   const rStyle = fc(rPr, 'rStyle');
-  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
+  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr, ctx.styles.colorOf));
   if (props.sizeHalfPt == null) return null;
   const sizePt = props.sizeHalfPt / 2;
   return Math.abs(sizePt - defaultPt) > 0.05 ? `${Math.round(sizePt * 10) / 10}pt` : null;
@@ -1800,7 +1875,7 @@ function paragraphMarkFontSize(ppr: Element | null, ctx: Ctx, baseRun: RunProps,
 function paragraphMarkLanguage(ppr: Element | null, ctx: Ctx, baseRun: RunProps): { lang?: string; langEastAsia?: string } {
   const rPr = fc(ppr, 'rPr');
   const rStyle = fc(rPr, 'rStyle');
-  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
+  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr, ctx.styles.colorOf));
   return { lang: props.lang, langEastAsia: props.langEastAsia };
 }
 
@@ -1809,7 +1884,7 @@ function paragraphMarkLanguage(ppr: Element | null, ctx: Ctx, baseRun: RunProps)
 function paragraphMarkFont(ppr: Element | null, ctx: Ctx, baseRun: RunProps, defaults: BlockDefaults): { west: string | null; asian: string | null } {
   const rPr = fc(ppr, 'rPr');
   const rStyle = fc(rPr, 'rStyle');
-  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr));
+  const props = mergeRunProps(mergeRunProps(baseRun, ctx.styles.styleOwn(rStyle ? wVal(rStyle) : null)), parseRunProps(rPr, ctx.styles.colorOf));
   const font = props.font ?? ctx.styles.themeFont(props.fontTheme ?? 'minor');
   const asian = props.fontEastAsia;
   return {
@@ -1847,13 +1922,10 @@ function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number |
   if (jcVal === 'center') attrs.textAlign = 'center';
   else if (jcVal === 'both' || jcVal === 'distribute') attrs.textAlign = 'justify';
   else {
-    // start/end are physical like left/right: LibreOffice writes an rtl paragraph's
-    // physical left as w:jc="start" (probed). The direction's own edge stays unset
-    // unless it overrides a style that aligns otherwise.
-    const edge = (v: string | null) => v === 'right' || v === 'end' ? 'right'
-      : v === 'left' || v === 'start' ? 'left' : v;
-    const align = edge(jcVal) === 'right' || edge(jcVal) === 'left' ? edge(jcVal) : null;
-    if (align && (align !== (rtl ? 'right' : 'left') || (styleJc != null && edge(styleJc) !== align))) attrs.textAlign = align;
+    // The caller resolved the edge. The direction's own edge stays unset unless it
+    // overrides a style that aligns otherwise.
+    const align = jcVal === 'right' || jcVal === 'left' ? jcVal : null;
+    if (align && (align !== (rtl ? 'right' : 'left') || (styleJc != null && styleJc !== align))) attrs.textAlign = align;
   }
 
   const sp = ppr ? fc(ppr, 'spacing') : null;
@@ -1880,17 +1952,17 @@ function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number |
   const right = ind ? intAttr(ind, W, 'right') ?? intAttr(ind, W, 'end') : null;
   const rightChars = ind ? intAttr(ind, W, 'rightChars') ?? intAttr(ind, W, 'endChars') : null;
   if (rightChars) attrs.indentRightChars = rightChars / 100;
-  else if (right != null) { const cm = round2(twipToCm(right)); if (cm > LIST_INDENT_EPS_CM || (kind !== 'cell' && cm < -LIST_INDENT_EPS_CM)) attrs.indentRight = cm; }
+  else if (right != null) { const cm = round2(twipToCm(right)); if (cm > LIST_INDENT_EPS_CM || cm < -LIST_INDENT_EPS_CM) attrs.indentRight = cm; }
   if (kind !== 'list') {
     // The *Chars attributes (hundredths of a character) win over the twips when nonzero.
     // A hanging count adds to the left one, where LibreOffice puts the text (probed).
     const hangingChars = ind ? intAttr(ind, W, 'hangingChars') : null;
     const leftChars = ind ? intAttr(ind, W, 'leftChars') ?? intAttr(ind, W, 'startChars') : null;
     const left = ind ? intAttr(ind, W, 'left') ?? intAttr(ind, W, 'start') : null;
-    // Out into the margin, as a page-wide picture's paragraph is set; a cell keeps its
-    // text inside its padding (probed: LibreOffice wraps such a line at the cell's width).
+    // Out into the margin, as a page-wide picture's paragraph is set, or past a cell's
+    // edge, where LibreOffice widens the line by it too (probed).
     if (leftChars || hangingChars) attrs.indentChars = ((leftChars ?? 0) + (hangingChars ?? 0)) / 100;
-    else if (left != null) { const cm = round2(twipToCm(left)); if (cm > LIST_INDENT_EPS_CM || (kind !== 'cell' && cm < -LIST_INDENT_EPS_CM)) attrs.indent = cm; }
+    else if (left != null) { const cm = round2(twipToCm(left)); if (cm > LIST_INDENT_EPS_CM || cm < -LIST_INDENT_EPS_CM) attrs.indent = cm; }
     // w:hanging outdents the first line, w:firstLine indents it; they are exclusive.
     const hanging = ind ? intAttr(ind, W, 'hanging') : null;
     const firstLine = ind ? intAttr(ind, W, 'firstLine') : null;
@@ -1913,8 +1985,8 @@ function blockAttrs(ppr: Element | null, kind: BlockKind, headingLevel: number |
 // Paragraph background + per-side border attrs (paragraphBox.ts) from direct w:pPr.
 // Shading: w:shd/@w:fill; borders: w:pBdr/w:{top,right,bottom,left} (w:sz in eighths of a
 // point). Sides with w:val none/nil are skipped. Matches the ODF paraBoxAttrs shape.
-function readParaBox(ppr: Element | null): Record<string, string> {
-  const out: Record<string, string> = {};
+function readParaBox(ppr: Element | null): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {};
   if (!ppr) return out;
   const shd = fc(ppr, 'shd');
   const fill = shd ? hexColor(shd.getAttributeNS(W, 'fill')) : undefined;
@@ -1922,27 +1994,72 @@ function readParaBox(ppr: Element | null): Record<string, string> {
 
   const pBdr = fc(ppr, 'pBdr');
   if (pBdr) {
+    let space = 0;
+    const group = betweenGroup(pBdr);
     for (const [wSide, attr] of PARA_BORDER_SIDES) {
-      const v = paraBorderAttr(fc(pBdr, wSide));
-      if (v) out[attr] = v;
+      const side = group && wSide === 'top' && !group.first ? fc(pBdr, 'between')
+        : group && wSide === 'bottom' && !group.last ? null : fc(pBdr, wSide);
+      const v = paraBorderAttr(side);
+      if (v) {
+        out[attr] = v;
+        // w:space in whole points, per side; the widest is the paragraph's, as on styles.
+        space = Math.max(space, intAttr(side!, W, 'space') ?? 0);
+      }
     }
+    if (space) out.borderPadding = space;
+    if (group) out.borderJoin = false;
   }
   return out;
+}
+
+// Paragraphs in a row whose w:pBdr is the same and draws w:between are one bordered group:
+// LibreOffice gives every paragraph after the first the between line as its top, only the
+// last the bottom line, and merges none of them (probed); the import does the same.
+function betweenGroup(pBdr: Element): { first: boolean; last: boolean } | null {
+  if (!paraBorderAttr(fc(pBdr, 'between'))) return null;
+  const flat = (el: Element) => el.outerHTML.replace(/\s+/g, '');
+  const like = (p: Element | null) => {
+    const other = p?.localName === 'p' ? fc(fc(p, 'pPr'), 'pBdr') : null;
+    return !!other && flat(other) === flat(pBdr);
+  };
+  // Range marks between two paragraphs do not part them.
+  const step = (el: Element | null, dir: 'previousElementSibling' | 'nextElementSibling') => {
+    let n = el?.[dir] ?? null;
+    while (n && /^(bookmark|commentRange|perm|move(From|To)Range)(Start|End)$|^proofErr$/.test(n.localName)) n = n[dir];
+    return n;
+  };
+  const p = pBdr.parentElement?.parentElement ?? null;
+  return { first: !like(step(p, 'previousElementSibling')), last: !like(step(p, 'nextElementSibling')) };
 }
 
 const PARA_BORDER_SIDES = [
   ['top', 'borderTop'], ['right', 'borderRight'], ['bottom', 'borderBottom'], ['left', 'borderLeft'],
 ] as const;
 
-// One w:pBdr side → the canonical '<W>pt solid #RRGGBB'. null when it draws nothing:
+// A drawn border side's line and total width. w:sz is one stroke in eighths of a point;
+// LibreOffice draws the multi-line kinds as a double line this wide in all (probed).
+export function docxBorderLine(el: Element): { line: BorderLine; widthPt: number } {
+  const val = el.getAttributeNS(W, 'val') ?? '';
+  const sz = intAttr(el, W, 'sz');
+  const s = sz != null ? sz / 8 : 0.5;
+  const w = (pt: number) => Math.round(pt * 100) / 100;
+  if (val === 'double' || val === 'triple') return { line: 'double', widthPt: w(3 * s) };
+  if (/SmallGap$/.test(val)) return { line: 'double', widthPt: w(s + 1.5) };
+  if (/MediumGap$/.test(val)) return { line: 'double', widthPt: w(2 * s) };
+  if (/LargeGap$/.test(val)) return { line: 'double', widthPt: w(s + 2.25) };
+  if (val === 'dotted') return { line: 'dotted', widthPt: w(s) };
+  if (/dash/i.test(val)) return { line: 'dashed', widthPt: w(s) };
+  return { line: 'solid', widthPt: w(s) };
+}
+
+// One w:pBdr side → the canonical '<W>pt <line> #RRGGBB'. null when it draws nothing:
 // unlike a table cell, a paragraph has no 0.5pt-black default to collapse against.
 function paraBorderAttr(b: Element | null): string | null {
   if (!b) return null;
   const val = b.getAttributeNS(W, 'val');
   if (!val || val === 'none' || val === 'nil') return null;
-  const sz = intAttr(b, W, 'sz'); // eighths of a point
-  const widthPt = sz != null ? Math.round((sz / 8) * 100) / 100 : 0.5;
-  return `${widthPt}pt solid ${hexColor(b.getAttributeNS(W, 'color')) ?? '#000000'}`;
+  const { line, widthPt } = docxBorderLine(b);
+  return borderValue(widthPt, hexColor(b.getAttributeNS(W, 'color')) ?? '#000000', line);
 }
 
 // Word's horizontal line (Insert ▸ Horizontal Line, or the `---` autoformat) is a VML
@@ -2052,7 +2169,7 @@ function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunP
 function isStockNoteStyle(ctx: Ctx, styleId: string): boolean {
   const run = ctx.styles.paragraphRun(styleId), base = ctx.styles.paragraphRun(null);
   if (run.sizeHalfPt !== 20) return false;
-  const keys = ['bold', 'italic', 'underline', 'strike', 'color', 'font', 'fontTheme', 'highlightFill', 'caps'] as const;
+  const keys = ['bold', 'italic', 'underline', 'strike', 'color', 'font', 'fontTheme', 'highlightFill', 'caps', 'outline', 'shadow', 'relief', 'textOutline', 'textShadow', 'textGlow'] as const;
   if (!keys.every((k) => (run[k] ?? null) === (base[k] ?? null))) return false;
   if (ctx.styles.paragraphAlign(styleId) !== ctx.styles.paragraphAlign(null)) return false;
   const sp = ctx.styles.paragraphSpacing(styleId);
@@ -2102,11 +2219,11 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     // A named character style: its formatting belongs to the style, so it joins the
     // yardstick and the run only keeps what goes beyond it.
     const styleRun = ctx.styles.styleOwn(charId);
-    const own = parseRunProps(rPr);
+    const own = parseRunProps(rPr, ctx.styles.colorOf);
     // The block's language survives the character style's yardstick — only a style that
     // names one of its own replaces it.
     const runDefaults = charName
-      ? { ...blockDefaults(mergeRunProps(baseRun, styleRun), null, defaults.boldByDefault), lang: styleRun.lang ?? defaults.lang, langAsian: styleRun.langEastAsia ?? defaults.langAsian }
+      ? { ...blockDefaults(mergeRunProps(baseRun, styleRun), null, defaults.boldByDefault), lang: styleRun.lang ?? defaults.lang, langAsian: styleRun.langEastAsia ?? defaults.langAsian, langComplex: styleRun.langBidi ?? defaults.langComplex }
       : defaults;
     const props = mergeRunProps(mergeRunProps(baseRun, styleRun), own);
     // A run's language is inherited unless its own properties name one: the document
@@ -2119,7 +2236,20 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
     if (!props.font) {
       props.font = ctx.styles.themeFont(props.fontTheme ?? (runDefaults.boldByDefault ? 'major' : 'minor'));
     }
-    const marks = marksFor(props, runDefaults, !!linkHref);
+    // Only our exporter's blue is an editor link, drawn underlined by CSS; any other link
+    // is plain and keeps its own underline and colour as marks.
+    const ours = !!linkHref && hexColor(props.color)?.toUpperCase() === LINK_BLUE;
+    // Complex-script text is set from Word's complex set (w:bCs, w:iCs, w:szCs, the cs
+    // font, the bidi language), a slot left out being Word's default and not the western one.
+    const ownScript = COMPLEX_SCRIPT_RE.test(r.textContent ?? '');
+    const complex = props.complex || ownScript;
+    // Spaces and punctuation flagged right-to-left between western words keep the
+    // language the run names itself, so a paragraph's language stays one mark.
+    const langBidi = own.langBidi ?? (ownScript ? undefined : own.lang) ?? styleRun.langBidi ?? runDefaults.langComplex ?? undefined;
+    const marks = complex
+      ? marksFor({ ...props, bold: props.boldCs ?? false, italic: props.italicCs ?? false, sizeHalfPt: props.sizeCsHalfPt ?? 20, font: props.fontCs ?? props.font, lang: langBidi },
+        { ...runDefaults, lang: runDefaults.langComplex }, ours)
+      : marksFor(props, runDefaults, ours);
     if (charName) {
       ctx.usedCharStyles.add(charId!);
       marks.push({ type: 'charStyle', attrs: { name: charName } });
@@ -2128,7 +2258,6 @@ function convertInline(p: Element, ctx: Ctx, baseRun: RunProps, defaults: BlockD
       // Word never paints a hyperlink for being one: the blue is its Hyperlink character
       // style, which arrives as an ordinary run mark, so the editor must add nothing of
       // its own. Only our exporter's blue is an editor link — it is stripped above.
-      const ours = hexColor(props.color)?.toUpperCase() === LINK_BLUE;
       marks.push({ type: 'link', attrs: { href: linkHref, ...(ours ? {} : { plain: true }) } });
     }
     const change = fc(rPr, 'rPrChange');
@@ -2623,6 +2752,7 @@ function marksFor(props: RunProps, defaults: BlockDefaults, inLink: boolean): Ma
 
   // Marks the block's named style already renders need no mark of their own.
   if (props.italic && !defaults.italic) marks.push({ type: 'italic' });
+  else if (props.italic === false && defaults.italic) textStyle.fontStyle = 'normal';
   const line = lineSig(props);
   if (props.underline && !inLink && line.underline !== defaults.underline) { // link underline is the CSS default
     const attrs = underlineAttrs(props);
@@ -2639,6 +2769,8 @@ function marksFor(props: RunProps, defaults: BlockDefaults, inLink: boolean): Ma
   let color = hexColor(props.color);
   if (inLink && color === LINK_BLUE) color = undefined; // strip the exporter's link visual
   if (color && color !== defaults.color) textStyle.color = color;
+  // Automatic outranks a coloured style: LibreOffice draws it black.
+  else if (props.color === AUTO_COLOR && defaults.color !== '#000000') textStyle.color = AUTO_COLOR;
 
   const sizePt = props.sizeHalfPt != null ? props.sizeHalfPt / 2 : null;
   if (sizePt != null && Math.abs(sizePt - defaults.fontSizePt) > 0.05) textStyle.fontSize = `${Math.round(sizePt * 10) / 10}pt`;
@@ -2649,7 +2781,22 @@ function marksFor(props: RunProps, defaults: BlockDefaults, inLink: boolean): Ma
 
   if (props.caps && props.caps !== defaults.caps) textStyle.caps = props.caps;
   if (props.positionPt) textStyle.textPosition = props.positionPt;
+  const spacing = (props.spacingTwip ?? 0) / 20;
+  // A style's box is not drawn by its CSS, so every run in one carries it.
+  const box = paraBorderAttr(props.bdr ?? null);
+  if (box) {
+    textStyle.textBorder = box;
+    const space = intAttr(props.bdr!, W, 'space');
+    if (space) textStyle.textBorderPadding = space;
+  }
+  if (spacing !== defaults.letterSpacingPt) textStyle.letterSpacing = Math.round(spacing * 100) / 100;
   if (props.emphasis) textStyle.emphasis = props.emphasis;
+  // Off is kept only where the style draws the effect; a run without one inherits it.
+  if (!!props.outline !== defaults.outline) textStyle.outline = !!props.outline;
+  if (!!props.shadow !== defaults.shadow) textStyle.shadow = !!props.shadow;
+  const relief = props.relief && props.relief !== 'none' ? props.relief : null;
+  if (relief !== defaults.relief) textStyle.relief = relief ?? 'none';
+  for (const k of W14_KEYS) if (props[k] && JSON.stringify(props[k]) !== JSON.stringify(defaults.w14[k])) textStyle[k] = props[k];
   if (props.lang && props.lang !== defaults.lang) textStyle.lang = props.lang;
   if (props.langEastAsia && props.langEastAsia !== defaults.langAsian) textStyle.langAsian = props.langEastAsia;
 
@@ -2909,22 +3056,25 @@ function themeColors(theme: Document | null): Map<string, string> {
 
 // A DrawingML colour holder (<a:solidFill>, <a:ln>'s fill): its sRGB value, or the theme
 // slot it names, shifted by the modifiers Word writes for "accent1, lighter 40%".
-function drawingColor(holder: Element | null, ctx: Ctx): string | undefined {
-  const srgb = nsChild(holder, A, 'srgbClr');
-  const scheme = nsChild(holder, A, 'schemeClr');
+// The same in w14's namespace, whose attributes are qualified (w14:val).
+function drawingColor(holder: Element | null, ctx: Pick<Ctx, 'themeColors'>, ns = A): string | undefined {
+  const srgb = nsChild(holder, ns, 'srgbClr');
+  const scheme = nsChild(holder, ns, 'schemeClr');
   const el = srgb ?? scheme;
   if (!el) return undefined;
-  const base = srgb ? hexColor(srgb.getAttribute('val'))
-    : ctx.themeColors.get(scheme!.getAttribute('val') ?? '');
-  return base ? shiftColor(base, el) : undefined;
+  const base = srgb ? hexColor(nsVal(srgb, ns))
+    : ctx.themeColors.get(nsVal(scheme!, ns) ?? '');
+  return base ? shiftColor(base, el, ns) : undefined;
 }
+const nsVal = (el: Element, ns: string) => el.getAttribute('val') ?? el.getAttributeNS(ns, 'val');
 
 // The <a:lumMod>/<a:lumOff>/<a:tint>/<a:shade> children, applied per channel (they are
 // defined on luminance; the channel-wise reading is within a shade of it and needs no
 // colour space). Values are thousandths of a percent.
-function shiftColor(hex: string, el: Element): string {
+function shiftColor(hex: string, el: Element, ns = A): string {
   const pct = (name: string) => {
-    const v = nsChild(el, A, name)?.getAttribute('val');
+    const c = nsChild(el, ns, name);
+    const v = c ? nsVal(c, ns) : null;
     const n = v != null ? Number(v) / 100000 : NaN;
     return Number.isFinite(n) ? n : null;
   };
@@ -2976,10 +3126,12 @@ function frameNode(src: string, box: { w: number; h: number }, label: string, an
 // How far below its anchor paragraph the frame sits, or below the top of its page (the
 // top margin's strip starts there too) or of the page's body text (`margin`). The strip
 // below the body is left at the anchor: LibreOffice starts it where the body ends, which
-// a footer can move — nothing the editor places a frame against.
+// a footer can move — nothing the editor places a frame against. In a footer that is the
+// footer's own top, so the offset counts from its paragraph (probed).
 function anchorOffsetY(anchor: Element, ctx: Ctx): { cm: number | null; fromPage: boolean; fromBody: boolean } {
   const posV = anchor.getElementsByTagNameNS(WP, 'positionV')[0];
-  const from = posV?.getAttribute('relativeFrom');
+  const rel = posV?.getAttribute('relativeFrom');
+  const from = rel === 'bottomMargin' && ctx.footer ? 'paragraph' : rel;
   const fromBody = from === 'margin';
   // A page-relative offset counts from the top of the page the anchor lands on, which
   // is where a cover page's own blocks are placed; the node view resolves the page.
@@ -3303,11 +3455,11 @@ function convertWpsShape(wsp: Element, root: Element, isAnchor: boolean, ctx: Ct
     if ((xfrm?.getAttribute('flipH') === '1') !== back) attrs.flipH = true;
   }
 
-  // Vertical text: every one of Word's top-to-bottom flows, the editor having the one
-  // direction the browser lays out (`vert270` reads bottom-to-top and is not one).
+  // Vertical text: every one of Word's top-to-bottom flows, and `vert270` bottom-to-top.
   const bodyPr = nsChild(wsp, WPS, 'bodyPr');
   const vert = bodyPr?.getAttribute('vert') ?? 'horz';
   if (['vert', 'eaVert', 'mongolianVert', 'wordArtVert'].includes(vert)) attrs.textVertical = true;
+  else if (vert === 'vert270') attrs.textVertical = 'up';
   // Where the text sits in a box taller than it is: bodyPr/@anchor, top by default.
   const vAnchor = bodyPr?.getAttribute('anchor');
   if (vAnchor === 'ctr') attrs.textVAlign = 'middle';
@@ -3382,6 +3534,14 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
     if (h) imgAttrs.height = h;
     const mode = vmlColorMode(imagedata);
     if (mode) imgAttrs.colorMode = mode;
+    // croptop/…: a fraction of the picture, in 65536ths where it ends in `f`; a negative one pads.
+    const cut = (k: string) => {
+      const v = imagedata.getAttribute(`crop${k}`)?.trim() ?? '';
+      const n = parseFloat(v);
+      return Number.isFinite(n) ? Math.max(0, v.endsWith('f') ? n / 65536 : n) : 0;
+    };
+    const crop = cropOf({ l: cut('left'), t: cut('top'), r: cut('right'), b: cut('bottom') });
+    if (crop) imgAttrs.crop = crop;
     if (anchor) setAnchorAttrs(imgAttrs, anchor, ctx);
     return { type: 'image', attrs: imgAttrs };
   }
@@ -3403,7 +3563,10 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
   const vmlHeads = pathHeadsFor(vmlHead('startarrow'), vmlHead('endarrow'));
   if (outline && vmlHeads && isOpenOutline(outline)) attrs.arrowHeads = vmlHeads;
   // VML says vertical text in the box's own style, as `layout-flow:vertical`.
-  if (/layout-flow\s*:\s*vertical/.test(textbox?.getAttribute('style') ?? '')) attrs.textVertical = true;
+  const flow = textbox?.getAttribute('style') ?? '';
+  if (/layout-flow\s*:\s*vertical/.test(flow)) {
+    attrs.textVertical = /mso-layout-flow-alt\s*:\s*bottom-to-top/.test(flow) ? 'up' : true;
+  }
   const kind = shape.localName === 'oval' ? 'ellipse' : shape.localName === 'roundrect' ? 'roundRect' : 'textbox';
   if (kind !== 'textbox') attrs.shapeKind = kind;
   if (w) attrs.width = w;
@@ -3428,17 +3591,16 @@ function convertPict(pict: Element, ctx: Ctx): Node | null {
 // ---- tables -----------------------------------------------------------------
 
 // A w:tcBorders/w:tblBorders side element → border attr value: null = the editor
-// default (0.5pt black), 'none', or '<W>pt solid #RRGGBB' (w:sz is eighth-points).
+// default (0.5pt black), 'none', or '<W>pt <line> #RRGGBB'.
 // undefined when the element is absent (side not declared at this level).
 function docxBorderAttr(el: Element | null): string | null | undefined {
   if (!el) return undefined;
   const val = el.getAttributeNS(W, 'val');
   if (!val || val === 'none' || val === 'nil') return 'none';
-  const sz = intAttr(el, W, 'sz');
-  const w = Math.round(((sz != null ? sz / 8 : 0.5)) * 100) / 100;
+  const { line, widthPt: w } = docxBorderLine(el);
   const c = (hexColor(el.getAttributeNS(W, 'color')) ?? '#000000').toUpperCase();
-  if (Math.abs(w - 0.5) < 0.11 && c === '#000000') return null;
-  return `${w}pt solid ${c}`;
+  if (Math.abs(w - 0.5) < 0.11 && c === '#000000' && line === 'solid') return null;
+  return borderValue(w, c, line);
 }
 
 // A conditional table-style area (w:tblStylePr) and the grid box it covers. A band's box
@@ -3527,8 +3689,8 @@ function areaSide(area: GridBox, cell: GridBox, side: 'top' | 'bottom' | 'left' 
 
 // A cell's shading and run properties from the table style, layered over its areas. The
 // runs are baked below: a file's own table style has no entry in the editor's registry.
-function condPaint(areas: CondArea[]): { fill?: string; run: RunProps } {
-  let fill: string | undefined;
+function condPaint(areas: CondArea[], wholeFill?: string): { fill?: string; run: RunProps } {
+  let fill = wholeFill;
   let run: RunProps = {};
   for (const a of areas) {
     const shd = fc(fc(a.el, 'tcPr'), 'shd');
@@ -3697,6 +3859,10 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
   // baked into the cells: a foreign style is not in the editor's registry, which is where
   // an assigned table style's regions otherwise come from (refreshTableStyles).
   const conds = ctx.styles.tableConditional(styleId);
+  // Under every area lies the style's whole-table shading (probed: it fills the body
+  // rows a band leaves alone); the table's own w:tblPr/w:shd LibreOffice does not draw.
+  const styleShd = ctx.styles.tableCellShading(styleId);
+  const styleFill = styleShd ? hexColor(styleShd.getAttributeNS(W, 'fill')) : undefined;
   const flags = docxLookFlags(fc(tbl, 'tblPr'));
   const band = ctx.styles.tableBandSize(styleId);
   // A registry style instead is name-only (our own export): its regions are re-derived
@@ -3726,6 +3892,9 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
     const isHeaderRow = !!trHdr && onOff(trHdr);
     const cells: Node[] = [];
     const lead = Math.min(gridSkip(tr, 'gridBefore'), gridCols - 1);
+    // A row's first and last cell take the table's left and right border, where
+    // w:gridBefore/w:gridAfter leave grid columns empty too (probed in LibreOffice).
+    const rowCols = fcAll(tr, 'tc').reduce((n, tc) => n + (intAttr(fc(fc(tc, 'tcPr'), 'gridSpan'), W, 'val') ?? 1), lead);
     let col = lead;
     for (const tc of fcAll(tr, 'tc')) {
       const tcPr = fc(tc, 'tcPr');
@@ -3742,7 +3911,7 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
       const rowEnd = ri + (vMerge === 'restart' ? vMergeRows(trs, ri, col) : 1);
       const box: GridBox = { row: ri, col, rowEnd, colEnd: col + colspan };
       const areas = conds.size ? condAreasFor(conds, flags, band, box, trs.length, gridCols) : [];
-      const paint = condPaint(areas);
+      const paint = condPaint(areas, styleFill);
       const styled = regStyle ? resolveTableCell(regStyle, {
         row: ri, col, rowSpan: rowEnd - ri, colSpan: colspan, rows: trs.length, cols: gridCols,
       }, regLook) : null;
@@ -3770,6 +3939,10 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
       const vAlign = vAlignEl ? wVal(vAlignEl) : null;
       if (vAlign === 'center') attrs.verticalAlign = 'middle';
       else if (vAlign === 'bottom') attrs.verticalAlign = 'bottom';
+      // w:textDirection — text turned a quarter; the East Asian forms read as their turn.
+      const flowEl = fc(tcPr, 'textDirection');
+      const flow = flowEl ? wVal(flowEl) : null;
+      if (flow === 'btLr' || flow === 'tbRl' || flow === 'tbRlV') attrs.textFlow = flow === 'btLr' ? 'btLr' : 'tbRl';
       // The cell's own margins (w:tcMar), kept only where they differ from the table's.
       const ownPad = cellPaddingAttr(ownSides, padBase);
       if (ownPad) attrs.cellPadding = ownPad;
@@ -3777,7 +3950,7 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
       // cell's own w:tcBorders. An edge of the box a layer covers takes that layer's
       // outer side, anything inside it the layer's insideH/insideV.
       const tcBorders = fc(tcPr, 'tcBorders');
-      const table: GridBox = { row: 0, col: 0, rowEnd: trs.length, colEnd: gridCols };
+      const table: GridBox = { row: 0, col: lead, rowEnd: trs.length, colEnd: rowCols };
       // A band's own edges (top/bottom of a row band, left/right of a column band) close
       // each band row or column; inside the banded region it declares none for, its
       // insideH/insideV stands (probed in LibreOffice).
@@ -3788,13 +3961,17 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
         ...areas.map((a) => ({ els: [fc(fc(a.el, 'tcPr'), 'tcBorders')], box: a.box, band: bandAxis(a.el) })),
         { els: [tcBorders], box },
       ];
+      // The leading and trailing sides are w:left/w:right, or w:start/w:end as the
+      // strict schema and LibreOffice name them.
+      const sideEl = (el: Element | null, name: string) =>
+        fc(el, name) ?? (name === 'left' ? fc(el, 'start') : name === 'right' ? fc(el, 'end') : null);
       const resolve = (side: 'top' | 'bottom' | 'left' | 'right') => {
         let v: string | null | undefined;
         for (const layer of layers) {
           const name = areaSide(layer.box, box, side);
           const own = layer.band === (side === 'top' || side === 'bottom' ? 'h' : 'v') && name !== side;
           for (const el of layer.els) {
-            const got = (own ? docxBorderAttr(fc(el, side)) : undefined) ?? docxBorderAttr(fc(el, name));
+            const got = (own ? docxBorderAttr(sideEl(el, side)) : undefined) ?? docxBorderAttr(sideEl(el, name));
             if (got !== undefined) { v = got; break; }
           }
         }
@@ -3823,8 +4000,10 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
     if (cells.length && col < gridCols) cells.push(gap(col, gridCols - col));
     if (cells.length === 0) continue;
     const row: Node = { type: 'tableRow', content: cells };
-    const h = intAttr(fc(fc(tr, 'trPr'), 'trHeight'), W, 'val');
-    if (h && h > 0) row.attrs = { rowHeight: Math.round(twipToPx(h)) };
+    const trHeight = fc(fc(tr, 'trPr'), 'trHeight');
+    const h = intAttr(trHeight, W, 'val');
+    if (h && h > 0) row.attrs = { rowHeight: Math.round(twipToPx(h) * 100) / 100 };
+    if (h && h > 0 && trHeight?.getAttributeNS(W, 'hRule') === 'exact') row.attrs = { ...row.attrs, fixedHeight: true };
     const cs = fc(fc(tr, 'trPr'), 'cantSplit');
     if (cs && onOff(cs)) row.attrs = { ...row.attrs, cantSplit: true };
     const revMark = revMarkIn(fc(tr, 'trPr'), [['ins', 'insertion'], ['del', 'deletion']]);
@@ -3832,19 +4011,48 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
     rows.push(row);
   }
   if (rows.length === 0) return null;
-  const attrs: Record<string, unknown> = { ...(tableMargins(tbl, useWeights, ctx, padBase[3]) ?? {}) };
+  // Word mirrors a table by its own w:bidiVisual alone, and w:left then names the
+  // leading side, which is what a cell's left is here. This editor's earlier files
+  // carried the direction on the section only and wrote the sides as drawn.
+  const bidiVisual = fc(fc(tbl, 'tblPr'), 'bidiVisual') ?? ctx.styles.tableBidiVisual(styleId);
+  const drawnSides = !bidiVisual && ctx.sectionDir && ctx.pageRtl;
+  const rtl = bidiVisual ? onOff(bidiVisual) : drawnSides;
+  if (drawnSides) for (const row of rows) for (const cell of row.content ?? []) swapCellSides(cell.attrs!);
+  const attrs: Record<string, unknown> = { ...(tableMargins(tbl, useWeights, ctx, padBase[3], rtl && !drawnSides) ?? {}) };
   if (pad) attrs.cellPadding = pad;
+  if (drawnSides) swapCellSides(attrs);
+  // Cell margins are drawn sides even in a mirrored table, unlike its borders.
+  else if (rtl) for (const a of [attrs, ...rows.flatMap((row) => (row.content ?? []).map((cell) => cell.attrs!))]) swapCellPadding(a);
+  if (rtl !== ctx.pageRtl) attrs.dir = rtl ? 'rtl' : 'ltr';
   // w:tblHeader on the first row: Word repeats it at the top of every page the table
   // continues on. Only a leading run of rows can carry it, so the first one decides.
   const firstTrPr = fc(fcAll(tbl, 'tr')[0] ?? null, 'trPr');
   const hdr = fc(firstTrPr, 'tblHeader');
   if (hdr && onOff(hdr)) attrs.repeatHeader = true;
+  // Every paragraph kept with the next keeps the table with the block after it, as
+  // LibreOffice reads it (probed: such a table moves whole with its caption).
+  if (tableKeepsNext(rows)) attrs.keepNext = true;
   if (named) {
     attrs.tableStyle = named;
     // '' is a declared all-off look — dropping it would revert to the default look.
     if (look != null) attrs.tableLook = look;
   }
   return Object.keys(attrs).length ? { type: 'table', attrs, content: rows } : { type: 'table', content: rows };
+}
+
+// A cell's (or table's) left and right borders and margins change places.
+function swapCellSides(attrs: Record<string, unknown>): void {
+  const { borderLeft, borderRight } = attrs;
+  delete attrs.borderLeft;
+  delete attrs.borderRight;
+  if (borderRight != null) attrs.borderLeft = borderRight;
+  if (borderLeft != null) attrs.borderRight = borderLeft;
+  swapCellPadding(attrs);
+}
+
+function swapCellPadding(attrs: Record<string, unknown>): void {
+  const p = attrs.cellPadding;
+  if (Array.isArray(p)) attrs.cellPadding = [p[0], p[3], p[2], p[1]];
 }
 
 // Word's w:tblLook → the editor's tableLook attr (its band flags are inverted).
@@ -3858,15 +4066,16 @@ function docxTableLook(tblPr: Element | null): string | null {
   });
 }
 
-// A table narrower than the text width: w:tblInd is its left indent, the grid (or
-// w:tblW) its width — the rest becomes the editor's right margin. Under the older
-// compatibility mode the indent is measured to the cell's *text*, so the table hangs its
-// left cell margin into the page margin (compatMode below 15).
-function tableMargins(tbl: Element, weights: number[] | null, ctx: Ctx, leftPadCm: number): { marginLeft?: number; marginRight?: number } | null {
+// A table narrower than the text: w:tblInd indents its leading edge (the right one when
+// `mirrored`) unless w:jc centres it or sets it at the trailing edge; the width is the grid
+// or w:tblW. Below compatMode 15 the indent is to the cell's text (tblIndIsToText).
+function tableMargins(tbl: Element, weights: number[] | null, ctx: Ctx, leftPadCm: number, mirrored = false): { marginLeft?: number; marginRight?: number } | null {
   const tblPr = fc(tbl, 'tblPr');
   const content = ctx.contentWidthCm;
   const dxa = (el: Element | null) => (el?.getAttributeNS(W, 'type') ?? 'dxa') === 'dxa' ? intAttr(el, W, 'w') : null;
-  const left = twipToCm(dxa(fc(tblPr, 'tblInd')) ?? 0) - (ctx.compatMode < 15 ? leftPadCm : 0);
+  const indent = twipToCm(dxa(fc(tblPr, 'tblInd')) ?? 0) - (ctx.compatMode < 15 ? leftPadCm : 0);
+  const jcEl = fc(tblPr, 'jc');
+  const jc = jcEl ? wVal(jcEl) : null;
   const declared = dxa(fc(tblPr, 'tblW'));
   const pct = tblWidthFraction(fc(tblPr, 'tblW'));
   const width = pct != null
@@ -3874,6 +4083,9 @@ function tableMargins(tbl: Element, weights: number[] | null, ctx: Ctx, leftPadC
     : declared && declared > 0
       ? twipToCm(declared)
       : weights ? twipToCm(weights.reduce((a, b) => a + b, 0)) : null;
+  const left = width == null ? indent
+    : jc === 'center' ? (content - width) / 2
+    : jc === 'right' || jc === 'end' ? content - width : indent;
   const right = width != null ? content - left - width : 0;
 
   if (Math.abs(left) < 0.05 && Math.abs(right) < 0.05) return null;
@@ -3884,7 +4096,8 @@ function tableMargins(tbl: Element, weights: number[] | null, ctx: Ctx, leftPadC
   const snap = (cm: number) => (Math.abs(cm - round2(cm)) <= slack ? round2(cm) : cm);
   const l = twipCm(Math.round((left / 2.54) * 1440)), r = snap(twipCm(Math.round((right / 2.54) * 1440)));
   // A zero side is the attr's default (null); rounding may also leave a -0 behind.
-  return { ...(Math.abs(l) >= 0.005 ? { marginLeft: l } : {}), ...(Math.abs(r) >= 0.005 ? { marginRight: r } : {}) };
+  const [ml, mr] = mirrored ? [r, l] : [l, r];
+  return { ...(Math.abs(ml) >= 0.005 ? { marginLeft: ml } : {}), ...(Math.abs(mr) >= 0.005 ? { marginRight: mr } : {}) };
 }
 
 // A text box's blocks: no cell around them any more, whatever the box sits in. A table
@@ -3914,8 +4127,8 @@ function sectionHeightsCm(sect: Element | null): { pageHeightCm: number; textHei
 }
 
 // Split body children into sections: a <w:p> whose pPr carries a sectPr ends the
-// group before it (dropped unless it has run content). The trailing group has
-// sectPr null — the caller pairs it with the body-final <w:sectPr>.
+// group before it (dropped unless it holds a run, also one inside a revision or field).
+// The trailing group has sectPr null — the caller pairs it with the body-final <w:sectPr>.
 function splitBodySections(children: Element[]): {
   groups: { els: Element[]; sectPr: Element | null }[];
   midSectPrs: Element[];
@@ -3927,7 +4140,7 @@ function splitBodySections(children: Element[]): {
     if (el.namespaceURI === W && el.localName === 'sectPr') continue; // body-final
     const sectPr = closingSectPr(el);
     if (sectPr) {
-      if (el.localName !== 'p' || fc(el, 'r') || fc(el, 'hyperlink')) els.push(el);
+      if (el.localName !== 'p' || el.getElementsByTagNameNS(W, 'r').length) els.push(el);
       groups.push({ els, sectPr });
       midSectPrs.push(sectPr);
       els = [];
@@ -3960,12 +4173,13 @@ function docxPageDecor(
   const borders = fc(sectPr, 'pgBorders');
   const top = borders ? fc(borders, 'top') : null;
   const sz = top ? intAttr(top, W, 'sz') : null;
+  const line = top ? docxBorderLine(top) : null;
   const color = top?.getAttributeNS(W, 'color');
   return normalizePageDecor({
     background: bg && bg !== 'auto' ? `#${bg}` : null,
     // w:sz is eighths of a point, w:space whole points from the text.
-    border: sz && top && wVal(top) !== 'none'
-      ? { widthPt: Math.round((sz / 8) * 100) / 100,
+    border: sz && top && line && wVal(top) !== 'none'
+      ? { widthPt: line.widthPt, line: line.line,
           color: color && color !== 'auto' ? `#${color}` : '#000000',
           paddingCm: Math.round(((intAttr(top, W, 'space') ?? 0) / 72) * 2.54 * 100) / 100 }
       : null,
@@ -4050,11 +4264,19 @@ function docxLineNumbering(sectPr: Element | null): LineNumbering {
   });
 }
 
-// A right-to-left section (w:bidi): the columns fill from the right, and it is the
-// direction a block inherits when it declares none of its own.
+// A right-to-left section (w:bidi): the columns fill from the right. It is the page's
+// direction; a paragraph's own comes from w:bidi on it, its style or the defaults.
 function sectPrRtl(sectPr: Element | null): boolean {
   const b = fc(sectPr, 'bidi');
   return !!b && onOff(b);
+}
+
+// A file of this editor whose document defaults name no direction carries the page's on
+// the section alone, for every paragraph. Told apart by a docProps/app.xml that names no
+// application, as the docx package writes it; Word, LibreOffice and others name theirs.
+function sectionDirOnly(files: Record<string, Uint8Array>, styles: DocxStyles): boolean {
+  const app = files['docProps/app.xml'];
+  return !!app && styles.paragraphBidi(null) == null && !/<(?:\w+:)?Application\b/.test(strFromU8(app));
 }
 
 // A section break's w:type: 'continuous'/'nextColumn' flow within the page; anything
@@ -4280,7 +4502,6 @@ function docSetting(files: Record<string, Uint8Array>, name: string): boolean {
   }
 }
 
-const W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
 const W15 = 'http://schemas.microsoft.com/office/word/2012/wordml';
 
 // word/commentsExtended.xml → per w14:paraId whether the comment is handled (w15:done)
@@ -4513,9 +4734,9 @@ function convertHfPart(relId: string | null, ctx: Ctx, sect: Element | null): Hf
   const root = doc.getElementsByTagNameNS(W, 'hdr')[0] ?? doc.getElementsByTagNameNS(W, 'ftr')[0];
   if (!root) return null;
   const zoneCtx: Ctx = {
-    ...ctx, zone: true, rels: parseRels(ctx.files[path.replace(/^word\/(.*)$/, 'word/_rels/$1.rels')]),
+    ...ctx, zone: true, footer: root.localName === 'ftr', rels: parseRels(ctx.files[path.replace(/^word\/(.*)$/, 'word/_rels/$1.rels')]),
     openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentDefs: new Map(), moveNames: moveNames(root),
-    listCounters: new Map(), cellSpacing: {},
+    listCounters: new Map(), listOverridden: new Set(), cellSpacing: {},
     contentWidthCm: sectionContentWidthCm(sect), leftMarginCm: twipToCm(intAttr(fc(sect, 'pgMar'), W, 'left') ?? 1440), rightMarginCm: twipToCm(intAttr(fc(sect, 'pgMar'), W, 'right') ?? 1440),
     ...sectionHeightsCm(sect),
   };

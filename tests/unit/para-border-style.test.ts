@@ -62,7 +62,7 @@ describe('a paragraph style’s rule line', () => {
     const sheet = importDocx(zipSync({ 'word/document.xml': strToU8(doc), 'word/styles.xml': strToU8(styles(rule + hang)) })).styles;
     const css = styleCss(sheet).split('\n\n').find((r) => r.includes('[data-style="Title"]'))!;
     expect(css).toContain('--box-hang: min(0px, var(--indent-first, 0px))');
-    expect(css).toContain('margin-left: calc(var(--sec-inset-left, 0px) + var(--ind, 0px) + var(--box-hang, 0px))');
+    expect(css).toContain('margin-inline-start: calc(var(--sec-inset-start, 0px) + var(--ind, 0px) + var(--box-hang, 0px))');
     // A unitless 0 in that calc() would void the whole padding shorthand, the rule's gap with it.
     expect(css).toContain('--pad-left: 0px');
     expect(css).toContain('padding: 0px 0px 4pt calc(var(--pad-left, 0px) - var(--box-hang, 0px))');

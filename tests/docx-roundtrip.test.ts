@@ -4,8 +4,11 @@ import { buildDocx } from '../src/lib/export/docx';
 import { importDocx } from '../src/lib/import/docx';
 import { buildOdt } from '../src/lib/export/odt';
 import { importOdt } from '../src/lib/import/odt';
-import { builtinStyleSheet } from '../src/lib/styles/styleSheet';
+import { builtinStyleSheet, resolveStyle, styleCss } from '../src/lib/styles/styleSheet';
 import { HEADER_SHADE } from '../src/lib/editor/extensions/tableHeaderRow';
+import { effectUpdate } from '../src/lib/editor/extensions/textEffects';
+import { Editor } from '@tiptap/core';
+import { extensions } from '../src/lib/editor/extensions';
 
 type N = { type: string; attrs?: any; content?: N[]; marks?: any[]; text?: string };
 
@@ -49,6 +52,18 @@ describe('DOCX export → import round trip', () => {
         text('crossed ', [{ type: 'strike', attrs: { lineStyle: 'double' } }]),
         text('stressed ', [{ type: 'textStyle', attrs: { emphasis: 'dot below' } }]),
         text('ringed ', [{ type: 'textStyle', attrs: { emphasis: 'circle above' } }]),
+        text('outlined ', [{ type: 'textStyle', attrs: { outline: true } }]),
+        text('shadowed ', [{ type: 'textStyle', attrs: { shadow: true } }]),
+        text('both ', [{ type: 'textStyle', attrs: { outline: true, shadow: true } }]),
+        text('embossed ', [{ type: 'textStyle', attrs: { relief: 'embossed' } }]),
+        text('engraved ', [{ type: 'textStyle', attrs: { relief: 'engraved' } }]),
+        text('rimmed ', [{ type: 'textStyle', attrs: { textOutline: { color: '#C00000', widthPt: 1.5 } } }]),
+        text('cast ', [{ type: 'textStyle', attrs: { textShadow: { color: '#000000', alpha: 0.4, dxPt: 2.12, dyPt: 2.12, blurPt: 4 } } }]),
+        text('glowing ', [{ type: 'textStyle', attrs: { color: '#FFFFFF', textGlow: { color: '#4472C4', alpha: 0.6, radiusPt: 5 }, textOutline: { color: '#2F5597', widthPt: 0.5 } } }]),
+        text('haloed ', [{ type: 'textStyle', attrs: { textGlow: { color: '#ED7D31', alpha: 0.25, radiusPt: 40 } } }]),
+        text('lit ', [{ type: 'textStyle', attrs: { textGlow: { color: '#70AD47', alpha: 1, radiusPt: 1.5 } } }]),
+        text('spaced ', [{ type: 'textStyle', attrs: { letterSpacing: 1.5 } }]),
+        text('boxed ', [{ type: 'textStyle', attrs: { textBorder: '1.5pt solid #FF0000', textBorderPadding: 4 } }]),
         text('raised', [{ type: 'textStyle', attrs: { fontSize: '14pt', textPosition: 3 } }]),
       ]),
       { type: 'paragraph', attrs: { fontSize: '22pt', textAlign: 'center' } }, // empty sized line
@@ -67,7 +82,10 @@ describe('DOCX export → import round trip', () => {
         para([text('bold in box', [{ type: 'bold' }])]),
       ] }]),
       para([{ type: 'textBox', attrs: { width: 192, height: 96, wrap: 'right', wrapOffset: 6, wrapOffsetY: 1.5, shapeKind: 'ellipse', fillColor: '#FFEE00', strokeColor: '#FF0000', strokeWidthPt: 2.25, rotation: 30 }, content: [para('ellipse text')] }]),
-      { type: 'columns', attrs: { count: 2, gapCm: 0.8 }, content: [para('newspaper one'), para('newspaper two')] },
+      // Each closes a section: a blank line, and one holding only a recorded insertion.
+      { type: 'paragraph' },
+      { type: 'columns', attrs: { count: 2, gapCm: 0.8 }, content: [para('newspaper one'), para('newspaper two'),
+        para([text('inserted', [{ type: 'insertion', attrs: { id: 'rv1', author: 'A', date: '2026-05-06T07:08:09' } }])])] },
       { type: 'table', content: [
         { type: 'tableRow', content: [headerCell('Name', { colwidth: [6] }), headerCell('Qty', { colwidth: [3] })] },
         { type: 'tableRow', attrs: { rowHeight: 40 }, content: [cell('Widget', { backgroundColor: '#FFFF00', rowspan: 2 }), cell('1', { borderTop: 'none', borderRight: '2.25pt solid #FF0000' })] },
@@ -245,10 +263,14 @@ describe('DOCX export → import round trip', () => {
     expect(cols[0].attrs.count).toBe(2);
     expect(cols[0].attrs.gapCm).toBe(0.8);
     const texts = walk(cols[0], 'text').map((t) => t.text);
-    expect(texts).toEqual(['newspaper one', 'newspaper two']);
-    // The empty section-break marker paragraphs must not leak into the document.
+    expect(texts).toEqual(['newspaper one', 'newspaper two', 'inserted']);
+    // The section-break markers are dropped; a block of the document's own that closes a
+    // section is kept, also an empty one, and stays on its side of the boundary.
+    const at = doc.content!.indexOf(cols[0]);
+    expect(doc.content![at - 1]).toMatchObject({ type: 'paragraph' });
+    expect(doc.content![at - 1].content).toBeUndefined();
     const paras = walk(doc, 'paragraph');
-    expect(paras.filter((p) => !p.content && !p.attrs?.fontSize).length).toBe(0);
+    expect(paras.filter((p) => !p.content && !p.attrs?.fontSize).length).toBe(1);
   });
 
   it('round-trips headings + paragraph block attrs', () => {
@@ -318,7 +340,7 @@ describe('DOCX export → import round trip', () => {
     expect(mlSub.attrs?.listStyleType ?? null).toBe(null);
   });
 
-  it('round-trips the character effects (case, line shapes, emphasis, raised run)', () => {
+  it('round-trips the character effects (case, line shapes, emphasis, outline, shadow, relief, raised run)', () => {
     const runs = walk(doc, 'text');
     const of = (t: string) => runs.find((r: N) => r.text === t)!.marks!;
     const attrs = (t: string, type: string) => of(t).find((m: N) => m.type === type)!.attrs!;
@@ -327,9 +349,89 @@ describe('DOCX export → import round trip', () => {
     expect(attrs('dotted ', 'underline')).toMatchObject({ lineStyle: 'dotted', lineColor: '#FF0000' });
     expect(attrs('crossed ', 'strike').lineStyle).toBe('double');
     expect(attrs('raised', 'textStyle').textPosition).toBe(3);
+    expect(attrs('spaced ', 'textStyle').letterSpacing).toBe(1.5);
+    expect(attrs('boxed ', 'textStyle')).toMatchObject({ textBorder: '1.5pt solid #FF0000', textBorderPadding: 4 });
     expect(documentXml).toMatch(/<w:em w:val="underDot"\/>/);
     expect(attrs('stressed ', 'textStyle').emphasis).toBe('dot below');
     expect(attrs('ringed ', 'textStyle').emphasis).toBe('circle above');
+    expect(attrs('outlined ', 'textStyle')).toMatchObject({ outline: true });
+    expect(attrs('shadowed ', 'textStyle')).toMatchObject({ shadow: true });
+    expect(attrs('both ', 'textStyle')).toMatchObject({ outline: true, shadow: true });
+    expect(attrs('embossed ', 'textStyle').relief).toBe('embossed');
+    expect(attrs('engraved ', 'textStyle').relief).toBe('engraved');
+    expect(attrs('rimmed ', 'textStyle').textOutline).toEqual({ color: '#C00000', widthPt: 1.5 });
+    expect(attrs('cast ', 'textStyle').textShadow).toEqual({ color: '#000000', alpha: 0.4, dxPt: 2.12, dyPt: 2.12, blurPt: 4 });
+    expect(attrs('glowing ', 'textStyle')).toMatchObject({ textGlow: { color: '#4472C4', alpha: 0.6, radiusPt: 5 }, textOutline: { color: '#2F5597', widthPt: 0.5 } });
+    // Glow transparency is w14:alpha, written only below full opacity.
+    expect(attrs('haloed ', 'textStyle').textGlow).toEqual({ color: '#ED7D31', alpha: 0.25, radiusPt: 40 });
+    expect(attrs('lit ', 'textStyle').textGlow).toEqual({ color: '#70AD47', alpha: 1, radiusPt: 1.5 });
+    expect(documentXml).toMatch(/<w14:glow w14:rad="508000">(?:(?!<\/w14:glow>)[^])*<w14:alpha w14:val="75000"\/>/);
+    expect(documentXml).toMatch(/<w14:glow w14:rad="19050">(?:(?!w14:alpha)[^])*?<\/w14:glow>/);
+    // Drawn exactly, so nothing is kept aside; w14 is declared ignorable and closes w:rPr.
+    expect(runs.some((r: N) => markAttrs(r, 'textStyle')?.textFxRaw)).toBe(false);
+    expect(documentXml).toMatch(/mc:Ignorable="[^"]*\bw14\b/);
+    expect(documentXml).toMatch(/<w14:glow [^]*?<\/w14:glow><w14:textOutline [^]*?<\/w14:textOutline><\/w:rPr>/);
+  });
+
+  // Word's own markup, as [MS-DOCX] defines it, put into one run each.
+  const W14_RUNS: [string, string, (a: any) => void][] = [
+    ['a theme colour becomes a fixed one',
+      '<w14:glow w14:rad="63500"><w14:schemeClr w14:val="accent1"><w14:lumMod w14:val="50000"/><w14:alpha w14:val="60000"/></w14:schemeClr></w14:glow>',
+      (a) => { expect(a.textGlow).toEqual({ color: '#223962', alpha: 0.4, radiusPt: 5 }); expect(a.textFxRaw ?? null).toBe(null); }],
+    ['reflection and 3D are kept as they came',
+      '<w14:reflection w14:blurRad="6350" w14:stA="55000" w14:stPos="0" w14:endA="300" w14:endPos="45500" w14:dist="0" w14:dir="5400000" w14:fadeDir="5400000" w14:sx="100000" w14:sy="-100000" w14:kx="0" w14:ky="0" w14:algn="bl"/><w14:props3d w14:extrusionH="57150" w14:contourW="0" w14:prstMaterial="warmMatte"/>',
+      (a) => expect(a.textFxRaw.map((e: any) => e.n)).toEqual(['reflection', 'props3d'])],
+    ['a skewed shadow is drawn plain and kept as it came',
+      '<w14:shadow w14:blurRad="50800" w14:dist="38100" w14:dir="5400000" w14:sx="100000" w14:sy="30000" w14:kx="-800400" w14:ky="0" w14:algn="bl"><w14:srgbClr w14:val="000000"/></w14:shadow>',
+      (a) => { expect(a.textShadow).toMatchObject({ dxPt: 0, dyPt: 3, blurPt: 4 }); expect(a.textFxRaw[0]).toMatchObject({ n: 'shadow', a: { sy: '30000' } }); }],
+  ];
+  it.each(W14_RUNS)("reads Word's text effects: %s", async (_label, w14, check) => {
+    const files = unzipSync(await buildDocx({ type: 'doc', content: [para('a')] }));
+    files['word/theme/theme1.xml'] ??= strToU8('<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:themeElements><a:clrScheme name="x"><a:accent1><a:srgbClr val="4472C4"/></a:accent1></a:clrScheme></a:themeElements></a:theme>');
+    let xml = strFromU8(files['word/document.xml']).replace(/<w:r>/, `<w:r><w:rPr>${w14}</w:rPr>`);
+    if (!xml.includes('xmlns:w14=')) xml = xml.replace('<w:document ', '<w:document xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" ');
+    files['word/document.xml'] = strToU8(xml);
+    const imported = importDocx(zipSync(files)).content as N;
+    const a = markAttrs(walk(imported, 'text')[0], 'textStyle');
+    check(a);
+    // Whatever was kept goes back unchanged; an effect changed in the editor drops its rest.
+    const again = strFromU8(unzipSync(await buildDocx(imported as never))['word/document.xml']);
+    for (const e of a.textFxRaw ?? []) expect(again).toContain(`<w14:${e.n} `);
+    const changed = effectUpdate(a, { textShadow: null, textGlow: null });
+    expect((changed.textFxRaw ?? []).some((e: any) => e.n === 'shadow' || e.n === 'glow')).toBe(false);
+  });
+
+  // A paste can nest tables deeper than a cell is wide; both files keep every level.
+  it('saves tables nested deeper than their cells are wide', async () => {
+    let t: N = { type: 'table', content: [{ type: 'tableRow', content: [cell('a'), cell('b'), cell('c')] }] };
+    for (let i = 0; i < 6; i++) t = { type: 'table', content: [{ type: 'tableRow', content: [{ type: 'tableCell', attrs: {}, content: [para('x'), t, para('y')] }, cell('b'), cell('c')] }] };
+    const doc = { type: 'doc', content: [t] };
+    const depth = (n: N): number => (n.content ?? []).reduce((d, c) => Math.max(d, depth(c)), 0) + (n.type === 'table' ? 1 : 0);
+    expect(depth(importDocx(await buildDocx(doc as never)).content as N)).toBe(7);
+    expect(depth(importOdt(await buildOdt(doc as never)).content as N)).toBe(7);
+  });
+
+  // What the commands or a paste put on a run is what a saved file reads back, whatever came in.
+  it('holds the colour and effects a command or a paste sets as a saved file reads them back', async () => {
+    const el = document.createElement('div');
+    const editor = new Editor({ element: el, extensions, content: { type: 'doc', content: [para('abcdef')] } });
+    try {
+      const at = (from: number, to: number) => editor.chain().setTextSelection({ from, to });
+      at(1, 3).setTextOutline({ color: '#c00000', widthPt: 33.333 }).run();
+      at(2, 5).setTextShadow({ color: '#abc', alpha: 0.6666, dxPt: -1.005, dyPt: 2.12345, blurPt: 3.3333 }).run();
+      at(4, 7).setTextGlow({ color: '#2f5597', alpha: 0.333, radiusPt: 151 }).run();
+      // A browser serializes a copied span's colour as rgb().
+      editor.chain().setTextSelection(7).insertContent('<span style="color: rgb(192, 0, 0)" data-text-glow=\'{"color":"#ffc000","alpha":0.5,"radiusPt":8}\'>pasted</span>').run();
+      const fx = (doc: N) => walk(doc, 'text').map((r: N) => {
+        const a = markAttrs(r, 'textStyle') ?? {};
+        return [r.text, a.color ?? null, a.textOutline ?? null, a.textShadow ?? null, a.textGlow ?? null];
+      });
+      const held = editor.getJSON() as N;
+      expect(fx(held).filter(([, ...e]) => e.some(Boolean))).toHaveLength(6);
+      expect(fx(importDocx(await buildDocx(held as never)).content as N)).toEqual(fx(held));
+      const colors = (doc: N) => fx(doc).flatMap(([t, c]) => [...(t as string)].map(() => c));
+      expect(colors(importOdt(await buildOdt(held as never)).content as N)).toEqual(colors(held));
+    } finally { editor.destroy(); }
   });
 
   it("reads Word's emphasis marks as LibreOffice does", async () => {
@@ -655,6 +757,98 @@ describe('DOCX import: empty line keeps its paragraph-mark font size', () => {
   });
 });
 
+describe('run letter spacing against its style', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  // A style spaces its letters 2pt; one run resets that to 0, another widens it.
+  const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
+    <w:p><w:pPr><w:pStyle w:val="Wide"/></w:pPr><w:r><w:t xml:space="preserve">style </w:t></w:r><w:r><w:rPr><w:spacing w:val="0"/></w:rPr><w:t xml:space="preserve">reset </w:t></w:r><w:r><w:rPr><w:spacing w:val="60"/></w:rPr><w:t>wider</w:t></w:r></w:p>
+    <w:p><w:pPr><w:pStyle w:val="Narrow"/></w:pPr><w:r><w:t>narrow</w:t></w:r></w:p>
+    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr>
+  </w:body></w:document>`;
+  const stylesXml = `<?xml version="1.0"?><w:styles ${W}>
+    <w:style w:type="paragraph" w:styleId="Wide"><w:name w:val="Wide"/><w:rPr><w:spacing w:val="40"/></w:rPr></w:style>
+    <w:style w:type="paragraph" w:styleId="Narrow"><w:name w:val="Narrow"/><w:basedOn w:val="Wide"/><w:rPr><w:spacing w:val="0"/></w:rPr></w:style>
+  </w:styles>`;
+  const res = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml), 'word/styles.xml': strToU8(stylesXml) }));
+  const spacing = (doc: N, text: string) => walk(doc, 'text').find((t) => t.text === text)?.marks?.find((m) => m.type === 'textStyle')?.attrs?.letterSpacing;
+  const expectRuns = (doc: N, styles = res.styles) => {
+    expect(resolveStyle(styles, 'Narrow').text.letterSpacingPt).toBe(0);
+    expect(spacing(doc, 'style ')).toBeUndefined();
+    expect(spacing(doc, 'reset ')).toBe(0);
+    expect(spacing(doc, 'wider')).toBe(3);
+  };
+
+  it('keeps a run\'s own spacing, a reset to 0 included, through both formats', async () => {
+    expect(res.styles.paragraph['Wide'].text.letterSpacingPt).toBe(2);
+    expectRuns(res.content as N);
+    const sheet = res.styles;
+    for (const back of [importDocx(await buildDocx(res.content as N, undefined, undefined, undefined, undefined, 'A4', sheet)),
+      importOdt(await buildOdt(res.content as N, undefined, undefined, undefined, undefined, 'A4', sheet))]) expectRuns(back.content as N, back.styles);
+  });
+});
+
+describe('paragraph rules: w:between groups', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const side = (n: string, c: string) => `<w:${n} w:val="single" w:sz="8" w:space="1" w:color="${c}"/>`;
+  const grouped = (t: string) => `<w:p><w:pPr><w:pBdr>${side('top', '000000')}${side('bottom', '000000')}${side('between', 'FF0000')}</w:pBdr></w:pPr><w:r><w:t>${t}</w:t></w:r></w:p>`;
+  const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>${['a', 'b', 'c', 'd'].map(grouped).join('')}<w:p><w:r><w:t>after</w:t></w:r></w:p>
+    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr></w:body></w:document>`;
+  const res = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml) }));
+  // LibreOffice draws the group with the top rule first, the between rule above each
+  // later paragraph and the bottom rule last, none of them merged (probed).
+  const expectGroup = (doc: N) => {
+    const rules = doc.content!.slice(0, 5).map((p) => [p.attrs?.borderTop ?? null, p.attrs?.borderBottom ?? null, p.attrs?.borderJoin ?? null]);
+    expect(rules).toEqual([
+      ['1pt solid #000000', null, false], ['1pt solid #FF0000', null, false], ['1pt solid #FF0000', null, false],
+      ['1pt solid #FF0000', '1pt solid #000000', false], [null, null, null],
+    ]);
+  };
+
+  it('draws the between rule inside the group and survives both formats', async () => {
+    expectGroup(res.content as N);
+    expectGroup(importDocx(await buildDocx(res.content as N)).content as N);
+    expectGroup(importOdt(await buildOdt(res.content as N)).content as N);
+  });
+
+  // A style's own w:between keeps each of its paragraphs a full box (LibreOffice draws it
+  // so and writes join-border="false"); a style without one merges like neighbours.
+  it('keeps a paragraph style\'s between rule as unjoined boxes through both formats', async () => {
+    const stylesXml = `<?xml version="1.0"?><w:styles ${W}><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
+      <w:style w:type="paragraph" w:styleId="Boxed"><w:name w:val="Boxed"/><w:pPr><w:pBdr>${side('top', '000000')}${side('bottom', '000000')}${side('between', 'FF0000')}</w:pBdr></w:pPr></w:style>
+      <w:style w:type="paragraph" w:styleId="Ruled"><w:name w:val="Ruled"/><w:pPr><w:pBdr>${side('top', '000000')}${side('bottom', '000000')}</w:pBdr></w:pPr></w:style></w:styles>`;
+    const para = (st: string) => `<w:p><w:pPr><w:pStyle w:val="${st}"/></w:pPr><w:r><w:t>${st}</w:t></w:r></w:p>`;
+    const doc = importDocx(zipSync({ 'word/styles.xml': strToU8(stylesXml),
+      'word/document.xml': strToU8(`<?xml version="1.0"?><w:document ${W}><w:body>${para('Boxed')}${para('Boxed')}${para('Ruled')}<w:sectPr/></w:body></w:document>`) }));
+    const joins = (sheet: ReturnType<typeof builtinStyleSheet>) => [sheet.paragraph.Boxed.para.borderJoin, sheet.paragraph.Ruled.para.borderJoin];
+    expect(joins(doc.styles!)).toEqual([false, undefined]);
+    expect(styleCss(doc.styles!)).not.toMatch(/data-style="Boxed"\] \+/);
+    expect(styleCss(doc.styles!)).toMatch(/data-style="Ruled"\] \+/);
+    for (const back of [importDocx(await buildDocx(doc.content as N, undefined, undefined, undefined, undefined, 'A4', doc.styles)),
+      importOdt(await buildOdt(doc.content as N, undefined, undefined, undefined, undefined, 'A4', doc.styles))]) expect(joins(back.styles!)).toEqual([false, undefined]);
+  });
+});
+
+describe('list levels LibreOffice reads literally', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  // No w:start (LibreOffice numbers from 0, probed) and a hang 14 twips off the default.
+  const numberingXml = `<?xml version="1.0"?><w:numbering ${W}><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:pPr><w:ind w:left="720" w:hanging="374"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`;
+  const item = (t: string) => `<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>${t}</w:t></w:r></w:p>`;
+  const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>${item('zero')}${item('one')}<w:sectPr/></w:body></w:document>`;
+  const res = importDocx(zipSync({ 'word/document.xml': strToU8(documentXml), 'word/numbering.xml': strToU8(numberingXml),
+    'word/_rels/document.xml.rels': strToU8('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>') }));
+  const expectList = (doc: N) => {
+    const list = walk(doc, 'orderedList')[0];
+    expect(list.attrs?.start).toBe(0);
+    expect(list.attrs?.hanging).toBeCloseTo(0.66, 2);
+  };
+
+  it('starts a level without w:start at 0 and keeps a hang near the default, in both formats', async () => {
+    expectList(res.content as N);
+    expectList(importDocx(await buildDocx(res.content as N)).content as N);
+    expectList(importOdt(await buildOdt(res.content as N)).content as N);
+  });
+});
+
 describe('DOCX import: alignment inherited from a paragraph style', () => {
   const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
   // The default paragraph style (Standard) sets justify; body paragraphs and a heading
@@ -868,9 +1062,9 @@ describe('DOCX import of foreign text boxes / shapes', () => {
       return walk(res.content as N, type)[0]?.attrs;
     };
     const vml = (style: string, inner = '', data = '') => picture(`<w:pict><v:shape style="position:absolute;width:144pt;height:72pt;${style}">${inner}<v:imagedata r:id="rImg"${data}/></v:shape></w:pict>`);
-    const dml = (attrs: string, h: string, v: string, wrap: string, effect = '') => picture(`<w:drawing><wp:anchor ${attrs}>
+    const dml = (attrs: string, h: string, v: string, wrap: string, effect = '', fill = '') => picture(`<w:drawing><wp:anchor ${attrs}>
       <wp:positionH relativeFrom="${h.split(':')[0]}">${posOf(h)}</wp:positionH><wp:positionV relativeFrom="${v.split(':')[0]}">${posOf(v)}</wp:positionV>
-      <wp:extent cx="1828800" cy="914400"/>${wrap}<a:graphic><a:graphicData><pic:pic><pic:blipFill><a:blip r:embed="rImg">${effect}</a:blip></pic:blipFill></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing>`);
+      <wp:extent cx="1828800" cy="914400"/>${wrap}<a:graphic><a:graphicData><pic:pic><pic:blipFill><a:blip r:embed="rImg">${effect}</a:blip>${fill}</pic:blipFill></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing>`);
     const posOf = (p: string) => { const v = p.split(':')[1]; return /^-?\d+$/.test(v) ? `<wp:posOffset>${v}</wp:posOffset>` : `<wp:align>${v}</wp:align>`; };
     it.each([
       ['centred on the text area, behind the text, washed out',
@@ -882,6 +1076,9 @@ describe('DOCX import of foreign text boxes / shapes', () => {
       ['aligned right with text wrapping beside it',
         () => vml('mso-position-horizontal:right;mso-position-horizontal-relative:margin', '<w10:wrap type="square"/>'),
         () => dml('behindDoc="0"', 'margin:right', 'paragraph:0', '<wp:wrapSquare wrapText="bothSides"/>')],
+      ['cropped, in 65536ths or as a fraction',
+        () => vml('margin-left:36pt;margin-top:72pt;mso-position-horizontal-relative:page;mso-position-vertical-relative:page', '', ' croptop="16384f" cropleft="0.1"'),
+        () => dml('behindDoc="0"', 'page:457200', 'page:914400', '<wp:wrapNone/>', '', '<a:srcRect l="10000" t="25000"/>')],
     ])('%s', (_label, fromVml, fromDml) => {
       const a = fromVml(), b = fromDml();
       expect(a?.wrap).toBeTruthy();
@@ -1063,30 +1260,31 @@ describe('DOCX import: hardBreak carries its run font (empty-line height)', () =
   });
 });
 
-describe('DOCX import: a list continued across paragraphs keeps counting (same numId)', () => {
+describe('DOCX import: a list continued across paragraphs keeps counting (shared count)', () => {
   const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
   const item = (numId: number, t: string) =>
     `<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="${numId}"/></w:numPr></w:pPr><w:r><w:t>${t}</w:t></w:r></w:p>`;
   const gap = (t: string) => `<w:p><w:r><w:t>${t}</w:t></w:r></w:p>`;
-  // numId 5 (upperRoman) split by body paragraphs; numId 6 shares the format but is its own
-  // counter, so it must restart — Word continues per numId, not per glyph style.
+  // numId 5 (upperRoman) split by body paragraphs; numId 6 shares its abstract and so its
+  // count; numId 7 restarts it through w:startOverride (both probed in LibreOffice).
   const documentXml = `<?xml version="1.0"?><w:document ${W}><w:body>
-    ${item(5, 'One')}${gap('body a')}${item(5, 'Two')}${gap('body b')}${item(5, 'Three')}${item(6, 'Other')}
+    ${item(5, 'One')}${gap('body a')}${item(5, 'Two')}${gap('body b')}${item(5, 'Three')}${item(6, 'Other')}${gap('body c')}${item(7, 'Again')}
   </w:body></w:document>`;
   const numberingXml = `<?xml version="1.0"?><w:numbering ${W}>
-    <w:abstractNum w:abstractNumId="5"><w:lvl w:ilvl="0"><w:numFmt w:val="upperRoman"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum>
+    <w:abstractNum w:abstractNumId="5"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="upperRoman"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum>
     <w:num w:numId="5"><w:abstractNumId w:val="5"/></w:num>
     <w:num w:numId="6"><w:abstractNumId w:val="5"/></w:num>
+    <w:num w:numId="7"><w:abstractNumId w:val="5"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>
   </w:numbering>`;
   const bytes = zipSync({ 'word/document.xml': strToU8(documentXml), 'word/numbering.xml': strToU8(numberingXml) });
   const doc = importDocx(bytes).content as N;
 
-  it('emits separate ordered lists whose start values continue the numId', () => {
+  it('emits separate ordered lists whose start values continue the shared count', () => {
     const ols = doc.content!.filter((n) => n.type === 'orderedList');
-    expect(ols.length).toBe(4);
-    expect(ols.map((o) => o.attrs?.start)).toEqual([undefined, 2, 3, undefined]);
+    expect(ols.length).toBe(5);
+    expect(ols.map((o) => o.attrs?.start)).toEqual([undefined, 2, 3, 4, undefined]);
     expect(ols.every((o) => o.attrs?.listStyleType === 'upper-roman')).toBe(true);
-    expect(walk(ols[3], 'text')[0].text).toBe('Other'); // separate numId → restarts at 1
+    expect(walk(ols[3], 'text')[0].text).toBe('Other');
   });
 });
 
@@ -1164,7 +1362,7 @@ describe('DOCX named paragraph styles', () => {
   const sheet = builtinStyleSheet();
   sheet.paragraph['Merksatz'] = {
     name: 'Merksatz', parent: 'Quotations', next: 'Standard',
-    para: { spaceBefore: 8 }, text: { bold: true, color: '#0000AA' },
+    para: { spaceBefore: 8 }, text: { bold: true, color: '#0000AA', shadow: true, textGlow: { color: '#FFC000', alpha: 0.6, radiusPt: 8 } },
   };
 
   const fixture = {
@@ -1174,6 +1372,10 @@ describe('DOCX named paragraph styles', () => {
       { type: 'paragraph', attrs: { styleName: 'Merksatz' }, content: [text('gemerkt')] },
       { type: 'paragraph', attrs: { styleName: 'Merksatz', spaceAfter: 20 }, content: [text('mit Abstand')] },
       { type: 'paragraph', content: [text('normal')] },
+      // A run switching off an effect its style draws.
+      { type: 'paragraph', attrs: { styleName: 'Merksatz' }, content: [text('flach', [{ type: 'textStyle', attrs: { shadow: false } }])] },
+      // A run with a glow of its own over its style's.
+      { type: 'paragraph', attrs: { styleName: 'Merksatz' }, content: [text('grün', [{ type: 'textStyle', attrs: { textGlow: { color: '#70AD47', alpha: 1, radiusPt: 5 } } }])] },
     ],
   } as any;
 
@@ -1201,13 +1403,17 @@ describe('DOCX named paragraph styles', () => {
     expect(style.text.bold).toBe(true);
     expect(style.text.color).toBe('#0000AA');
     expect(style.para.spaceBefore).toBe(8);
+    expect(style.text.shadow).toBe(true);
+    expect(blocks[4].content![0].marks).toEqual([{ type: 'textStyle', attrs: expect.objectContaining({ shadow: false }) }]);
+    expect(style.text.textGlow).toEqual({ color: '#FFC000', alpha: 0.6, radiusPt: 8 });
+    expect(blocks[5].content![0].marks).toEqual([{ type: 'textStyle', attrs: expect.objectContaining({ textGlow: { color: '#70AD47', alpha: 1, radiusPt: 5 } }) }]);
   });
 });
 
 describe('DOCX named character styles', () => {
   const sheet = builtinStyleSheet();
   sheet.character['Signal'] = {
-    name: 'Signal', parent: null, next: null, para: {}, text: { bold: true, color: '#CC0000' },
+    name: 'Signal', parent: null, next: null, para: {}, text: { bold: true, color: '#CC0000', caps: 'smallCaps', outline: true },
   };
   const CS = (t: string, name: string, ...extra: any[]) =>
     ({ type: 'text', text: t, marks: [{ type: 'charStyle', attrs: { name } }, ...extra] });
@@ -1234,7 +1440,23 @@ describe('DOCX named character styles', () => {
     expect((runs[1].marks ?? []).every((m: N) => m.type === 'charStyle')).toBe(true);
     const signal = runs.find((r: N) => charOf(r) === 'Signal')!;
     expect((signal.marks ?? []).some((m: N) => m.type === 'italic')).toBe(true);
-    expect(res.styles.character['Signal'].text).toEqual({ bold: true, color: '#CC0000' });
+    expect(res.styles.character['Signal'].text).toEqual({ bold: true, color: '#CC0000', caps: 'smallCaps', outline: true });
+  });
+});
+
+// A style switching its parent's all-caps off keeps it off through either format.
+describe('a derived style turns its parent\'s caps off', () => {
+  const sheet = builtinStyleSheet();
+  sheet.paragraph['Loud'] = { name: 'Loud', parent: 'Standard', next: null, para: {}, text: { caps: 'uppercase' } };
+  sheet.paragraph['Calm'] = { name: 'Calm', parent: 'Loud', next: null, para: {}, text: { caps: false } };
+  const doc = { type: 'doc', content: ['Loud', 'Calm'].map((name) => ({ type: 'paragraph', attrs: { styleName: name }, content: [text(name)] })) } as any;
+  it.each([
+    ['docx', async () => importDocx(await buildDocx(doc, undefined, undefined, undefined, undefined, undefined, sheet))],
+    ['odt', async () => importOdt(await buildOdt(doc, undefined as any, 'portrait', undefined, undefined, undefined, sheet))],
+  ])('%s', async (_, read) => {
+    const back: any = await read();
+    expect(resolveStyle(back.styles, 'Loud').text.caps).toBe('uppercase');
+    expect(resolveStyle(back.styles, 'Calm').text.caps || null).toBeNull();
   });
 });
 
@@ -1365,7 +1587,7 @@ describe('DOCX named list styles', () => {
     levels: [
       { kind: 'number', numType: 'upper-roman-paren', markerAlign: 'right', indentCm: 0.5 },
       { kind: 'bullet', bulletChar: '✓' },
-      { kind: 'number', numType: 'lower-alpha' },
+      { kind: 'number', numType: 'lower-alpha', hanging: 0.3, markerSuffix: 'space' },
     ],
   };
   const fixture = {
@@ -1421,7 +1643,7 @@ describe('DOCX named list styles', () => {
     const imported = result.styles.list['Prüfliste'];
     expect(imported?.levels[0]).toMatchObject({ kind: 'number', numType: 'upper-roman-paren', markerAlign: 'right', indentCm: 0.5 });
     expect(imported?.levels[1]).toMatchObject({ kind: 'bullet', bulletChar: '✓' });
-    expect(imported?.levels[2]).toMatchObject({ kind: 'number', numType: 'lower-alpha' });
+    expect(imported?.levels[2]).toMatchObject({ kind: 'number', numType: 'lower-alpha', hanging: 0.3, markerSuffix: 'space' });
   });
 
   it('the style level decides a depth\'s kind — a species-mismatched nest keeps the shared abstract', async () => {

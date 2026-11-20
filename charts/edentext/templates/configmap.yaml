@@ -59,5 +59,22 @@ data:
           proxy_send_timeout 1h;
         }
         {{- end }}
+        {{- with .Values.ai.proxy }}
+        {{- if .enabled }}
+        {{- $var := ternary "EDENTEXT_AI_KEY" "" (ne .apiKeySecret.name "") }}
+        {{- $header := ternary "x-api-key" "Authorization" (eq $.Values.ai.provider "anthropic") }}
+        {{- include "edentext.proxyLocation" (dict "path" "/ai/" "upstream" (required "ai.proxy.upstream is required" .upstream) "header" $header "var" $var "timeout" "600s" "body" "64m") | nindent 8 }}
+        {{- end }}
+        {{- end }}
+        {{- with .Values.dictation.proxy }}
+        {{- if .enabled }}
+        {{- $var := ternary "EDENTEXT_DICTATION_KEY" "" (ne .apiKeySecret.name "") }}
+        {{- include "edentext.proxyLocation" (dict "path" "/stt/" "upstream" (required "dictation.proxy.upstream is required" .upstream) "header" "Authorization" "var" $var "timeout" "60s" "body" "16m") | nindent 8 }}
+        {{- end }}
+        {{- end }}
       }
     }
+  {{- with include "edentext.hostConfig" . }}
+  edentext.config.json: |
+    {{- . | nindent 4 }}
+  {{- end }}

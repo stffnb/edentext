@@ -1,6 +1,7 @@
 import type { Editor } from '@tiptap/core';
 import { droppedFrameAttrs, wrapGap, wrapGapAttr, type WrapGap, type WrapMode } from '../editor/extensions/image';
 import { t } from '../i18n/i18n.svelte';
+import { parseDecimal } from '../i18n/number';
 
 // Wrap, stacking and text gap of a picture or a shape, for the ribbon's frame tabs and
 // the floating frame toolbars alike.
@@ -48,7 +49,7 @@ export function hasWrapGap(wrap: WrapMode): boolean {
 }
 
 export function setFrameGap(editor: Editor | null, kind: FrameKind, wrapDist: unknown, side: keyof WrapGap, raw: string): void {
-  const v = parseFloat(raw.replace(',', '.'));
+  const v = parseDecimal(raw);
   if (isNaN(v)) return;
   const next = wrapGapAttr({ ...wrapGap(wrapDist), [side]: Math.max(0, Math.min(10, v)) });
   if (kind === 'picture') editor?.chain().focus().setImageAttrs({ wrapDist: next }).run();

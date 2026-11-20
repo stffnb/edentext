@@ -8,7 +8,7 @@
   import { effectiveOrderedTypeAt, inChapterHeading } from '../editor/extensions/orderedList';
   import { outlineIsEmpty } from '../styles/outlineNumbering';
   import { listStyleNameAt } from '../editor/extensions/listStyle';
-  import { formatOrdinal, orderedTypeDef } from '../utils/orderedListTypes';
+  import { formatOrdinal, orderedTypeDef, sampleDir } from '../utils/orderedListTypes';
   import type { ListStyle } from '../styles/listStyles';
   import { isInHeaderCell } from '../editor/extensions/tableHeaderRow';
   import { cellRegionText } from '../editor/extensions/tableStyle';
@@ -403,7 +403,7 @@
             onclick={toggleBulletList}
             title={t().toolbar.bulletList}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <svg class="icon-flip" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <circle cx="2" cy="4" r="1.5" fill="currentColor"/>
               <circle cx="2" cy="8" r="1.5" fill="currentColor"/>
               <circle cx="2" cy="12" r="1.5" fill="currentColor"/>
@@ -480,10 +480,10 @@
             onclick={toggleOrderedList}
             title={t().toolbar.orderedList}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <text x="0" y="5.5" font-size="5" font-weight="bold" font-family="sans-serif" fill="currentColor">1.</text>
-              <text x="0" y="9.5" font-size="5" font-weight="bold" font-family="sans-serif" fill="currentColor">2.</text>
-              <text x="0" y="13.5" font-size="5" font-weight="bold" font-family="sans-serif" fill="currentColor">3.</text>
+            <svg class="icon-flip" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <text class="icon-keep" x="0" y="5.5" font-size="5" font-weight="bold" font-family="sans-serif" fill="currentColor">1.</text>
+              <text class="icon-keep" x="0" y="9.5" font-size="5" font-weight="bold" font-family="sans-serif" fill="currentColor">2.</text>
+              <text class="icon-keep" x="0" y="13.5" font-size="5" font-weight="bold" font-family="sans-serif" fill="currentColor">3.</text>
               <line x1="5.5" y1="4" x2="15" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               <line x1="5.5" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
               <line x1="5.5" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -514,8 +514,8 @@
                 role="menuitemradio"
                 aria-checked={currentOrderedType === o.key}
               >
-                <span class="ol-option-preview">{o.preview}</span>
-                <span class="ol-option-label">{o.label}</span>
+                <span class="ol-option-preview" dir={sampleDir(o)}>{o.preview}</span>
+                <span class="ol-option-label" dir={sampleDir(o)}>{o.label}</span>
               </button>
             {/each}
             {#if orderedListStyles.length}
@@ -716,13 +716,14 @@
   }
 
   .ol-split:hover .ol-chevron {
-    border-left-color: var(--color-border);
+    border-inline-start-color: var(--color-border);
   }
 
   .ol-main {
     min-width: unset;
     height: 100%;
-    padding: 0 0.2rem 0 0.3rem;
+    padding-block: 0;
+    padding-inline: 0.3rem 0.2rem;
     border-radius: 0;
   }
 
@@ -731,7 +732,7 @@
     width: 1rem;
     height: 100%;
     padding: 0;
-    border-left: 1px solid transparent;
+    border-inline-start: 1px solid transparent;
     border-radius: 0;
     transition: background 0.15s, border-color 0.15s;
   }
@@ -739,7 +740,7 @@
   .ol-dropdown {
     position: absolute;
     top: calc(100% + 3px);
-    left: 0;
+    inset-inline-start: 0;
     min-width: 170px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -793,7 +794,7 @@
     padding: 0.35rem 0.6rem;
     border-radius: calc(var(--radius) - 2px);
     justify-content: flex-start;
-    text-align: left;
+    text-align: start;
   }
 
   .ol-option:hover {

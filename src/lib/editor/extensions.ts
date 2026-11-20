@@ -24,7 +24,7 @@ import { BulletList } from './extensions/bulletList';
 import { OrderedList } from './extensions/orderedList';
 import ListItem from '@tiptap/extension-list-item';
 import { ListMarker } from './extensions/listMarker';
-import { ListStyle, splitListAt } from './extensions/listStyle';
+import { ListStyle, sinkListItemWithin, splitListAt } from './extensions/listStyle';
 import { Table, TableHeader, TableCell, createTable } from '@tiptap/extension-table';
 import { tableRepair } from './extensions/tableRepair';
 import { addColumnAfter, addColumnBefore, addRowAfter, addRowBefore } from '@tiptap/pm/tables';
@@ -53,7 +53,7 @@ import { FormattingMarks } from './extensions/formattingMarks';
 import { SpellCheck } from './extensions/spellCheck';
 import { GrammarCheck } from './extensions/grammarCheck';
 import { SearchReplace } from './extensions/searchReplace';
-import { TableView } from './extensions/tableView';
+import { TableView, selectionTableRtl, tableArrow } from './extensions/tableView';
 import { TableColumnResize } from './extensions/tableColumnResize';
 import { TableRowResize } from './extensions/tableRowResize';
 import { TableSplit } from './extensions/tableSplit';
@@ -85,6 +85,7 @@ import { Shortcuts } from './extensions/shortcuts';
 import { PageNumber, PageCount, ChapterField } from './extensions/pageField';
 import { AutoCorrect } from './extensions/autoCorrect';
 import { WordCompletion } from './extensions/wordCompletion';
+import { Dictation } from './extensions/dictation';
 import { AutoText } from './extensions/autoText';
 import { HEADING_LEVELS, MAX_HEADING_LEVEL } from '../styles/headings';
 import { setOutline, styleSheet } from '../styles/sheet.svelte';
@@ -93,6 +94,15 @@ import { recordChanges, recordLock } from '../storage/trackChanges.svelte';
 import { markupView } from '../storage/markup.svelte';
 import { userName } from '../storage/userName.svelte';
 import { Insertion, Deletion, FormatChange, REBUILDING, TrackChanges } from './extensions/trackChanges';
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    tableSides: {
+      addColumnLeft: () => ReturnType;
+      addColumnRight: () => ReturnType;
+    };
+  }
+}
 
 const pxToPt = (size: string): string | null => {
   const px = /^([\d.]+)px$/.exec(size)?.[1];
@@ -229,7 +239,8 @@ export const extensions = [
   OrderedList.configure({ headingNumbering: { get: () => styleSheet().outline, set: setOutline } }),
   // The tail is narrower than `block*`: neither file keeps a table (or a table of
   // contents) in a list item, and a list toggle over one would wrap it in silently.
-  ListItem.extend({ content: LIST_ITEM_CONTENT }),
+  // Indenting stops at the ninth level, as at any other limit: deeper has no .docx form.
+  ListItem.extend({ content: LIST_ITEM_CONTENT, addCommands: () => ({ sinkListItem: sinkListItemWithin }) }),
   // Bullet/number formatting: it follows the item's first text portion, as in
   // LibreOffice (the sheet resolves a character style on that portion).
   ListMarker.configure({ sheet: styleSheet }),
@@ -245,6 +256,15 @@ export const extensions = [
   Table.extend({
     addProseMirrorPlugins() {
       return [tableRepair(), ...(this.parent?.() ?? []), new Plugin({ props: { handleDrop: (_view, _event, slice) => cutsCells(slice) } })];
+    },
+    addKeyboardShortcuts() {
+      return {
+        ...this.parent?.(),
+        ArrowLeft: ({ editor }) => tableArrow(editor.view, 'left', false),
+        ArrowRight: ({ editor }) => tableArrow(editor.view, 'right', false),
+        'Shift-ArrowLeft': ({ editor }) => tableArrow(editor.view, 'left', true),
+        'Shift-ArrowRight': ({ editor }) => tableArrow(editor.view, 'right', true),
+      };
     },
     addCommands() {
       const parent = this.parent?.() ?? {};
@@ -280,7 +300,10 @@ export const extensions = [
       addRowBefore: () => ({ state, dispatch }) => inheritingInsert(addRowBefore, 'row', 'before')(state, dispatch),
       addRowAfter: () => ({ state, dispatch }) => inheritingInsert(addRowAfter, 'row', 'after')(state, dispatch),
       addColumnBefore: () => ({ state, dispatch }) => inheritingInsert(addColumnBefore, 'column', 'before')(state, dispatch),
-      addColumnAfter: () => ({ state, dispatch }) => inheritingInsert(addColumnAfter, 'column', 'after')(state, dispatch) };
+      addColumnAfter: () => ({ state, dispatch }) => inheritingInsert(addColumnAfter, 'column', 'after')(state, dispatch),
+      // A side the reader sees: a right-to-left table's columns run mirrored.
+      addColumnLeft: () => ({ state, view, commands }) => (selectionTableRtl(view, state.selection.from) ? commands.addColumnAfter() : commands.addColumnBefore()),
+      addColumnRight: () => ({ state, view, commands }) => (selectionTableRtl(view, state.selection.from) ? commands.addColumnBefore() : commands.addColumnAfter()) };
     },
   }).configure({ resizable: false, View: TableView }),
   ResizableTableRow,
@@ -346,6 +369,8 @@ export const extensions = [
   WordCompletion,
   // Named blocks of text kept beside the documents; F3 expands a typed shortcut.
   AutoText,
+  // Spoken words at the caret, from the dictation session (docs/architecture/dictation.md).
+  Dictation,
   SearchReplace.configure({ sheet: styleSheet }),
   // Word/LibreOffice key bindings that aren't TipTap defaults.
   Shortcuts,

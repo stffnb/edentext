@@ -16,6 +16,10 @@ export type OrderedListType =
   | 'upper-cyrillic-sync' | 'upper-cyrillic-sync-paren'
   | 'cjk-counting' | 'cjk-legal' | 'cjk-stem' | 'circled-decimal'
   | 'katakana'     | 'katakana-iroha'
+  | 'arabic-indic' | 'arabic-indic-paren' | 'arabic-alpha' | 'arabic-alpha-paren'
+  | 'arabic-abjad' | 'arabic-abjad-paren'
+  | 'hangul' | 'hangul-paren' | 'hangul-consonant' | 'hangul-consonant-paren'
+  | 'korean-counting' | 'korean-legal'
   | 'multilevel';
 
 export const DEFAULT_ORDERED_TYPE: OrderedListType = 'decimal';
@@ -32,6 +36,15 @@ export function defaultOrderedType(depth0: number): OrderedListType {
 export type CjkNumFormat = '一, 二, 三, ...' | '壹, 贰, 叁, ...' | '甲, 乙, 丙, ...' | '①, ②, ③, ...'
   | 'ア, イ, ウ, ...' | 'イ, ロ, ハ, ...';
 
+// The Arabic formats: the letters in alphabetical and in the older abjad order, spelled as
+// LibreOffice writes them (probed), and Arabic-Indic digits, which neither LibreOffice nor
+// Word has a numbering for: DOCX carries them as a right-to-left decimal label.
+export type ArabicNumFormat = '١, ٢, ٣, ...' | 'أ, ب, ت, ...' | 'ا, ب, ج, ...';
+
+// The Korean formats as LibreOffice spells them (probed): the 14 syllables and consonants,
+// then the Sino-Korean (일, 이, 삼) and native (하나, 둘, 셋) number words.
+export type KoreanNumFormat = '가, 나, 다, ...' | 'ㄱ, ㄴ, ㄷ, ...' | '일, 이, 삼, ...' | '하나, 둘, 셋, ...';
+
 // LibreOffice's Russian letter formats, verbatim: the "аа, аб" ones count on like a, b, c,
 // the "аа, бб" ones repeat the letter, as `a` with style:num-letter-sync does.
 export type CyrillicNumFormat = 'а, б, .., аа, аб, ... (ru)' | 'А, Б, .., Аа, Аб, ... (ru)'
@@ -46,13 +59,13 @@ export interface OrderedTypeDef {
   preview: string; // a single marker shown in the dropdown, e.g. "1." or "a)"
   // ODF style:num-format. LibreOffice spells the CJK formats as the whole sequence,
   // not as one character — probed, it drops a bare '一' back to decimal.
-  numFormat: '1' | 'a' | 'A' | 'i' | 'I' | LetterSyncFormat | CyrillicNumFormat | CjkNumFormat;
+  numFormat: '1' | 'a' | 'A' | 'i' | 'I' | LetterSyncFormat | CyrillicNumFormat | CjkNumFormat | ArabicNumFormat | KoreanNumFormat;
   numSuffix: '.' | ')' | '、' | ''; // ODF style:num-suffix
   // Legal/outline numbering (1., 1.1., 1.2.1. …): each level shows the parent chain.
   // ODF text:display-levels, DOCX "%1.%2." lvlText, CSS counters() markers.
   multilevel?: boolean;
   // The menus offer it only where the UI or the document is in that script.
-  script?: 'cjk' | 'cyrillic';
+  script?: 'cjk' | 'cyrillic' | 'arabic' | 'korean';
   // Differs from its plain row only past the last letter: the list style dialog offers it,
   // the quick menus do not.
   rare?: true;
@@ -90,12 +103,30 @@ export const ORDERED_LIST_TYPES: OrderedTypeDef[] = [
   { key: 'circled-decimal',   label: '①, ②, ③',      preview: '①',    numFormat: '①, ②, ③, ...', numSuffix: '', script: 'cjk' },
   { key: 'katakana',          label: 'ア, イ, ウ',      preview: 'ア.',   numFormat: 'ア, イ, ウ, ...', numSuffix: '.', script: 'cjk' },
   { key: 'katakana-iroha',    label: 'イ, ロ, ハ',      preview: 'イ.',   numFormat: 'イ, ロ, ハ, ...', numSuffix: '.', script: 'cjk' },
+  { key: 'hangul',                 label: '가, 나, 다',     preview: '가.',   numFormat: '가, 나, 다, ...', numSuffix: '.', script: 'korean' },
+  { key: 'hangul-paren',           label: '가), 나), 다)',  preview: '가)',   numFormat: '가, 나, 다, ...', numSuffix: ')', script: 'korean' },
+  { key: 'hangul-consonant',       label: 'ㄱ, ㄴ, ㄷ',     preview: 'ㄱ.',   numFormat: 'ㄱ, ㄴ, ㄷ, ...', numSuffix: '.', script: 'korean' },
+  { key: 'hangul-consonant-paren', label: 'ㄱ), ㄴ), ㄷ)',  preview: 'ㄱ)',   numFormat: 'ㄱ, ㄴ, ㄷ, ...', numSuffix: ')', script: 'korean' },
+  { key: 'korean-counting',        label: '일, 이, 삼',     preview: '일.',   numFormat: '일, 이, 삼, ...', numSuffix: '.', script: 'korean' },
+  { key: 'korean-legal',           label: '하나, 둘, 셋',   preview: '하나.', numFormat: '하나, 둘, 셋, ...', numSuffix: '.', script: 'korean' },
+  { key: 'arabic-indic',       label: '١, ٢, ٣',  preview: '١.', numFormat: '١, ٢, ٣, ...', numSuffix: '.', script: 'arabic' },
+  { key: 'arabic-indic-paren', label: '١), ٢), ٣)', preview: '١)', numFormat: '١, ٢, ٣, ...', numSuffix: ')', script: 'arabic' },
+  { key: 'arabic-alpha',       label: 'أ, ب, ت',  preview: 'أ.', numFormat: 'أ, ب, ت, ...', numSuffix: '.', script: 'arabic' },
+  { key: 'arabic-alpha-paren', label: 'أ), ب), ت)', preview: 'أ)', numFormat: 'أ, ب, ت, ...', numSuffix: ')', script: 'arabic' },
+  { key: 'arabic-abjad',       label: 'ا, ب, ج',  preview: 'ا.', numFormat: 'ا, ب, ج, ...', numSuffix: '.', script: 'arabic' },
+  { key: 'arabic-abjad-paren', label: 'ا), ب), ج)', preview: 'ا)', numFormat: 'ا, ب, ج, ...', numSuffix: ')', script: 'arabic' },
 ];
 
 const BY_KEY = new Map<string, OrderedTypeDef>(ORDERED_LIST_TYPES.map(t => [t.key, t]));
 
 export function orderedTypeDef(key: string | null | undefined): OrderedTypeDef {
   return BY_KEY.get(key ?? DEFAULT_ORDERED_TYPE) ?? BY_KEY.get(DEFAULT_ORDERED_TYPE)!;
+}
+
+// A menu's sample of a numbering ("1, 2, 3", "a)") reads in its own script's direction,
+// so a right-to-left interface does not reorder its digits and brackets.
+export function sampleDir(type: Pick<OrderedTypeDef, 'script'>): 'ltr' | 'rtl' {
+  return type.script === 'arabic' ? 'rtl' : 'ltr';
 }
 
 // The def a list with this attr renders at this 0-based depth (null = depth cycle).
@@ -221,7 +252,41 @@ const AIUEO = [...'アイウエオカキクケコサシスセソタチツテト�
 const IROHA = [...'イロハニホヘトチリヌルヲワカヨタレソツネナラムウヰノオクヤマケフコエテアサキユメミシヱヒモセスン'];
 const cyclic = (signs: string[], n: number) => (n < 1 ? String(n) : signs[(n - 1) % signs.length]);
 
+const ARABIC_INDIC = [...'٠١٢٣٤٥٦٧٨٩'];
+const ARABIC_ALPHA = [...'أبتثجحخدذرزسشصضطظعغفقكلمنهوي'];
+const ARABIC_ABJAD = [...'ابجدهوزحطيكلمنسعفصقرشتثخذضظغ'];
+
+// The 14 basic consonants and their syllables with ㅏ; LibreOffice starts over after ㅎ/하.
+const HANGUL = [...'가나다라마바사아자차카타파하'];
+const HANGUL_CONSONANT = [...'ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ'];
+
+// Sino-Korean numerals as LibreOffice counts them (probed): no 일 before 십, 백, 천 or 만
+// (십일, 만일), decimal past 99999 as the lists' counter style does.
+function toKoreanCounting(n: number): string {
+  if (n < 1 || n > 99999) return String(n);
+  const d = '영일이삼사오육칠팔구';
+  const u = ['', '십', '백', '천', '만'];
+  return [...String(n)].map(Number).map((digit, i, all) => {
+    const unit = all.length - 1 - i;
+    return digit === 0 ? '' : (digit === 1 && unit > 0 ? '' : d[digit]) + u[unit];
+  }).join('');
+}
+
+// Native Korean numbers up to 99 (열하나, 아흔아홉); from 100 LibreOffice counts on in
+// Sino-Korean (백일), probed.
+const NATIVE_ONES = ['', '하나', '둘', '셋', '넷', '다섯', '여섯', '일곱', '여덟', '아홉'];
+const NATIVE_TENS = ['', '열', '스물', '서른', '마흔', '쉰', '예순', '일흔', '여든', '아흔'];
+function toKoreanLegal(n: number): string {
+  return n >= 1 && n < 100 ? NATIVE_TENS[Math.floor(n / 10)] + NATIVE_ONES[n % 10] : toKoreanCounting(n);
+}
+
 // The ordinal body an item renders for a num-format (no suffix): 3/'a' → "c".
+// A list's `start` attr as a number: absent is 1, but 0 is a real start (both formats).
+export function listStart(start: unknown): number {
+  const n = Number(start);
+  return start == null || start === '' || !Number.isFinite(n) ? 1 : n;
+}
+
 export function formatOrdinal(n: number, numFormat: OrderedTypeDef['numFormat']): string {
   switch (numFormat) {
     case 'a': return toLetters(n, LATIN);
@@ -234,12 +299,19 @@ export function formatOrdinal(n: number, numFormat: OrderedTypeDef['numFormat'])
     case 'А, Б, .., Аа, Аб, ... (ru)': return capitalise(toLetters(n, RUSSIAN));
     case 'а, б, .., аа, бб, ... (ru)': return toLetters(n, RUSSIAN, true);
     case 'А, Б, .., Аа, Бб, ... (ru)': return capitalise(toLetters(n, RUSSIAN, true));
+    case '١, ٢, ٣, ...': return [...String(n)].map((c) => ARABIC_INDIC[Number(c)] ?? c).join('');
+    case 'أ, ب, ت, ...': return toLetters(n, ARABIC_ALPHA);
+    case 'ا, ب, ج, ...': return toLetters(n, ARABIC_ABJAD);
     case '一, 二, 三, ...': return toChinese(n, false);
     case '壹, 贰, 叁, ...': return toChinese(n, true);
     case '甲, 乙, 丙, ...': return HEAVENLY_STEMS[n - 1] ?? String(n);
     case '①, ②, ③, ...': return toCircled(n);
     case 'ア, イ, ウ, ...': return cyclic(AIUEO, n);
     case 'イ, ロ, ハ, ...': return cyclic(IROHA, n);
+    case '가, 나, 다, ...': return cyclic(HANGUL, n);
+    case 'ㄱ, ㄴ, ㄷ, ...': return cyclic(HANGUL_CONSONANT, n);
+    case '일, 이, 삼, ...': return toKoreanCounting(n);
+    case '하나, 둘, 셋, ...': return toKoreanLegal(n);
     default: return String(n);
   }
 }
@@ -285,6 +357,6 @@ export function odfNumFormatAttrs(numFormat: string): string {
 
 // The menu rows for the scripts the UI or the document is in, the rare ones only with
 // `rare`; the list's own always stays.
-export function orderedTypesFor(show: { cjk: boolean; cyrillic: boolean }, current?: string | null, rare = false): OrderedTypeDef[] {
+export function orderedTypesFor(show: { cjk: boolean; cyrillic: boolean; arabic?: boolean; korean?: boolean }, current?: string | null, rare = false): OrderedTypeDef[] {
   return ORDERED_LIST_TYPES.filter(t => t.key === current || ((!t.script || show[t.script]) && (rare || !t.rare)));
 }

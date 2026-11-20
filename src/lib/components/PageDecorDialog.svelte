@@ -4,6 +4,7 @@
     type PageBorder, type PageDecor, type Watermark,
   } from '../storage/pageDecor';
   import { t } from '../i18n/i18n.svelte';
+  import { parseDecimal } from '../i18n/number';
   import ColorPicker from './ColorPicker.svelte';
 
   // LibreOffice's Format ▸ Page Style ▸ Area and Borders plus its Format ▸ Watermark,
@@ -24,7 +25,7 @@
     else if (!open && el.open) el.close();
   });
 
-  const num = (e: Event) => parseFloat((e.currentTarget as HTMLInputElement).value.replace(',', '.'));
+  const num = (e: Event) => parseDecimal((e.currentTarget as HTMLInputElement).value);
 
   function patchBorder(next: Partial<PageBorder>) {
     decor = { ...decor, border: { ...(decor.border ?? DEFAULT_PAGE_BORDER), ...next } };
@@ -37,7 +38,7 @@
 
 <dialog
   bind:this={dialogEl}
-  onclose={() => (open = false)}
+  onclose={() => !dialogEl?.open && (open = false)}
   onclick={(e) => e.target === dialogEl && (open = false)}
   aria-label={t().pageDecor.title}
 >

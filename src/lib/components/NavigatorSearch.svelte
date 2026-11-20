@@ -50,7 +50,7 @@
   <div class="row">
     <button class="fold" onclick={() => (showReplace = !showReplace)} aria-expanded={showReplace}
       title={showReplace ? t().findReplace.hideReplace : t().findReplace.showReplace} aria-label={t().findReplace.toggleReplace}>
-      <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true" style:transform="rotate({showReplace ? 0 : -90}deg)"><path d="M1 2.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg class="icon-flip" width="8" height="8" viewBox="0 0 8 8" aria-hidden="true" style:transform="rotate({showReplace ? 0 : -90}deg)"><path d="M1 2.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <input type="search" bind:value={term} oninput={apply} onkeydown={keydown} placeholder={t().navigator.searchDocument}
       aria-label={t().navigator.searchDocument} spellcheck="false" autocomplete="off" />
@@ -67,7 +67,7 @@
     <div class="row indent">
       <button class="opt" class:on={matchCase} aria-pressed={matchCase} title={t().findReplace.matchCase} onclick={toggle(() => (matchCase = !matchCase))}>Aa</button>
       <button class="opt word" class:on={wholeWord} aria-pressed={wholeWord} title={t().findReplace.wholeWord} onclick={toggle(() => (wholeWord = !wholeWord))}>W</button>
-      <button class="opt" class:on={useRegex} aria-pressed={useRegex} title={t().findReplace.regex} onclick={toggle(() => (useRegex = !useRegex))}>.*</button>
+      <button class="opt" class:on={useRegex} aria-pressed={useRegex} title={t().findReplace.regex} onclick={toggle(() => (useRegex = !useRegex))} dir="ltr">.*</button>
       <span class="gap"></span>
       <button class="text" disabled={!count} title={t().findReplace.replaceCurrent} onclick={() => editor?.commands.replaceCurrent(replaceText)}>{t().findReplace.replace}</button>
       <button class="text" disabled={!count} title={t().findReplace.replaceAllTitle} onclick={() => editor?.commands.replaceAll(replaceText)}>{t().findReplace.all}</button>

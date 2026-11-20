@@ -8,14 +8,13 @@ Serverless, fully client-side rich-text editor that saves `.odt` and `.docx`; st
 ```bash
 npm run dev      # Vite dev server (hot-reload, --host); npm run relay beside it for collaboration
 npm run build    # production build -> dist/; npm run preview serves it
-npm run check    # svelte-check type-check
-npm test         # Vitest once (tests/**/*.test.ts)
+npm run check; npm test  # svelte-check type-check; Vitest once (tests/**/*.test.ts)
 npm run test:lo      # LibreOffice round trip, fuzz re-read, ODT/DOCX consistency (needs soffice)
 npm run test:smoke   # headless dist boot; BROWSER=firefox|webkit
 npm run test:dom     # browser pagination and editing; same BROWSER
 npm run test:layout  # LibreOffice page counts, layout invariants and page starts
 npm run test:monkey  # random editing, undo/redo and save-read invariants
-npm run test:tabs; npm run test:collab  # two documents across reloads; shared sessions (undo per client, concurrent edits, relay)
+npm run test:tabs; npm run test:npm; npm run test:collab  # two documents across reloads; npm packages in a fresh Vite project; shared sessions (undo per client, concurrent edits, relay)
 npm run test:coverage  # Vitest V8 coverage -> coverage/index.html; npm run bench:bigjoin times a big shared document (docs/architecture/collab-perf.md)
 npm run test:parity  # render parity; see tests/render-parity/README.md
 node scripts/make-thesaurus.mjs; node scripts/make-shape-presets.mjs; node scripts/collect-licenses.mjs  # re-vendor thesaurus, shape presets, licenses
@@ -69,8 +68,9 @@ src/
   lib/editor/               - registry and extensions/
   lib/{utils,math}/         - framework-free helpers and formula AST
   lib/{export,import,i18n,spell,storage,styles,crypto,templates,embed}/ - I/O, localization, persistence, styles, protection, templates, embed mode (docs/architecture/embed.md)
-  lib/ai/                   - AI assistant client, document serialization and tools
+  lib/{ai,dictation}/       - AI assistant client, serialization and tools; speech input engines and session
   styles/                   - global and editor CSS
+packages/                   - npm package sources; scripts/pack-npm.mjs, docs/architecture/embed.md
 charts/edentext/            - community-maintained Helm chart; test with bash scripts/test-helm-chart.sh
 desktop/, relay/            - Electron shell around dist/; collaboration relay. Own npm projects, see their CLAUDE.md
 ```
@@ -89,7 +89,7 @@ Read directory-level `CLAUDE.md` files when touching that directory; read archit
 | localStorage, margins, themes | `src/lib/storage/CLAUDE.md` |
 | UI languages and catalogs | `src/lib/i18n/CLAUDE.md` |
 | Ribbon, floating island | `docs/architecture/ribbon.md`, `docs/architecture/island.md` |
-| AI assistant, kill switch, tracked tool edits | `docs/architecture/ai.md` |
+| AI assistant, kill switch, tracked tool edits; dictation | `docs/architecture/ai.md`, `docs/architecture/dictation.md`, `docs/architecture/dictation-local.md` |
 | Pagination, columns | `docs/architecture/pagination.md` |
 | Images, text boxes, wrap | `docs/architecture/frames.md` |
 | Tables and table styles | `docs/architecture/tables.md` |

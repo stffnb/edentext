@@ -37,7 +37,7 @@
     display: inline-flex;
     align-items: center;
     gap: 3px;
-    margin-left: 8px;
+    margin-inline-start: 8px;
     color: var(--color-text);
     font-family: var(--font-sans);
     font-size: 0.75rem;

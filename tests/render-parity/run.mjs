@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, basename, extname, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { compare, compareImages, toLines } from './compare.mjs';
+import { compare, summarize, diffCauses, ROOTS, toLines } from './compare.mjs';
 import { devServer, settle, extractLayout } from '../browser.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -107,7 +107,8 @@ const decode = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&qu
 
 async function editorRender(browser, file) {
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
-  page.on('dialog', (d) => d.accept());
+  // A dialog still open as the page closes rejects its accept: unhandled, that ends the run.
+  page.on('dialog', (d) => d.accept().catch(() => {}));
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
   await page.evaluate(() => {
     localStorage.clear();
@@ -117,6 +118,11 @@ async function editorRender(browser, file) {
   await page.waitForSelector('.tiptap');
   await page.setInputFiles('input.file-input[accept*=".odt"]', file);
   await settle(page);
+  // The header/footer layer draws a window of pages; a printout opens it to all of them.
+  await page.evaluate(() => new Promise((done) => {
+    window.dispatchEvent(new Event('beforeprint'));
+    requestAnimationFrame(() => requestAnimationFrame(done));
+  }));
   const result = await page.evaluate(extractLayout);
   await page.close();
   return result;
@@ -145,7 +151,12 @@ function corpus(args) {
 
 // The last run's issue count per file, so a re-run prints what a change moved instead
 // of leaving the arithmetic to whoever reads two reports side by side.
-const BASELINE = join(CACHE, 'baseline.json');
+// It lives in the checkout's own git directory, so parallel worktrees sharing one
+// node_modules never overwrite each other's counts.
+const gitDir = () => {
+  try { return resolve(ROOT, execFileSync('git', ['rev-parse', '--git-dir'], { cwd: ROOT, encoding: 'utf8' }).trim()); } catch { return CACHE; }
+};
+const BASELINE = process.env.PARITY_BASELINE ?? join(gitDir(), 'render-parity-baseline.json');
 const readBaseline = () => {
   try { return JSON.parse(readFileSync(BASELINE, 'utf8')); } catch { return {}; }
 };
@@ -180,10 +191,14 @@ async function worker() {
     const log = [];
     try {
       const ref = pdfReference(file) ?? loRender(file, work, cache);
-      const ed = await editorRender(browser, file);
-      const issues = [...compare(ref, ed), ...compareImages(ref.images, ed.images)];
+      // A render that times out under load is retried once: a failed document drops out
+      // of the total, which would read as a drop in differences.
+      const ed = await editorRender(browser, file).catch(() => editorRender(browser, file));
+      const issues = compare(ref, ed);
+      const sum = summarize(issues, ref.pages.length);
+      const was = baseline?.[name];
       report[at] = {
-        file: name, refPages: ref.pages.length, editorPages: ed.pages.length, issues,
+        file: name, refPages: ref.pages.length, editorPages: ed.pages.length, summary: sum, issues,
         ...(jsonAt ? {
           ref: ref.pages.map((p) => toLines(p.words)),
           editor: ed.pages.map((p) => toLines(p.words)),
@@ -191,11 +206,16 @@ async function worker() {
           margins: ed.margins,
         } : {}),
       };
-      const was = baseline?.[name]?.issues;
-      log.push(`\n${issues.length ? '✗' : '✓'} ${name}  (${ref.source ?? 'LO'} ${ref.pages.length}p / editor ${ed.pages.length}p)`
-        + `  ${issues.length} ${delta(issues.length, was)}${ref.cached ? '  [cached]' : ''}`);
-      for (const i of issues.slice(0, 12)) log.push('    ' + fmt(i));
-      if (issues.length > 12) log.push(`    … ${issues.length - 12} more`);
+      log.push(`\n${sum.causes ? '\u2717' : '\u2713'} ${name}  (${ref.source ?? 'LO'} ${ref.pages.length}p / editor ${ed.pages.length}p)`
+        + `  ${sum.causes} cause(s) ${delta(sum.causes, was?.causes)}  \u00b7 ${sum.raw} issue(s)${ref.cached ? '  [cached]' : ''}`);
+      if (sum.first) log.push(`    first: ${cause(sum.first)}`);
+      for (const c of sum.list.filter((c) => c !== sum.first).slice(0, 11)) log.push('    ' + cause(c));
+      if (sum.causes > 12) log.push(`    \u2026 ${sum.causes - 12} more`);
+      if (was?.keys) {
+        const { added, gone } = diffCauses(sum.keys, was.keys);
+        if (added.length) log.push(`    new:  ${added.slice(0, 5).join('  |  ')}${added.length > 5 ? `  (+${added.length - 5})` : ''}`);
+        if (gone.length) log.push(`    gone: ${gone.slice(0, 5).join('  |  ')}${gone.length > 5 ? `  (+${gone.length - 5})` : ''}`);
+      }
     } catch (err) {
       report[at] = { file: name, error: String(err.message ?? err) };
       log.push(`\n! ${name}  ${err.message ?? err}`);
@@ -206,19 +226,39 @@ async function worker() {
 await Promise.all(Array.from({ length: Math.max(1, Math.min(JOBS, files.length)) }, worker));
 
 // Only what this run measured: a single-fixture run says what that fixture moved and
-// leaves the other files' recorded counts alone.
+// leaves the other files' recorded counts alone. Causes are the headline; issues, every
+// symptom including consequences, stay beside them for diagnosis.
 const done = report.filter((r) => !r.error);
-const total = done.reduce((n, r) => n + r.issues.length, 0);
-const seen = done.filter((r) => baseline?.[r.file]);
-const before = seen.reduce((n, r) => n + baseline[r.file].issues, 0);
-console.log(`\ntotal ${total} across ${done.length} document(s)`
-  + (seen.length === done.length ? `  ${delta(total, before)}`
-     : seen.length ? `  (${done.length - seen.length} without a baseline)` : ''));
+const failed = report.filter((r) => r.error);
+const add = (rs, f) => rs.reduce((n, r) => n + f(r), 0);
+const seen = done.filter((r) => baseline?.[r.file]?.causes != null);
+const all = seen.length === done.length;
+const was = (f) => (all ? add(seen, (r) => f(baseline[r.file])) : null);
+console.log(`\ncauses ${add(done, (r) => r.summary.causes)} ${delta(add(done, (r) => r.summary.causes), was((b) => b.causes))}`
+  + `  \u00b7 issues ${add(done, (r) => r.summary.raw)} ${delta(add(done, (r) => r.summary.raw), was((b) => b.issues))}`
+  + `  across ${done.length} document(s)${!all && seen.length ? ` (${done.length - seen.length} without a baseline)` : ''}`);
+console.log('by kind: ' + ROOTS.map((k) => {
+  const n = add(done, (r) => r.summary.kinds[k]), w = was((b) => b.kinds?.[k] ?? 0);
+  return `${k} ${n}${w != null && w !== n ? ` (${n > w ? '+' : '\u2212'}${Math.abs(n - w)})` : ''}`;
+}).join('  '));
+const worst = done.filter((r) => r.summary.causes).sort((a, b) => b.summary.causes - a.summary.causes);
+if (worst.length > 1) {
+  console.log('\n causes   /10p  issues  pages LO/ed  document');
+  for (const r of worst.slice(0, 15)) {
+    const b = baseline?.[r.file]?.causes;
+    console.log(`${String(r.summary.causes).padStart(7)}${String(r.summary.per10).padStart(7)}${String(r.summary.raw).padStart(8)}`
+      + `  ${`${r.refPages}/${r.editorPages}`.padStart(11)}  ${r.file}${b != null && b !== r.summary.causes ? `  ${delta(r.summary.causes, b)}` : ''}`);
+  }
+}
+if (failed.length) console.log(`\n${failed.length} document(s) FAILED and are in no total: ${failed.map((r) => r.file).join(', ')}`);
 
 if (baseline) {
-  for (const r of done) baseline[r.file] = { issues: r.issues.length, refPages: r.refPages };
-  mkdirSync(CACHE, { recursive: true });
-  writeFileSync(BASELINE, JSON.stringify(baseline, null, 2));
+  for (const r of done) {
+    const s = r.summary;
+    baseline[r.file] = { causes: s.causes, issues: s.raw, kinds: s.kinds, keys: s.keys, refPages: r.refPages };
+  }
+  mkdirSync(dirname(BASELINE), { recursive: true });
+  writeFileSync(BASELINE, JSON.stringify(baseline));
 }
 
 function delta(now, was) {
@@ -230,18 +270,27 @@ function fmt(i) {
   const at = `p${i.page}${i.edPage ? `\u2192ed p${i.edPage}` : ''} l${i.line}`;
   const n = i.lines > 1 ? ` \u00d7${i.lines}` : '';
   if (i.kind === 'pageCount') return `pages: LO ${i.ref}, editor ${i.editor}`;
-  if (i.kind === 'pageShift') return `p${i.page}: the editor runs ${i.by > 0 ? '+' : ''}${i.by} page(s) from here — "${i.text}"`;
-  if (i.kind === 'position') return `${at}${n} off by dx ${i.dxMm}mm dy ${i.dyMm}mm — "${i.text}"`;
+  if (i.kind === 'pageBreak') return i.only
+    ? `p${i.page}: a page starts here only in the ${i.only === 'ref' ? 'reference' : 'editor'} \u2014 "${i.text}"`
+    : `p${i.page}: the page starts ${Math.abs(i.carry)} line(s) ${i.carry > 0 ? 'later' : 'earlier'} in the editor \u2014 "${i.text}"`;
+  if (i.kind === 'position') return `${at}${n} off by dx ${i.dxMm}mm dy ${i.dyMm}mm`
+    + (i.vertical ? ` (${i.vertical} ${i.byMm > 0 ? '+' : ''}${i.byMm}mm)` : '') + ` \u2014 "${i.text}"`;
   if (i.kind === 'image') return `p${i.page}${i.edPage !== i.page ? `\u2192ed p${i.edPage}` : ''} picture ${i.wMm}\u00d7${i.hMm}mm off by dx ${i.dxMm}mm dy ${i.dyMm}mm`
     + (i.dwMm || i.dhMm ? `, size by ${i.dwMm}\u00d7${i.dhMm}mm` : '');
   if (i.kind === 'imageCount') return `p${i.page} picture ${i.wMm}\u00d7${i.hMm}mm only in the ${i.side === 'ref' ? 'reference' : 'editor'}`;
-  if (i.kind === 'lineEnd') return `${at}${n} ends ${i.dxMm}mm off — "${i.text}"`;
+  if (i.kind === 'lineEnd') return `${at}${n} ends ${i.dxMm}mm off \u2014 "${i.text}"`;
   return `p${i.page} l${i.line} ${i.kind} (LO ${i.refLines} / ed ${i.edLines} line(s))`
     + `\n        LO: ${i.ref}\n        ed: ${i.editor}`;
+}
+
+// A cause as its first symptom, with how many more it folded in.
+function cause(c) {
+  const more = c.n > 1 ? `  [+${c.n - 1} alike${c.pages ? ` on ${new Set(c.pages).size} pages` : ''}]` : '';
+  return `${c.root.padEnd(10)} ${fmt(c.issue)}${more}`;
 }
 
 await browser.close();
 if (server) process.kill(-server.pid);
 if (jsonAt) writeFileSync(jsonAt, JSON.stringify(report, null, 2));
 if (!keep) rmSync(work, { recursive: true, force: true }); else console.log(`\nartifacts: ${work}`);
-process.exit(report.some((r) => r.error || r.issues?.length) ? 1 : 0);
+process.exit(report.some((r) => r.error || r.summary?.causes) ? 1 : 0);

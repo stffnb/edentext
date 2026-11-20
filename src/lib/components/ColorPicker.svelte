@@ -2,7 +2,8 @@
   import type { Editor } from '@tiptap/core';
   import type { Snippet } from 'svelte';
   import { onDestroy, tick, untrack } from 'svelte';
-  import { t } from '../i18n/i18n.svelte';
+  import { t, startEdge, uiRtl } from '../i18n/i18n.svelte';
+  import CustomColorPanel, { hsvToHex } from './CustomColorPanel.svelte';
 
   let {
     editor,
@@ -71,13 +72,7 @@
   let lastColor = $state<string>(untrack(() => defaultColor));
   const eyeDropperSupported =
     typeof window !== 'undefined' && 'EyeDropper' in window;
-  let pickerH = $state<number>(0);
-  let pickerS = $state<number>(1);
-  let pickerV = $state<number>(0.75);
-  let stagedColor = $derived(hsvToHex(pickerH, pickerS, pickerV));
-  // Notation of the readout field only — the applied value stays #RRGGBB (ODF).
-  let notation = $state<'hex' | 'rgb' | 'hsl'>('hex');
-  let stagedText = $derived(formatColor(pickerH, pickerS, pickerV, notation));
+  let customSeed = $state('');
   let savedFrom: number | null = null;
   let savedTo: number | null = null;
   // The panels are `fixed` and placed from the button's rect, so a scrolling
@@ -88,7 +83,9 @@
   // `fixed`, and the floating table toolbar has one (it hangs itself above the table).
   const topLayer = (node: HTMLElement) => node.showPopover();
   let panel = $state<HTMLElement>();
+  // `left` runs from the window's start side (`startEdge`).
   let pos = $state({ top: 0, left: 0 });
+  const posSide = $derived(uiRtl() ? 'right' : 'left');
 
   async function placePanel() {
     const anchor = split?.getBoundingClientRect();
@@ -96,88 +93,13 @@
     // A ribbon panel drops below the whole band, or it would cover the controls
     // under it. The modern toolbar has no band, so this finds nothing there.
     const band = split?.closest('.ribbon-body')?.getBoundingClientRect();
-    pos = { top: Math.max(anchor.bottom, band?.bottom ?? 0) + 3, left: anchor.left };
+    pos = { top: Math.max(anchor.bottom, band?.bottom ?? 0) + 3, left: startEdge(anchor).offset };
     await tick();
     const box = panel?.getBoundingClientRect();
     if (!box) return;
-    const dx = Math.max(0, box.right + 8 - window.innerWidth);
+    const dx = Math.max(0, uiRtl() ? 8 - box.left : box.right + 8 - window.innerWidth);
     const dy = Math.max(0, box.bottom + 8 - window.innerHeight);
     if (dx || dy) pos = { top: Math.max(8, pos.top - dy), left: Math.max(8, pos.left - dx) };
-  }
-
-  function clamp01(n: number): number {
-    return n < 0 ? 0 : n > 1 ? 1 : n;
-  }
-
-  function hsvToHex(h: number, s: number, v: number): string {
-    const c = v * s;
-    const hh = ((h % 360) + 360) % 360 / 60;
-    const x = c * (1 - Math.abs((hh % 2) - 1));
-    let r = 0, g = 0, b = 0;
-    if (hh < 1)      { r = c; g = x; b = 0; }
-    else if (hh < 2) { r = x; g = c; b = 0; }
-    else if (hh < 3) { r = 0; g = c; b = x; }
-    else if (hh < 4) { r = 0; g = x; b = c; }
-    else if (hh < 5) { r = x; g = 0; b = c; }
-    else             { r = c; g = 0; b = x; }
-    const m = v - c;
-    const hex = (n: number) => Math.round((n + m) * 255).toString(16).padStart(2, '0');
-    return `#${hex(r)}${hex(g)}${hex(b)}`.toUpperCase();
-  }
-
-  function hexToHsv(hex: string): { h: number; s: number; v: number } | null {
-    const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
-    if (!m) return null;
-    const r = parseInt(m[1].slice(0, 2), 16) / 255;
-    const g = parseInt(m[1].slice(2, 4), 16) / 255;
-    const b = parseInt(m[1].slice(4, 6), 16) / 255;
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    const d = max - min;
-    let h = 0;
-    if (d !== 0) {
-      if (max === r)      h = ((g - b) / d) % 6;
-      else if (max === g) h = (b - r) / d + 2;
-      else                h = (r - g) / d + 4;
-      h *= 60;
-      if (h < 0) h += 360;
-    }
-    const s = max === 0 ? 0 : d / max;
-    return { h, s, v: max };
-  }
-
-  function formatColor(h: number, s: number, v: number, f: typeof notation): string {
-    const hex = hsvToHex(h, s, v);
-    if (f === 'hex') return hex;
-    if (f === 'rgb') {
-      const n = (i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
-      return `${n(0)}, ${n(1)}, ${n(2)}`;
-    }
-    // ponytail: integer hsl like CSS — retyping the shown value can shift a channel
-    // by up to 4/255; use decimals if that ever matters.
-    const l = v * (1 - s / 2);
-    const sl = l === 0 || l === 1 ? 0 : (v - l) / Math.min(l, 1 - l);
-    return `${Math.round(h)}, ${Math.round(sl * 100)}, ${Math.round(l * 100)}`;
-  }
-
-  // Bare values in the shown notation ("192, 0, 0"); any separator, and a pasted
-  // "rgb(192, 0, 0)" or "#" work too, since only the numbers are read.
-  function parseColor(text: string, f: typeof notation): { h: number; s: number; v: number } | null {
-    if (f === 'hex') {
-      const hex = text.trim().replace(/^#?/, '#');
-      return hexToHsv(hex);
-    }
-    const n = text.match(/[\d.]+/g)?.map(Number);
-    if (!n || n.length < 3 || n.some(isNaN)) return null;
-    if (f === 'rgb') {
-      const byte = (x: number) =>
-        Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0');
-      return hexToHsv(`#${byte(n[0])}${byte(n[1])}${byte(n[2])}`);
-    }
-    const l = clamp01(n[2] / 100);
-    const sl = clamp01(n[1] / 100);
-    const v = l + sl * Math.min(l, 1 - l);
-    return { h: n[0], s: v === 0 ? 0 : 2 * (1 - l / v), v };
   }
 
   // The range to restore when applying. No editor (style manager) = no range.
@@ -189,7 +111,7 @@
     return { from, to };
   }
 
-  function openPicker() {
+  async function openPicker() {
     onOpen?.();
     savedFrom = editor?.state.selection.from ?? null;
     savedTo = editor?.state.selection.to ?? null;
@@ -198,7 +120,9 @@
     } else {
       view = 'palette';
       open = true;
-      placePanel();
+      await placePanel();
+      // A dialog field hands the keyboard to the palette it opened.
+      if (!icon) panel?.querySelector<HTMLElement>('.color-automatic')?.focus();
     }
   }
 
@@ -207,6 +131,7 @@
     view = 'palette';
     lastColor = color;
     onApply(color, takeRange());
+    refocus();
   }
 
   function quickApplyColor() {
@@ -222,25 +147,33 @@
     open = false;
     view = 'palette';
     onClear(takeRange());
+    refocus();
   }
 
-  function openMoreColors() {
-    const seed = (currentColor && currentColor !== '') ? currentColor : lastColor;
-    const hsv = hexToHsv(seed) ?? { h: 0, s: 1, v: 0.75 };
-    pickerH = hsv.h;
-    pickerS = hsv.s;
-    pickerV = hsv.v;
+  async function openMoreColors() {
+    customSeed = (currentColor && currentColor !== '') ? currentColor : lastColor;
     view = 'custom';
-    placePanel();
-  }
-
-  function confirmMoreColors() {
-    applyColor(stagedColor);
+    await placePanel();
+    panel?.querySelector<HTMLElement>('.custom-color-hex')?.focus();
   }
 
   function cancelMoreColors() {
     open = false;
     view = 'palette';
+    refocus();
+  }
+
+  // A dialog field takes focus back once its panel closes; a toolbar button's command
+  // returns it to the editor instead.
+  function refocus() {
+    if (!icon) queueMicrotask(() => split?.querySelector<HTMLElement>('.color-main')?.focus());
+  }
+
+  function onPaletteKeydown(e: KeyboardEvent) {
+    if (e.key !== 'Escape' || !open) return;
+    e.preventDefault();
+    e.stopPropagation();
+    cancelMoreColors();
   }
 
   async function pickFromPage() {
@@ -356,59 +289,7 @@
     }
   }
 
-  function onSvPointerDown(e: PointerEvent) {
-    // Keep the editor's text selection visible by stopping the browser from
-    // shifting focus / collapsing the selection on this click.
-    e.preventDefault();
-    const el = e.currentTarget as HTMLElement;
-    const rect = el.getBoundingClientRect();
-    const update = (ev: PointerEvent) => {
-      pickerS = clamp01((ev.clientX - rect.left) / rect.width);
-      pickerV = clamp01(1 - (ev.clientY - rect.top) / rect.height);
-    };
-    el.setPointerCapture(e.pointerId);
-    update(e);
-    const move = (ev: PointerEvent) => update(ev);
-    const up = (ev: PointerEvent) => {
-      el.releasePointerCapture(ev.pointerId);
-      el.removeEventListener('pointermove', move);
-      el.removeEventListener('pointerup', up);
-      el.removeEventListener('pointercancel', up);
-    };
-    el.addEventListener('pointermove', move);
-    el.addEventListener('pointerup', up);
-    el.addEventListener('pointercancel', up);
-  }
-
-  function onHuePointerDown(e: PointerEvent) {
-    e.preventDefault();
-    const el = e.currentTarget as HTMLElement;
-    const rect = el.getBoundingClientRect();
-    const update = (ev: PointerEvent) => {
-      pickerH = clamp01((ev.clientY - rect.top) / rect.height) * 360;
-    };
-    el.setPointerCapture(e.pointerId);
-    update(e);
-    const move = (ev: PointerEvent) => update(ev);
-    const up = (ev: PointerEvent) => {
-      el.releasePointerCapture(ev.pointerId);
-      el.removeEventListener('pointermove', move);
-      el.removeEventListener('pointerup', up);
-      el.removeEventListener('pointercancel', up);
-    };
-    el.addEventListener('pointermove', move);
-    el.addEventListener('pointerup', up);
-    el.addEventListener('pointercancel', up);
-  }
-
-  function onHexInput(e: Event) {
-    const hsv = parseColor((e.target as HTMLInputElement).value, notation);
-    if (!hsv) return;
-    pickerH = hsv.h;
-    pickerS = hsv.s;
-    pickerV = hsv.v;
-  }
-
+  // Escape outside the panel too: WebKit leaves a clicked button unfocused.
   function colorPickerClickOutside(node: HTMLElement) {
     function handler(e: MouseEvent) {
       if (!node.contains(e.target as Node)) {
@@ -416,12 +297,15 @@
         view = 'palette';
       }
     }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && open) cancelMoreColors(); };
     window.addEventListener('mousedown', handler);
-    return { destroy() { window.removeEventListener('mousedown', handler); } };
+    window.addEventListener('keydown', onKey);
+    return { destroy() { window.removeEventListener('mousedown', handler); window.removeEventListener('keydown', onKey); } };
   }
 </script>
 
-<div class="color-picker" use:colorPickerClickOutside>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="color-picker" use:colorPickerClickOutside onkeydown={onPaletteKeydown}>
   <div class="color-split" bind:this={split}>
     <!-- A toolbar button re-applies its last colour and shows it; a dialog field is one
          value, so its swatch reads that value and every click opens the palette. -->
@@ -436,7 +320,7 @@
     </button>
   </div>
   {#if open && view === 'palette'}
-    <div class="color-dropdown" popover="manual" use:topLayer bind:this={panel} style="top: {pos.top}px; left: {pos.left}px">
+    <div class="color-dropdown" popover="manual" use:topLayer bind:this={panel} style="top: {pos.top}px; {posSide}: {pos.left}px">
       <div class="color-title">{title}</div>
       <button
         class="color-automatic"
@@ -483,37 +367,8 @@
   {#if open && view === 'custom'}
     <div class="color-window" role="dialog" aria-label={t().color.chooseColor}
       popover="manual" use:topLayer
-      bind:this={panel} style="top: {pos.top}px; left: {pos.left}px">
-      <div class="color-window-body">
-        <div
-          class="sv-square"
-          style="--hue: {pickerH}"
-          onpointerdown={onSvPointerDown}
-          role="presentation"
-        >
-          <div class="sv-thumb" style="left: {pickerS * 100}%; top: {(1 - pickerV) * 100}%"></div>
-        </div>
-        <div
-          class="hue-slider"
-          onpointerdown={onHuePointerDown}
-          role="presentation"
-        >
-          <div class="hue-thumb" style="top: {(pickerH / 360) * 100}%"></div>
-        </div>
-      </div>
-      <div class="color-window-readout">
-        <span class="color-window-swatch" style="background: {stagedColor}"></span>
-        <select class="color-window-notation" bind:value={notation} aria-label="Format">
-          <option value="hex">HEX</option>
-          <option value="rgb">RGB</option>
-          <option value="hsl">HSL</option>
-        </select>
-        <input class="color-window-hex" type="text" value={stagedText} oninput={onHexInput} />
-      </div>
-      <div class="color-more-actions">
-        <button class="color-cancel" onclick={cancelMoreColors}>{t().common.cancel}</button>
-        <button class="color-confirm" onclick={confirmMoreColors}>{t().common.ok}</button>
-      </div>
+      bind:this={panel} style="top: {pos.top}px; {posSide}: {pos.left}px">
+      <CustomColorPanel color={customSeed} onConfirm={applyColor} onCancel={cancelMoreColors} />
     </div>
   {/if}
 </div>
@@ -586,7 +441,7 @@
     height: 100%;
     padding: 0;
     border: none;
-    border-left: 1px solid var(--color-border);
+    border-inline-start: 1px solid var(--color-border);
     border-radius: 0;
     background: transparent;
     color: var(--color-text);
@@ -753,139 +608,4 @@
     z-index: 200;
   }
 
-  .color-window-body {
-    display: flex;
-    gap: 8px;
-  }
-
-  .sv-square {
-    position: relative;
-    width: 160px;
-    height: 160px;
-    cursor: crosshair;
-    border: 1px solid var(--color-border);
-    background:
-      linear-gradient(to top, #000, transparent),
-      linear-gradient(to right, #fff, hsl(var(--hue, 0), 100%, 50%));
-    touch-action: none;
-  }
-
-  .sv-thumb {
-    position: absolute;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    border: 2px solid white;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-  }
-
-  .hue-slider {
-    position: relative;
-    width: 18px;
-    height: 160px;
-    cursor: pointer;
-    border: 1px solid var(--color-border);
-    background: linear-gradient(
-      to bottom,
-      #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%
-    );
-    touch-action: none;
-  }
-
-  .hue-thumb {
-    position: absolute;
-    left: -3px;
-    width: 22px;
-    height: 6px;
-    border: 1px solid white;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
-    transform: translateY(-50%);
-    pointer-events: none;
-  }
-
-  .color-window-readout {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .color-window-swatch {
-    display: block;
-    width: 28px;
-    height: 24px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    flex-shrink: 0;
-  }
-
-  .color-window-hex {
-    flex: 1;
-    min-width: 0;
-    height: 24px;
-    padding: 0 0.4rem;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-surface);
-    color: var(--color-text);
-    font-size: 0.8rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    outline: none;
-  }
-
-  .color-window-hex:focus {
-    border-color: var(--color-primary);
-  }
-
-  .color-window-notation {
-    height: 24px;
-    padding: 0 0.1rem;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-surface);
-    color: var(--color-text);
-    font-size: 0.7rem;
-    font-family: var(--font-sans);
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-
-  .color-more-actions {
-    display: flex;
-    gap: 4px;
-    justify-content: flex-end;
-  }
-
-  .color-confirm,
-  .color-cancel {
-    padding: 0.25rem 0.6rem;
-    border-radius: calc(var(--radius) - 2px);
-    font-size: 0.75rem;
-    font-family: var(--font-sans);
-    cursor: pointer;
-    min-width: unset;
-    height: auto;
-    transition: background 0.1s, border-color 0.15s;
-  }
-
-  .color-cancel {
-    border: 1px solid var(--color-border);
-    background: transparent;
-    color: var(--color-text);
-  }
-
-  .color-cancel:hover {
-    background: var(--color-btn-hover);
-  }
-
-  .color-confirm {
-    border: 1px solid var(--color-primary);
-    background: var(--color-primary);
-    color: white;
-  }
-
-  .color-confirm:hover {
-    filter: brightness(1.1);
-  }
 </style>

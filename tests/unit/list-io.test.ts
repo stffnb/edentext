@@ -136,13 +136,20 @@ describe('a font or bullet name a file can hold', () => {
 });
 
 // A level's own label formatting (w:lvl/w:rPr) colours and sizes the bullet whatever the
-// item's text says; a symbol font is left out.
+// item's text says; a symbol font's bullet is stored as Unicode and keeps its font, which
+// sets the label's height in the line.
 it("keeps a numbering level's own label formatting through import and both round trips", async () => {
   const doc = imported(numItem('one', NUM()) + numItem('two', NUM(), '<w:b/>'), { numbering: numbering(
-    '<w:numFmt w:val="bullet"/><w:lvlText w:val="▪"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>'
+    '<w:numFmt w:val="bullet"/><w:lvlText w:val="\uf0a8"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>'
     + '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/><w:b/><w:color w:val="006465"/><w:sz w:val="24"/></w:rPr>') }).content;
-  const want = { fontWeight: 'bold', fontSize: '12pt', color: '#006465' };
+  const want = { fontFamily: 'Symbol', fontWeight: 'bold', fontSize: '12pt', color: '#006465' };
   for (const d of [doc, ...await roundTrips(doc)]) expect(listOf(d).attrs?.markerFormat).toEqual(want);
+  // Both files address the glyph by its private-use code under the symbol font.
+  const numberingXml = strFromU8(unzipSync(await buildDocx(doc as never))['word/numbering.xml']);
+  expect(numberingXml).toMatch(/<w:lvlText w:val="\uf0a8"\/>[\s\S]*?w:ascii="Symbol"/);
+  const odt = unzipSync(await buildOdt(doc as never));
+  expect(strFromU8(odt['content.xml'])).toContain('text:bullet-char="\uf0a8"');
+  expect(strFromU8(odt['styles.xml'])).toContain('fo:font-family="Symbol"');
 });
 
 // A list item carries no style name, so the spacing its own paragraph style gives it
@@ -214,5 +221,33 @@ describe('a list label’s alignment', () => {
   it('round-trips through DOCX', async () => {
     expect(list(importDocx(await buildDocx(doc('right'), margins, 'portrait')).content).attrs?.markerAlign).toBe('right');
     expect(list(importDocx(await buildDocx(doc(), margins, 'portrait')).content).attrs?.markerAlign).toBeUndefined();
+  });
+});
+
+// DOCX numbers nine levels and ODF ten: a list nested deeper goes on the last one, whose
+// kind it takes, and the editor indents no further than the ninth.
+describe('a list nested past the levels a format has', () => {
+  const chain = (n: number, at = 1): N => ({ type: at % 2 ? 'orderedList' : 'bulletList', content: [{ type: 'listItem', content: [
+    { type: 'paragraph', content: [{ type: 'text', text: `L${at}` }] }, ...(at < n ? [chain(n, at + 1)] : [])] }] });
+  // Each text's level and the kind of list it is on.
+  const levels = (doc: N) => {
+    const out: string[] = [];
+    const walk = (n: N, level: number, kind: string) => {
+      if (n.type === 'text') out.push(`${n.text}:${level}${kind}`);
+      const list = n.type === 'bulletList' || n.type === 'orderedList';
+      for (const c of n.content ?? []) walk(c, list ? level + 1 : level, list ? n.type[0] : kind);
+    };
+    walk(doc, 0, '');
+    return out;
+  };
+  const deep = { type: 'doc', content: [chain(12)] };
+  it('goes on the ninth level in DOCX and the tenth in ODT, as both read it back', async () => {
+    const [docx, odt] = await roundTrips(deep);
+    const on = (last: number) => Array.from({ length: 12 }, (_, i) => `L${i + 1}:${Math.min(i + 1, last)}${Math.min(i + 1, last) % 2 ? 'o' : 'b'}`);
+    expect(levels(docx)).toEqual(on(9));
+    expect(levels(odt)).toEqual(on(10));
+    expect(levels(importOdt(await buildOdt(deep)).content)).toEqual(on(10));
+    const numbering = strFromU8(unzipSync(await buildDocx(deep))['word/numbering.xml']);
+    expect(Math.max(...[...numbering.matchAll(/w:ilvl="(\d+)"/g)].map((m) => Number(m[1])))).toBe(8);
   });
 });

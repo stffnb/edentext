@@ -6,7 +6,7 @@ import { DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { TableMap } from '@tiptap/pm/tables';
 import {
-  readVerticalMargins, bandAt, FORCE_PAGE_RECALC, LAYOUT_ANSWER, isSplitPane, blockDeco, isBlockDeco, repairDecos, decoMapping,
+  readVerticalMargins, bandAt, noteReservesOf, FORCE_PAGE_RECALC, LAYOUT_ANSWER, isSplitPane, blockDeco, isBlockDeco, repairDecos, decoMapping,
 } from './pageBreaks';
 import {
   sameColumnsAttrs, columnsChain, COLUMNS_FIT_MARGIN_PX, MIN_TAIL_LINES, DEFAULT_LINE_PX, headFitPx, lineRects, lineAdvance,
@@ -94,6 +94,13 @@ function flowSpans(children: Element[], scale: number): { start: number[]; end: 
     prevMb = mb;
   }
   return { start, end };
+}
+
+// The band a chained continuation fills: it opens a page, so one still lying below a
+// page's top (pageBreaks has yet to move it) lands on the next page, notes and all.
+function landingBand(vm: ReturnType<typeof readVerticalMargins>, top: number, view: EditorView) {
+  const band = bandAt(vm, top, noteReservesOf(view));
+  return top <= band.start + 1 ? band : bandAt(vm, vm.grid.topOf(vm.grid.pageAt(top) + 1), noteReservesOf(view));
 }
 
 // Total content height of a fragment's blocks as poured into one column flow.
@@ -430,7 +437,7 @@ export const ColumnsFlow = Extension.create({
 
             // Its page's own content band (pageBreaks.ts): the section's header and
             // footer reach as far as they do, and its paper may be a different height.
-            const band = bandAt(vm, topWithin(el));
+            const band = continued ? landingBand(vm, topWithin(el), editorView) : bandAt(vm, topWithin(el), noteReservesOf(editorView));
             let available = band.height;
             if (!continued) {
               const top = topWithin(el);
@@ -537,9 +544,10 @@ export const ColumnsFlow = Extension.create({
             const el = editorView.nodeDOM(pos) as HTMLElement | null;
             if (!el || !el.classList.contains('columns-node')) continue;
             // A chained continuation spans a full page wherever it renders right now.
-            const band = bandAt(vm, topWithin(el));
+            const continued = i > 0 && hasNextInChain(frags, i - 1);
+            const band = continued ? landingBand(vm, topWithin(el), editorView) : bandAt(vm, topWithin(el), noteReservesOf(editorView));
             let available = band.height;
-            if (!(i > 0 && hasNextInChain(frags, i - 1))) {
+            if (!continued) {
               const top = topWithin(el);
               if (top < band.start - 0.5 || top >= band.end) continue;
               available = band.end - top;
@@ -593,7 +601,7 @@ export const ColumnsFlow = Extension.create({
             if (!el || !el.classList.contains('columns-node')) continue;
             const top = topWithin(el);
             const page = vm.grid.pageAt(top);
-            const available = bandAt(vm, top).end - top - (parseFloat(getComputedStyle(el).paddingTop) || 0);
+            const available = bandAt(vm, top, noteReservesOf(editorView)).end - top - (parseFloat(getComputedStyle(el).paddingTop) || 0);
             const count = Math.max(1, node.attrs.count as number);
             const children = Array.from(el.children).filter(
               (c) => !(c as HTMLElement).dataset?.pageBreakSpacer,

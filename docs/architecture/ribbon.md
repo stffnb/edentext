@@ -80,7 +80,8 @@ at every height. A flex row cannot reserve width in part of its height, so it mo
 
 - **A menu must leave the flow.** `.ribbon-body` clips its own overflow, so the `anchored` action
   (`ribbon/menu.svelte.ts`) switches a panel to `position: fixed` and pins it under its wrapper,
-  clamped inside the window. Panels drop below the **whole band**, not below their own button —
+  clamped inside the window, from the anchor's start edge (the right one in a right-to-left
+  interface, `pinInline`). Panels drop below the **whole band**, not below their own button —
   inside it they would cover the controls and group labels underneath. A panel has to be out of
   the flow (`position: absolute`) *before* it mounts: in it, it stretches the wrapper `anchored`
   measures and lands its own height too low.
@@ -171,11 +172,11 @@ in the ribbon or in the island.
 
 ## Dialogs
 
-`ParagraphDialog` and `TabsDialog` open from Word's ↘ launcher in a group's corner. They are
-chrome-agnostic; the island opens them from its own launchers.
+`ParagraphDialog` opens from Word's ↘ launcher in a group's corner; it is chrome-agnostic, and
+the island opens it from its own launcher. `TabsDialog` is one of the event-opened dialogs below.
 
 Every dialog opened by an **event** — link (Ctrl+K, the context menu), bookmark, cross-reference,
-formula (a double-click on one) — is mounted once by `EventDialogs.svelte` in `App.svelte`,
+formula (a double-click on one), tabs (a double-click on a ruler stop, the paragraph dialog's and the header/footer Tabs buttons) — is mounted once by `EventDialogs.svelte` in `App.svelte`,
 outside both chromes, not in the Insert tab or category whose buttons also open it: only the open
 one is mounted, so a listener there would hear nothing while another is up. The tab's buttons fire the same
 events; a formula event without a position starts an empty dialog. The bookmark and

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { popover } from './ribbon/menu.svelte';
   import type { Editor } from '@tiptap/core';
   import { activeTableLook, activeTableStyle, styleRegions } from '../editor/extensions/tableStyle';
   import { DEFAULT_TABLE_LOOK } from '../styles/tableStyles';
@@ -33,16 +34,9 @@
     editor?.chain().focus().setTableStyle(name).run();
   }
 
-  function clickOutside(node: HTMLElement) {
-    function handler(e: MouseEvent) {
-      if (!node.contains(e.target as Node)) open = false;
-    }
-    window.addEventListener('mousedown', handler);
-    return { destroy() { window.removeEventListener('mousedown', handler); } };
-  }
 </script>
 
-<div class="style-picker" use:clickOutside>
+<div class="style-picker" use:popover={() => (open = false)}>
   <button
     class="tsp-trigger"
     class:active={open}
@@ -91,7 +85,7 @@
             aria-pressed={current === style.name}
             onclick={() => apply(style.name)}
           >
-            <table class="tsp-preview" aria-hidden="true">
+            <table class="tsp-preview" dir="ltr" aria-hidden="true">
               <tbody>
                 {#each Array(ROWS) as _, r}
                   <tr>
@@ -162,7 +156,7 @@
   .tsp-dropdown {
     position: absolute;
     top: calc(100% + 3px);
-    left: 0;
+    inset-inline-start: 0;
     z-index: 200;
     display: flex;
     flex-direction: column;
@@ -205,8 +199,8 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
-    padding-left: 8px;
-    border-left: 1px solid var(--color-border);
+    padding-inline-start: 8px;
+    border-inline-start: 1px solid var(--color-border);
   }
 
   .tsp-option {

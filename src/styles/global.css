@@ -107,6 +107,19 @@
   unicode-range: U+2018-2019, U+201C-201D;
 }
 
+/* Noto Naskh Arabic — the Liberation faces hold no Arabic, so a device would set it in
+   whatever it has and break every line elsewhere. Last before the generic in the document
+   stacks: a font that has Arabic of its own keeps it. (OFL — see
+   public/font-licenses/LICENSE-NotoNaskhArabic.txt.) */
+@font-face {
+  font-family: 'Noto Naskh Arabic';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: local('Noto Naskh Arabic'), url('../assets/fonts/NotoNaskhArabic.ttf') format('truetype');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-08FF, U+FB50-FDFF, U+FE70-FEFC;
+}
+
 /* STIX Two Math — a font with an OpenType MATH table is what makes MathML typeset:
    without one Chromium drops ∑ and ϕ entirely and leaves brackets glyph-height next
    to a fraction. Word uses Cambria Math for the same job. (OFL — see
@@ -305,10 +318,12 @@
     --toolbar-btn-size: 1.7rem; /* height of all toolbar controls (matches the floating toolbars) */
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    --font-serif: 'Liberation Serif', 'Times New Roman', Georgia, serif;
+    --font-serif: 'Liberation Serif', 'Times New Roman', 'Noto Naskh Arabic', Georgia, serif;
     /* Headings are sans, like LibreOffice's Heading style ('Arial' is the bundled
        Liberation Sans; see HEADING_FONT in export/odt.ts). */
-    --font-heading: 'Arial', 'Liberation Sans', sans-serif;
+    --font-heading: 'Arial', 'Liberation Sans', 'Noto Naskh Arabic', sans-serif;
+    /* A fixed-pitch family's fallback: 'Courier New' is the bundled Liberation Mono. */
+    --font-mono: 'Courier New', 'Noto Naskh Arabic', monospace;
     /* The logo's two colours (favicon.svg: the slate stem, the clay leaf), one source of truth for
        both chromes. The gradient is the app's signature (island hairline). */
     --brand-slate: #4c6c8a;
@@ -325,6 +340,10 @@
   --w-accent-dark: #3a5570;
   --w-accent-fill: var(--brand-slate);
   --w-accent-fill-open: #3a5570;
+  /* The text-effects glyph (TextEffectsIcon): a light letter, blue outline, soft halo. */
+  --fx-icon-line: #2266c4;
+  --fx-icon-fill: #ffffff;
+  --fx-icon-glow: rgb(80 150 235 / 45%);
   /* The logo's other colour, on the tabs that only exist for the selected object.
      Darkened for the label; the bar above it takes the brand tone itself. */
   --w-contextual: #a85a3a;
@@ -357,6 +376,9 @@
   --w-accent-dark: #6e93b0;
   --w-accent-fill: #3c586f;
   --w-accent-fill-open: #4c6c8a;
+  --fx-icon-line: #79b0f0;
+  --fx-icon-fill: #f2f7fd;
+  --fx-icon-glow: rgb(60 130 230 / 55%);
   --w-contextual: #e2916f;
   --w-chrome: #1f1f1f;
   --w-surface: #292929;
@@ -450,6 +472,22 @@
   animation: menu-in 0.14s ease;
 }
 
+/* A glyph that shows reading direction or sequence mirrors in a right-to-left interface
+   (`MIRRORED` in ribbon/icons.ts, `.icon-flip` on an inline one). `scale` rather than
+   `transform`, so a glyph that is already rotated keeps its rotation. */
+html[dir='rtl'] .icon-flip { scale: -1 1; }
+html[dir='rtl'] span.icon-flip { display: inline-block; }
+/* Digits inside a mirrored glyph turn back in place. */
+html[dir='rtl'] .icon-flip .icon-keep { transform: scaleX(-1); transform-box: fill-box; transform-origin: center; }
+
+/* An interface part mounted inside the page area, which is always left to right. */
+html[dir='rtl'] .ui-dir { direction: rtl; }
+
+/* A label quoting document text takes that text's direction (`dir="auto"`), so it is cut
+   at its end, yet stays on the interface's start side. */
+html .doc-quote[dir='auto'] { text-align: left; }
+html[dir='rtl'] .doc-quote[dir='auto'] { text-align: right; }
+
 /* The ribbon's dropdown panel and its rows. Global because the panel renders its
    contents from a caller's snippet, which Svelte scopes to that caller. */
 /* `anchored` (menu.svelte.ts) switches this to position: fixed and pins it under
@@ -459,7 +497,7 @@
 .ribbon-menu {
   position: absolute;
   top: calc(100% + 3px);
-  left: 0;
+  inset-inline-start: 0;
   z-index: 300;
   display: flex;
   flex-direction: column;
@@ -477,7 +515,7 @@
   max-width: calc(100vw - 16px);
 }
 
-.ribbon-menu.right { left: auto; right: 0; }
+.ribbon-menu.right { inset-inline: auto 0; }
 
 .ribbon-menu button {
   display: flex;
@@ -491,7 +529,7 @@
   color: var(--w-text);
   font-family: var(--w-font);
   font-size: 13px;
-  text-align: left;
+  text-align: start;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -510,7 +548,7 @@ fieldset.read-gate:disabled label { opacity: 0.4; cursor: default; }
 /* Both trail the row's label: the shortcut hint and the secondary description
    Word puts at the right edge of a menu entry. */
 .ribbon-menu .menu-key,
-.ribbon-menu .menu-sub { margin-left: auto; padding-left: 16px; color: var(--w-text-dim); }
+.ribbon-menu .menu-sub { margin-inline-start: auto; padding-inline-start: 16px; color: var(--w-text-dim); }
 .ribbon-menu .menu-key { font-size: 12px; }
 
 /* A checkable row keeps the slot whether it is checked or not, so the labels line up. */
@@ -520,7 +558,7 @@ fieldset.read-gate:disabled label { opacity: 0.4; cursor: default; }
   color: var(--w-accent);
 }
 /* Wraps only when the menu hits its max-width; otherwise it sizes to the unwrapped text. */
-.ribbon-menu .menu-sub { font-size: 11px; white-space: normal; text-align: right; }
+.ribbon-menu .menu-sub { font-size: 11px; white-space: normal; text-align: end; }
 
 /* Section label above a run of rows: a ruled heading pinned while its rows scroll, so it
    never reads as one more row that cannot be picked. Below the list, the sticky action row. */
@@ -700,7 +738,7 @@ fieldset.read-gate:disabled label { opacity: 0.4; cursor: default; }
   justify-content: center;
   width: 18px;
   border: none;
-  border-left: 1px solid var(--w-border);
+  border-inline-start: 1px solid var(--w-border);
   background: none;
   color: var(--w-text-dim);
   cursor: pointer;
@@ -732,7 +770,7 @@ fieldset.read-gate:disabled label { opacity: 0.4; cursor: default; }
 .island-menu {
   position: absolute;
   top: calc(100% + 3px);
-  left: 0;
+  inset-inline-start: 0;
   z-index: 300;
   display: flex;
   flex-direction: column;
@@ -752,7 +790,7 @@ fieldset.read-gate:disabled label { opacity: 0.4; cursor: default; }
   pointer-events: auto;
 }
 
-.island-menu.right { left: auto; right: 0; }
+.island-menu.right { inset-inline: auto 0; }
 
 .island-menu button {
   display: flex;
@@ -768,7 +806,7 @@ fieldset.read-gate:disabled label { opacity: 0.4; cursor: default; }
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: 0.85rem;
-  text-align: left;
+  text-align: start;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -781,12 +819,12 @@ fieldset.read-gate:disabled label { opacity: 0.4; cursor: default; }
 /* The shortcut hint and the secondary description at a row's right edge. */
 .island-menu .menu-key,
 .island-menu .menu-sub {
-  margin-left: auto;
-  padding-left: 16px;
+  margin-inline-start: auto;
+  padding-inline-start: 16px;
   font-size: 0.72rem;
   color: var(--color-text-muted);
 }
-.island-menu .menu-sub { white-space: normal; text-align: right; }
+.island-menu .menu-sub { white-space: normal; text-align: end; }
 .island-menu button.selected :is(.menu-key, .menu-sub) { color: inherit; opacity: 0.85; }
 .island-menu .menu-check { flex: none; width: 14px; color: var(--color-primary); }
 
@@ -857,6 +895,8 @@ fieldset.read-gate:disabled label { opacity: 0.4; cursor: default; }
   --color-toolbar-bg: #ffffff;
   --color-btn-hover: #cbd5e1;
   --color-page-bg: #ffffff;
+  /* A sheet no page decor reaches (an inserted blank page): the theme's, not the file's. */
+  --color-page-plain: #ffffff;
   /* The sheet is the document, so its text is the black LibreOffice and Word draw —
      the app's own slate would differ from a run the file colours #000000. */
   --color-page-text: #000000;
@@ -874,6 +914,7 @@ fieldset.read-gate:disabled label { opacity: 0.4; cursor: default; }
     --color-toolbar-bg: #161b22;
     --color-btn-hover: #3b4350;
     --color-page-bg: #ffffff;
+    --color-page-plain: #ffffff;
     --color-page-text: #000000;
     --color-page-border: #e2e8f0;
     /* Primary (active-button color) so the toolbar scrollbar stands out on dark. */
@@ -891,6 +932,7 @@ fieldset.read-gate:disabled label { opacity: 0.4; cursor: default; }
   --color-toolbar-bg: #161b22;
   --color-btn-hover: #3b4350;
   --color-page-bg: #161b22;
+  --color-page-plain: #161b22;
   --color-page-text: #e6edf3;
   --color-page-border: #30363d;
   --scrollbar-thumb: var(--color-primary);
@@ -925,6 +967,19 @@ select:not([multiple], [size], .bare) {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b95a5' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
   background-repeat: no-repeat !important;
   background-position: right 7px center !important;
+}
+html[dir='rtl'] select:not([multiple], [size], .bare) {
+  background-position: left 7px center !important;
+}
+
+/* A number, an address and code read left to right in a right-to-left interface too
+   (a minus sign would otherwise trail its number). No specificity, so a component's
+   own alignment stands. */
+:where(html[dir='rtl']) :where(input[type='number'], input[inputmode='decimal'], input[type='url'], input[type='email'], input[type='password'], code, kbd) {
+  direction: ltr;
+}
+:where(html[dir='rtl']) :where(input[type='number'], input[inputmode='decimal'], input[type='url'], input[type='email'], input[type='password']) {
+  text-align: right;
 }
 
 /* Some systems draw the open list in their own scheme (dark under a dark GTK theme),

@@ -2,9 +2,12 @@
 // size. The reviewing panes and the session chat keep theirs here; the navigator keeps it
 // with its own settings.
 
+import { uiRtl } from '../i18n/i18n.svelte';
+
 export type PaneSide = 'left' | 'right';
 export type PaneSize = 'small' | 'medium' | 'large';
-export type PaneLayout = { side: PaneSide; size: PaneSize; width: number };
+/** `side` is a physical side once chosen; unset, the pane follows the interface (`dockSide`). */
+export type PaneLayout = { side?: PaneSide; size: PaneSize; width: number };
 export type ReviewPane = 'comments' | 'revisions';
 export type DockedPane = ReviewPane | 'chat';
 
@@ -13,11 +16,16 @@ export const REVIEW_PANE_WIDTH = 260;
 
 const KEY = 'edentext-panes';
 
+/** The side a pane docks on: the one chosen, else the interface's end side. */
+export function dockSide(chosen: unknown): PaneSide {
+  return chosen === 'left' || chosen === 'right' ? chosen : uiRtl() ? 'left' : 'right';
+}
+
 /** A stored layout with every field checked, the defaults filling what is missing or wrong. */
 export function validLayout(raw: unknown, width: number): PaneLayout {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   return {
-    side: r.side === 'left' ? 'left' : 'right',
+    side: r.side === 'left' || r.side === 'right' ? r.side : undefined,
     size: PANE_SIZES.includes(r.size as PaneSize) ? (r.size as PaneSize) : 'medium',
     width: typeof r.width === 'number' && Number.isFinite(r.width) ? r.width : width,
   };

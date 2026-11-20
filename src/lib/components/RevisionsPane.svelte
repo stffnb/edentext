@@ -7,7 +7,7 @@
   import PaneResize from './PaneResize.svelte';
   import PaneOptions, { layoutItems } from './PaneOptions.svelte';
   import { t } from '../i18n/i18n.svelte';
-  import { clampPaneWidth, paneLayout, setPaneLayout, REVIEW_PANE_WIDTH, type PaneLayout } from '../storage/panes.svelte';
+  import { clampPaneWidth, paneLayout, setPaneLayout, REVIEW_PANE_WIDTH, type PaneLayout, dockSide } from '../storage/panes.svelte';
 
   // The reviewing pane both word processors list revisions in, beside the comments one:
   // every recorded change in document order, click to jump, accept or reject in place.
@@ -21,7 +21,7 @@
   // Docked either side at the width and text size the reader set, as the navigator is.
   const MIN_WIDTH = 200;
   const layout = $derived(paneLayout('revisions'));
-  const left = $derived(layout.side === 'left');
+  const left = $derived(dockSide(layout.side) === 'left');
   const width = $derived(clampPaneWidth(layout.width, MIN_WIDTH));
   const setLayout = (patch: Partial<PaneLayout>) => setPaneLayout('revisions', patch);
   const setWidth = (w: number) => setLayout({ width: clampPaneWidth(w, MIN_WIDTH) });
@@ -146,7 +146,8 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 6px 6px 10px;
+    padding-block: 6px;
+    padding-inline: 10px 6px;
     border-bottom: 1px solid var(--color-border);
     background: var(--color-surface);
   }

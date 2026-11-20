@@ -68,6 +68,7 @@
     <input
       class="rb-combo-input"
       type="text"
+      dir="ltr"
       bind:value
       placeholder={current === '' ? '—' : ''}
       title={t().toolbarExpanded.fontName}
@@ -85,19 +86,19 @@
         {#if recentShown.length}
           <div class="rb-menu-label">{t().toolbarExpanded.recent}</div>
           {#each recentShown as f}
-            <button class:selected={current === f} style="font-family: '{f}'" onclick={() => pick(f)}>{fontLabel(f)}</button>
+            <button class:selected={current === f} style="font-family: '{f}'" onclick={() => pick(f)}><bdi>{fontLabel(f)}</bdi></button>
           {/each}
         {/if}
         {#if webSafeShown.length}
           <div class="rb-menu-label">{t().toolbarExpanded.webSafe}</div>
           {#each webSafeShown as f}
-            <button class:selected={current === f} style="font-family: '{f}'" onclick={() => pick(f)}>{fontLabel(f)}</button>
+            <button class:selected={current === f} style="font-family: '{f}'" onclick={() => pick(f)}><bdi>{fontLabel(f)}</bdi></button>
           {/each}
         {/if}
         {#if otherShown.length}
           <div class="rb-menu-label">{t().toolbarExpanded.allFonts}</div>
           {#each otherShown as f}
-            <button class:selected={current === f} style="font-family: '{f}'" onclick={() => pick(f)}>{fontLabel(f)}</button>
+            <button class:selected={current === f} style="font-family: '{f}'" onclick={() => pick(f)}><bdi>{fontLabel(f)}</bdi></button>
           {/each}
         {/if}
       </div>

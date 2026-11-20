@@ -15,7 +15,8 @@ component in `toolbar/`; the open category persists as `edentext-toolbar-categor
 Menus are `toolbar/IslandMenu.svelte` on the ribbon's single open-menu id (`ribbon/menu.svelte.ts`).
 Panels are `position: absolute`, not `anchored`: `.toolbar-stack` is transformed, so a fixed panel
 would resolve against it; `keepInView` slides one back inside the window instead. Panel rows use
-the global `.island-menu` classes in `styles/global.css`.
+the global `.island-menu` classes in `styles/global.css`. The toolbar's own scroll offset (`tbScroll`,
+`App.svelte`) counts from the stack's start edge, so stack, track and thumb move by `tbSign`.
 
 Controls carry the ribbon's `data-cmd` ids, so `CommandSearch` (variant `island`) runs on the same
 index. `App.svelte` finds a hit's control; when it is not on screen it opens the Tools row on the

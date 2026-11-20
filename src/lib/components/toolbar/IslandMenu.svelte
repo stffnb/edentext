@@ -72,7 +72,7 @@
   .im-split:hover,
   .im-split.open { border-color: var(--color-primary); }
   .im-split:hover .im-chevron,
-  .im-split.open .im-chevron { border-left-color: var(--color-border); }
+  .im-split.open .im-chevron { border-inline-start-color: var(--color-border); }
 
   .im-main,
   .im-chevron {
@@ -91,8 +91,8 @@
     transition: background 0.15s, border-color 0.15s;
   }
 
-  .im-main { padding: 0 0.2rem 0 0.3rem; min-width: calc(var(--toolbar-btn-size) - 0.5rem); }
-  .im-chevron { width: 1rem; padding: 0; border-left: 1px solid transparent; }
+  .im-main { padding-block: 0; padding-inline: 0.3rem 0.2rem; min-width: calc(var(--toolbar-btn-size) - 0.5rem); }
+  .im-chevron { width: 1rem; padding: 0; border-inline-start: 1px solid transparent; }
 
   .im-main:hover:not(:disabled),
   .im-chevron:hover:not(:disabled),

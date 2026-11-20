@@ -37,6 +37,28 @@ function goatcounter(): Plugin {
   };
 }
 
+// Writes each language catalog's built file into index.html's inline script, which
+// preloads the picked one; the service worker reads the same names to keep them all.
+function localeChunks(): Plugin {
+  return {
+    name: 'locale-chunks',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        const files: Record<string, string> = {};
+        for (const chunk of Object.values(ctx.bundle ?? {})) {
+          const id = chunk.type === 'chunk' ? chunk.facadeModuleId ?? chunk.moduleIds.at(-1) : null;
+          const lang = id?.match(/\/i18n\/locales\/([\w-]+)\.ts$/)?.[1];
+          if (lang && lang !== 'en') files[lang] = `./${chunk.fileName}`;
+        }
+        if (!html.includes('/*LOCALE_CHUNKS*/{}')) throw new Error('index.html lacks the locale chunk placeholder');
+        return html.replace('/*LOCALE_CHUNKS*/{}', JSON.stringify(files));
+      },
+    },
+  };
+}
+
 // A Content-Security-Policy for the built page, the web app's and the desktop app's alike.
 // Scripts come from the app itself (inline ones by hash) and wasm compiles; a document,
 // a paste or a model's answer cannot run code. connect-src stays open for the AI endpoint.
@@ -73,7 +95,7 @@ export default defineConfig({
   // Relative asset URLs, so the same build works at the domain root and under a
   // subpath (GitHub Pages project site). sw.js and the manifest are relative too.
   base: './',
-  plugins: [svelte(), goatcounter(), contentSecurityPolicy()],
+  plugins: [svelte(), goatcounter(), localeChunks(), contentSecurityPolicy()],
   // The browsers the bundle promises to parse in; the CI browser matrix runs the
   // engines behind them (docs/headless-testing.md).
   build: { target: 'baseline-widely-available' },

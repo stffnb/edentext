@@ -50,7 +50,26 @@ export type HfSet = {
   // layout, Word's `w:type` oddPage/evenPage): where the flow would open it on the
   // other one, a blank page goes before it. null = wherever it falls.
   startsOn?: PageSide | null;
+  // The zones' area boxes (ODF only), and its first page's where that hands over.
+  frames?: HfFrames | null;
+  framesFirst?: HfFrames | null;
 };
+
+// A zone's area as ODF's style:header-footer-properties draws it: per-side borders
+// (canonical '<W>pt <line> #RRGGBB'), padding inside them and the gap to the body
+// outside them, all cm. The area is at least its band less the gap; a `dynamic` gap
+// (style:dynamic-spacing) shrinks as the area grows, so the band is max(band, area).
+export type HfFrame = {
+  border: { top: string | null; right: string | null; bottom: string | null; left: string | null };
+  padding: { top: number; right: number; bottom: number; left: number };
+  gap: number;
+  dynamic?: boolean;
+  background?: string; // '#RRGGBB', filling the area inside its borders
+};
+export type HfFrames = { header?: HfFrame | null; footer?: HfFrame | null };
+// Section 1's frames, which the app keeps beside its zones.
+export type HfSetFrames = Pick<HfSet, 'frames' | 'framesFirst'>;
+export const NO_HF_FRAMES: HfSetFrames = { frames: null, framesFirst: null };
 
 export type PageSide = 'odd' | 'even';
 
@@ -59,7 +78,7 @@ export const EMPTY_HF_SET: HfSet = {
   headerFirst: null, footerFirst: null, differentFirstPage: false,
   headerEven: null, footerEven: null, differentOddEven: false,
   margins: null, marginsFirst: null, format: null, orientation: null,
-  distances: null, distancesFirst: null, startsOn: null,
+  distances: null, distancesFirst: null, startsOn: null, frames: null, framesFirst: null,
   pageNumberStart: null, pageNumberFormat: null,
 };
 
@@ -196,6 +215,22 @@ export function loadHfDistances(): HfDistances {
 
 export function saveHfDistances(d: HfDistances): void {
   docStore.setItem(DIST_KEY, JSON.stringify(d));
+}
+
+const FRAMES_KEY = docKey('edentext-hf-frames');
+
+export function loadHfFrames(): HfSetFrames {
+  try {
+    const p = JSON.parse(docStore.getItem(FRAMES_KEY) ?? 'null');
+    return p && typeof p === 'object' ? { frames: p.frames ?? null, framesFirst: p.framesFirst ?? null } : { ...NO_HF_FRAMES };
+  } catch {
+    return { ...NO_HF_FRAMES };
+  }
+}
+
+export function saveHfFrames(f: HfSetFrames): void {
+  if (f.frames || f.framesFirst) docStore.setItem(FRAMES_KEY, JSON.stringify(f));
+  else docStore.removeItem(FRAMES_KEY);
 }
 
 export function loadHfDoc(zone: HfZone, variant: HfVariant = 'default'): HfDoc {

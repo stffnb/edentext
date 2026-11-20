@@ -7,7 +7,7 @@ import { buildOdt } from '../src/lib/export/odt';
 import { importOdt } from '../src/lib/import/odt';
 import { buildDocx } from '../src/lib/export/docx';
 import { importDocx } from '../src/lib/import/docx';
-import { normalize, firstDiff, stripFontHoist, stripBoxGrowth, stripBreakSpace } from './normalize';
+import { normalize, firstDiff, stripFontHoist, stripBoxGrowth, stripBreakSpace, odtEffectFallback, effectRuns } from './normalize';
 import { mulberry32 } from './fuzzDoc';
 import { genCase, exportArgs, expectedOptions, importedOptions, diffLoose, omit, DOCX_LOSSY, docWideOddEven } from './fuzzOptions';
 import { hasXmllint, validateOdt, validateDocx } from './schemaValidate';
@@ -16,7 +16,8 @@ const SEEDS = Number(process.env.FUZZ_SEEDS ?? 50); // FUZZ_SEEDS=500 for a wide
 // The schema leg pays ~0.7s of xmllint per seed, so it takes fewer by default.
 const SCHEMA_SEEDS = Number(process.env.SCHEMA_SEEDS ?? Math.min(SEEDS, 20));
 
-// What ODT has no place for: nothing so far (DOCX_LOSSY lists Word's).
+// What ODT has no place for among the options: nothing so far (DOCX_LOSSY lists Word's);
+// its content losses are odtEffectFallback's.
 const ODT_LOSSY: string[] = [];
 
 describe('fuzz round-trip: editor → buildOdt → importOdt', () => {
@@ -25,7 +26,7 @@ describe('fuzz round-trip: editor → buildOdt → importOdt', () => {
       const { doc, opts } = genCase(mulberry32(seed));
       const res = importOdt(await buildOdt(doc, ...exportArgs(opts)));
       expect.soft(res.warnings, `seed ${seed}: warnings`).toEqual([]);
-      const diff = firstDiff(stripFontHoist(normalize(doc)), stripFontHoist(normalize(res.content)));
+      const diff = firstDiff(stripFontHoist(odtEffectFallback(normalize(doc))), stripFontHoist(normalize(res.content)));
       expect.soft(diff, `seed ${seed}: content`).toBeNull();
       const optDiff = diffLoose(omit(expectedOptions(opts), ODT_LOSSY), omit(importedOptions(res, opts), ODT_LOSSY));
       expect.soft(optDiff, `seed ${seed}: options`).toBeNull();
@@ -51,8 +52,9 @@ describe('fuzz round-trip: editor → buildOdt → importOdt', () => {
       const viaOdt = importOdt(await buildOdt(doc, ...exportArgs(opts))).content;
       const res = importDocx(await buildDocx(doc, ...exportArgs(opts)));
       const diff = firstDiff(stripBreakSpace(stripColwidth(stripFontHoist(normalize(viaOdt)))),
-        stripBreakSpace(stripBoxGrowth(stripColwidth(stripFontHoist(normalize(res.content))))));
+        stripBreakSpace(stripBoxGrowth(stripColwidth(stripFontHoist(odtEffectFallback(normalize(res.content)))))));
       expect.soft(diff, `seed ${seed}: ODT vs DOCX import`).toBeNull();
+      expect.soft(firstDiff(effectRuns(normalize(doc)), effectRuns(normalize(res.content))), `seed ${seed}: DOCX text effects`).toBeNull();
       const optDiff = diffLoose(docWideOddEven(omit(expectedOptions(opts), DOCX_LOSSY)),
         omit(importedOptions(res, opts), DOCX_LOSSY));
       expect.soft(optDiff, `seed ${seed}: DOCX options`).toBeNull();

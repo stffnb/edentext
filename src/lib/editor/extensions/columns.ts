@@ -1,6 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { TextSelection } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { REBUILDING } from './trackChanges';
 
@@ -183,6 +183,29 @@ export function mergeJoinedBlocks(blocks: PMNode[]): PMNode[] {
   return out;
 }
 
+// The parts marked joinPrev that no file can join to the block before them: that block is
+// of another type, in another section (other columns) or in none, or there is none.
+function strandedJoins(doc: PMNode): number[] {
+  const out: number[] = [];
+  let last: PMNode | null = null;
+  let section: PMNode | null = null;
+  doc.forEach((node, offset) => {
+    if (node.type.name !== 'columns') {
+      if (node.attrs.joinPrev) out.push(offset);
+      last = section = null;
+      return;
+    }
+    let before = section && sameColumnsAttrs(section, node) ? last : null;
+    node.forEach((child, off) => {
+      if (child.attrs.joinPrev && before?.type !== child.type) out.push(offset + 1 + off);
+      before = child;
+    });
+    last = before;
+    section = node;
+  });
+  return out;
+}
+
 // With no selection, columns apply to the whole document. Wrappable runs
 // (absorbing existing sections) become one section each; boxes/TOCs stay
 // between them. Replacements run bottom-up so earlier positions stay valid.
@@ -347,6 +370,22 @@ export const Columns = Node.create({
       class: 'columns-node',
       style: `column-count:${a.count};column-gap:${a.gapCm}cm`,
     }), 0];
+  },
+
+  // A part cut off a block that an edit then parted from it (a section's gap or count
+  // changed under it, its predecessor removed) is a block of its own, as both files hold it.
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: new PluginKey('strandedJoins'),
+      appendTransaction(trs, _old, state) {
+        if (!trs.some((tr) => tr.docChanged)) return null;
+        const stranded = strandedJoins(state.doc);
+        if (!stranded.length) return null;
+        const tr = state.tr;
+        for (const pos of stranded) tr.setNodeAttribute(pos, 'joinPrev', false);
+        return tr;
+      },
+    })];
   },
 
   // Enter in an empty block: the base chain lifts it out of the section, or splits

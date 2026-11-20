@@ -165,7 +165,8 @@ function anthropicRequest(cfg: AiConfig, req: ChatRequest): RequestInit & { url:
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-api-key': cfg.apiKey.trim(),
+      // Behind an installation's proxy the browser has no key; the proxy sets it.
+      ...(cfg.apiKey.trim() ? { 'x-api-key': cfg.apiKey.trim() } : {}),
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     },

@@ -6,7 +6,7 @@
   import PaneOptions, { layoutItems } from './PaneOptions.svelte';
   import { t, locale } from '../i18n/i18n.svelte';
   import { localeTag } from '../utils/dateTime';
-  import { clampPaneWidth, paneLayout, setPaneLayout, REVIEW_PANE_WIDTH, type PaneLayout } from '../storage/panes.svelte';
+  import { clampPaneWidth, paneLayout, setPaneLayout, REVIEW_PANE_WIDTH, type PaneLayout, dockSide } from '../storage/panes.svelte';
   import { collabView } from '../collab/appSession.svelte';
   import { MAX_CHAT, chatLines, sendChat, type ChatLine, type SendResult } from '../collab/chat.svelte';
 
@@ -17,7 +17,7 @@
 
   const MIN_WIDTH = 200;
   const layout = $derived(paneLayout('chat'));
-  const left = $derived(layout.side === 'left');
+  const left = $derived(dockSide(layout.side) === 'left');
   const width = $derived(clampPaneWidth(layout.width, MIN_WIDTH));
   const setLayout = (patch: Partial<PaneLayout>) => setPaneLayout('chat', patch);
   const setWidth = (w: number) => setLayout({ width: clampPaneWidth(w, MIN_WIDTH) });

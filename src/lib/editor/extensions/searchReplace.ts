@@ -94,15 +94,27 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// What a plain search looks through, as both word processors' Arabic find options do by
+// default: harakat, Quranic marks and tatweel are skipped and the alef forms are one letter,
+// in the term and in the text alike. A pattern is matched as typed.
+const ARABIC_SKIPPED = /[\u0640\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED]/;
+const ALEF_FORMS = /[\u0622\u0623\u0625\u0671]/g;
+export const searchSkips = (ch: string): boolean => ARABIC_SKIPPED.test(ch);
+export const foldSearchText = (s: string): string =>
+  [...s].filter((c) => !searchSkips(c)).join('').replace(ALEF_FORMS, '\u0627');
+
+// A term of marks alone is searched for as it is.
+const folds = (o: SearchOptions): boolean => !o.useRegex && !!foldSearchText(o.term);
+
 export function buildSearchRegex(term: string, matchCase: boolean, wholeWord: boolean, useRegex = false): RegExp | null {
   if (!term) return null;
   // A user pattern is wrapped, not escaped — the whole-word guard then bounds it.
-  const pat = useRegex ? (wholeWord ? `(?:${term})` : term) : escapeRegExp(term);
+  const pat = useRegex ? (wholeWord ? `(?:${term})` : term) : escapeRegExp(foldSearchText(term) || term);
   const flags = matchCase ? 'g' : 'gi';
   if (!wholeWord) { try { return new RegExp(pat, flags); } catch { return null; } }
-  // \b is ASCII-defined and bounds no Cyrillic or accented word; the lookarounds
-  // are its Unicode equivalent, which needs the u flag a user pattern may not take.
-  try { return new RegExp(`(?<![\\p{L}\\p{N}_])${pat}(?![\\p{L}\\p{N}_])`, flags + 'u'); }
+  // \b is ASCII-defined and bounds no Cyrillic or accented word; the lookarounds are its
+  // Unicode equivalent (a combining mark continues a word), which needs the u flag.
+  try { return new RegExp(`(?<![\\p{L}\\p{M}\\p{N}_])${pat}(?![\\p{L}\\p{M}\\p{N}_])`, flags + 'u'); }
   catch {
     try { return new RegExp(`\\b${pat}\\b`, flags); } catch { return null; }
   }
@@ -131,7 +143,7 @@ export function regexRanges(text: string, re: RegExp): [number, number, string[]
 // never block boundaries (each textblock is searched on its own concatenated text).
 // A format narrows a text search to the runs carrying it; without a term, those runs —
 // or, where only a style is asked for, the whole paragraph — are the matches.
-function findMatches(doc: PmNode, re: RegExp | null, format?: FormatSpec): Match[] {
+function findMatches(doc: PmNode, re: RegExp | null, format?: FormatSpec, fold = false): Match[] {
   const wanted = markNames(format);
   if (!re && !hasFormat(format)) return [];
   // Struck text is no text to find or replace, unless the view shows the original.
@@ -142,30 +154,38 @@ function findMatches(doc: PmNode, re: RegExp | null, format?: FormatSpec): Match
     if (format?.style && blockStyleName(node) !== format.style) return false;
     let text = '';
     const map: number[] = []; // map[i] = doc position of char i
+    const ends: number[] = []; // ends[i] = doc position after char i and the marks it carries
     const ok: boolean[] = []; // ok[i] = char i carries every mark the search asks for
     node.forEach((child, offset) => {
       if (child.marks.some((m) => m.type.name === unread)) return;
       const marked = !format || runMatches(child.marks, format, wanted);
       if (child.isText) {
         const t = child.text ?? '';
-        for (let k = 0; k < t.length; k++) { text += t[k]; map.push(pos + 1 + offset + k); ok.push(marked); }
+        for (let k = 0; k < t.length; k++) {
+          const at = pos + 1 + offset + k;
+          // A skipped mark belongs to the letter before it, so a match takes it along.
+          if (fold && searchSkips(t[k])) { if (ends.length) ends[ends.length - 1] = at + 1; continue; }
+          text += t[k]; map.push(at); ends.push(at + 1); ok.push(marked);
+        }
       } else {
         text += '￿'; // inline atom (image/hardBreak): one non-matching slot
         map.push(pos + 1 + offset);
+        ends.push(pos + 2 + offset);
         ok.push(false);
       }
     });
+    if (fold) text = text.replace(ALEF_FORMS, '\u0627');
     if (re) {
       for (const [s, e, groups] of regexRanges(text, re)) {
         if (ok.slice(s, e).some((v) => !v)) continue;
-        matches.push({ from: map[s], to: map[e - 1] + 1, groups });
+        matches.push({ from: map[s], to: ends[e - 1], groups });
       }
     } else if (wanted.length || Object.keys(textStyleAttrs(format)).length) {
       for (let i = 0; i < ok.length; i++) {
         if (!ok[i]) continue;
         let j = i;
         while (j < ok.length && ok[j]) j++;
-        matches.push({ from: map[i], to: map[j - 1] + 1, groups: [text.slice(i, j)] });
+        matches.push({ from: map[i], to: ends[j - 1], groups: [text.slice(i, j)] });
         i = j;
       }
     } else {
@@ -330,14 +350,14 @@ export const SearchReplace = Extension.create<{ sheet: () => StyleSheet }>({
           apply(tr: Transaction, old: SearchState, _oldState: EditorState, newState: EditorState): SearchState {
             const set = tr.getMeta(SET_SEARCH) as SearchOptions | undefined;
             if (set) {
-              const matches = findMatches(newState.doc, buildSearchRegex(set.term, set.matchCase, set.wholeWord, set.useRegex), set.format);
+              const matches = findMatches(newState.doc, buildSearchRegex(set.term, set.matchCase, set.wholeWord, set.useRegex), set.format, folds(set));
               const current = pickCurrent(matches, newState.selection.from);
               return { ...set, matches, current, deco: buildDeco(newState.doc, matches), currentDeco: currentDeco(newState.doc, matches, current) };
             }
             const cur = tr.getMeta(SET_CURRENT) as number | undefined;
             if (cur !== undefined) return { ...old, current: cur, currentDeco: currentDeco(newState.doc, old.matches, cur) };
             if (tr.docChanged && (old.term || hasFormat(old.format))) {
-              const matches = findMatches(newState.doc, buildSearchRegex(old.term, old.matchCase, old.wholeWord, old.useRegex), old.format);
+              const matches = findMatches(newState.doc, buildSearchRegex(old.term, old.matchCase, old.wholeWord, old.useRegex), old.format, folds(old));
               const current = pickCurrent(matches, newState.selection.from);
               return { ...old, matches, current, deco: buildDeco(newState.doc, matches), currentDeco: currentDeco(newState.doc, matches, current) };
             }

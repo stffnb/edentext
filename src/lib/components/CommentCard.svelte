@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
+  import { focusInPlace } from '../editor/extensions/overlay';
   import type { CommentRange } from '../editor/extensions/comment';
   import { t } from '../i18n/i18n.svelte';
   import { formatMoment } from '../storage/dateFormat.svelte';
@@ -41,13 +42,13 @@
   }
 
   function commit() {
-    editor?.chain().focus(null, { scrollIntoView: false }).updateComment(c.id, { text: draft.trim() }).run();
+    if (editor) { editor.chain().updateComment(c.id, { text: draft.trim() }).run(); focusInPlace(editor.view); }
     editing = false;
   }
 
   function sendReply() {
     if (!reply.trim()) return;
-    editor?.chain().focus(null, { scrollIntoView: false }).replyToComment(c.id, { author, text: reply }).run();
+    if (editor) { editor.chain().replyToComment(c.id, { author, text: reply }).run(); focusInPlace(editor.view); }
     if (aiEnabled() && mentionsAi(reply)) window.dispatchEvent(new CustomEvent(AI_COMMENT_EVENT, { detail: { id: c.id } }));
     reply = '';
     replying = false;
@@ -73,7 +74,7 @@
     aria-label={c.resolved ? t().comments.reopen : t().comments.resolve}
     title={c.resolved ? t().comments.reopen : t().comments.resolve}
     aria-pressed={c.resolved}
-    onclick={() => editor?.chain().focus(null, { scrollIntoView: false }).updateComment(c.id, { resolved: !c.resolved }).run()}
+    onclick={() => { if (editor) { editor.chain().updateComment(c.id, { resolved: !c.resolved }).run(); focusInPlace(editor.view); } }}
   >✓</button>
   <button
     class="tool edit"
@@ -87,12 +88,12 @@
     class="tool remove"
     aria-label={t().common.remove}
     title={t().common.remove}
-    onclick={() => editor?.chain().focus(null, { scrollIntoView: false }).removeComment(c.id).run()}
+    onclick={() => { if (editor) { editor.chain().removeComment(c.id).run(); focusInPlace(editor.view); } }}
   ><Icon name="trash" size={14} /></button>
 </div>
 {#if !folded}
   <button class="card" onclick={onSelect}>
-    <div class="quote" style:border-color={authorColor(colors, c.author)}>{c.quote}</div>
+    <div class="quote doc-quote" dir="auto" style:border-color={authorColor(colors, c.author)}>{c.quote}</div>
   </button>
 {/if}
 {#if editing}
@@ -108,7 +109,7 @@
     <button class="primary" onclick={commit}>{t().common.ok}</button>
   </div>
 {:else if full}
-  <p class="body">{c.text}</p>
+  <p class="body doc-quote" dir="auto">{c.text}</p>
 {:else}
   <!-- Cut to a few lines; a click opens the card, as clicking its text does. -->
   <button class="card body clamp" class:line={folded} onclick={onSelect}>{c.text}</button>
@@ -118,12 +119,12 @@
   {#each c.replies as r, i (i)}
     <div class="reply">
       <div class="meta"><b style:color={authorColor(colors, r.author)}>{r.author || t().revisions.unknownAuthor}</b><span>{formatMoment(r.date)}</span></div>
-      <p class="body">{r.text}</p>
+      <p class="body doc-quote" dir="auto">{r.text}</p>
     </div>
   {/each}
 {:else if c.replies.length}
   <button class="card replies" aria-expanded="false" onclick={onSelect}>
-    <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+    <svg class="icon-flip" width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
       <path d="M1 2.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>{t().comments.replies(c.replies.length)}
   </button>
@@ -171,7 +172,7 @@
     background: none;
     color: inherit;
     padding: 0;
-    text-align: left;
+    text-align: start;
     font: inherit;
     cursor: pointer;
   }
@@ -204,8 +205,8 @@
 
   .quote {
     margin: 3px 0;
-    padding-left: 6px;
-    border-left: 2px solid;
+    padding-inline-start: 6px;
+    border-inline-start: 2px solid;
     color: var(--color-text-muted);
     /* Two lines of the annotated text is enough to recognise it. */
     display: -webkit-box;
@@ -234,8 +235,8 @@
   /* An answer is indented under the comment it belongs to, as in a threaded pane. */
   .reply {
     margin-top: 4px;
-    padding-left: 6px;
-    border-left: 1px solid var(--color-border);
+    padding-inline-start: 6px;
+    border-inline-start: 1px solid var(--color-border);
   }
 
   textarea {

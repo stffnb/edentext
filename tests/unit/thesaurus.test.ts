@@ -49,13 +49,46 @@ describe('synonyms', () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
   });
 
+  it('has nothing, quietly, for a language the instance does not serve', async () => {
+    const alert = vi.fn();
+    vi.stubGlobal('alert', alert);
+    // A 404, or a server that answers every unknown path with its HTML page.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));
+    expect(await synonyms('it', 'casa')).toEqual([]);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<!doctype html>', { status: 200, headers: { 'content-type': 'text/html' } })));
+    expect(await synonyms('es', 'casa')).toEqual([]);
+    expect(alert).not.toHaveBeenCalled();
+  });
+
   it('loads French data and preserves accented synonyms', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(readFileSync('public/thesaurus/fr/fr.txt'), { status: 200 })));
 
     const groups = await synonyms('fr', 'maison');
     expect(groups.flat()).toContain('bâtisse');
     expect(groups.flat()).not.toContain('maison');
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/thesaurus/fr/fr.txt');
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe('/thesaurus/fr/fr.txt');
+  });
+
+  it('finds an Arabic word whether or not it is written with vowel marks', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(readFileSync('public/thesaurus/ar/ar.txt'), { status: 200 })));
+
+    expect((await synonyms('ar', 'جميل')).flat()).toContain('حسن');
+    expect(await synonyms('ar', 'جَمِيل')).toEqual(await synonyms('ar', 'جميل'));
+  });
+
+  it('looks an Arabic word up past its article and proclitics, and gives them back', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(readFileSync('public/thesaurus/ar/ar.txt'), { status: 200 })));
+
+    const bare = (await synonyms('ar', 'فاسد')).flat();
+    expect(bare).toContain('رديء');
+    expect((await synonyms('ar', 'الفاسد')).flat()).toEqual(bare.map((w) => (w.includes(' ') || w.startsWith('ال') ? w : 'ال' + w)));
+    expect((await synonyms('ar', 'وفاسد')).flat()).toContain('ورديء');
+    expect((await synonyms('ar', 'بالفاسد')).flat()).toContain('بالرديء');
+    expect((await synonyms('ar', 'للفاسد')).flat()).toContain('للرديء');
+    expect((await synonyms('ar', 'وللفاسد')).flat()).toContain('وللرديء');
+    expect((await synonyms('ar', 'والفاسد')).flat()).toContain('والرديء');
+    // A stem the thesaurus does not know is no match, however the word begins.
+    expect(await synonyms('ar', 'بلابلابل')).toEqual([]);
   });
 
   it('loads Portuguese data and preserves accented synonyms', async () => {
@@ -64,6 +97,6 @@ describe('synonyms', () => {
     const groups = await synonyms('pt', 'casa');
     expect(groups.flat()).toContain('habitação');
     expect(groups.flat()).not.toContain('casa');
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/thesaurus/pt/pt.txt');
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe('/thesaurus/pt/pt.txt');
   });
 });

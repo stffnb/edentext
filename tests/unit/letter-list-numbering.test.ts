@@ -53,7 +53,7 @@ describe('letter list numbering', () => {
   });
 
   it('offers a script only where the UI or the document is in it', () => {
-    const keys = (show: { cjk: boolean; cyrillic: boolean }, current?: string, rare = false) =>
+    const keys = (show: { cjk: boolean; cyrillic: boolean; korean?: boolean }, current?: string, rare = false) =>
       orderedTypesFor(show, current, rare).map((t) => t.key);
     const none = keys({ cjk: false, cyrillic: false });
     expect(none).not.toContain('lower-cyrillic');
@@ -62,6 +62,8 @@ describe('letter list numbering', () => {
     expect(keys({ cjk: false, cyrillic: true }, null, true)).toContain('upper-cyrillic-sync-paren');
     expect(keys({ cjk: true, cyrillic: false })).toContain('katakana');
     expect(keys({ cjk: false, cyrillic: false }, 'katakana')).toContain('katakana');
+    expect(keys({ cjk: true, cyrillic: false })).not.toContain('hangul');
+    expect(keys({ cjk: true, cyrillic: false, korean: true })).toContain('hangul');
   });
 
   it('writes letter-sync and the Russian spellings to ODF', async () => {

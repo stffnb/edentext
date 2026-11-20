@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
+  import { focusInPlace } from '../editor/extensions/overlay';
   import { t } from '../i18n/i18n.svelte';
   import { dragWindow } from '../utils/dragWindow';
   import { styleSheet } from '../styles/sheet.svelte';
@@ -89,7 +90,7 @@
     const range = refRange(doc, target, format);
     // No scrolling on focus: the window is modeless so the view can be parked on the
     // target, and restoring focus must not pull it back to the caret on every insert.
-    editor.chain().focus(null, { scrollIntoView: false }).insertCrossRef({
+    editor.chain().insertCrossRef({
       name: target.name,
       from: range.from,
       to: range.to,
@@ -98,6 +99,7 @@
       sep: useSep && fullContext ? sep : null,
       withDirection,
     }).run();
+    focusInPlace(editor.view);
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -152,7 +154,7 @@
       <span class="xr-label">{t().crossRef.target}</span>
       <select class="xr-list" size={8} bind:value={picked}>
         {#each targets as target, i (i)}
-          <option value={i}>{target.label}</option>
+          <option class="doc-quote" dir="auto" value={i}>{target.label}</option>
         {/each}
       </select>
     {/if}
@@ -168,7 +170,8 @@
   .xr {
     position: fixed;
     /* The popover's own inset: 0 would stretch it between top and bottom. */
-    inset: 9rem 2rem auto auto;
+    inset-block: 9rem auto;
+    inset-inline: auto 2rem;
     margin: 0;
     z-index: 300;
     width: 20rem;
@@ -180,7 +183,8 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    padding: 0.35rem 0.4rem 0.35rem 0.7rem;
+    padding-block: 0.35rem;
+    padding-inline: 0.7rem 0.4rem;
     border-bottom: 1px solid var(--color-border);
     font-size: 0.8rem;
     font-weight: 600;

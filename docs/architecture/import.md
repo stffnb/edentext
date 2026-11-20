@@ -59,12 +59,14 @@ LibreOffice does; the document's first block keeps it.
 
 Master-page changes open document sections. Read page setup, headers, footers, edge distances,
 first-page and left/right variants from the governing master, and calculate content width per
-section. An explicit empty master-page name means no change. A left/right master pair represents
+section. A section whose distances match the first page layout's inherits them, so the document
+carries them once any section has a zone, not only the first: a manual whose title page has
+no footer otherwise set every later footer at the 1.25cm default, 8.5mm low. An explicit empty master-page name means no change. A left/right master pair represents
 mirrored layout; distinguish it from a first-page hand-over. Naming the current master again
 opens a new section only where that restarts something — a hand-over to a successor, or a
 `page-usage` side demand — which is how a book reopens Chapter Intro for every chapter.
 
-A negative left or right indent sets a paragraph out into the margin (a page-wide picture's) and is kept, except in a table cell, where LibreOffice keeps the text inside the cell (probed: the line wraps at the cell's width).
+A negative left or right indent sets a paragraph out into the margin (a page-wide picture's) and is kept, in a table cell too, where LibreOffice runs the line past the cell's padding and edge by it and widens it as much (probed, fixed and autofit tables, both formats).
 
 Header/footer body reach is the rendered zone height plus applicable gap, respecting dynamic
 spacing, wrapped content, and internal paragraph spacing. A trailing zone margin does not add

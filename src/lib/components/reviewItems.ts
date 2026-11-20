@@ -11,6 +11,7 @@ import { recordChanges, recordLock, setRecordChanges, whenUnlocked } from '../st
 import { setUserName, userName } from '../storage/userName.svelte';
 import { t } from '../i18n/i18n.svelte';
 import { askText } from './PromptDialog.svelte';
+import { coordsAt } from '../editor/extensions/overlay';
 
 // What the review views may show, in one place: bars, balloons, leader line and both
 // panes ask here instead of each carrying its own reading of the markup settings.
@@ -122,7 +123,7 @@ export function selectRange(editor: Editor, from: number, to: number, scroll = t
   if (!scroll || !scroller) return;
   // Glides rather than jumps, and only when the line is not already well in view; it
   // lands a third of the way down, where the eye looks for it.
-  const line = view.coordsAtPos(from);
+  const line = coordsAt(view, from);
   const box = scroller.getBoundingClientRect();
   const inY = line.top >= box.top + 40 && line.bottom <= box.bottom - 40;
   const inX = line.left >= box.left + 20 && line.right <= box.right - 20;

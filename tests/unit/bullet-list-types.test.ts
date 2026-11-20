@@ -49,7 +49,12 @@ describe('bulletCharFromDocx (Word numbering.xml patterns)', () => {
     expect(bulletCharFromDocx('\uf0e8', 'Wingdings')).toBe('➔');
   });
 
-  it('maps the Symbol bullets', () => {
+  it("maps the Symbol bullets through the font's whole encoding", () => {
+    expect(bulletCharFromDocx('\uf02d', 'Symbol')).toBe('−');
+    expect(bulletCharFromDocx('\uf061', 'Symbol')).toBe('α');
+    expect(bulletCharFromDocx('\uf0e0', 'Symbol')).toBe('◊');
+    expect(bulletCharFromDocx('\uf09f', 'Wingdings')).toBe('•');
+    expect(bulletCharFromOdf('•', 'Symbol')).toBe('•');
     expect(bulletCharFromDocx('', 'Symbol')).toBe('•');
     expect(bulletCharFromDocx('', 'Symbol')).toBe('♦');
   });
@@ -66,6 +71,11 @@ describe('bulletCharFromDocx (Word numbering.xml patterns)', () => {
   it('passes literal chars in text fonts through', () => {
     expect(bulletCharFromDocx('>', 'Aptos')).toBe('>');
     expect(bulletCharFromDocx('-', undefined)).toBe('-');
+  });
+
+  it('draws a soft hyphen label as the hyphen both word processors show', () => {
+    expect(bulletCharFromDocx('\u00ad', 'Courier New')).toBe('-');
+    expect(bulletCharFromOdf('\u00ad', null)).toBe('-');
   });
 
   it('returns null for unmapped symbol glyphs and PUA chars in unknown fonts', () => {

@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <a href="../../README.md">English</a> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.it.md">Italiano</a> · <a href="README.pt.md">Português</a> · <a href="README.el.md">Ελληνικά</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.ja.md">日本語</a> · <a href="README.zh-CN.md">简体中文</a> · <b>繁體中文</b>
+  <a href="../../README.md">English</a> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.it.md">Italiano</a> · <a href="README.pt.md">Português</a> · <a href="README.el.md">Ελληνικά</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.pl.md">Polski</a> · <a href="README.id.md">Bahasa Indonesia</a> · <a href="README.ar.md">العربية</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <b>繁體中文</b>
 </p>
 
 <picture>
@@ -33,7 +33,7 @@
 
 ---
 
-EdenText 是在瀏覽器中執行、功能強大的文書處理軟體，從隨手筆記到整本書都能勝任。不需要伺服器，也不需要帳號——所有處理都在本機完成，文件絕不會離開您的電腦。開啟連結即可使用，也可以安裝成應用程式離線使用。大多數語言第一次開啟需下載約 2 MB，字典和字型會在需要時才載入[^1]。介面提供英文、德文、西班牙文、法文、義大利文、葡萄牙文、希臘文、俄文、烏克蘭文、日文和中文（簡體與繁體）。
+EdenText 是在瀏覽器中執行、功能強大的文書處理軟體，從隨手筆記到整本書都能勝任。不需要伺服器，也不需要帳號——所有處理都在本機完成，文件絕不會離開您的電腦。開啟連結即可使用，也可以安裝成應用程式離線使用。大多數語言第一次開啟需下載約 2 MB，字典和字型會在需要時才載入[^1]。介面提供英文、德文、西班牙文、法文、義大利文、葡萄牙文、希臘文、俄文、烏克蘭文、波蘭文、印尼文、阿拉伯文、日文、韓文和中文（簡體與繁體）。
 
 > [!NOTE]
 > EdenText 目前仍是**測試版**（beta），持續開發中。各項功能都有測試和往返轉換檢查把關，
@@ -62,13 +62,16 @@ EdenText 是在瀏覽器中執行、功能強大的文書處理軟體，從隨�
 - **表格**——表格樣式、排序，以及類似試算表的公式
 - **論文需要的一應俱全**——目錄、標號、交互參照、引文與參考書目、索引、公式（LaTeX）
 - **校閱工具**——追蹤修訂、顯示在頁邊註解方塊中的討論串註解、與其他檔案比較及合併、可列印的標記、拼字檢查（英文、
-  德文、西班牙文、法文、義大利文、葡萄牙文、希臘文、俄文和烏克蘭文）、同義字（上述語言中除
-  希臘文外皆支援）、文法檢查（英文）
+  德文、西班牙文、法文、義大利文、葡萄牙文、希臘文、俄文、烏克蘭文、波蘭文、印尼文、阿拉伯文和韓文）、同義字（上述語言中除
+  希臘文和韓文外皆支援）、文法檢查（英文）
 - **可選用的 AI 助理**——使用您自己的服務提供者或本機模型；可以回答與文件有關的問題，
   並以追蹤修訂的方式編輯文件。可以關閉；要求會直接送到服務提供者，不經過任何
   EdenText 伺服器
+- **聽寫**——說出的內容會出現在游標處，英文和德文可用語音輸入標點符號。使用瀏覽器的語音
+  辨識（Chrome、Edge、Safari），音訊可能會傳送到瀏覽器的語音服務；第一次使用前會先徵求同意；也可以連接
+  您自己的語音辨識伺服器（例如本機上的 Whisper），任何瀏覽器和桌面應用程式都能用
 - **隱私優先（Private by Design）**——文件絕不會離開您的電腦，所有處理都在本機完成；安裝成應用程式後也能
-  離線使用。編輯器本身不傳送任何內容，只有開啟 AI 助理後，才會把內容送給您選擇的服務提供者。文件會
+  離線使用。編輯器本身不傳送任何內容，只有開啟 AI 助理後，才會把內容送給您選擇的服務提供者。聽寫時，瀏覽器可能會把音訊傳送到它的語音服務。文件會
   自動儲存在瀏覽器中；在「最近使用的文件」裡可以設定已關閉的文件在下次啟動時刪除，
   或是完全不保留。無痕視窗關閉後不會留下任何資料
 - **適用於任何新版瀏覽器**——在 Chrome 和 Edge 中，「儲存」會直接寫回開啟的檔案；Brave
@@ -135,6 +138,7 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 任何網頁伺服器都可以代管這個資料夾。
 也可以用 `docker build -t edentext .` 在本機建置容器映像檔。
 適用於 Kubernetes 的社群維護 Helm chart 位於 [`charts/edentext`](../../charts/edentext)。
+如何為所有使用者預先設定 AI 助理和聽寫，請參閱 [`docs/self-hosting.md`](../self-hosting.md)（英文）。
 
 更新時，請將新檔案覆蓋到舊檔案上，不要先清空資料夾。
 更新前開啟的分頁在重新載入之前，會繼續載入其所屬版本的檔案。
@@ -153,6 +157,15 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 詳見 [docs/architecture/embed.md](../../docs/architecture/embed.md)。宿主應用程式還可以設定介面語言、主題和強調色，並關閉 AI 助理。在嵌入模式下，編輯器會顯示
 EdenText 標誌和「Powered by EdenText」標示，AGPL 條款要求保留兩者（[NOTICE.md](../../NOTICE.md)），
 只有依據[商業授權](../../LICENSE.commercial.md)的白標建置（`VITE_EDENTEXT_ATTRIBUTION=off`）才會省略。
+
+要從自己的伺服器提供編輯器，請安裝這兩個 npm 套件。`@edentext/app` 是建置好的編輯器，
+會把它複製到你的靜態檔案目錄（也可以用 Vite 外掛）；`@edentext/embed` 是輔助腳本，
+另外還有 `<eden-text>` 元素和 React 元件。
+
+```sh
+npm install @edentext/app @edentext/embed
+npx edentext-copy public/edentext --languages en,de
+```
 
 ## 架構
 
@@ -203,6 +216,7 @@ Copyright © 2026 Steffen Becker · 德國製造
 
 [AGPL-3.0](../../LICENSE)，嵌入模式另有依據其第 7(b) 條的附加條款（[NOTICE.md](../../NOTICE.md)）。如果 AGPL 不適合您的用途，可以選擇[商業授權](../../LICENSE.commercial.md)。
 隨附的字型和語言資料保留各自的授權——見 [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md)。
+輔助腳本和 npm 工具採用 MIT 授權，因此宿主頁面無論本身採用何種授權都可以使用（[NOTICE.md](../../NOTICE.md)）。
 
 *EdenText 是獨立專案，與 Microsoft 或 The Document Foundation 無關。支援 `.docx`
 和 `.odt` 是為了互通性。*
@@ -212,4 +226,4 @@ Copyright © 2026 Steffen Becker · 德國製造
 [^1]: 指壓縮後的網路傳輸量：約 1.0 MB 的應用程式程式碼，其餘是拼字檢查器（含瀏覽器語言
     對應的字典）以及頁面顯示所需的字型；希臘文和烏克蘭文字典分別再多約 2.5 MB 和 1.5 MB。
     其他所有內容都在第一次需要時才下載，並保留供離線使用；全部字型、字典和同義字庫合計
-    約 20 MB，加上英文文法檢查約 28 MB。
+    約 22 MB，加上英文文法檢查約 31 MB。

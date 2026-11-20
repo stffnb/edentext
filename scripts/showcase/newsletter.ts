@@ -42,7 +42,8 @@ export async function build(): Promise<Showcase> {
   ] };
 
   const doc: N = { type: 'doc', content: [
-    P(BAND({ styleName: 'Title', spaceAfter: 0, borderBottom: null }), T('Eden Astronomy Society', WHITE)),
+    P(BAND({ styleName: 'Title', spaceAfter: 0, borderBottom: null }),
+      T('Eden Astronomy Society', { type: 'textStyle', attrs: { color: '#FFFFFF', textGlow: { color: '#5B9BD5', alpha: 0.6, radiusPt: 5 } } })),
     P(BAND({ spaceAfter: 10, borderTop: null }),
       T('NEWSLETTER  ·  ISSUE 3/2026  ·  SEPTEMBER 2026', WHITE, { type: 'textStyle', attrs: { fontSize: '9pt' } })),
 

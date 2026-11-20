@@ -61,6 +61,20 @@ function marks(r: Rng, heading = false): N[] | undefined {
     if (maybe(r, 0.2)) attrs.caps = pick(r, ['uppercase', 'smallCaps']);
     // sub/superscript and a free raise share ODF's one text-position attribute
     if (!shifted && maybe(r, 0.15)) attrs.textPosition = pick(r, [3, -2]);
+    // Drawn from their own stream, so the seeds keep the documents they had. Relief
+    // excludes outline and shadow, as the editor's command keeps it.
+    if (maybe(fxRng, 0.1)) attrs.relief = pick(fxRng, ['embossed', 'engraved']);
+    else {
+      if (maybe(fxRng, 0.1)) attrs.outline = true;
+      if (maybe(fxRng, 0.1)) attrs.shadow = true;
+      // The parametrised ones, from a stream of their own, each excluding its plain twin,
+      // over their whole ranges (a file's glow up to 150 pt) in the attrs' 0.01 steps.
+      const w = w14Rng, hex = () => `#${Math.floor(w() * 0x1000000).toString(16).padStart(6, '0').toUpperCase()}`;
+      const step = (lo: number, hi: number) => Math.round((lo + w() * (hi - lo)) * 100) / 100;
+      if (!attrs.outline && maybe(w, 0.08)) attrs.textOutline = { color: hex(), widthPt: step(0.1, 20) };
+      if (!attrs.shadow && maybe(w, 0.08)) attrs.textShadow = { color: hex(), alpha: step(0, 1), dxPt: step(-20, 20), dyPt: step(-20, 20), blurPt: step(0, 40) };
+      if (maybe(w, 0.08)) attrs.textGlow = { color: hex(), alpha: step(0, 1), radiusPt: step(1, 150) };
+    }
     if (Object.keys(attrs).length) out.push({ type: 'textStyle', attrs });
   }
   if (!heading && maybe(r, 0.06)) {
@@ -399,7 +413,7 @@ function styledTable(r: Rng, name: string, cols: number, nRows: number): N {
       // that exact shade is HEADER_SHADE, whose bold is presentational
       if (maybe(r, 0.12)) attrs.backgroundColor = pick(r, ['#FFD700', '#E0F0E0']);
       else if (attrs.backgroundColor && maybe(r, 0.08)) delete attrs.backgroundColor; // cleared shading
-      if (maybe(r, 0.08)) attrs.borderBottom = pick(r, ['2pt solid #FF0000', 'none']);
+      if (maybe(r, 0.08)) attrs.borderBottom = pick(r, ['2pt solid #FF0000', '1.5pt double #FF0000', '1pt dashed #FF0000', 'none']);
       return { type: 'tableCell', attrs, content };
     }),
   }));
@@ -454,7 +468,12 @@ function table(r: Rng): N {
 const ROMAN = ['i', 'ii', 'iii', 'iv', 'v'] as const;
 
 // `styleNames` are the sheet's user styles; a styled block may name one of them.
+let fxRng: Rng = mulberry32(1);
+let w14Rng: Rng = mulberry32(1);
+
 export function genDoc(r: Rng, styleNames: string[] = []): N {
+  fxRng = mulberry32(7919);
+  w14Rng = mulberry32(104729);
   bmNames = [];
   commentSeq = 0;
   revSeq = 0;

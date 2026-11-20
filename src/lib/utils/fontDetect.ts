@@ -25,6 +25,7 @@ export const CANDIDATE_FONTS: readonly string[] = [
   'Segoe UI Semibold', 'Segoe UI Semilight', 'Segoe UI Symbol',
   'SimHei', 'SimSun', 'Sitka', 'Sylfaen', 'Symbol', 'Webdings', 'Wingdings',
   'Yu Gothic', 'Yu Gothic UI', 'Yu Mincho', 'BIZ UDGothic', 'BIZ UDMincho',
+  'Batang', 'Gulim', 'Dotum', 'Gungsuh',
 
   // MS Office bundled
   'Bahnschrift', 'Bookshelf Symbol 7', 'Ebrima', 'MS Reference Sans Serif',
@@ -53,13 +54,19 @@ export const CANDIDATE_FONTS: readonly string[] = [
   'Superclarendon', 'Tamil Sangam MN',
   'Telugu Sangam MN', 'Thonburi', 'Trattatello', 'Zapf Dingbats', 'Zapfino',
 
+  // Arabic families of Windows, macOS and the open-source ones
+  'Traditional Arabic', 'Simplified Arabic', 'Arabic Typesetting', 'Sakkal Majalla',
+  'Aldhabi', 'Andalus', 'Urdu Typesetting', 'Geeza Pro', 'Al Nile', 'Al Bayan', 'Baghdad',
+  'Amiri', 'Scheherazade New', 'Noto Sans Arabic', 'Noto Kufi Arabic',
+
   // Common Linux / open-source families
   'DejaVu Sans', 'DejaVu Sans Mono', 'DejaVu Serif',
   'Liberation Mono', 'Liberation Sans', 'Liberation Serif',
   'Linux Biolinum', 'Linux Libertine', 'Noto Sans', 'Noto Serif',
   'Noto Mono', 'Source Sans Pro', 'Source Serif Pro', 'Source Code Pro',
   'Noto Sans CJK SC', 'Noto Sans CJK TC', 'Noto Serif CJK SC',
-  'Noto Serif CJK TC', 'Source Han Sans SC', 'WenQuanYi Micro Hei',
+  'Noto Serif CJK TC', 'Noto Sans CJK KR', 'Noto Serif CJK KR',
+  'Source Han Sans SC', 'WenQuanYi Micro Hei',
   'Ubuntu', 'Ubuntu Mono', 'Ubuntu Condensed',
   'Open Sans', 'Roboto', 'Roboto Condensed', 'Roboto Mono', 'Roboto Slab',
   'Lato', 'Inter', 'Fira Sans', 'Fira Code', 'Fira Mono',
@@ -114,7 +121,7 @@ export function detectAvailableFonts(candidates: readonly string[]): string[] {
 
 // Families the app always renders via bundled @font-face twins, plus CSS generics —
 // never flagged as missing. The bundled names must match the @font-face in global.css.
-const BUNDLED_FONTS = ['Liberation Serif', 'Times New Roman', 'Calibri', 'Arial', 'Cambria', 'Courier New'];
+const BUNDLED_FONTS = ['Liberation Serif', 'Times New Roman', 'Calibri', 'Arial', 'Cambria', 'Courier New', 'Noto Naskh Arabic'];
 const GENERIC_FAMILIES = ['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui'];
 
 // Of the given family names, those the browser can't render (so text declaring them is

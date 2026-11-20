@@ -75,7 +75,10 @@ const CSS_STYLE: Record<OutlineFormat, string> = {
   '一, 二, 三, ...': 'simp-chinese-informal', '壹, 贰, 叁, ...': 'simp-chinese-formal',
   '甲, 乙, 丙, ...': 'edt-stem', '①, ②, ③, ...': 'edt-circled',
   'ア, イ, ウ, ...': 'edt-aiueo', 'イ, ロ, ハ, ...': 'edt-iroha',
+  '가, 나, 다, ...': 'edt-hangul', 'ㄱ, ㄴ, ㄷ, ...': 'edt-hangul-consonant',
+  '일, 이, 삼, ...': 'edt-korean-counting', '하나, 둘, 셋, ...': 'edt-korean-legal',
   aa: 'edt-alpha-sync', AA: 'edt-upper-alpha-sync',
+  '١, ٢, ٣, ...': 'arabic-indic', 'أ, ب, ت, ...': 'edt-arabic-alpha', 'ا, ب, ج, ...': 'edt-arabic-abjad',
   'а, б, .., аа, аб, ... (ru)': 'edt-cyrillic', 'А, Б, .., Аа, Аб, ... (ru)': 'edt-upper-cyrillic',
   'а, б, .., аа, бб, ... (ru)': 'edt-cyrillic-sync', 'А, Б, .., Аа, Бб, ... (ru)': 'edt-upper-cyrillic-sync',
 };
@@ -160,7 +163,7 @@ export function outlineCss(
     // under itself — plus the section inset, which .tiptap's padding can't draw.
     const indent = own.indentCm ?? 0;
     const first = own.firstIndentCm ?? 0;
-    if (indent) block.push(`margin-left: calc(var(--sec-inset-left, 0px) + ${cm(indent)} + var(--box-hang, 0px))`, `--ind: ${cm(indent)}`);
+    if (indent) block.push(`margin-inline-start: calc(var(--sec-inset-start, 0px) + ${cm(indent)} + var(--box-hang, 0px))`, `--ind: ${cm(indent)}`);
     if (first) block.push(`text-indent: ${cm(first)}`, `--indent-first: ${cm(first)}`);
     rules.push(`${head} {\n  ${block.join(';\n  ')};\n}`);
 

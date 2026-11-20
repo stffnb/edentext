@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <a href="../../README.md">English</a> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <b>Italiano</b> · <a href="README.pt.md">Português</a> · <a href="README.el.md">Ελληνικά</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.ja.md">日本語</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a>
+  <a href="../../README.md">English</a> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <b>Italiano</b> · <a href="README.pt.md">Português</a> · <a href="README.el.md">Ελληνικά</a> · <a href="README.ru.md">Русский</a> · <a href="README.uk.md">Українська</a> · <a href="README.pl.md">Polski</a> · <a href="README.id.md">Bahasa Indonesia</a> · <a href="README.ar.md">العربية</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a>
 </p>
 
 <picture>
@@ -33,7 +33,7 @@
 
 ---
 
-EdenText è un elaboratore di testi potente che funziona nel browser, adatto a tutto: dagli appunti veloci ai libri interi. Niente server, niente account: l'elaborazione avviene in locale e i tuoi documenti non lasciano mai il computer. Basta aprire il link, oppure installarlo come app e lavorare offline. Per la maggior parte delle lingue il primo download è di circa 2 MB; dizionari e caratteri vengono caricati quando servono[^1]. L'interfaccia è disponibile in inglese, tedesco, spagnolo, francese, italiano, portoghese, greco, russo, ucraino, giapponese e cinese (semplificato e tradizionale).
+EdenText è un elaboratore di testi potente che funziona nel browser, adatto a tutto: dagli appunti veloci ai libri interi. Niente server, niente account: l'elaborazione avviene in locale e i tuoi documenti non lasciano mai il computer. Basta aprire il link, oppure installarlo come app e lavorare offline. Per la maggior parte delle lingue il primo download è di circa 2 MB; dizionari e caratteri vengono caricati quando servono[^1]. L'interfaccia è disponibile in inglese, tedesco, spagnolo, francese, italiano, portoghese, greco, russo, ucraino, polacco, indonesiano, arabo, giapponese, coreano e cinese (semplificato e tradizionale).
 
 > [!NOTE]
 > EdenText è ancora in **beta** ed è in pieno sviluppo. Test automatici e prove di
@@ -69,14 +69,18 @@ EdenText è un elaboratore di testi potente che funziona nel browser, adatto a t
   citazioni e bibliografia, indice analitico, formule (LaTeX)
 - **Strumenti di revisione**: revisioni e commenti con risposte nelle aree commenti a margine,
   confronto e unione con un altro file, stampa delle revisioni, controllo ortografico
-  (inglese, tedesco, spagnolo, francese, italiano, portoghese, greco, russo e ucraino),
-  sinonimi (in tutte queste lingue tranne il greco), controllo grammaticale (inglese)
+  (inglese, tedesco, spagnolo, francese, italiano, portoghese, greco, russo, ucraino, polacco, indonesiano, arabo e coreano),
+  sinonimi (in tutte queste lingue tranne il greco e il coreano), controllo grammaticale (inglese)
 - **Assistente IA facoltativo**: con il provider che preferisci o con un modello locale;
   risponde a domande sul documento e lo modifica sotto forma di revisioni. Si può
   disattivare; le richieste vanno direttamente al provider, senza passare da un server EdenText
+- **Dettatura**: ciò che dici appare al cursore, con la punteggiatura dettata in inglese
+  e tedesco. Usa il riconoscimento vocale del browser (Chrome, Edge, Safari), che può
+  inviare l’audio al suo servizio vocale; EdenText chiede il consenso la prima volta; oppure il tuo
+  server vocale, ad es. Whisper sul tuo computer, in qualsiasi browser e nell’app desktop
 - **Private by design**: i documenti non lasciano mai il computer e tutta
   l'elaborazione avviene in locale; installato come app funziona anche offline.
-  L'editor non invia nulla, a meno che non si attivi l'assistente IA, che invia i dati al provider scelto.
+  L'editor non invia nulla, a meno che non si attivi l'assistente IA, che invia i dati al provider scelto. Per la dettatura il browser può inviare l’audio al suo servizio vocale.
   I documenti vengono salvati automaticamente nel browser; in Documenti recenti si può
   scegliere di eliminare quelli chiusi all'avvio successivo o di non conservarli affatto,
   e una finestra privata non lascia traccia una volta chiusa
@@ -147,6 +151,7 @@ In alternativa, ogni release contiene `edentext-<tag>.zip` con l'app già compil
 `npm run build` crea gli stessi file in `dist/`. Qualsiasi server web può ospitare questa cartella.
 L'immagine container si può anche creare in locale con `docker build -t edentext .`.
 Un chart Helm per Kubernetes, mantenuto dalla comunità, si trova in [`charts/edentext`](../../charts/edentext).
+Come configurare l’assistente IA e la dettatura per tutti gli utenti è spiegato in [`docs/self-hosting.md`](../self-hosting.md) (in inglese).
 
 Per un aggiornamento, copia i nuovi file sopra quelli vecchi invece di svuotare prima la cartella.
 Le schede aperte prima dell'aggiornamento continuano a caricare i file della propria versione
@@ -174,6 +179,16 @@ In modalità incorporata l'editor
 mostra il logo di EdenText e la dicitura “Powered by EdenText”, che i termini della AGPL
 impongono di mantenere ([NOTICE.md](../../NOTICE.md)) e che solo una build white label con la
 [licenza commerciale](../../LICENSE.commercial.md) omette (`VITE_EDENTEXT_ATTRIBUTION=off`).
+
+Per servire l’editor dal proprio server bastano i due pacchetti npm. `@edentext/app`
+contiene l’editor già compilato e lo copia tra i file statici (in alternativa c’è un plugin per
+Vite); `@edentext/embed` è lo script di supporto, insieme a un elemento `<eden-text>` e a un
+componente React.
+
+```sh
+npm install @edentext/app @edentext/embed
+npx edentext-copy public/edentext --languages en,de
+```
 
 ## Architettura
 
@@ -230,6 +245,8 @@ modalità incorporata ([NOTICE.md](../../NOTICE.md)). Per i casi d'uso a cui la 
 adatta è disponibile una [licenza commerciale](../../LICENSE.commercial.md). I caratteri e
 i dati linguistici inclusi mantengono le proprie licenze: vedi
 [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
+Lo script di supporto e gli strumenti npm sono sotto licenza MIT, quindi una pagina host
+può usarli qualunque sia la propria licenza ([NOTICE.md](../../NOTICE.md)).
 
 *EdenText è un progetto indipendente, non affiliato a Microsoft né a The Document
 Foundation. I formati `.docx` e `.odt` sono supportati per garantire l'interoperabilità.*
@@ -238,5 +255,5 @@ Foundation. I formati `.docx` e `.odt` sono supportati per garantire l'interoper
     correttore ortografico con il dizionario per la lingua del browser e i caratteri
     usati nella pagina; i dizionari greco e ucraino aggiungono circa 2,5 e 1,5 MB.
     Tutto il resto viene scaricato e conservato per l'uso offline la prima volta che
-    serve; tutti i caratteri, i dizionari e i thesauri insieme occupano circa 20 MB,
-    o circa 28 MB con il controllo grammaticale per l'inglese.
+    serve; tutti i caratteri, i dizionari e i thesauri insieme occupano circa 22 MB,
+    o circa 31 MB con il controllo grammaticale per l'inglese.

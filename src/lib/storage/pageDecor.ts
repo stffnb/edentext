@@ -1,4 +1,5 @@
 import { docKey, docStore } from './docScope';
+import { BORDER_LINES, type BorderLine } from '../editor/extensions/tableCellBorders';
 
 // The page's own decoration: LibreOffice's Format ▸ Page Style ▸ Area and Borders, and
 // its Format ▸ Watermark. All three are page-level and all three ride the page layout
@@ -9,8 +10,9 @@ import { docKey, docStore } from './docScope';
 const KEY = docKey('edentext-page-decor');
 
 // A page border is one rule around the whole page, as both word processors draw it: one
-// width and colour for all four sides, offset from the text by `paddingCm`.
-export type PageBorder = { widthPt: number; color: string; paddingCm: number };
+// width, colour and line for all four sides, offset from the text by `paddingCm`.
+// `line` absent is solid; widthPt is the total, as for a cell border.
+export type PageBorder = { widthPt: number; color: string; paddingCm: number; line?: BorderLine };
 
 // LibreOffice's watermark dialog, field for field.
 export type Watermark = {
@@ -54,6 +56,7 @@ function readBorder(raw: unknown): PageBorder | null {
     widthPt: clamp(Number(b.widthPt) || DEFAULT_PAGE_BORDER.widthPt, 0.25, 20),
     color: hex(b.color, DEFAULT_PAGE_BORDER.color)!,
     paddingCm: clamp(Number(b.paddingCm) || 0, 0, 5),
+    ...(b.line && b.line !== 'solid' && BORDER_LINES.includes(b.line) ? { line: b.line } : {}),
   };
 }
 

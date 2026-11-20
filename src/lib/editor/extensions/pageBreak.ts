@@ -138,6 +138,16 @@ export const PageBreak = Extension.create({
             renderHTML: (attributes: Record<string, unknown>) =>
               attributes.keepRows === true ? { 'data-keep-rows': 'true' } : {},
           },
+          // ODF fo:keep-with-next on the table; a DOCX table whose every paragraph keeps
+          // with the next reads as one (LibreOffice's import). It then moves whole with
+          // the block after it, as LibreOffice lays it out (pageBreaks.ts).
+          keepNext: {
+            default: null,
+            parseHTML: (element: HTMLElement) =>
+              element.getAttribute('data-keep-next') === 'true' ? true : null,
+            renderHTML: (attributes: Record<string, unknown>) =>
+              attributes.keepNext === true ? { 'data-keep-next': 'true' } : {},
+          },
           // ODF <table:table-header-rows>, Word w:trPr/w:tblHeader: the first row is
           // repeated at the top of every page the table continues on. The structural
           // header, as against the styling one in tableHeaderRow.ts.

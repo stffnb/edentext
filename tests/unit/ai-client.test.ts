@@ -2,7 +2,8 @@
 // request bodies, error mapping, and the kill switch that hands out no config.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { sseEvents, streamChat, AiError, aiErrorText } from '../../src/lib/ai/client';
-import { aiConfig, plainHttpEndpoint, setAi } from '../../src/lib/storage/ai.svelte';
+import { aiConfig, aiEnabled, plainHttpEndpoint, setAi } from '../../src/lib/storage/ai.svelte';
+import { loadHostConfig, setEmbedHostConfig } from '../../src/lib/storage/hostConfig.svelte';
 import en from '../../src/lib/i18n/locales/en';
 
 function stream(...chunks: string[]): ReadableStream<Uint8Array> {
@@ -175,6 +176,55 @@ describe('kill switch', () => {
     ['https://api.openai.com/v1', false], ['http://localhost:11434/v1', false],
     ['http://127.0.0.1:1234/v1', false], ['http://[::1]:8080', false], ['', false],
   ])('warns that %s is unencrypted: %s', (url, plain) => expect(plainHttpEndpoint(url)).toBe(plain));
+});
+
+describe('installation presets', () => {
+  const serve = (body: string, status = 200) => vi.stubGlobal('fetch', vi.fn(async () => new Response(body, { status })));
+  const host = { provider: 'anthropic', endpoint: '/ai/v1', model: 'hosted', contextTokens: 8192 };
+  afterEach(async () => { setAi({ endpoint: '', model: '', apiKey: '', enabled: true }); setEmbedHostConfig('ai', true); serve('', 404); await loadHostConfig(); });
+
+  it('fills in for a user without a provider; the user’s own setup and the embed option come first', async () => {
+    serve(JSON.stringify({ ai: { ...host, apiKey: 'leak', contextTokens: 'big' }, extra: 1 }));
+    await loadHostConfig();
+    expect(aiConfig()).toMatchObject({ ...host, contextTokens: 32_000, apiKey: '' });
+    setAi({ model: 'mine' });
+    expect(aiConfig()?.model).toBe('mine');
+    setAi({ endpoint: 'https://own.test/v1', apiKey: 'k' });
+    expect(aiConfig()).toMatchObject({ endpoint: 'https://own.test/v1', apiKey: 'k', provider: 'openai' });
+    setEmbedHostConfig('ai', { locked: true, model: 'embedded' });
+    expect(aiConfig()).toMatchObject({ endpoint: '/ai/v1', model: 'embedded', apiKey: '' });
+  });
+
+  it('a locked or switched-off installation overrides the user', async () => {
+    setAi({ endpoint: 'https://own.test/v1', model: 'mine', apiKey: 'k' });
+    serve(JSON.stringify({ ai: { ...host, locked: true } }));
+    await loadHostConfig();
+    expect(aiConfig()).toMatchObject({ ...host, apiKey: '' });
+    serve(JSON.stringify({ ai: { enabled: false } }));
+    await loadHostConfig();
+    expect([aiEnabled(), aiConfig()]).toEqual([false, null]);
+  });
+
+  it('presets nothing from a missing or broken file', async () => {
+    setAi({ endpoint: 'https://own.test/v1', model: 'mine' });
+    for (const [body, status] of [['', 404], ['{not json', 200], ['[1]', 200], ['{"ai": "on"}', 200]] as const) {
+      serve(body, status);
+      await loadHostConfig();
+      expect(aiConfig()).toMatchObject({ endpoint: 'https://own.test/v1', model: 'mine' });
+    }
+  });
+
+  it('sends no key header to an installation’s proxy', async () => {
+    serve(JSON.stringify({ ai: host }));
+    await loadHostConfig();
+    setAi({ apiKey: 'stale' });
+    for (const provider of ['anthropic', 'openai'] as const) {
+      const fetch = mockFetch(sse([{ type: 'message_stop' }]));
+      await streamChat({ ...aiConfig()!, provider }, { system: 's', messages: [{ role: 'user', content: 'q' }] }, () => {});
+      const headers = fetch.mock.calls[0][1].headers as Record<string, string>;
+      expect([fetch.mock.calls[0][0], headers.authorization, headers['x-api-key']]).toEqual([provider === 'openai' ? '/ai/v1/chat/completions' : '/ai/v1/messages', undefined, undefined]);
+    }
+  });
 });
 
 describe('Ollama', () => {

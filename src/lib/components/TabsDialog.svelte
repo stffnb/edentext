@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatDecimal, parseDecimal } from '../i18n/number';
   import type { Editor } from '@tiptap/core';
   import { activeTabStops, LEADER_CHARS, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
   import { DEFAULT_TAB_INTERVAL_CM } from '../storage/tabInterval';
@@ -37,16 +38,16 @@
   }
 
   function add() {
-    const pos = parseFloat(newPos.replace(',', '.'));
+    const pos = parseDecimal(newPos);
     if (isNaN(pos) || pos <= 0) return;
     write([...stops.filter((s) => s.pos !== pos), { pos, align: newAlign, leader: newLeader || null }]);
     newPos = '';
   }
 
-  const fmt = (v: number) => (Math.round(v * 100) / 100).toString().replace('.', ',');
+  const fmt = (v: number) => formatDecimal(v);
 </script>
 
-<dialog bind:this={dialogEl} onclose={() => (open = false)} onclick={(e) => e.target === dialogEl && (open = false)} aria-label={t().tabsDialog.title}>
+<dialog bind:this={dialogEl} onclose={() => !dialogEl?.open && (open = false)} onclick={(e) => e.target === dialogEl && (open = false)} aria-label={t().tabsDialog.title}>
   <div class="body">
     <h2>{t().tabsDialog.title}</h2>
 
@@ -86,7 +87,7 @@
         inputmode="decimal"
         value={fmt(tabIntervalCm)}
         onchange={(e) => {
-          const v = parseFloat((e.currentTarget as HTMLInputElement).value.replace(',', '.'));
+          const v = parseDecimal((e.currentTarget as HTMLInputElement).value);
           if (!isNaN(v) && v >= 0.05 && v <= 10) tabIntervalCm = v;
         }}
       />
@@ -94,6 +95,7 @@
     </label>
 
     <div class="actions">
+      <button class="secondary" disabled={stops.length === 0} onclick={() => write([])}>{t().tabsDialog.clearAll}</button>
       <span class="spacer"></span>
       <button class="primary" onclick={() => (open = false)}>{t().common.close}</button>
     </div>
@@ -153,4 +155,12 @@
     font: inherit;
     cursor: pointer;
   }
+
+  .actions .secondary {
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
+  }
+
+  .actions .secondary:disabled { opacity: 0.5; cursor: default; }
 </style>

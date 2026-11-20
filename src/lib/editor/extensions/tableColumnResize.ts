@@ -70,9 +70,9 @@ export function domCellAround(target: HTMLElement | null): HTMLElement | null {
 // Resolve the border near the pointer: the cell that owns it plus which border it is.
 // For "right" that's the cell left of the border, for "left" the cell right of it —
 // unless the border is the table's own outer edge (first/last column). cell -1 = none.
-function borderAt(view: EditorView, event: MouseEvent, side: 'left' | 'right'): { cell: number; edge: EdgeSide } {
+function borderAt(view: EditorView, event: MouseEvent, side: 'left' | 'right', rtl: boolean): { cell: number; edge: EdgeSide } {
   const none = { cell: -1, edge: 'inner' as EdgeSide };
-  const offset = side === 'right' ? -HANDLE_WIDTH : HANDLE_WIDTH;
+  const offset = (side === 'right') !== rtl ? -HANDLE_WIDTH : HANDLE_WIDTH;
   const found = view.posAtCoords({ left: event.clientX + offset, top: event.clientY });
   if (!found) return none;
   const $cell = cellAround(view.state.doc.resolve(found.pos));
@@ -89,6 +89,13 @@ function borderAt(view: EditorView, event: MouseEvent, side: 'left' | 'right'): 
   const colspan = ($cell.nodeAfter?.attrs.colspan as number) ?? 1;
   const col = map.colCount($cell.pos - start) + colspan - 1;
   return { cell: $cell.pos, edge: col >= map.width - 1 ? 'right' : 'inner' };
+}
+
+// 'left' and 'right' name grid sides here: the first column's outer edge and the last
+// one's. A right-to-left table draws them mirrored, so pointer positions are mirrored too.
+function runsRtl(el: Element | null | undefined): boolean {
+  const table = el?.closest('table');
+  return !!table && getComputedStyle(table).direction === 'rtl';
 }
 
 function tableDOM(view: EditorView, tableStart: number): HTMLTableElement | null {
@@ -109,8 +116,9 @@ function handleMouseMove(view: EditorView, event: MouseEvent): void {
   let edge: EdgeSide = 'inner';
   if (target) {
     const { left, right } = target.getBoundingClientRect();
-    if (event.clientX - left <= HANDLE_WIDTH) ({ cell, edge } = borderAt(view, event, 'left'));
-    else if (right - event.clientX <= HANDLE_WIDTH) ({ cell, edge } = borderAt(view, event, 'right'));
+    const rtl = runsRtl(target);
+    if (event.clientX - left <= HANDLE_WIDTH) ({ cell, edge } = borderAt(view, event, rtl ? 'right' : 'left', rtl));
+    else if (right - event.clientX <= HANDLE_WIDTH) ({ cell, edge } = borderAt(view, event, rtl ? 'left' : 'right', rtl));
   }
 
   if (cell !== state.activeHandle || edge !== state.edge) {
@@ -202,6 +210,7 @@ function startEdgeDrag(view: EditorView, event: MouseEvent, cellPos: number, sid
   const mr0 = (((table.attrs.marginRight as number) || 0)) * PX_PER_CM;
   const startX = event.clientX;
   let last = { marginLeftPx: ml0, marginRightPx: mr0, percents: startPercents };
+  const rtl = runsRtl(dom);
   let moved = false;
   const win = view.dom.ownerDocument.defaultView ?? window;
 
@@ -212,7 +221,11 @@ function startEdgeDrag(view: EditorView, event: MouseEvent, cellPos: number, sid
       finish();
       return;
     }
-    last = edgeResize(startPercents, tableWidth, ml0, mr0, side, (e.clientX - startX) / zoom);
+    const dx = (e.clientX - startX) / zoom;
+    if (rtl) {
+      const m = edgeResize(startPercents, tableWidth, mr0, ml0, side, -dx);
+      last = { marginLeftPx: m.marginRightPx, marginRightPx: m.marginLeftPx, percents: m.percents };
+    } else last = edgeResize(startPercents, tableWidth, ml0, mr0, side, dx);
     wrapper!.style.marginLeft = `${last.marginLeftPx}px`;
     wrapper!.style.marginRight = `${last.marginRightPx}px`;
     const cols = colgroup!.children as HTMLCollectionOf<HTMLElement>;
@@ -270,6 +283,7 @@ function handleMouseDown(view: EditorView, event: MouseEvent): boolean {
   if (!contentWidth) return false;
 
   const startX = event.clientX;
+  const sign = runsRtl(dom) ? -1 : 1;
   const minPct = (CELL_MIN_PX / contentWidth) * 100;
   const pairSum = startPercents[leftCol] + startPercents[rightCol];
   let lastLeft = startPercents[leftCol];
@@ -285,7 +299,7 @@ function handleMouseDown(view: EditorView, event: MouseEvent): boolean {
       finish();
       return;
     }
-    let newLeft = startPercents[leftCol] + ((e.clientX - startX) / contentWidth) * 100;
+    let newLeft = startPercents[leftCol] + sign * ((e.clientX - startX) / contentWidth) * 100;
     newLeft = Math.max(minPct, Math.min(pairSum - minPct, newLeft));
     const newRight = pairSum - newLeft;
     const cols = colgroup!.children as HTMLCollectionOf<HTMLElement>;
@@ -408,6 +422,17 @@ export const TableColumnResize = Extension.create({
             default: 0,
             parseHTML: (element: HTMLElement) => marginCm(element.style.marginRight),
             renderHTML: () => ({}),
+          },
+          // The direction the columns run in where it is not the page's (Word's
+          // w:bidiVisual, ODF style:writing-mode on the table); null follows the page.
+          dir: {
+            default: null,
+            parseHTML: (element: HTMLElement) => {
+              const d = element.getAttribute('dir');
+              return d === 'rtl' || d === 'ltr' ? d : null;
+            },
+            renderHTML: (attributes: Record<string, unknown>) =>
+              attributes.dir === 'rtl' || attributes.dir === 'ltr' ? { dir: String(attributes.dir) } : {},
           },
           // The space above/below the table (ODF fo:margin-top/-bottom on the table
           // style). Word has no equivalent, so it only round-trips through ODF.

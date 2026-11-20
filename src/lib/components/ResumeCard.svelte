@@ -31,7 +31,7 @@
   /* The ribbon menus' surface, border and shadow: the card floats over a white page. */
   .resume {
     position: fixed;
-    right: 16px;
+    inset-inline-end: 16px;
     bottom: 40px;
     z-index: 50;
     width: min(300px, calc(100vw - 32px));
@@ -52,7 +52,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 7px 8px 7px 12px;
+    padding-block: 7px;
+    padding-inline: 12px 8px;
     border-bottom: 1px solid var(--w-border);
     background: var(--w-accent-soft);
     font-weight: 600;
@@ -63,7 +64,7 @@
     background: none;
     color: inherit;
     font: inherit;
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
   .close { font-size: 1.1rem; line-height: 1; padding: 0 4px; }

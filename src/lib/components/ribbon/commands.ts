@@ -47,6 +47,8 @@ export const RIBBON_COMMANDS: RibbonCommand[] = [
   c('home', 'fontFamily', (m) => m.toolbarExpanded.fontName),
   c('home', 'fontSize', (m) => m.toolbarExpanded.fontSize),
   c('home', 'changeCase', (m) => m.ribbon.case.title),
+  c('home', 'textEffects', (m) => m.ribbon.textEffects.title),
+  ...(['outline', 'shadow', 'glow', 'relief', 'clear'] as const).map((k) => c('home', `textEffects-${k}`, (m) => m.ribbon.textEffects[k], 'textEffects')),
   ...CASES.map((k) => c('home', `case-${CASE_MODE[k]}`, (m) => m.ribbon.case[k], 'changeCase')),
   c('home', 'bold', (m) => m.toolbar.bold),
   c('home', 'italic', (m) => m.toolbar.italic),
@@ -69,6 +71,7 @@ export const RIBBON_COMMANDS: RibbonCommand[] = [
   c('home', 'paragraphBorders', (m) => m.toolbarExpanded.paragraphBorders),
   c('home', 'find', (m) => m.ribbon.find),
   c('home', 'replace', (m) => m.ribbon.replace),
+  c('home', 'dictate', (m) => m.dictation.dictate),
   c('home', 'aiPane', (m) => m.ai.name),
 
   c('insert', 'pageBreak', (m) => m.ribbon.pageBreak),
@@ -99,6 +102,7 @@ export const RIBBON_COMMANDS: RibbonCommand[] = [
   c('layout', 'breaks', (m) => m.ribbon.breaks),
   c('layout', 'sectionBreak', (m) => m.ribbon.sectionBreak, 'breaks'),
   c('layout', 'hyphenation', (m) => m.ribbon.hyphenation),
+  c('layout', 'pageRtl', (m) => m.ribbon.pageRtlHint),
   c('layout', 'pageNumberFormat', (m) => m.ribbon.pageNumberFormat),
   c('layout', 'lineNumbers', (m) => m.ribbon.lineNumbers),
   c('layout', 'pageDecor', (m) => m.ribbon.pageDecor),
@@ -181,6 +185,7 @@ export const RIBBON_COMMANDS: RibbonCommand[] = [
   c('shapeFormat', 'borderColor', (m) => m.textBox.borderColor),
   c('shapeFormat', 'borderWidth', (m) => m.textBox.borderWidth),
   c('shapeFormat', 'verticalText', (m) => m.textBox.verticalText),
+  c('shapeFormat', 'verticalTextUp', (m) => m.textBox.verticalTextUp),
   ...(['Top', 'Middle', 'Bottom'] as const).map((k) => c('shapeFormat', `textAlign-${k}`, (m) => m.textBox[`vAlign${k}`])),
 
   c('headerFooter', 'hfPageCount', (m) => m.hf.pageCount),
@@ -201,11 +206,13 @@ export function tabOf(cmd: RibbonCommand, shown: readonly Tab[]): Tab | null | u
 const HOST_FILE_COMMANDS = new Set(['newDocument', 'newFromTemplate', 'open', 'browserDocuments', 'saveAsOdt', 'saveAsDocx', 'saveTemplate']);
 
 /** What the search offers: commands on a shown tab or in the File menu, the assistant
- *  only while it is on, the kept-documents list only when documents are kept, sessions
- *  only with a relay, and no file command the host application has taken over. */
-export function searchableCommands(cmds: RibbonCommand[], shown: readonly Tab[], opts: { ai: boolean; volatile: boolean; embedded?: boolean; collab?: boolean }): RibbonCommand[] {
+ *  only while it is on, dictation only where it works, the kept-documents list only when
+ *  documents are kept, sessions only with a relay, and no file command the host
+ *  application has taken over. */
+export function searchableCommands(cmds: RibbonCommand[], shown: readonly Tab[], opts: { ai: boolean; volatile: boolean; embedded?: boolean; dictation?: boolean; collab?: boolean }): RibbonCommand[] {
   return cmds.filter((c) => tabOf(c, shown) !== undefined
     && (opts.ai || !c.id.startsWith('ai'))
+    && (opts.dictation || c.id !== 'dictate')
     && !(opts.volatile && c.id === 'browserDocuments')
     && (opts.collab || c.id !== 'collab')
     && !(opts.embedded && HOST_FILE_COMMANDS.has(c.id)));

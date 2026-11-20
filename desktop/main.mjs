@@ -26,7 +26,11 @@ const TEXT = {
   el: { discard: 'Απόρριψη των μη αποθηκευμένων αλλαγών;', discardButtons: ['Απόρριψη', 'Ακύρωση'], available: (v) => `Το EdenText ${v} είναι διαθέσιμο.`, installed: (v) => `Έχετε την έκδοση ${v}.`, updateButtons: ['Λήψη', 'Αργότερα', 'Παράλειψη αυτής της έκδοσης'], menu: ['Σχετικά με το %', 'Απόκρυψη %', 'Απόκρυψη άλλων', 'Εμφάνιση όλων', 'Τερματισμός %', 'Επεξεργασία', 'Αναίρεση', 'Επανάληψη', 'Αποκοπή', 'Αντιγραφή', 'Επικόλληση', 'Επιλογή όλων', 'Παράθυρο', 'Ελαχιστοποίηση', 'Ζουμ', 'Κλείσιμο'] },
   ru: { discard: 'Отказаться от несохранённых изменений?', discardButtons: ['Отказаться', 'Отмена'], available: (v) => `Доступна версия EdenText ${v}.`, installed: (v) => `Установлена версия ${v}.`, updateButtons: ['Скачать', 'Позже', 'Пропустить эту версию'], menu: ['О программе %', 'Скрыть %', 'Скрыть остальные', 'Показать все', 'Завершить %', 'Правка', 'Отменить', 'Повторить', 'Вырезать', 'Скопировать', 'Вставить', 'Выбрать все', 'Окно', 'Свернуть', 'Изменить масштаб', 'Закрыть'] },
   uk: { discard: 'Відкинути незбережені зміни?', discardButtons: ['Відкинути', 'Скасувати'], available: (v) => `Доступна версія EdenText ${v}.`, installed: (v) => `Встановлено версію ${v}.`, updateButtons: ['Завантажити', 'Пізніше', 'Пропустити цю версію'], menu: ['Про %', 'Сховати %', 'Сховати інші', 'Показати всі', 'Вийти з %', 'Редагування', 'Відмінити', 'Повторити', 'Вирізати', 'Скопіювати', 'Вставити', 'Вибрати все', 'Вікно', 'Згорнути', 'Масштаб', 'Закрити'] },
+  pl: { discard: 'Odrzucić niezapisane zmiany?', discardButtons: ['Odrzuć', 'Anuluj'], available: (v) => `Dostępna jest wersja EdenText ${v}.`, installed: (v) => `Zainstalowana wersja: ${v}.`, updateButtons: ['Pobierz', 'Później', 'Pomiń tę wersję'], menu: ['% – informacje', 'Ukryj %', 'Ukryj pozostałe', 'Pokaż wszystkie', 'Zakończ %', 'Edycja', 'Cofnij', 'Przywróć', 'Wytnij', 'Kopiuj', 'Wklej', 'Zaznacz wszystko', 'Okno', 'Minimalizuj', 'Zoom', 'Zamknij'] },
+  id: { discard: 'Buang perubahan yang belum disimpan?', discardButtons: ['Buang', 'Batal'], available: (v) => `EdenText ${v} tersedia.`, installed: (v) => `Versi terinstal: ${v}.`, updateButtons: ['Unduh', 'Nanti', 'Lewati Versi Ini'], menu: ['Tentang %', 'Sembunyikan %', 'Sembunyikan Lainnya', 'Tampilkan Semua', 'Keluar dari %', 'Edit', 'Urungkan', 'Ulang', 'Potong', 'Salin', 'Tempel', 'Pilih Semua', 'Jendela', 'Minimalkan', 'Zoom', 'Tutup'] },
+  ar: { discard: 'هل تريد تجاهل التغييرات غير المحفوظة؟', discardButtons: ['تجاهل', 'إلغاء'], available: (v) => `يتوفر EdenText ${v}.`, installed: (v) => `الإصدار المثبّت: ${v}.`, updateButtons: ['تنزيل', 'لاحقًا', 'تخطي هذا الإصدار'], menu: ['حول %', 'إخفاء %', 'إخفاء الآخرين', 'إظهار الكل', 'إنهاء %', 'تحرير', 'تراجع', 'إعادة', 'قص', 'نسخ', 'لصق', 'تحديد الكل', 'نافذة', 'تصغير', 'تكبير/تصغير', 'إغلاق'] },
   ja: { discard: '保存されていない変更を破棄しますか?', discardButtons: ['破棄', 'キャンセル'], available: (v) => `EdenText ${v} が利用可能です。`, installed: (v) => `インストール済みのバージョン: ${v}`, updateButtons: ['ダウンロード', '後で', 'このバージョンをスキップ'], menu: ['%について', '%を非表示', 'ほかを非表示', 'すべてを表示', '%を終了', '編集', '取り消す', 'やり直す', 'カット', 'コピー', 'ペースト', 'すべてを選択', 'ウインドウ', 'しまう', '拡大/縮小', '閉じる'] },
+  ko: { discard: '저장하지 않은 변경 사항을 버리시겠습니까?', discardButtons: ['버리기', '취소'], available: (v) => `EdenText ${v} 버전을 사용할 수 있습니다.`, installed: (v) => `설치된 버전: ${v}`, updateButtons: ['다운로드', '나중에', '이 버전 건너뛰기'], menu: ['%에 관하여', '% 가리기', '기타 가리기', '모두 보기', '% 종료', '편집', '실행 취소', '실행 복귀', '오려두기', '복사하기', '붙여넣기', '전체 선택', '윈도우', '최소화', '확대/축소', '닫기'] },
   'zh-Hans': { discard: '放弃未保存的更改？', discardButtons: ['放弃', '取消'], available: (v) => `EdenText ${v} 已发布。`, installed: (v) => `当前版本：${v}`, updateButtons: ['下载', '稍后', '跳过此版本'], menu: ['关于%', '隐藏%', '隐藏其他', '全部显示', '退出%', '编辑', '撤销', '重做', '剪切', '拷贝', '粘贴', '全选', '窗口', '最小化', '缩放', '关闭'] },
   'zh-Hant': { discard: '放棄未儲存的變更？', discardButtons: ['放棄', '取消'], available: (v) => `EdenText ${v} 已推出。`, installed: (v) => `目前版本：${v}`, updateButtons: ['下載', '稍後', '略過此版本'], menu: ['關於%', '隱藏%', '隱藏其他', '顯示全部', '結束%', '編輯', '還原', '重做', '剪下', '拷貝', '貼上', '全選', '視窗', '縮到最小', '縮放', '關閉'] },
 };
@@ -149,9 +153,15 @@ handle('desktop:print-pdf', async (_e, html) => {
 });
 
 // What the page asks the browser for: saving through the file pickers, installed fonts,
-// the clipboard. Anything else (camera, location, notifications…) is refused.
+// the clipboard, and the microphone for dictation but never the camera. Anything else
+// (location, notifications…) is refused.
 const PERMISSIONS = new Set(['fileSystem', 'local-fonts', 'clipboard-read', 'clipboard-sanitized-write']);
-const allowed = (permission, url) => PERMISSIONS.has(permission) && String(url ?? '').startsWith(ORIGIN);
+const audioOnly = (details) => {
+  const types = details?.mediaTypes ?? (details?.mediaType ? [details.mediaType] : []);
+  return types.length > 0 && types.every((t) => t === 'audio');
+};
+const allowed = (permission, url, details) =>
+  (PERMISSIONS.has(permission) || (permission === 'media' && audioOnly(details))) && String(url ?? '').startsWith(ORIGIN);
 
 // Every window, the app's, one it opens and the hidden print window alike: links go to the
 // system, and a dropped file or a link cannot navigate a window off the app origin.
@@ -224,8 +234,8 @@ app.on('open-file', (e, file) => {
 app.whenReady().then(() => {
   setMenu();
   session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) =>
-    callback(allowed(permission, details.requestingUrl ?? wc?.getURL())));
-  session.defaultSession.setPermissionCheckHandler((_wc, permission, origin) => allowed(permission, origin));
+    callback(allowed(permission, details.requestingUrl ?? wc?.getURL(), details)));
+  session.defaultSession.setPermissionCheckHandler((_wc, permission, origin, details) => allowed(permission, origin, details));
   protocol.handle('app', (req) => {
     const print = /^\/__print\/([\w-]+)$/.exec(new URL(req.url).pathname);
     // The print page is static markup: it runs no script and loads only the app's files.

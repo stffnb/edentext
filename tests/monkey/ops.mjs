@@ -73,8 +73,9 @@ export const drawOp = (r, size) => {
 /** The ops that act on `page`'s body editor, and its saved file read back. */
 export function monkeyOn(page) {
   const ed = (fn, arg) => page.evaluate(fn, arg);
-  const runCmd = (op) => ed(({ cmd, args }) => {
+  const runCmd = (op) => ed(async ({ cmd, args, preset }) => {
     const editor = document.querySelector('.tiptap-host .tiptap').editor;
+    if (preset != null) args = [(await import('/src/lib/editor/extensions/textEffects.ts')).TEXT_EFFECT_PRESETS[preset]];
     // A caret only ever sits in a text block — the view puts it nowhere else — but
     // focus(pos) makes the selection wherever it is told, and Enter on one between two
     // list items throws out of prosemirror. Snap to the next text position instead.
@@ -121,7 +122,7 @@ export function monkeyOn(page) {
   // The file the app saved, read back by the app's importer against the editor's document
   // (its paragraphs joined across a column or page merged, as the export merges them).
   const roundTrip = (bytes, ext) => ed(async ({ b64, ext }) => {
-    const [{ importOdt }, { importDocx }, { mergeJoinedParagraphsJson }, { normalize, firstDiff, stripFontHoist, stripBoxGrowth, stripBreakSpace }, hfStore, { effectiveListLevel, defaultLevelBullet }, { withRenderedBoxHeights }] = await Promise.all([
+    const [{ importOdt }, { importDocx }, { mergeJoinedParagraphsJson }, { normalize, firstDiff, stripFontHoist, stripBoxGrowth, stripBreakSpace, odtEffectFallback }, hfStore, { effectiveListLevel, defaultLevelBullet }, { withRenderedBoxHeights }] = await Promise.all([
       import('/src/lib/import/odt.ts'), import('/src/lib/import/docx.ts'), import('/src/lib/export/odt.ts'), import('/tests/normalize.ts'),
       import('/src/lib/storage/headerFooter.ts'), import('/src/lib/styles/listStyles.ts'), import('/src/lib/editor/extensions/textBox.ts')]);
     const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -178,6 +179,7 @@ export function monkeyOn(page) {
         if (m.type !== 'textStyle' || !m.attrs) continue;
         if (m.attrs.fontFamily === (text.fontFamily ?? 'Liberation Serif')) delete m.attrs.fontFamily;
         if (parseFloat(m.attrs.fontSize) === (text.fontSizePt ?? 12)) delete m.attrs.fontSize;
+        if (String(m.attrs.color).toUpperCase() === (text.color ?? '#000000').toUpperCase()) delete m.attrs.color;
       }
       // Word has no anchored drawing inside a text box, so a frame in one goes out inline.
       if (framed && ext === 'docx' && (n.type === 'image' || n.type === 'textBox') && n.attrs) n.attrs = { ...n.attrs, wrap: null, inFront: null };
@@ -252,6 +254,8 @@ export function monkeyOn(page) {
       return n;
     };
     const flat = (n) => stripFontHoist(normalize(lookless(ext === 'docx' ? cellTail(stripBreakSpace(stripBoxGrowth(flatLists(n)))) : n)));
+    // ODF keeps a parametrised shadow as the plain one and drops outline and glow (by design).
+    const heldFlat = flat(ext === 'odt' ? odtEffectFallback(held) : held);
     // The zones the app holds (its own storage is what it exports from) against the ones
     // the file gives back — a zone is no part of the document compared above.
     const { loadHfDoc, loadExtraHfSections, loadDifferentFirstPage, loadDifferentOddEven, hfIsEmpty, EMPTY_HF_SET } = hfStore;
@@ -270,7 +274,7 @@ export function monkeyOn(page) {
       return out;
     };
     const hfDiff = firstDiff(heldSets.map(zonesOf), (res.hfSections ?? []).map(zonesOf));
-    return { diff: firstDiff(flat(held), flat(effListKinds(styled(res.content)))), hfDiff, warnings: res.warnings,
+    return { diff: firstDiff(heldFlat, flat(effListKinds(styled(res.content)))), hfDiff, warnings: res.warnings,
       held: JSON.stringify(held), read: JSON.stringify(res.content),
       hfHeld: JSON.stringify(heldSets.map(zonesOf)), hfRead: JSON.stringify((res.hfSections ?? []).map(zonesOf)) };
   }, { b64: Buffer.from(bytes).toString('base64'), ext });

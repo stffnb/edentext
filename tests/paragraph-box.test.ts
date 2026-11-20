@@ -12,14 +12,14 @@ type N = { type: string; attrs?: any; content?: N[] };
 const bandedBody: N = {
   type: 'doc',
   content: [
-    { type: 'paragraph', attrs: { backgroundColor: '#CCFFFF', borderTop: '2pt solid #FF0000', borderRight: '1pt solid #00B050', borderBottom: '4pt solid #0066CC', borderLeft: '1pt solid #00B050' }, content: [{ type: 'text', text: 'banded body' }] },
+    { type: 'paragraph', attrs: { backgroundColor: '#CCFFFF', borderTop: '2pt solid #FF0000', borderRight: '1pt solid #00B050', borderBottom: '4pt solid #0066CC', borderLeft: '1pt solid #00B050', borderPadding: 4 }, content: [{ type: 'text', text: 'banded body' }] },
     { type: 'paragraph', content: [{ type: 'text', text: 'plain' }] },
   ],
 };
 const bandedHeader: N = {
   type: 'doc',
   content: [
-    { type: 'paragraph', attrs: { backgroundColor: '#CCFFFF', borderBottom: '3pt solid #0066CC', textAlign: 'right' }, content: [{ type: 'text', text: 'Letterhead' }] },
+    { type: 'paragraph', attrs: { backgroundColor: '#CCFFFF', borderBottom: '3pt solid #0066CC', borderPadding: 3, textAlign: 'right' }, content: [{ type: 'text', text: 'Letterhead' }] },
   ],
 };
 
@@ -40,10 +40,12 @@ describe('paragraph background + borders round trip', () => {
     expect(bp.attrs.borderRight).toMatch(/1pt solid #00B050/i);
     expect(bp.attrs.borderBottom).toMatch(/4pt solid #0066CC/i);
     expect(bp.attrs.borderLeft).toMatch(/1pt solid #00B050/i);
+    expect(bp.attrs.borderPadding).toBe(4);
 
     const hp = back.header.content[0];
     expect(hp.attrs.backgroundColor?.toUpperCase()).toBe('#CCFFFF');
     expect(hp.attrs.borderBottom).toMatch(/3pt solid #0066CC/i);
+    expect(hp.attrs.borderPadding).toBe(3);
     expect(hp.attrs.textAlign).toBe('right');
   });
 
@@ -58,10 +60,12 @@ describe('paragraph background + borders round trip', () => {
     expect(bp.attrs.borderTop).toMatch(/2pt solid #FF0000/i);
     expect(bp.attrs.borderBottom).toMatch(/4pt solid #0066CC/i);
     expect(bp.attrs.borderLeft).toMatch(/1pt solid #00B050/i);
+    expect(bp.attrs.borderPadding).toBe(4);
 
     const hp = back.header.content[0];
     expect(hp.attrs.backgroundColor?.toUpperCase()).toBe('#CCFFFF');
     expect(hp.attrs.borderBottom).toMatch(/3pt solid #0066CC/i);
+    expect(hp.attrs.borderPadding).toBe(3);
   });
 
   it('treats a rule-only header/footer paragraph as non-empty (so it renders/exports)', () => {

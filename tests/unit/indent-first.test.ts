@@ -22,12 +22,17 @@ const doc: N = {
     P('narrowed', { indent: 1, indentRight: 3 }),
     // Out into both margins, as a page-wide picture's paragraph does.
     P('bleeding', { indent: -2.54, indentRight: -2.54 }),
+    // Past a cell's padding and edge, which LibreOffice draws too.
+    { type: 'table', content: [{ type: 'tableRow', content: [{ type: 'tableCell', attrs: { colspan: 1, rowspan: 1 },
+      content: [P('cell', { indent: -0.6, indentRight: -0.6 })] }] }] },
+    P('after'),
   ],
 };
 
 const margins = { top: 2, bottom: 2, left: 2, right: 2 };
 const firstOf = (d: N, i: number) => d.content[i].attrs?.indentFirst ?? null;
 const rightOf = (d: N, i: number) => d.content[i].attrs?.indentRight ?? null;
+const cellIndents = (d: N) => { const a = d.content[5].content[0].content[0].content[0].attrs; return [a?.indent, a?.indentRight]; };
 
 describe('first-line indent', () => {
   it('round-trips through ODF', async () => {
@@ -44,6 +49,7 @@ describe('first-line indent', () => {
     expect(rightOf(back, 3)).toBe(3);
     expect(rightOf(back, 0)).toBe(null);
     expect([back.content[4].attrs?.indent, rightOf(back, 4)]).toEqual([-2.54, -2.54]);
+    expect(cellIndents(back)).toEqual([-0.6, -0.6]);
   });
 
   it('round-trips through DOCX', async () => {
@@ -60,6 +66,7 @@ describe('first-line indent', () => {
     expect(rightOf(back, 3)).toBe(3);
     expect(rightOf(back, 0)).toBe(null);
     expect([back.content[4].attrs?.indent, rightOf(back, 4)]).toEqual([-2.54, -2.54]);
+    expect(cellIndents(back)).toEqual([-0.6, -0.6]);
   });
 });
 

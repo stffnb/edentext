@@ -16,13 +16,14 @@
   } from '../styles/outlineNumbering';
   import { listStyleMarginCm, MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
   import { listStyleNameAt } from '../editor/extensions/listStyle';
-  import { formatOrdinal, orderedTypeDef, orderedTypesFor } from '../utils/orderedListTypes';
+  import { formatOrdinal, orderedTypeDef, orderedTypesFor, sampleDir } from '../utils/orderedListTypes';
+  import { ltrIsland } from '../i18n/shortcut';
   import { BULLET_TYPES } from '../utils/bulletListTypes';
   import {
     TABLE_REGIONS, previewCellCss, previewTextCss,
     type TableLook, type TableRegion, type TableRegionProps, type TableStyle,
   } from '../styles/tableStyles';
-  import { borderAttrValue, parseBorderAttr } from '../editor/extensions/tableCellBorders';
+  import { borderAttrValue, parseBorderAttr, type BorderLine } from '../editor/extensions/tableCellBorders';
   import { blockStyleName } from '../editor/extensions/paragraphStyle';
   import { activeCharacterStyle } from '../editor/extensions/characterStyle';
   import { activeTableStyle } from '../editor/extensions/tableStyle';
@@ -189,14 +190,19 @@
   // The manager edits the definition, not one table's options, so it shows every area.
   const ALL_AREAS = Object.fromEntries(TABLE_REGIONS.map(r => [r, true])) as TableLook;
 
-  // The border select and its color picker split one canonical '<W>pt solid #RRGGBB'.
+  // The border select and its color picker split one canonical '<W>pt <line> #RRGGBB';
+  // an edit keeps the side's line.
   function borderParts(value: string | null | undefined) {
     const b = parseBorderAttr(value ?? null);
     if (b === 'none') return { width: 'none', color: '#000000' };
     return b ? { width: String(b.widthPt), color: b.color } : { width: '0.5', color: '#000000' };
   }
-  const borderValue = (width: string, color: string) =>
-    width === 'none' ? 'none' : borderAttrValue({ widthPt: parseFloat(width), color });
+  const lineOf = (value: string | null | undefined) => {
+    const b = parseBorderAttr(value ?? null);
+    return b && b !== 'none' ? b.line : 'solid';
+  };
+  const borderValue = (width: string, color: string, line: BorderLine = 'solid') =>
+    width === 'none' ? 'none' : borderAttrValue({ widthPt: parseFloat(width), color, line });
 
   // A paragraph style's rules: none unless the style or a parent draws one.
   const PARA_BORDERS = [
@@ -210,7 +216,8 @@
   // 'none' only overrules a parent's rule; without one the style just has none.
   function paraBorder(key: ParaBorder, width: string, color: string) {
     const parentHas = !!style.parent && !!resolveStyle(sheet, style.parent, family).para[key];
-    edit({ para: { [key]: width === 'none' ? (parentHas ? 'none' : undefined) : `${parseFloat(width)}pt solid ${color.toUpperCase()}` } });
+    const line = lineOf(resolved.para[key]);
+    edit({ para: { [key]: width === 'none' ? (parentHas ? 'none' : undefined) : borderValue(width, color, line) } });
   }
 
   function depthOf(s: Style): number {
@@ -467,7 +474,7 @@
 <dialog
   class="styles"
   bind:this={dialogEl}
-  onclose={() => (open = false)}
+  onclose={() => !dialogEl?.open && (open = false)}
   onclick={(e) => { if (e.target === dialogEl) open = false; }}
   aria-label={t().styles.title}
 >
@@ -507,7 +514,7 @@
               {#if editingName === s.name}
                 <input
                   class="entry rename"
-                  style="padding-left: {indentRem(0)}rem"
+                  style="padding-inline-start: {indentRem(0)}rem"
                   value={s.name}
                   use:focusSelect
                   onblur={(e) => editingName === s.name && commitRename(s.name, e.currentTarget.value)}
@@ -520,7 +527,7 @@
                 <button
                   class="entry"
                   class:active={current === s.name}
-                  style="padding-left: {indentRem(0)}rem"
+                  style="padding-inline-start: {indentRem(0)}rem"
                   title={styleLabel(s.name)}
                   onclick={() => select(s.name)}
                   ondblclick={() => { if (!s.builtin) editingName = s.name; }}
@@ -538,7 +545,7 @@
               {#if editingName === s.name}
                 <input
                   class="entry rename"
-                  style="padding-left: {indentRem(0)}rem"
+                  style="padding-inline-start: {indentRem(0)}rem"
                   value={s.name}
                   use:focusSelect
                   onblur={(e) => editingName === s.name && commitRename(s.name, e.currentTarget.value)}
@@ -551,7 +558,7 @@
                 <button
                   class="entry"
                   class:active={current === s.name}
-                  style="padding-left: {indentRem(0)}rem"
+                  style="padding-inline-start: {indentRem(0)}rem"
                   title={styleLabel(s.name)}
                   onclick={() => select(s.name)}
                   ondblclick={() => { if (!s.builtin) editingName = s.name; }}
@@ -568,7 +575,7 @@
             {#if editingName === s.name}
               <input
                 class="entry rename"
-                style="padding-left: {indentRem(depth)}rem"
+                style="padding-inline-start: {indentRem(depth)}rem"
                 value={s.name}
                 use:focusSelect
                 onblur={(e) => editingName === s.name && commitRename(s.name, e.currentTarget.value)}
@@ -582,7 +589,7 @@
               <button
                 class="entry"
                 class:active={current === s.name}
-                style="padding-left: {indentRem(depth)}rem"
+                style="padding-inline-start: {indentRem(depth)}rem"
                 title={styleLabel(s.name)}
                 onclick={() => select(s.name)}
                 ondblclick={() => { if (!s.builtin) editingName = s.name; }}
@@ -601,7 +608,7 @@
       <div class="fields">
         {#if outlineTab}
           <!-- Each level's label as the headings show it, from the definition's start values. -->
-          <div class="preview list-preview">
+          <div class="preview list-preview" dir="ltr">
             {#each Array(MAX_OUTLINE_LEVELS) as _, i}
               {#if outlineLabelAt(i + 1)}
                 <div class="lp-line" style="margin-left: {i * 0.6}rem">
@@ -653,7 +660,7 @@
           </div>
         {:else if isList}
           <!-- One sample line per defined level; the box scrolls past six of them. -->
-          <div class="preview list-preview">
+          <div class="preview list-preview" dir="ltr">
             {#each lStyle.levels as _, d}
               <div class="lp-line" style="margin-left: {Math.max(0, listStyleMarginCm(lStyle, d + 1)) * 0.28}rem">
                 <span class="lp-marker" class:right={lStyle.levels[d]?.markerAlign === 'right'}>{levelMarker(lStyle, d + 1)}</span>
@@ -709,7 +716,7 @@
                   onchange={(e) => editLevel({ numType: e.currentTarget.value as ListLevelStyle['numType'] })}
                 >
                   {#each orderedTypesFor(scripts, lLevel.numType, true).filter((o) => !o.multilevel) as o}
-                    <option value={o.key}>{o.preview} — {o.label}</option>
+                    <option value={o.key}>{sampleDir(o) === 'ltr' ? `${ltrIsland(o.preview)} — ${ltrIsland(o.label)}` : `${o.preview} — ${o.label}`}</option>
                   {/each}
                 </select>
               </label>
@@ -744,7 +751,7 @@
         {:else}
         {#if isTable}
           <!-- The same grid the toolbar gallery shows, from the same resolver. -->
-          <div class="preview table-preview">
+          <div class="preview table-preview" dir="ltr">
             <table aria-hidden="true">
               <tbody>
                 {#each Array(PREVIEW_ROWS) as _, r}
@@ -793,7 +800,7 @@
         {:else}
         <!-- Fallbacks are the page's own defaults, not `inherit`: an inline `inherit`
              would beat the .preview rule and pull in the dialog's UI text color. -->
-        <div class="preview" style="
+        <div class="preview" dir="ltr" style="
           font-family: {resolved.text.fontFamily ?? 'var(--font-serif)'};
           font-size: {Math.min(24, resolved.text.fontSizePt ?? 12)}pt;
           font-weight: {resolved.text.bold ? 700 : 400};
@@ -912,7 +919,7 @@
         <div class="row">
           {#each BORDER_FIELDS as { key, label }}
             {@render borderField(label(), key, borderParts(borderOf(key)),
-              (w, c) => editTable({ [key]: borderValue(w, c) }), () => editTable({ [key]: null }))}
+              (w, c) => editTable({ [key]: borderValue(w, c, lineOf(borderOf(key))) }), () => editTable({ [key]: null }))}
           {/each}
         </div>
         {/if}
@@ -1072,7 +1079,7 @@
     display: flex;
     flex-direction: column;
     width: 14rem;
-    border-right: 1px solid var(--color-border);
+    border-inline-end: 1px solid var(--color-border);
   }
   /* Five tabs in two full rows: three over two, as one row would break the words. */
   .family {
@@ -1121,11 +1128,11 @@
     color: var(--color-text);
     font: inherit;
     font-size: 0.85rem;
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
   .entry:hover { background: var(--color-btn-hover); }
-  .rename { padding-right: 0.6rem; outline: 1px solid var(--color-primary); outline-offset: -1px; }
+  .rename { padding-inline-end: 0.6rem; outline: 1px solid var(--color-primary); outline-offset: -1px; }
   .entry.active { background: var(--color-primary); color: white; }
   /* A long name is clipped instead of overflowing the pane (the title shows it in full). */
   .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

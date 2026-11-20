@@ -2,6 +2,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { resolveStyle } from '../styles/styleSheet';
 import { styleSheet } from '../styles/sheet.svelte';
 import { blockStyleName } from '../editor/extensions/paragraphStyle';
+import { formatDecimal, parseDecimal } from '../i18n/number';
 
 // The size a block renders its unmarked text at — what the toolbar's size box must show.
 
@@ -17,23 +18,25 @@ export const CJK_FONT_SIZES: [string, number][] = [
   ['六号', 7.5], ['小六', 6.5], ['七号', 5.5], ['八号', 5],
 ];
 
-// What the size box shows for a 'Npt' size: its Chinese name when `named`, else the number.
+// What the size box shows for a 'Npt' size: its Chinese name when `named`, else the number
+// with the UI language's decimal separator.
 export function sizeLabel(size: string, named: boolean): string {
   const pt = parseFloat(size);
-  return (named && CJK_FONT_SIZES.find(([, p]) => p === pt)?.[0]) || size.replace('pt', '');
+  return (named && CJK_FONT_SIZES.find(([, p]) => p === pt)?.[0])
+    || (/^[\d.]+pt$/.test(size) ? formatDecimal(pt) : size.replace('pt', ''));
 }
 
 // The size box's list: the named sizes first when `named`, then the points.
 export function sizeMenu(named: boolean): [string, number][] {
-  return [...(named ? CJK_FONT_SIZES : []), ...FONT_SIZES.map((s): [string, number] => [String(s), s])];
+  return [...(named ? CJK_FONT_SIZES : []), ...FONT_SIZES.map((s): [string, number] => [formatDecimal(s), s])];
 }
 
-// A typed size in points: a Chinese name or a number (comma decimals, one decimal kept,
+// A typed size in points: a Chinese name or a number (either decimal separator, one decimal kept,
 // since imported files carry fractional sizes); null when out of range or unreadable.
 export function parseSize(text: string): number | null {
   const named = CJK_FONT_SIZES.find(([n]) => n === text.trim());
   if (named) return named[1];
-  const pt = Math.round(parseFloat(text.replace(',', '.')) * 10) / 10;
+  const pt = Math.round(parseDecimal(text) * 10) / 10;
   return pt >= 1 && pt <= 400 ? pt : null;
 }
 

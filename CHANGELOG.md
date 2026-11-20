@@ -2,6 +2,82 @@
 
 <!-- Newest release first. New entries go here: ## [x.y.z] — YYYY-MM-DD -->
 
+## [0.15.0] — 2026-11-18
+
+EdenText 0.15.0 brings dictation, coloured text effects and npm packages. Text can be spoken into
+the document through the browser's speech recognition or a speech server of your own. Outline,
+shadow and glow take their own colour and size and are kept in DOCX. The editor can be installed
+from npm and served from your own server, with an element and a React component for the host page.
+An installation can preset the AI assistant and the speech server, and a security review tightened
+the desktop app, the embed mode and the importers. Many fixes bring tables, lists, borders and
+headers closer to how LibreOffice lays out the same file.
+
+### Added
+- **Dictation**: a microphone button in both toolbars inserts spoken text at the cursor, with
+  spoken punctuation and commands in German and English
+  - it uses the browser's speech recognition, on the device where the browser offers that, or a
+    speech server of your own; Settings ▸ Editing holds the server's address, model and a
+    connection test
+  - audio leaves the device only after you agree, and the language menu names the spoken language
+  - the desktop app asks for the microphone
+- **Text effects**: outline, shadow, glow and relief on text, from a gallery or set one by one
+  with their own colour, weight, size and transparency. DOCX keeps them as Word's text effects,
+  ODT keeps what the format has a place for, and a notice after saving names the rest
+- **npm packages** for running the editor from your own server: `@edentext/app` holds the built
+  editor with `edentext-copy` (`--languages`, `--origins`) and a Vite plugin, and `@edentext/embed`
+  holds the helper, an `<eden-text>` element and a React component. The helper and the tooling
+  are under the MIT License, so a host page can use them whatever its own license
+- `embed.config.json` beside `index.html` lists the pages that may drive an embedded editor, and
+  the embed helper explains why the editor did not start
+- **Presets from the installation**: `edentext.config.json` beside `index.html` presets the AI
+  assistant's provider, address and model and the speech server; an embedding host can pass the
+  same. The Docker image and the Helm chart set them from the environment and proxy both services
+  on the app's own origin
+- **Tables**: a cell's text can be turned a quarter, bottom to top or top to bottom, and a table
+  can be kept with the paragraph after it
+- **Text boxes** can run their text bottom to top
+- **Headers and footers** draw the border, padding and background an ODT file gives their area
+- A section's own first-page layout is saved to ODT, and a run's own letter spacing is kept in
+  both formats
+- **Tabs dialog**: Clear All, and a double-click on a tab stop in the ruler opens the dialog
+- The line-width box takes a typed value, and every custom colour is chosen in the same picker
+  in every browser
+
+### Fixed
+- Tables: exact and minimum row heights, cell backgrounds from the row, table and table style,
+  double, dotted and dashed borders, and a kept table taller than a page are laid out as in
+  LibreOffice
+- Lists: restarts, start values, label hang and suffix, Symbol bullets and a right indent are
+  read as the file has them
+- Paragraph boxes: consecutive paragraphs with the same borders form one box, and a style's
+  unjoined boxes are kept in both formats
+- Footnotes stay above their page's footer, and a column section ends above its page's footnotes
+- A run keeps its own font, italic, automatic colour and link underline where it leaves its style
+- A missing font falls back to its base family, a missing monospace font to a fixed-pitch face
+- A run of paragraphs kept with the next moves to the next page whole
+- A layout that cannot settle stops instead of spinning, and the busy indicator clears
+- In the page grid the view stays where you scrolled while the layout settles, and the scroll
+  ends with the last row
+- Long documents scroll faster in Safari, and comment buttons and the language menu leave the
+  view where it was
+- New and New from Template reset the document language and the page direction, and opening a
+  file resets what it leaves out
+- A dialog shown again right after closing is no longer cancelled
+- A copy of the app without some languages' dictionaries no longer alerts when a document is in
+  one of them; its words simply go unchecked
+- The word offer appears only where nothing follows on the line
+- A native-speaker pass over all program languages and READMEs
+
+### Security
+- The desktop app serves only its own folder, answers only its own pages, grants only document
+  files and the permissions it uses, and ships with hardened Electron fuses
+- Embed mode sends a Content-Security-Policy and takes messages only from allowed hosts; host
+  settings and an embedded AI setup are not stored
+- Importers enforce zip limits on inflated data and let only colours into the document's CSS
+- The AI assistant settles other people's changes only after asking, and warns about an
+  unencrypted model address
+- TipTap 3.33 with the paste XSS fix, and a `SECURITY.md` for private reports
+
 ## [0.14.0] — 2026-11-07
 
 EdenText 0.14.0 brings a new navigator and an embed mode. The navigator docks on either side and
