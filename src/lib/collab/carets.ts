@@ -98,7 +98,9 @@ export function caretsPlugin(awareness: Awareness, look: Look): Plugin {
           } catch { continue; }
           reg.set(tag + m.id, new Highlight(range));
           shown.add(tag + m.id);
-          rules.push(`::highlight(${tag}${m.id}) { background-color: ${who.color}70; }`);
+          // The text keeps its effects under the tint, as under every highlight (editor.css).
+          rules.push(`::highlight(${tag}${m.id}) { background-color: ${who.color}70; color: var(--fx-fill, currentcolor); }`,
+            `:root[data-highlight-shadows] ::highlight(${tag}${m.id}) { text-shadow: var(--fx-text-shadow, none); }`);
         }
         for (const [id, el] of carets) if (!seen.has(id)) { el.remove(); carets.delete(id); }
         for (const name of named) if (!shown.has(name)) reg?.delete(name);
