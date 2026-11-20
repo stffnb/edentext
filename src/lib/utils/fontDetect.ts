@@ -25,6 +25,7 @@ export const CANDIDATE_FONTS: readonly string[] = [
   'Segoe UI Semibold', 'Segoe UI Semilight', 'Segoe UI Symbol',
   'SimHei', 'SimSun', 'Sitka', 'Sylfaen', 'Symbol', 'Webdings', 'Wingdings',
   'Yu Gothic', 'Yu Gothic UI', 'Yu Mincho', 'BIZ UDGothic', 'BIZ UDMincho',
+  'Batang', 'Gulim', 'Dotum', 'Gungsuh',
 
   // MS Office bundled
   'Bahnschrift', 'Bookshelf Symbol 7', 'Ebrima', 'MS Reference Sans Serif',
@@ -64,7 +65,8 @@ export const CANDIDATE_FONTS: readonly string[] = [
   'Linux Biolinum', 'Linux Libertine', 'Noto Sans', 'Noto Serif',
   'Noto Mono', 'Source Sans Pro', 'Source Serif Pro', 'Source Code Pro',
   'Noto Sans CJK SC', 'Noto Sans CJK TC', 'Noto Serif CJK SC',
-  'Noto Serif CJK TC', 'Source Han Sans SC', 'WenQuanYi Micro Hei',
+  'Noto Serif CJK TC', 'Noto Sans CJK KR', 'Noto Serif CJK KR',
+  'Source Han Sans SC', 'WenQuanYi Micro Hei',
   'Ubuntu', 'Ubuntu Mono', 'Ubuntu Condensed',
   'Open Sans', 'Roboto', 'Roboto Condensed', 'Roboto Mono', 'Roboto Slab',
   'Lato', 'Inter', 'Fira Sans', 'Fira Code', 'Fira Mono',

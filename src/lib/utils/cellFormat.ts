@@ -86,7 +86,7 @@ export function cellFormatFromSpec(spec: FormatSpec): CellFormat {
 // language. The bundled dictionaries are en-US and de-DE; a neighbour keeps its own.
 const CURRENCY_BY_REGION: Record<string, string> = {
   US: 'USD', DE: 'EUR', AT: 'EUR', FR: 'EUR', IT: 'EUR', GB: 'GBP', CH: 'CHF', RU: 'RUB', UA: 'UAH',
-  CN: 'CNY', TW: 'TWD', HK: 'HKD', MO: 'MOP', SG: 'SGD', JP: 'JPY', ID: 'IDR', EG: 'EGP', SA: 'SAR',
+  CN: 'CNY', TW: 'TWD', HK: 'HKD', MO: 'MOP', SG: 'SGD', JP: 'JPY', ID: 'IDR', EG: 'EGP', SA: 'SAR', PL: 'PLN', KR: 'KRW',
 };
 
 export function localeCurrency(lang: string): string {

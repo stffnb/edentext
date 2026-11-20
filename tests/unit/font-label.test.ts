@@ -16,6 +16,8 @@ describe('font labels', () => {
     await setLocale('ja');
     expect(fontLabel('MS Mincho')).toBe('ＭＳ 明朝');
     expect(fontLabel('SimSun')).toBe('SimSun');
+    await setLocale('ko');
+    expect(fontLabel('Malgun Gothic')).toBe('맑은 고딕');
     await setLocale('de');
     expect(fontLabel('SimSun')).toBe('SimSun');
   });
