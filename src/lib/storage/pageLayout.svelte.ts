@@ -74,9 +74,9 @@ export function layoutValues(): PageLayout {
   return Object.fromEntries(KEYS.map((k) => [k, layout[k]])) as PageLayout;
 }
 
-/** Puts back every field of a snapshot `layoutValues` took. */
-export function setLayout(values: PageLayout): void {
-  for (const k of KEYS) set(k, values[k]);
+/** Puts back every field a snapshot holds; one it lacks (a session's older state) stays. */
+export function setLayout(values: Partial<PageLayout>): void {
+  for (const k of KEYS) if (values[k] !== undefined) set(k, values[k]);
 }
 
 /** A new document's page setup. */

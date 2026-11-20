@@ -333,7 +333,7 @@
   const layoutWatch = watchState('layout', () => editor, layoutFields, (to) => {
     setLayout(to as ReturnType<typeof layoutFields>);
     // The section count is the snapshot's; each keeps the zones it has now.
-    extraHfSections = (to.sections as HfSet[]).map((set, i) => {
+    extraHfSections = ((to.sections ?? extraHfSections) as HfSet[]).map((set, i) => {
       const zones = extraHfSections[i] ?? EMPTY_HF_SET;
       return { ...set, ...Object.fromEntries(HF_ZONE_KEYS.map((k) => [k, zones[k]])) } as HfSet;
     });
