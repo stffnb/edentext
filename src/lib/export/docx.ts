@@ -1195,7 +1195,8 @@ function floatingFor(wrap: string, offsetCm: number | null, offsetYCm: number | 
     horizontalPosition,
     verticalPosition,
     wrap: { type: TextWrappingType.SQUARE, side },
-    allowOverlap: false,
+    // Frames forbidden to overlap are pushed apart sideways by Word, out of the text area.
+    allowOverlap: true,
     margins,
   };
 }
@@ -1795,7 +1796,7 @@ function textBoxDrawingXml(box: TextBoxDocx, index: number, parts: TxbxParts): s
     : `<wp:align>${align}</wp:align>`;
   return (
     `<w:drawing><wp:anchor ${WP_NS} distT="${emu(box.dist?.top ?? 0)}" distB="${emu(box.dist?.bottom ?? 0)}" distL="${emu(box.dist?.left ?? 0)}" distR="${emu(box.dist?.right ?? 0)}"` +
-    ` simplePos="0" relativeHeight="${box.zIndex}" behindDoc="${box.wrap === 'through' && !box.inFront ? 1 : 0}" locked="0" layoutInCell="1" allowOverlap="${box.wrap === 'through' ? 1 : 0}">` +
+    ` simplePos="0" relativeHeight="${box.zIndex}" behindDoc="${box.wrap === 'through' && !box.inFront ? 1 : 0}" locked="0" layoutInCell="1" allowOverlap="${box.wrap === 'topBottom' ? 0 : 1}">` +
     `<wp:simplePos x="0" y="0"/>` +
     `<wp:positionH relativeFrom="margin">${posH}</wp:positionH>` +
     (box.fromPage || box.fromBody
