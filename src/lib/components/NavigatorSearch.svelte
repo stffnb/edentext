@@ -67,7 +67,7 @@
     <div class="row indent">
       <button class="opt" class:on={matchCase} aria-pressed={matchCase} title={t().findReplace.matchCase} onclick={toggle(() => (matchCase = !matchCase))}>Aa</button>
       <button class="opt word" class:on={wholeWord} aria-pressed={wholeWord} title={t().findReplace.wholeWord} onclick={toggle(() => (wholeWord = !wholeWord))}>W</button>
-      <button class="opt" class:on={useRegex} aria-pressed={useRegex} title={t().findReplace.regex} onclick={toggle(() => (useRegex = !useRegex))}>.*</button>
+      <button class="opt" class:on={useRegex} aria-pressed={useRegex} title={t().findReplace.regex} onclick={toggle(() => (useRegex = !useRegex))} dir="ltr">.*</button>
       <span class="gap"></span>
       <button class="text" disabled={!count} title={t().findReplace.replaceCurrent} onclick={() => editor?.commands.replaceCurrent(replaceText)}>{t().findReplace.replace}</button>
       <button class="text" disabled={!count} title={t().findReplace.replaceAllTitle} onclick={() => editor?.commands.replaceAll(replaceText)}>{t().findReplace.all}</button>
