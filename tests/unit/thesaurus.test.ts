@@ -76,6 +76,20 @@ describe('synonyms', () => {
     expect(await synonyms('ar', 'جَمِيل')).toEqual(await synonyms('ar', 'جميل'));
   });
 
+  it('looks an Arabic word up past its article and proclitics, and gives them back', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(readFileSync('public/thesaurus/ar/ar.txt'), { status: 200 })));
+
+    const bare = (await synonyms('ar', 'فاسد')).flat();
+    expect(bare).toContain('رديء');
+    expect((await synonyms('ar', 'الفاسد')).flat()).toEqual(bare.map((w) => (w.includes(' ') || w.startsWith('ال') ? w : 'ال' + w)));
+    expect((await synonyms('ar', 'وفاسد')).flat()).toContain('ورديء');
+    expect((await synonyms('ar', 'بالفاسد')).flat()).toContain('بالرديء');
+    expect((await synonyms('ar', 'للفاسد')).flat()).toContain('للرديء');
+    expect((await synonyms('ar', 'والفاسد')).flat()).toContain('والرديء');
+    // A stem the thesaurus does not know is no match, however the word begins.
+    expect(await synonyms('ar', 'بلابلابل')).toEqual([]);
+  });
+
   it('loads Portuguese data and preserves accented synonyms', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(readFileSync('public/thesaurus/pt/pt.txt'), { status: 200 })));
 

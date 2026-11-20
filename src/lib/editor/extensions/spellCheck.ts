@@ -53,21 +53,40 @@ export function checkLangOf(node: PmNode): DocumentLanguage | undefined {
 // The misspelled words under `node`, whose content starts at `base` in the document.
 // A block's language holds for its own text only, never for the blocks after it.
 function wordDecos(node: PmNode, base: number, decos: Decoration[], outerLang?: DocumentLanguage): void {
-  let blockLang = outerLang;
+  const check = (block: PmNode, start: number) => {
+    const blockLang = checkLangOf(block) ?? outerLang;
+    // Adjacent text nodes are one text, so a word split by a formatting change is one word;
+    // anything else inline (a break, a field, a note anchor, struck text) ends a word.
+    let text = '', from = 0;
+    const runs: { at: number; code: DocumentLanguage | undefined }[] = [];
+    const flush = () => {
+      WORD_RE.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = WORD_RE.exec(text)) !== null) {
+        const word = m[0];
+        // The word is in the language of the run it starts in.
+        let r = runs.length - 1;
+        while (r > 0 && runs[r].at > m.index) r--;
+        const code = runs[r]?.code;
+        // East Asian script is in the asian language, which no dictionary here checks.
+        if (word.length < 2 || ASIAN_SCRIPT_RE.test(word) || spellController.check(word, code)) continue;
+        decos.push(Decoration.inline(from + m.index, from + m.index + word.length, { class: 'pm-spell-error' }));
+      }
+      text = '';
+      runs.length = 0;
+    };
+    block.forEach((child, offset) => {
+      if (!child.isText || child.marks.some((m) => m.type.name === 'deletion')) { flush(); return; }
+      if (!text) from = start + offset;
+      runs.push({ at: text.length, code: langOf(child, blockLang) });
+      text += child.text ?? '';
+    });
+    flush();
+  };
+  if (node.isTextblock) check(node, base);
   node.descendants((child, pos) => {
-    if (child.isTextblock) blockLang = checkLangOf(child) ?? outerLang;
-    if (!child.isText || child.marks.some((m) => m.type.name === 'deletion')) return;
-    const text = child.text ?? '';
-    const code = langOf(child, blockLang);
-    WORD_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = WORD_RE.exec(text)) !== null) {
-      const word = m[0];
-      // East Asian script is in the asian language, which no dictionary here checks.
-      if (word.length < 2 || ASIAN_SCRIPT_RE.test(word) || spellController.check(word, code)) continue;
-      const from = base + pos + m.index;
-      decos.push(Decoration.inline(from, from + word.length, { class: 'pm-spell-error' }));
-    }
+    if (child.isTextblock) check(child, base + pos + 1);
+    return !child.isText;
   });
 }
 

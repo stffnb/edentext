@@ -121,6 +121,17 @@ export function westernCode(main: DocumentLanguage, other: string | null): Docum
   return (west && codeForTag(west)) || main;
 }
 
+// The dictionary for the Latin words of a complex-script document: its other slot's, else
+// the UI language where that is a western one with a dictionary, else English — as
+// LibreOffice's western default follows the locale. Only checked with, never saved.
+export function spellAltCode(main: DocumentLanguage, other: string | null, uiLocale: string): DocumentLanguage | null {
+  if (main === NO_LANGUAGE || !isComplexTag(tagForLanguage(main) ?? main)) return codeForTag(other ?? '');
+  const own = other && langSlot(other) === 'west' ? codeForTag(other) : null;
+  if (own) return own;
+  const ui = codeForTag(uiLocale) ?? uiLocale;
+  return hasDictionary(ui) && langSlot(ui) === 'west' ? ui : 'en';
+}
+
 // A file's main language from its three defaults. Both word processors write an asian and
 // a complex default into every file whatever it is written in, so one of those leads only
 // where most of the text is in its script, or where there is no western one. The other

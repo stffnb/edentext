@@ -10,7 +10,7 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import { TextSelection } from '@tiptap/pm/state';
 import { Language } from '../../src/lib/editor/extensions/language';
 import { uniformLanguage } from '../../src/lib/utils/selectionFormat';
-import { documentLangs, pickDocumentLanguage, westernCode } from '../../src/lib/storage/documentLanguage';
+import { documentLangs, pickDocumentLanguage, spellAltCode, westernCode } from '../../src/lib/storage/documentLanguage';
 
 type N = any;
 
@@ -93,5 +93,14 @@ describe('the document pair', () => {
     expect(westernCode('zh-CN', null)).toBe('zh-CN');
     expect(westernCode('de', 'zh-CN')).toBe('de');
     expect(documentLangs('zh-CN', 'en-US')).toEqual({ west: 'en-US', asian: 'zh-CN' });
+  });
+
+  it('checks the Latin words of an Arabic document in a western language, the file left alone', () => {
+    expect(spellAltCode('ar', 'de-DE', 'ar')).toBe('de');
+    expect(spellAltCode('ar', null, 'fr')).toBe('fr');
+    expect(spellAltCode('ar', null, 'ar')).toBe('en');
+    expect(spellAltCode('ar', 'zh-CN', 'zh-Hans')).toBe('en');
+    expect(spellAltCode('de', 'ar-SA', 'de')).toBe('ar');
+    expect(spellAltCode('de', null, 'de')).toBeNull();
   });
 });

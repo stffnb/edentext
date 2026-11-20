@@ -67,7 +67,7 @@
   import { loadFoldMarks, saveFoldMarks } from './lib/storage/foldMarks';
   import { printMarkup } from './lib/storage/printMarkup.svelte';
   import { commentsInPane, changesInPane, markupAttrs, markupView, setShowChanges, setShowComments } from './lib/storage/markup.svelte';
-  import { codeForTag, defaultDocumentLanguage, isAsianTag, loadDocumentLanguage, numberingScripts, loadDocumentLanguageOther, pickDocumentLanguage, saveDocumentLanguage, saveDocumentLanguageOther, odfFromLanguage, tagForLanguage, westernCode, type DocumentLanguage } from './lib/storage/documentLanguage';
+  import { defaultDocumentLanguage, isAsianTag, loadDocumentLanguage, numberingScripts, loadDocumentLanguageOther, pickDocumentLanguage, saveDocumentLanguage, saveDocumentLanguageOther, odfFromLanguage, tagForLanguage, westernCode, spellAltCode, type DocumentLanguage } from './lib/storage/documentLanguage';
   import { setTableLanguage } from './lib/storage/tableOptions.svelte';
   import { spellController } from './lib/spell/controller';
   import { setGrammarLanguage } from './lib/spell/grammar.svelte';
@@ -539,7 +539,7 @@
   $effect(() => {
     saveDocumentLanguage(documentLanguage);
     saveDocumentLanguageOther(documentLanguageOther);
-    void spellController.setLanguage(westernCode(documentLanguage, documentLanguageOther), codeForTag(documentLanguageOther ?? ''));
+    void spellController.setLanguage(westernCode(documentLanguage, documentLanguageOther), spellAltCode(documentLanguage, documentLanguageOther, locale()));
     // A table cell's number is read and written in the document's language.
     setTableLanguage(documentLanguage);
     setGrammarLanguage(westernCode(documentLanguage, documentLanguageOther));
