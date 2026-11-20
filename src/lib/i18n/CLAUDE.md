@@ -58,4 +58,4 @@ a regional variant follows the catalog's region (`pt.ts` is European Portuguese)
 
 **Style names** — `styleLabel` shows a built-in style's name from `styleNames` (tables:
 `table.styleNames`); the sheet, comparisons and files always keep the stored English name.
-`number.ts`: a measurement field shows its number with the UI language's decimal separator (`formatDecimal`, `Intl` on `localeTag`) and reads either separator (`parseDecimal`); unit names (`cm`, `pt`) are not translated, as in no catalog yet.
+`number.ts`: a measurement field shows its number with the UI language's decimal separator (`formatDecimal`, `Intl` on `localeTag`) and reads either separator and Arabic-Indic or Persian digits (`parseDecimal`) — every typed measurement and size box, a native `type=number` field excepted; unit names (`cm`, `pt`) are not translated, as in no catalog yet.

@@ -8,6 +8,7 @@
   import { formatOrdinal } from '../utils/orderedListTypes';
   import { ltrIsland } from '../i18n/shortcut';
   import { styleLabel, t } from '../i18n/i18n.svelte';
+  import { parseDecimal } from '../i18n/number';
 
   // LibreOffice's Tools ▸ Footnotes and Endnotes. Everything here round-trips to ODF's
   // text:notes-configuration + style:footnote-sep and to Word's w:footnotePr.
@@ -42,7 +43,7 @@
     setNoteSettings({ ...s, separator: { ...s.separator, ...next } });
   }
 
-  const num = (e: Event) => parseFloat((e.currentTarget as HTMLInputElement).value.replace(',', '.'));
+  const num = (e: Event) => parseDecimal((e.currentTarget as HTMLInputElement).value);
 </script>
 
 <dialog

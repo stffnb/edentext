@@ -858,7 +858,7 @@ const ko: Messages = {
     none: '테두리 없음',
     lineWidth: '선 두께',
     lineColor: '선 색',
-    pt: (w: number) => `${w}pt`,
+    pt: (w: number | string) => `${w}pt`,
   },
   spell: {
     suggestions: '맞춤법 제안',

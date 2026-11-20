@@ -3,6 +3,7 @@
 // Framework-free, so a toolbar reads them inside its own reactive wrapper.
 
 import type { EditorState } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import { blockFontSize, DEFAULT_FONT_SIZE, type SizedBlock } from './fontSize';
 import { resolveStyle } from '../styles/styleSheet';
 import { styleSheet } from '../styles/sheet.svelte';
@@ -109,6 +110,26 @@ export function uniformBlockAttr<T>(state: EditorState, attr: string, fallback: 
   if (state.selection.empty) return (state.selection.$head.parent.attrs[attr] ?? fallback) as T;
   const v = uniform<T>(state, (node) => (attr in node.attrs ? ((node.attrs[attr] ?? fallback) as T) : undefined));
   return v === undefined ? fallback : v;
+}
+
+// The edge each selected paragraph is drawn at: its own alignment, else its style's, else
+// the side its direction starts at (read off the rendered block, which knows the page's,
+// a table's and its own direction). '' where the paragraphs differ.
+export function shownAlign(view: EditorView): string {
+  const { from, to } = view.state.selection;
+  let value: string | undefined;
+  let mixed = false;
+  view.state.doc.nodesBetween(from, to, (node, pos) => {
+    if (mixed || (node.type.name !== 'paragraph' && node.type.name !== 'heading')) return;
+    let v = (node.attrs.textAlign as string | null) ?? resolveStyle(styleSheet(), blockStyleName(node)).para.textAlign;
+    if (!v) {
+      const el = view.nodeDOM(pos);
+      v = el instanceof Element && getComputedStyle(el).direction === 'rtl' ? 'right' : 'left';
+    }
+    if (value === undefined) value = v;
+    else if (value !== v) mixed = true;
+  });
+  return mixed ? '' : (value ?? 'left');
 }
 
 // The language in force across the selection, read like the font: East Asian text its

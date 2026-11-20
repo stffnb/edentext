@@ -7,7 +7,9 @@ export function formatDecimal(v: number, digits = 2, ui: string = locale()): str
   return new Intl.NumberFormat(localeTag(ui), { maximumFractionDigits: digits, useGrouping: false }).format(v);
 }
 
-// A typed measurement, with either separator (or the Arabic one) whatever the UI language.
+// A typed measurement, with either separator (or the Arabic one) and Latin, Arabic-Indic
+// or Persian digits, whatever the UI language.
 export function parseDecimal(raw: string): number {
-  return parseFloat(raw.trim().replace(/[,٫]/, '.'));
+  const latin = raw.trim().replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (c) => String(c.charCodeAt(0) & 0xf));
+  return parseFloat(latin.replace(/[,٫]/, '.'));
 }

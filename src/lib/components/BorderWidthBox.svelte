@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { t, startEdge, uiRtl } from '../i18n/i18n.svelte';
+  import { formatDecimal, parseDecimal } from '../i18n/number';
 
   // A line width in pt as the font size box offers one: the presets in a list, or a
   // typed value. With `none`, 'none' (an empty field or 0) draws no line; without it a
@@ -19,7 +20,7 @@
   let box = $state<HTMLElement>();
   let pos = $state({ top: 0, left: 0, width: 0 });
 
-  const label = (w: string) => (w === 'none' ? t().styles.noBorder : unit === '%' ? `${Number(w)}%` : t().borders.pt(Number(w)));
+  const label = (w: string) => (w === 'none' ? t().styles.noBorder : unit === '%' ? `${formatDecimal(Number(w))}%` : t().borders.pt(formatDecimal(Number(w))));
   const tip = $derived(title ?? t().borders.lineWidth);
 
   // A committed width shows until `value` moves: a caller may pass it back a frame later.
@@ -32,8 +33,8 @@
 
   // An empty field or 0 is no line where there is one; anything unreadable keeps the width.
   function parse(input: string): string {
-    const s = input.trim().replace(',', '.');
-    const pt = s === '' ? 0 : parseFloat(s);
+    const s = input.trim();
+    const pt = s === '' ? 0 : parseDecimal(s);
     if (!Number.isFinite(pt)) return shown;
     if (pt <= 0 && (s === '' || min > 0)) return none ? 'none' : shown;
     const steps = unit === '%' ? 1 : 20;

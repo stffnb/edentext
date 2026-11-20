@@ -1,11 +1,12 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import {
-    dateFormatsFor, TIME_FORMATS, defaultDateFormat, DEFAULT_TIME_FORMAT,
+    dateFormatsFor, timeFormatsFor, defaultDateFormat, DEFAULT_TIME_FORMAT,
     renderFormat, localeTag, type DtFormat,
   } from '../utils/dateTime';
   import { shortcutHint } from '../editor/shortcuts';
   import { t, locale } from '../i18n/i18n.svelte';
+  import { popover } from './ribbon/menu.svelte';
 
   let {
     editor,
@@ -61,23 +62,10 @@
     open = false;
   }
 
-  // On both the trigger and the dropdown: opening leaves the focus on the trigger,
-  // which sits outside the dropdown and never delivers the key to it.
-  function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') open = false;
-  }
-
-  function dtPickerClickOutside(node: HTMLElement) {
-    function handler(e: MouseEvent) {
-      if (!node.contains(e.target as Node)) open = false;
-    }
-    window.addEventListener('mousedown', handler);
-    return { destroy() { window.removeEventListener('mousedown', handler); } };
-  }
 </script>
 
-<div class="dt-picker" use:dtPickerClickOutside>
-  <button class="dt-trigger" onclick={openPicker} onkeydown={onKeydown} title={t().dateTime.insert} aria-pressed={open} aria-label={t().dateTime.insert}>
+<div class="dt-picker" use:popover={() => (open = false)}>
+  <button class="dt-trigger" onclick={openPicker} title={t().dateTime.insert} aria-pressed={open} aria-label={t().dateTime.insert}>
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <rect x="1.75" y="2.75" width="12.5" height="11.5" rx="1.5" stroke="currentColor" />
       <path d="M1.75 5.5h12.5M4.5 1.5v2.5M11.5 1.5v2.5" stroke="currentColor" stroke-linecap="round" />
@@ -87,7 +75,7 @@
   </button>
 
   {#if open}
-    <div class="dt-dropdown" role="dialog" onkeydown={onKeydown} aria-label={t().dateTime.insert} tabindex="-1">
+    <div class="dt-dropdown" role="dialog" aria-label={t().dateTime.insert} tabindex="-1">
       <div class="dt-columns">
         <div class="dt-col">
           <div class="dt-section-label">{t().dateTime.dateHeading}</div>
@@ -97,7 +85,7 @@
         </div>
         <div class="dt-col">
           <div class="dt-section-label">{t().dateTime.timeHeading}</div>
-          {#each TIME_FORMATS as fmt (fmt.key)}
+          {#each timeFormatsFor(locale()) as fmt (fmt.key)}
             <button class="dt-cell" onclick={() => pick(fmt)} title={fmt.key === DEFAULT_TIME_FORMAT ? shortcutHint('timeField') : undefined}>{sample(fmt)}</button>
           {/each}
         </div>

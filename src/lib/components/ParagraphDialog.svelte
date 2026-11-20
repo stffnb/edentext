@@ -1,7 +1,7 @@
 <script lang="ts">
   import { formatDecimal, parseDecimal } from '../i18n/number';
   import type { Editor } from '@tiptap/core';
-  import { uniformBlockAttr } from '../utils/selectionFormat';
+  import { shownAlign, uniformBlockAttr } from '../utils/selectionFormat';
   import { t } from '../i18n/i18n.svelte';
   import { blockFontSize } from '../utils/fontSize';
 
@@ -33,9 +33,9 @@
 
   const ALIGNS = ['left', 'center', 'right', 'justify'] as const;
 
-  // An unset paragraph renders left, so that's what the box shows; a selection
-  // mixing two alignments still reads '' and leaves it blank.
-  let align = $derived(read('textAlign', 'left'));
+  // The edge the paragraph is drawn at, an unset one's included; a selection mixing two
+  // alignments reads '' and leaves the box blank.
+  let align = $derived(tick < 0 || !editor ? 'left' : shownAlign(editor.view));
   // '' is the page's own direction (LibreOffice's "Use superordinate object settings").
   let dir = $derived(read<string | null>('dir', null) ?? '');
   let indent = $derived(read('indent', 0));

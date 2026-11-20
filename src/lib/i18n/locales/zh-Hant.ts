@@ -857,7 +857,7 @@ const zhHant: Messages = {
     none: '無框線',
     lineWidth: '線條寬度',
     lineColor: '線條色彩',
-    pt: (w: number) => `${w} 點`,
+    pt: (w: number | string) => `${w} 點`,
   },
   spell: {
     suggestions: '拼字建議',

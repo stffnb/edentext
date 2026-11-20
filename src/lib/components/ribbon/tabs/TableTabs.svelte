@@ -22,6 +22,7 @@
   import type { CellFormat } from '../../../utils/cellFormat';
   import { numberRecognition, setNumberRecognition } from '../../../storage/tableOptions.svelte';
   import { t } from '../../../i18n/i18n.svelte';
+  import { formatDecimal, parseDecimal } from '../../../i18n/number';
 
   // Word splits the table's contextual tabs in two: Design paints it, Layout
   // changes its shape.
@@ -225,9 +226,9 @@
                 <input
                   type="text"
                   inputmode="decimal"
-                  value={padding[sideIndex(i)]}
+                  value={formatDecimal(padding[sideIndex(i)])}
                   onchange={(e) => {
-                    const v = parseFloat((e.currentTarget as HTMLInputElement).value.replace(',', '.'));
+                    const v = parseDecimal((e.currentTarget as HTMLInputElement).value);
                     if (!isNaN(v)) setPaddingEdge(sideIndex(i), Math.max(0, v));
                   }}
                 />

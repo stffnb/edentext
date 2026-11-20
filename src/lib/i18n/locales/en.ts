@@ -868,7 +868,7 @@ const en = {
     none: 'No border',
     lineWidth: 'Line width',
     lineColor: 'Line color',
-    pt: (w: number) => `${w}pt`,
+    pt: (w: number | string) => `${w}pt`,
   },
   spell: {
     suggestions: 'Spelling suggestions',

@@ -856,7 +856,7 @@ const zhHans: Messages = {
     none: '无框线',
     lineWidth: '线宽',
     lineColor: '线条颜色',
-    pt: (w: number) => `${w} 磅`,
+    pt: (w: number | string) => `${w} 磅`,
   },
   spell: {
     suggestions: '拼写建议',

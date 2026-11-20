@@ -10,7 +10,8 @@
   import ColorPicker from '../../ColorPicker.svelte';
   import ParagraphBorderPicker from '../../ParagraphBorderPicker.svelte';
   import { anchored, clickOutside, isMenuOpen, toggleMenu, closeMenu } from '../menu.svelte';
-  import { uniformMarkColor, uniformBlockAttr, hasAsianLanguage } from '../../../utils/selectionFormat';
+  import { formatDecimal } from '../../../i18n/number';
+  import { uniformMarkColor, uniformBlockAttr, hasAsianLanguage, shownAlign } from '../../../utils/selectionFormat';
   import { stepFontSize } from '../../../editor/extensions/shortcuts';
 
   import { clipboardCommand, readClipboard } from '../../../editor/contextMenuItems';
@@ -76,7 +77,7 @@
   // On a heading the button stands for the chapter numbering it switches.
   let isOrderedList = $derived(tick >= 0 && !!editor
     && (editor.isActive('orderedList') || (inChapterHeading(editor.state) && !outlineIsEmpty(sheet.outline))));
-  let align = $derived(tick >= 0 && editor ? (['left', 'center', 'right', 'justify'].find((a) => editor!.isActive({ textAlign: a })) ?? '') : '');
+  let align = $derived(tick >= 0 && editor ? shownAlign(editor.view) : '');
 
   let fontColor = $derived(tick >= 0 && editor ? uniformMarkColor(editor.state, 'textStyle') : null);
   let highlight = $derived(tick >= 0 && editor ? uniformMarkColor(editor.state, 'highlight') : null);
@@ -137,7 +138,7 @@
   function lineHeightLabel(v: string): string {
     if (v === '1') return t().toolbarExpanded.lineSingle;
     if (v === '2') return t().toolbarExpanded.lineDouble;
-    return v;
+    return formatDecimal(Number(v));
   }
 
   let currentBulletChar = $derived.by<string | null>(() => {

@@ -869,7 +869,7 @@ const el: Messages = {
     none: "Χωρίς περίγραμμα",
     lineWidth: "Πάχος γραμμής",
     lineColor: "Χρώμα γραμμής",
-    pt: (w: number) => `${w} στ.`,
+    pt: (w: number | string) => `${w} στ.`,
   },
   spell: {
     suggestions: "Προτάσεις ορθογραφίας",

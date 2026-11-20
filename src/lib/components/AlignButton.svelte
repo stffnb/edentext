@@ -3,6 +3,7 @@
   import { t } from '../i18n/i18n.svelte';
   import AlignIcon from './AlignIcon.svelte';
   import { shortcutHint, type ShortcutId } from '../editor/shortcuts';
+  import { shownAlign } from '../utils/selectionFormat';
 
   import type { AlignValue } from './AlignIcon.svelte';
 
@@ -15,23 +16,7 @@
   };
 
   // Empty string when the selection spans paragraphs/headings with different alignments.
-  let currentAlign = $derived.by<AlignValue | ''>(() => {
-    if (tick < 0 || !editor) return 'left';
-    const { from, to, empty } = editor.state.selection;
-    if (empty) {
-      return (editor.state.selection.$head.parent.attrs.textAlign ?? 'left') as AlignValue;
-    }
-    let a: AlignValue | undefined;
-    let mixed = false;
-    editor.state.doc.nodesBetween(from, to, (node) => {
-      if (mixed) return;
-      if (node.type.name !== 'paragraph' && node.type.name !== 'heading') return;
-      const v = (node.attrs.textAlign ?? 'left') as AlignValue;
-      if (a === undefined) a = v;
-      else if (a !== v) mixed = true;
-    });
-    return mixed ? '' : (a ?? 'left');
-  });
+  let currentAlign = $derived<AlignValue | ''>(tick < 0 || !editor ? 'left' : (shownAlign(editor.view) as AlignValue | ''));
 
   let alignOpen = $state(false);
 

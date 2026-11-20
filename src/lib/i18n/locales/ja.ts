@@ -858,7 +858,7 @@ const ja: Messages = {
     none: '枠なし',
     lineWidth: '線の太さ',
     lineColor: '線の色',
-    pt: (w: number) => `${w}pt`,
+    pt: (w: number | string) => `${w}pt`,
   },
   spell: {
     suggestions: 'スペルの候補',

@@ -854,7 +854,7 @@ const it: Messages = {
     none: 'Nessun bordo',
     lineWidth: 'Spessore linea',
     lineColor: 'Colore linea',
-    pt: (w: number) => `${String(w).replace('.', ',')} pt`,
+    pt: (w: number | string) => `${w} pt`,
   },
   spell: {
     suggestions: 'Suggerimenti ortografici',

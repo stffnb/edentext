@@ -5,7 +5,7 @@ import { formatDecimal, parseDecimal } from '../../src/lib/i18n/number';
 import { unzipSync, strFromU8 } from 'fflate';
 import { importDocx } from '../../src/lib/import/docx';
 import { buildDocx } from '../../src/lib/export/docx';
-import { findFormat, renderFormat, docxPicture, defaultDateFormat, dateFormatsFor, localeTag, DEFAULT_DATE_FORMAT } from '../../src/lib/utils/dateTime';
+import { findFormat, renderFormat, docxPicture, defaultDateFormat, dateFormatsFor, timeFormatsFor, localeTag, DEFAULT_DATE_FORMAT } from '../../src/lib/utils/dateTime';
 import { docxOf } from '../docxFixture';
 
 const BODY = `<w:p>
@@ -79,6 +79,15 @@ describe('the date formats a UI language is offered', () => {
     expect(defaultDateFormat('ar')).toBe(dateFormatsFor('ar')[0].key);
   });
 
+  it('writes the day-period marker of the language where its clock puts it', () => {
+    const pm = new Date(2026, 10, 20, 13, 40);
+    const twelve = (l: string) => timeFormatsFor(l).filter((f) => f.tokens.some((t) => t.t === 'ampm'))[0];
+    expect(['en', 'ar', 'ko', 'zh-Hans'].map((l) => renderFormat(twelve(l), pm, localeTag(l)))).toEqual(['1:40 PM', '1:40 م', '오후 1:40', '下午1:40']);
+    expect(renderFormat(twelve('es'), pm, 'es-ES')).toMatch(/^1:40 p\.\s?m\.$/);
+    expect(docxPicture(twelve('ko'))).toBe('AM/PM h:mm');
+    expect(findFormat(twelve('ko').key)!.tokens).toEqual(twelve('ko').tokens);
+  });
+
   it('keeps a form with Latin letters among its literals a live picture', () => {
     const es = dateFormatsFor('es').find((f) => renderFormat(f, day, 'es-ES') === '20 de noviembre de 2026')!;
     expect(findFormat(es.key)!.tokens).toEqual(es.tokens);
@@ -93,6 +102,6 @@ describe('measurements in the UI language', () => {
     expect(formatDecimal(1.25, 2, 'en')).toBe('1.25');
     expect(formatDecimal(0.5, 2, 'ar')).toBe('0.5');
     expect(formatDecimal(1234.5, 2, 'fr')).toBe('1234,5');
-    expect(['1,25', '1.25', '1٫25', ' 1,25 '].map(parseDecimal)).toEqual([1.25, 1.25, 1.25, 1.25]);
+    expect(['1,25', '1.25', '1٫25', ' 1,25 ', '١٫٢٥', '۱,۲۵'].map(parseDecimal)).toEqual([1.25, 1.25, 1.25, 1.25, 1.25, 1.25]);
   });
 });

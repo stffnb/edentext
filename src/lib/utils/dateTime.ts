@@ -171,6 +171,23 @@ export function dateFormatsFor(locale: string): DtFormat[] {
   return [...own, ...numeric].filter((f) => !seen.has(f.key) && !!seen.add(f.key));
 }
 
+// The time formats the picker offers in a UI language: where its clock leads with the
+// day-period marker (오전 1:40, 下午1:40, as LibreOffice's ko-KR formats do), the 12-hour
+// forms put the marker first, with the language's own gap; the catalog's otherwise.
+export function timeFormatsFor(locale: string): DtFormat[] {
+  const parts = new Intl.DateTimeFormat(localeTag(locale), { hour: 'numeric', minute: '2-digit', hour12: true })
+    .formatToParts(new Date(2026, 0, 5, 1, 40));
+  const at = parts.findIndex((p) => p.type === 'dayPeriod');
+  const hour = parts.findIndex((p) => p.type === 'hour');
+  if (at < 0 || at > hour) return TIME_FORMATS;
+  const gap = parts.slice(at + 1, hour).map((p) => p.value).join('');
+  return TIME_FORMATS.map((f) => {
+    if (f.tokens[f.tokens.length - 1].t !== 'ampm') return f;
+    const tokens: Token[] = [{ t: 'ampm' }, ...(gap ? [{ t: 'lit' as const, s: gap }] : []), ...f.tokens.slice(0, -2)];
+    return { key: docxPicture({ key: '', kind: 'time', tokens }), kind: 'time' as const, tokens };
+  });
+}
+
 // Match a parsed token sequence back to a catalog format key (for import). Returns
 // null when no format renders exactly these tokens — the caller then keeps the value
 // as plain text rather than a field.
@@ -211,10 +228,17 @@ export function renderFormat(fmt: DtFormat, d: Date, locale: string): string {
       case 'hour12': { const h = ((d.getHours() + 11) % 12) + 1; out += tok.pad ? pad2(h) : String(h); break; }
       case 'minute': out += pad2(d.getMinutes()); break;
       case 'second': out += pad2(d.getSeconds()); break;
-      case 'ampm': out += d.getHours() < 12 ? 'AM' : 'PM'; break;
+      case 'ampm': out += dayPeriod(d, locale); break;
     }
   }
   return out;
+}
+
+// The locale's own morning/afternoon marker (오전, ص, a. m.), as both word processors
+// render an AM/PM field; the file keeps the standard token.
+function dayPeriod(d: Date, locale: string): string {
+  const part = new Intl.DateTimeFormat(locale, { hour: 'numeric', hour12: true }).formatToParts(d).find((p) => p.type === 'dayPeriod');
+  return part?.value ?? (d.getHours() < 12 ? 'AM' : 'PM');
 }
 
 // --- ODF values --------------------------------------------------------------

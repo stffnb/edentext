@@ -14,6 +14,7 @@
   import TextEffectsIcon from './TextEffectsIcon.svelte';
   import { hasAsianLanguage, uniformBlockAttr } from '../../utils/selectionFormat';
   import { t } from '../../i18n/i18n.svelte';
+  import { formatDecimal, parseDecimal } from '../../i18n/number';
   import { withShortcut } from '../../i18n/shortcut';
   import { shortcutHint, type ShortcutId } from '../../editor/shortcuts';
 
@@ -74,13 +75,12 @@
   function lineHeightLabel(v: string): string {
     if (v === '1') return t().toolbarExpanded.lineSingle;
     if (v === '2') return t().toolbarExpanded.lineDouble;
-    return v;
+    return formatDecimal(Number(v));
   }
 
   // Empty is the style's own spacing (null); otherwise points.
   function setSpace(axis: 'before' | 'after', raw: string) {
-    const trimmed = raw.trim().replace(',', '.');
-    const v = trimmed === '' ? null : parseFloat(trimmed);
+    const v = raw.trim() === '' ? null : parseDecimal(raw);
     if (v !== null && (isNaN(v) || v < 0 || v > 200)) return;
     const chain = editor?.chain().focus();
     (axis === 'before' ? chain?.setSpaceBefore(v) : chain?.setSpaceAfter(v))?.run();
@@ -143,12 +143,12 @@
     <div class="im-grid">
       <label class="im-field">
         <span>{t().toolbarExpanded.spaceBefore} (pt)</span>
-        <input type="text" inputmode="decimal" placeholder={t().toolbarExpanded.spacingDefault} value={spaceBefore ?? ''}
+        <input type="text" inputmode="decimal" placeholder={t().toolbarExpanded.spacingDefault} value={typeof spaceBefore === 'number' ? formatDecimal(spaceBefore) : ''}
           onchange={(e) => setSpace('before', e.currentTarget.value)} />
       </label>
       <label class="im-field">
         <span>{t().toolbarExpanded.spaceAfter} (pt)</span>
-        <input type="text" inputmode="decimal" placeholder={t().toolbarExpanded.spacingDefault} value={spaceAfter ?? ''}
+        <input type="text" inputmode="decimal" placeholder={t().toolbarExpanded.spacingDefault} value={typeof spaceAfter === 'number' ? formatDecimal(spaceAfter) : ''}
           onchange={(e) => setSpace('after', e.currentTarget.value)} />
       </label>
     </div>

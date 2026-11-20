@@ -13,6 +13,7 @@
   import TableStylePicker from './TableStylePicker.svelte';
   import { numberRecognition, setNumberRecognition } from '../storage/tableOptions.svelte';
   import { t } from '../i18n/i18n.svelte';
+  import { formatDecimal, parseDecimal } from '../i18n/number';
 
   let {
     editor,
@@ -56,7 +57,7 @@
   let captionOpen = $state(false);
 
   function setPaddingEdge(i: number, raw: string) {
-    const v = parseFloat(raw.replace(',', '.'));
+    const v = parseDecimal(raw);
     if (!editor || !padding || isNaN(v)) return;
     const next = [...padding] as CellPadding;
     next[i] = Math.max(0, v);
@@ -366,7 +367,7 @@
         {#each (['top', 'right', 'bottom', 'left'] as const) as edge, i}
           <label class="im-field">
             <span>{t().toolbarExpanded.margins[edge]}</span>
-            <input type="text" inputmode="decimal" value={padding[sideIndex(i)]} onchange={(e) => setPaddingEdge(sideIndex(i), e.currentTarget.value)} />
+            <input type="text" inputmode="decimal" value={formatDecimal(padding[sideIndex(i)])} onchange={(e) => setPaddingEdge(sideIndex(i), e.currentTarget.value)} />
           </label>
         {/each}
       </div>
