@@ -5,6 +5,7 @@
   import PaneResize from './PaneResize.svelte';
   import PaneOptions, { layoutItems } from './PaneOptions.svelte';
   import { t, locale } from '../i18n/i18n.svelte';
+  import { nameIsland } from '../i18n/shortcut';
   import { localeTag } from '../utils/dateTime';
   import { clampPaneWidth, paneLayout, setPaneLayout, REVIEW_PANE_WIDTH, type PaneLayout, dockSide } from '../storage/panes.svelte';
   import { collabView } from '../collab/appSession.svelte';
@@ -112,18 +113,18 @@
     <p class="intro">{t().collab.chat.intro}</p>
     {#each lines as line, i (line.key)}
       {#if line.kind === 'presence'}
-        <p class="presence">{line.came ? t().collab.chat.came(line.names) : t().collab.chat.went(line.names)}{line.reading ? ` · ${t().collab.readingAlong}` : ''}</p>
+        <p class="presence">{line.came ? t().collab.chat.came(line.names.map(nameIsland)) : t().collab.chat.went(line.names.map(nameIsland))}{line.reading ? ` · ${t().collab.readingAlong}` : ''}</p>
       {:else}
         <div class="message" class:own={line.own} class:mention={line.mention} class:follows={follows(i)} data-who={line.own ? 'me' : line.who} title={line.mention ? t().collab.chat.mentionsYou : undefined}>
           {#if !follows(i)}
             <div class="meta">
-              <span class="name" style:--who={line.color || null}>{line.name || '?'}</span>
+              <span class="name" style:--who={line.color || null}><bdi>{line.name || '?'}</bdi></span>
               {#if line.own}<span class="tag">({t().collab.you})</span>{/if}
               {#if line.reading}<span class="tag">· {t().collab.readingAlong}</span>{/if}
               <time datetime={new Date(line.at).toISOString()}>{time.format(line.at)}</time>
             </div>
           {/if}
-          <p class="text" dir="auto">{#each runs(line.text) as r}{#if r.href}<a href={r.href} target="_blank" rel="noopener noreferrer">{r.text}</a>{:else}{r.text}{/if}{/each}</p>
+          <p class="text" dir="auto">{#each runs(line.text) as r}{#if r.href}<a href={r.href} dir="ltr" target="_blank" rel="noopener noreferrer">{r.text}</a>{:else}{r.text}{/if}{/each}</p>
         </div>
       {/if}
     {/each}
@@ -169,7 +170,8 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 6px 6px 10px;
+    padding: 6px;
+    padding-inline-start: 10px;
     border-bottom: 1px solid var(--color-border);
   }
   .title { flex: 1; font-weight: 600; }
@@ -187,7 +189,7 @@
   .log { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 10px; font-size: var(--pane-text); }
   .log:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
   .intro { margin: 0 0 10px; color: var(--color-text-muted); }
-  .message.mention { border-left: 3px solid var(--color-primary); padding-left: 6px; }
+  .message.mention { border-inline-start: 3px solid var(--color-primary); padding-inline-start: 6px; }
   .presence { margin: 6px 0; color: var(--color-text-muted); font-style: italic; text-align: center; }
 
   .message { margin-top: 8px; padding: 4px 8px; border-radius: 6px; }

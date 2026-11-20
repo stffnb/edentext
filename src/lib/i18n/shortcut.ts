@@ -21,3 +21,9 @@ export function withShortcut(combo: string): string {
 export function ltrIsland(text: string): string {
   return isRtlLocale(locale()) && text ? `\u2066${text}\u2069` : text;
 }
+
+// A name (or other user text) inside a catalog sentence, as `<bdi>` isolates it in markup:
+// under a right-to-left UI it takes its own direction, so a Latin name's punctuation stays put.
+export function nameIsland(text: string): string {
+  return isRtlLocale(locale()) && text ? `\u2068${text}\u2069` : text;
+}
