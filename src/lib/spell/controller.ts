@@ -1,6 +1,6 @@
 import { loadChecker, type Checker } from './dictionary';
-import { isComplexTag, loadDocumentLanguage, type DocumentLanguage } from '../storage/documentLanguage';
-import { COMPLEX_SCRIPT_RE } from '../utils/script';
+import { langSlot, loadDocumentLanguage, type DocumentLanguage, type LangSlot } from '../storage/documentLanguage';
+import { ASIAN_SCRIPT_RE, COMPLEX_SCRIPT_RE } from '../utils/script';
 import { volatile } from '../storage/docScope';
 
 const PERSONAL_KEY = 'edentext-user-dictionary';
@@ -19,12 +19,16 @@ function loadPersonal(): string[] {
   }
 }
 
+// The slot whose language a word is written in, by its script.
+const slotOf = (word: string): LangSlot =>
+  ASIAN_SCRIPT_RE.test(word) ? 'asian' : COMPLEX_SCRIPT_RE.test(word) ? 'complex' : 'west';
+
 // Singleton bridging the static TipTap extension to the live spell state. The
 // extension subscribes and re-decorates whenever the active checker, personal
 // dictionary, or ignore set changes.
 class SpellController {
   private code: DocumentLanguage = '';
-  // The document's language of the other script kind: the western one beside Arabic.
+  // The document's language of another script: the western one beside Arabic, Korean beside English.
   private alt: DocumentLanguage | null = null;
   // One checker per language the document actually uses; loadChecker caches the fetch.
   private readonly checkers = new Map<DocumentLanguage, Checker | null>();
@@ -84,27 +88,30 @@ class SpellController {
     return this.checkers.get(c);
   }
 
-  // A word is checked in a language of its own script: Latin text in an Arabic paragraph
-  // takes the document's western language, and goes unchecked where there is none.
+  // A word is checked in a language of its own script: Latin text in an Arabic or Korean
+  // paragraph takes the document's western language, and goes unchecked where there is none.
   private checkerOfScript(word: string, code: DocumentLanguage | undefined): Checker | null | undefined {
-    const complex = COMPLEX_SCRIPT_RE.test(word);
-    const own = [code || this.code, this.code, this.alt].find((c) => c && isComplexTag(c) === complex);
+    const slot = slotOf(word);
+    const own = [code || this.code, this.code, this.alt].find((c) => c && langSlot(c) === slot);
     return own ? this.checkerFor(own) : null;
   }
 
   check(word: string, code?: DocumentLanguage): boolean {
     const checker = this.checkerOfScript(word, code);
     if (!checker) return true;
-    if (this.ignored.has(word)) return true;
+    // A personal word is asked here too: a word list that converts its input (Korean, to
+    // jamo) never finds a word added at run time.
+    if (this.ignored.has(word) || this.personal.has(word)) return true;
     return checker.correct(word);
   }
 
-  // The share of `words` a language's dictionary knows; undefined while it loads.
+  // The share of `words` a language's dictionary knows; undefined while it loads. A word
+  // in another script is not its to know: the Korean word list accepts any Latin word.
   knownShare(words: string[], code: DocumentLanguage): number | undefined {
     const checker = this.checkerFor(code);
     if (checker === undefined) return undefined;
     if (!checker || !words.length) return 0;
-    return words.filter((w) => checker.correct(w)).length / words.length;
+    return words.filter((w) => slotOf(w) === langSlot(code) && checker.correct(w)).length / words.length;
   }
 
   suggest(word: string, code?: DocumentLanguage): string[] {

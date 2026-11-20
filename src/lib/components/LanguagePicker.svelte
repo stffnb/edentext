@@ -69,7 +69,7 @@
     const { $from: from, $to: to } = editor.state.selection;
     if (from.parent !== to.parent || from.parent.attrs.lang || atCursor !== tagForLanguage(value)) return undefined;
     const code = detectLanguage(from.parent);
-    return code ? findLanguage(code) : undefined;
+    return code && code !== value ? findLanguage(code) : undefined;
   });
 
   // The box's text: the detected language, several languages, one we have no dictionary for (still named, so it

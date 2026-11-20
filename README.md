@@ -69,7 +69,7 @@ EdenText is a web-based, powerful word processor for everything from quick notes
 - **Review tools** — track changes and threaded comments with margin balloons,
   comparing and merging with another file,
   printable markup, spell check (English, German, Spanish, French, Italian, Portuguese,
-  Greek, Russian, Ukrainian, Polish, Indonesian and Arabic), synonyms (all of these but Greek), grammar check
+  Greek, Russian, Ukrainian, Polish, Indonesian, Arabic and Korean), synonyms (all of these but Greek and Korean), grammar check
   (English)
 - **Optional AI assistant** — with your own provider or a local model;
   answers questions about the document and edits it as tracked changes. Can be
@@ -258,4 +258,4 @@ Document Foundation. `.docx` and `.odt` are supported for interoperability.*
     the dictionary for the browser's language and the fonts a page shows; the Greek and
     Ukrainian dictionaries add ~2.5 and ~1.5 MB. Everything else is fetched and kept for
     offline use once it is needed; all fonts, dictionaries and thesauri together are
-    ~20 MB, or ~28 MB with the English grammar check.
+    ~22 MB, or ~31 MB with the English grammar check.

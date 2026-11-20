@@ -19,6 +19,8 @@ export interface LanguageDef {
   // A language the document can be in without a bundled dictionary: the picker offers
   // it so the file names its language, spell-checking simply stays off.
   noDict?: true;
+  // A dictionary without synonym data under public/thesaurus/.
+  noThesaurus?: true;
 }
 
 // The languages a document can be in. Most carry a bundled Hunspell dictionary — add one
@@ -40,7 +42,7 @@ export const LANGUAGES: LanguageDef[] = [
   { code: 'id', label: 'Bahasa Indonesia', odf: { language: 'id', country: 'ID' } },
   { code: 'ar', label: 'العربية', odf: { language: 'ar', country: 'SA' } },
   { code: 'ja-JP', label: '日本語', odf: { language: 'ja', country: 'JP' }, noDict: true },
-  { code: 'ko-KR', label: '한국어', odf: { language: 'ko', country: 'KR' }, noDict: true },
+  { code: 'ko-KR', label: '한국어', odf: { language: 'ko', country: 'KR' }, noThesaurus: true },
   { code: 'zh-CN', label: '中文（简体）', odf: { language: 'zh', country: 'CN' }, noDict: true },
   { code: 'zh-TW', label: '中文（繁體）', odf: { language: 'zh', country: 'TW' }, noDict: true },
 ];
@@ -61,6 +63,11 @@ export function hasGrammar(code: DocumentLanguage): boolean {
 export function hasDictionary(code: DocumentLanguage): boolean {
   const def = findLanguage(code);
   return !!def && def.noDict !== true;
+}
+
+// Synonym data exists for every dictionary but the ones that say otherwise.
+export function hasThesaurus(code: DocumentLanguage): boolean {
+  return hasDictionary(code) && findLanguage(code)?.noThesaurus !== true;
 }
 
 // East Asian text: both formats keep its language in their own asian slot, and both word
@@ -96,9 +103,10 @@ export function isCyrillicTag(tag: string): boolean {
 }
 
 // The scripts whose list numbering the menus offer: the UI's and the document's.
-export function numberingScripts(main: DocumentLanguage, other: string | null, uiLocale: string): { cjk: boolean; cyrillic: boolean; arabic: boolean } {
+export function numberingScripts(main: DocumentLanguage, other: string | null, uiLocale: string): { cjk: boolean; cyrillic: boolean; arabic: boolean; korean: boolean } {
   const tags = [tagForLanguage(main) ?? '', other ?? '', uiLocale];
-  return { cjk: tags.some(isAsianTag), cyrillic: tags.some(isCyrillicTag), arabic: tags.some(isArabicTag) };
+  const korean = tags.some((t) => /^ko\b/i.test(t.trim()));
+  return { cjk: tags.some(isAsianTag), cyrillic: tags.some(isCyrillicTag), arabic: tags.some(isArabicTag), korean };
 }
 
 // A tag's slot: a paragraph or a run carries a western and an asian language, and a tag
@@ -127,6 +135,8 @@ export function westernCode(main: DocumentLanguage, other: string | null): Docum
 // the UI language where that is a western one with a dictionary, else English — as
 // LibreOffice's western default follows the locale. Only checked with, never saved.
 export function spellAltCode(main: DocumentLanguage, other: string | null, uiLocale: string): DocumentLanguage | null {
+  // An East Asian document checks in its western language first: its own is the other one.
+  if (isAsianTag(tagForLanguage(main) ?? '')) return westernCode(main, other) === main ? null : main;
   if (main === NO_LANGUAGE || !isComplexTag(tagForLanguage(main) ?? main)) return codeForTag(other ?? '');
   const own = other && langSlot(other) === 'west' ? codeForTag(other) : null;
   if (own) return own;

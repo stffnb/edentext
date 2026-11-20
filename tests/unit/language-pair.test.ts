@@ -103,4 +103,10 @@ describe('the document pair', () => {
     expect(spellAltCode('de', 'ar-SA', 'de')).toBe('ar');
     expect(spellAltCode('de', null, 'de')).toBeNull();
   });
+
+  it('keeps an East Asian document\'s own dictionary beside its western one', () => {
+    expect(spellAltCode('ko-KR', 'en-US', 'ko')).toBe('ko-KR');
+    expect(spellAltCode('ko-KR', null, 'ko')).toBeNull();
+    expect(spellAltCode('de', 'ko-KR', 'de')).toBe('ko-KR');
+  });
 });

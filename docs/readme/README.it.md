@@ -69,8 +69,8 @@ EdenText è un elaboratore di testi potente che funziona nel browser, adatto a t
   citazioni e bibliografia, indice analitico, formule (LaTeX)
 - **Strumenti di revisione**: revisioni e commenti con risposte nelle aree commenti a margine,
   confronto e unione con un altro file, stampa delle revisioni, controllo ortografico
-  (inglese, tedesco, spagnolo, francese, italiano, portoghese, greco, russo, ucraino, polacco, indonesiano e arabo),
-  sinonimi (in tutte queste lingue tranne il greco), controllo grammaticale (inglese)
+  (inglese, tedesco, spagnolo, francese, italiano, portoghese, greco, russo, ucraino, polacco, indonesiano, arabo e coreano),
+  sinonimi (in tutte queste lingue tranne il greco e il coreano), controllo grammaticale (inglese)
 - **Assistente IA facoltativo**: con il provider che preferisci o con un modello locale;
   risponde a domande sul documento e lo modifica sotto forma di revisioni. Si può
   disattivare; le richieste vanno direttamente al provider, senza passare da un server EdenText
@@ -255,5 +255,5 @@ Foundation. I formati `.docx` e `.odt` sono supportati per garantire l'interoper
     correttore ortografico con il dizionario per la lingua del browser e i caratteri
     usati nella pagina; i dizionari greco e ucraino aggiungono circa 2,5 e 1,5 MB.
     Tutto il resto viene scaricato e conservato per l'uso offline la prima volta che
-    serve; tutti i caratteri, i dizionari e i thesauri insieme occupano circa 20 MB,
-    o circa 28 MB con il controllo grammaticale per l'inglese.
+    serve; tutti i caratteri, i dizionari e i thesauri insieme occupano circa 22 MB,
+    o circa 31 MB con il controllo grammaticale per l'inglese.

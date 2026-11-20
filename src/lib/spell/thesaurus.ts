@@ -1,4 +1,4 @@
-import { NO_LANGUAGE, hasDictionary, type DocumentLanguage } from '../storage/documentLanguage';
+import { NO_LANGUAGE, hasThesaurus, type DocumentLanguage } from '../storage/documentLanguage';
 import { reportLoadFailure, fetchAsset, NotServed } from '../utils/loadFailure';
 import { t } from '../i18n/i18n.svelte';
 
@@ -30,7 +30,7 @@ function fetchThesaurus(code: string): Promise<string | null> {
 
 // Loads on first use (a few MB) and stays for the session, like the dictionary.
 export function loadThesaurus(code: DocumentLanguage): Promise<string | null> {
-  if (!code || code === NO_LANGUAGE || !hasDictionary(code)) return Promise.resolve(null);
+  if (!code || code === NO_LANGUAGE || !hasThesaurus(code)) return Promise.resolve(null);
   let pending = cache.get(code);
   if (!pending) cache.set(code, (pending = fetchThesaurus(code)));
   return pending;

@@ -70,7 +70,7 @@ EdenText es un potente procesador de textos que funciona en el navegador y sirve
   citas y bibliografía, índice alfabético, fórmulas (LaTeX)
 - **Herramientas de revisión**: control de cambios e hilos de comentarios en globos al
   margen, comparación y combinación con otro archivo, marcas imprimibles, corrector ortográfico (inglés, alemán, español, francés, italiano,
-  portugués, griego, ruso, ucraniano, polaco, indonesio y árabe), sinónimos (los mismos idiomas salvo el griego), corrector
+  portugués, griego, ruso, ucraniano, polaco, indonesio, árabe y coreano), sinónimos (los mismos idiomas salvo el griego y el coreano), corrector
   gramatical (inglés)
 - **Asistente de IA opcional**: con tu propio proveedor o un modelo local; responde
   preguntas sobre el documento y lo edita con control de cambios. Se puede desactivar;
@@ -258,5 +258,5 @@ Foundation. `.docx` y `.odt` se admiten por interoperabilidad.*
     corrector ortográfico con el diccionario del idioma del navegador y los tipos de letra
     que muestra una página. Los diccionarios de griego y ucraniano añaden ~2,5 y ~1,5 MB.
     Todo lo demás se descarga cuando hace falta y se conserva para usarlo sin conexión;
-    todos los tipos de letra, diccionarios y diccionarios de sinónimos juntos suman ~20 MB, o ~28 MB con el
+    todos los tipos de letra, diccionarios y diccionarios de sinónimos juntos suman ~22 MB, o ~31 MB con el
     corrector gramatical de inglés.

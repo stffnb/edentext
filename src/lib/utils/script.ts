@@ -4,6 +4,10 @@
 export const ASIAN_SCRIPT_RE =
   /[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}\p{sc=Bopomofo}　-〿＀-￯]/u;
 
+// A word in Hangul alone: the one East Asian script that separates its words by spaces,
+// so a dictionary can check them.
+export const HANGUL_WORD_RE = /^[\p{sc=Hangul}'’\-]+$/u;
+
 // Text both word processors set from the complex-script slot: Hebrew and Arabic with their
 // presentation forms, the Indic scripts, Thai and Khmer.
 export const COMPLEX_SCRIPT_RE = /[\u0590-\u08FF\u0900-\u0DFF\u0E00-\u0E7F\u1780-\u17FF\uFB1D-\uFDFF\uFE70-\uFEFC]/;

@@ -70,8 +70,8 @@ EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von de
 - **Überarbeiten** – Änderungsverfolgung und Kommentar-Threads in Sprechblasen am Rand,
   Vergleichen und Zusammenführen mit einer anderen Datei,
   druckbares Markup, Rechtschreibprüfung (Englisch, Deutsch, Spanisch, Französisch, Italienisch,
-  Portugiesisch, Griechisch, Russisch, Ukrainisch, Polnisch, Indonesisch und Arabisch), Synonyme (dieselben Sprachen
-  ohne Griechisch), Grammatikprüfung (Englisch)
+  Portugiesisch, Griechisch, Russisch, Ukrainisch, Polnisch, Indonesisch, Arabisch und Koreanisch), Synonyme (dieselben Sprachen
+  ohne Griechisch und Koreanisch), Grammatikprüfung (Englisch)
 - **Optionaler KI-Assistent** – mit einem frei wählbaren Anbieter oder einem lokalen Modell;
   beantwortet Fragen zum Dokument und bearbeitet es mit Änderungsverfolgung. Lässt sich
   abschalten; Anfragen gehen direkt an den Anbieter, ohne Umweg über einen EdenText-Server
@@ -257,5 +257,5 @@ Foundation verbunden. `.docx` und `.odt` werden aus Gründen der Interoperabilit
     dem Wörterbuch für die Sprache des Browsers und die Schriften der angezeigten Seite.
     Das griechische Wörterbuch bringt ~2,5 MB zusätzlich mit, das ukrainische ~1,5 MB.
     Alles andere wird erst bei Bedarf geladen und danach für die Offline-Nutzung gespeichert; alle
-    Schriften, Wörterbücher und Thesauri zusammen sind ~20 MB groß, mit der englischen
-    Grammatikprüfung ~28 MB.
+    Schriften, Wörterbücher und Thesauri zusammen sind ~22 MB groß, mit der englischen
+    Grammatikprüfung ~31 MB.

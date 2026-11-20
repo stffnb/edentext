@@ -56,4 +56,22 @@ describe('a paragraph language', () => {
     expect([...checks.keys()].sort()).toEqual(['hospitality', 'one', 'two', 'مستشفيات'].sort());
     editor.destroy();
   });
+
+  it('checks Hangul words in the asian language and leaves Han, kana and mixed tokens alone', async () => {
+    checks.clear();
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const bold = (text: string) => ({ type: 'text', text, marks: [{ type: 'bold' }] });
+    const editor = new Editor({
+      element: el,
+      extensions,
+      content: { type: 'doc', content: [
+        { type: 'paragraph', attrs: { langAsian: 'ko-KR' }, content: [{ type: 'text', text: '한' }, bold('국'), { type: 'text', text: '어 Word를 한글ABC 100원짜리 漢字 ひらがな 日本語의' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: '사랑 last' }] },
+      ] },
+    });
+    for (let i = 0; i < 50 && !checks.has('last'); i++) await new Promise((r) => setTimeout(r, 10));
+    expect([...checks.entries()].sort()).toEqual([['last', undefined], ['사랑', undefined], ['한국어', 'ko-KR']].sort());
+    editor.destroy();
+  });
 });

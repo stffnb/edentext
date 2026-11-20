@@ -71,7 +71,7 @@ EdenText est un traitement de texte puissant qui s’utilise dans le navigateur,
 - **Outils de révision** – suivi des modifications et fils de commentaires dans des bulles
   en marge, comparaison et fusion avec un autre fichier, marques de révision imprimables,
   vérification orthographique (anglais, allemand, espagnol, français, italien, portugais,
-  grec, russe, ukrainien, polonais, indonésien et arabe), synonymes (toutes ces langues sauf le grec), vérification
+  grec, russe, ukrainien, polonais, indonésien, arabe et coréen), synonymes (toutes ces langues sauf le grec et le coréen), vérification
   grammaticale (anglais)
 - **Assistant IA facultatif** – avec le fournisseur de votre choix ou un modèle local ; il
   répond aux questions sur le document et le modifie sous forme de modifications suivies. Il
@@ -270,4 +270,4 @@ Foundation. Les formats `.docx` et `.odt` sont pris en charge à des fins d’in
     polices qu’affiche une page ; les dictionnaires grec et ukrainien ajoutent ~2,5 et
     ~1,5 Mo. Tout le reste est téléchargé à la première utilisation puis conservé pour
     une utilisation hors ligne ; l’ensemble des polices, dictionnaires et dictionnaires des
-    synonymes pèse ~20 Mo, ou ~28 Mo avec la vérification grammaticale anglaise.
+    synonymes pèse ~22 Mo, ou ~31 Mo avec la vérification grammaticale anglaise.

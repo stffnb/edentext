@@ -56,6 +56,7 @@ thesaurus for the language.
 | `public/dictionaries/id` — Hunspell, hunspell-id | LGPL-3.0 |
 | `public/dictionaries/ar` — Hunspell-ar, Ayaspell | GPL-2.0-or-later or LGPL-2.1-or-later or MPL-1.1 |
 | `public/dictionaries/pl` — Hunspell, sjp.pl | GPL-2.0 or LGPL-2.1 or MPL-1.1 or Apache-2.0 or CC-BY-4.0 |
+| `public/dictionaries/ko-KR` — Hunspell, hunspell-dict-ko (spellcheck-ko) | GPL-3.0-or-later |
 | `public/thesaurus/de` — OpenThesaurus | LGPL-2.1-or-later |
 | `public/thesaurus/en` — WordNet 2.1, Princeton University | WordNet license (permissive) |
 | `public/thesaurus/es` — OpenThesaurus español | LGPL-2.1 |
