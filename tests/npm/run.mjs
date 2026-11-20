@@ -100,7 +100,7 @@ try {
   for (const [i, which] of ['index', 'element', 'react'].entries()) {
     const host = i === 0 ? first : await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
     if (i) host.on('pageerror', (err) => pageErrors.push(`[${which}] ${err}`));
-    host.on('dialog', (d) => d.accept());
+    host.on('dialog', (d) => d.accept().catch(() => {}));
     await host.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => { window.cspViolation = `${e.violatedDirective} ${e.blockedURI}`; }));
     await host.goto(`http://localhost:${PORT}/${which === 'index' ? '' : `${which}.html`}`);
     await host.waitForFunction(() => window.isReady || window.readyError, null, { timeout: 30_000 });
@@ -133,7 +133,7 @@ try {
   const de = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'de-DE', serviceWorkers: 'block' });
   const dialogs = [];
   de.on('pageerror', (err) => pageErrors.push(`[trim] ${err}`));
-  de.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
+  de.on('dialog', (d) => { dialogs.push(d.message()); d.accept().catch(() => {}); });
   await de.goto(`http://localhost:${PORT}/?url=/trim/`);
   await de.waitForFunction(() => window.isReady || window.readyError, null, { timeout: 30_000 });
   const frame = de.frames().find((f) => f.url().includes('/trim/?embed=1'));

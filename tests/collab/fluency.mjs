@@ -73,7 +73,7 @@ async function tab() {
   const page = await ctx.newPage();
   await page.addInitScript(() => { if (!localStorage.getItem('edentext-user-name')) localStorage.setItem('edentext-user-name', 'X'); });
   await page.addInitScript(probe);
-  page.on('dialog', (d) => d.accept());
+  page.on('dialog', (d) => d.accept().catch(() => {}));
   return page;
 }
 const ready = (page) => page.waitForFunction(() => document.querySelector('.tiptap-host .tiptap')?.editor, null, { timeout: 30_000 });

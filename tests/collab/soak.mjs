@@ -54,7 +54,7 @@ async function client(name, page) {
   if (!page) {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
     page = await ctx.newPage();
-    page.on('dialog', (d) => d.accept());
+    page.on('dialog', (d) => d.accept().catch(() => {}));
   }
   const c = { name, page, errors: [], log: [], history: true };
   await page.addInitScript((n) => {

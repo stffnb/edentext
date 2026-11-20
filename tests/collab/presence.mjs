@@ -21,7 +21,7 @@ async function client(name) {
   if (name) await ctx.addInitScript((n) => { if (!localStorage.getItem('edentext-user-name')) localStorage.setItem('edentext-user-name', n); }, name);
   const page = await ctx.newPage();
   collectErrors(page, pageErrors, `${name || 'guest'}: `);
-  page.on('dialog', (d) => d.accept());
+  page.on('dialog', (d) => d.accept().catch(() => {}));
   return page;
 }
 const ED = '.tiptap-host .tiptap';

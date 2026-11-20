@@ -70,7 +70,7 @@ async function client(name, css) {
   const page = await ctx.newPage();
   collectErrors(page, pageErrors, `${name}: `);
   page.dialogs = [];
-  page.on('dialog', (d) => { page.dialogs.push(d.type()); d.accept(); });
+  page.on('dialog', (d) => { page.dialogs.push(d.type()); d.accept().catch(() => {}); });
   if (css) await page.addInitScript((c) => addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = c; document.head.append(s); }), css);
   return page;
 }
