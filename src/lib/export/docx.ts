@@ -2785,7 +2785,11 @@ function applyBidiDocx(bytes: Uint8Array): Uint8Array {
   const docBytes = files['word/document.xml'];
   if (!docBytes) return bytes;
   files['word/document.xml'] = strToU8(
-    strFromU8(docBytes).replace(/<w:sectPr\b[^>]*>/g, (m) => `${m}<w:bidi/>`),
+    // The schema places w:bidi after w:textDirection and before these trailing children.
+    strFromU8(docBytes).replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, (sect) => {
+      const at = sect.search(/<w:(?:rtlGutter|docGrid|printerSettings|sectPrChange)\b|<\/w:sectPr>$/);
+      return `${sect.slice(0, at)}<w:bidi/>${sect.slice(at)}`;
+    }),
   );
   const out: Record<string, [Uint8Array, { level: 6 }]> = {};
   for (const [path, data] of Object.entries(files)) out[path] = [data, { level: 6 }];
