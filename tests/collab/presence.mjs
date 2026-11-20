@@ -252,6 +252,25 @@ try {
   check(!pwned && names.html.name.startsWith('<img') && names.long.name.length === 40 && /^Guest \d{3}$/.test(names.blank.name)
     && /^writer:🦊:/.test(names.emoji.circle) && /^writer:عح:/.test(names.rtl.circle), `names with markup, 500 characters, only spaces, an emoji or Arabic stay text, cut and initialled (${JSON.stringify(names)})`);
 
+  // Under a right-to-left interface the news sit at its start (right) corner, and Ben's caret
+  // label at the start of a right-to-left line runs into the line, so the page edge cuts nothing.
+  const I18N = '/src/lib/i18n/i18n.svelte.ts';
+  await mod(a, I18N, (m) => m.setLocale('ar', false));
+  await b.evaluate((q) => {
+    const ed = document.querySelector(q).editor;
+    ed.commands.focus(null, { scrollIntoView: false });
+    ed.chain().setTextSelection(3).setTextDirection('rtl').setTextSelection(3).run();
+  }, ED);
+  await a.waitForTimeout(1500);
+  const rtl = await a.evaluate((q) => {
+    const caret = document.querySelector(q), news = document.querySelector('.collab-news').getBoundingClientRect();
+    const [bar, label] = [caret?.getBoundingClientRect(), caret?.firstElementChild?.getBoundingClientRect()];
+    return { news: news.right > innerWidth / 2, label: !!label && !caret.hidden && label.right <= bar.right + 1 && label.left < bar.left };
+  }, caretSel);
+  check(rtl.news && rtl.label, `a right-to-left interface puts the news at its start corner, and a caret label runs into a right-to-left line (${JSON.stringify(rtl)})`);
+  await b.evaluate((q) => document.querySelector(q).editor.commands.setTextDirection(null), ED);
+  await mod(a, I18N, (m) => m.setLocale('en', false));
+
   // Ben leaves: following him ends.
   await a.click('.collab-people .person[aria-label^="Ben"]');
   await a.click('.collab-people [data-cmd="collabFollow"]');
