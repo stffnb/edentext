@@ -1011,6 +1011,43 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   suffix: "";
 }
 
+.paper .tiptap :is(ol, ul)[data-eff-list-style="hangul"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, edt-hangul) ". "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="hangul-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, edt-hangul) ") "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="hangul-consonant"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, edt-hangul-consonant) ". "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="hangul-consonant-paren"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, edt-hangul-consonant) ") "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="korean-counting"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, edt-korean-counting) ". "; }
+.paper .tiptap :is(ol, ul)[data-eff-list-style="korean-legal"] > li > :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10)::before { content: counter(list-item, edt-korean-legal) ". "; }
+
+/* Korean: the syllables and consonants start over after 하/ㅎ, as LibreOffice and
+   formatOrdinal do (CSS's own hangul styles double up). The number words follow
+   LibreOffice: no 일 before 십/백/천/만, native words up to 99, then Sino-Korean. */
+@counter-style edt-hangul {
+  system: cyclic;
+  symbols: "가" "나" "다" "라" "마" "바" "사" "아" "자" "차" "카" "타" "파" "하";
+  suffix: "";
+}
+
+@counter-style edt-hangul-consonant {
+  system: cyclic;
+  symbols: "ㄱ" "ㄴ" "ㄷ" "ㄹ" "ㅁ" "ㅂ" "ㅅ" "ㅇ" "ㅈ" "ㅊ" "ㅋ" "ㅌ" "ㅍ" "ㅎ";
+  suffix: "";
+}
+
+@counter-style edt-korean-counting {
+  system: additive;
+  range: 1 99999;
+  additive-symbols: 90000 "구만", 80000 "팔만", 70000 "칠만", 60000 "육만", 50000 "오만", 40000 "사만", 30000 "삼만", 20000 "이만", 10000 "만", 9000 "구천", 8000 "팔천", 7000 "칠천", 6000 "육천", 5000 "오천", 4000 "사천", 3000 "삼천", 2000 "이천", 1000 "천", 900 "구백", 800 "팔백", 700 "칠백", 600 "육백", 500 "오백", 400 "사백", 300 "삼백", 200 "이백", 100 "백", 90 "구십", 80 "팔십", 70 "칠십", 60 "육십", 50 "오십", 40 "사십", 30 "삼십", 20 "이십", 10 "십", 9 "구", 8 "팔", 7 "칠", 6 "육", 5 "오", 4 "사", 3 "삼", 2 "이", 1 "일";
+  suffix: "";
+}
+
+@counter-style edt-korean-legal {
+  system: additive;
+  range: 1 99;
+  additive-symbols: 90 "아흔", 80 "여든", 70 "일흔", 60 "예순", 50 "쉰", 40 "마흔", 30 "서른", 20 "스물", 10 "열", 9 "아홉", 8 "여덟", 7 "일곱", 6 "여섯", 5 "다섯", 4 "넷", 3 "셋", 2 "둘", 1 "하나";
+  fallback: edt-korean-counting;
+  suffix: "";
+}
+
 /* Letters that repeat past the last one (z, aa, bb; я, аа, бб), as LibreOffice's
    num-letter-sync and its "аа, бб" formats count, and the Russian alphabet LibreOffice
    counts with: ы is in, ё, й, ъ and ь are not. Upper Cyrillic capitalises the first

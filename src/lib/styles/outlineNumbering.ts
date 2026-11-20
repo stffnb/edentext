@@ -75,6 +75,8 @@ const CSS_STYLE: Record<OutlineFormat, string> = {
   '一, 二, 三, ...': 'simp-chinese-informal', '壹, 贰, 叁, ...': 'simp-chinese-formal',
   '甲, 乙, 丙, ...': 'edt-stem', '①, ②, ③, ...': 'edt-circled',
   'ア, イ, ウ, ...': 'edt-aiueo', 'イ, ロ, ハ, ...': 'edt-iroha',
+  '가, 나, 다, ...': 'edt-hangul', 'ㄱ, ㄴ, ㄷ, ...': 'edt-hangul-consonant',
+  '일, 이, 삼, ...': 'edt-korean-counting', '하나, 둘, 셋, ...': 'edt-korean-legal',
   aa: 'edt-alpha-sync', AA: 'edt-upper-alpha-sync',
   '١, ٢, ٣, ...': 'arabic-indic', 'أ, ب, ت, ...': 'edt-arabic-alpha', 'ا, ب, ج, ...': 'edt-arabic-abjad',
   'а, б, .., аа, аб, ... (ru)': 'edt-cyrillic', 'А, Б, .., Аа, Аб, ... (ru)': 'edt-upper-cyrillic',

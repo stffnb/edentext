@@ -1178,6 +1178,10 @@ function wordFmtChar(fmt: string | undefined): string {
     // The half-width variants count the same way; the editor keeps the full-width one.
     case 'aiueo': case 'aiueoFullWidth': return 'ア, イ, ウ, ...';
     case 'iroha': case 'irohaFullWidth': return 'イ, ロ, ハ, ...';
+    case 'ganada': return '가, 나, 다, ...';
+    case 'chosung': return 'ㄱ, ㄴ, ㄷ, ...';
+    case 'koreanCounting': return '일, 이, 삼, ...';
+    case 'koreanLegal': return '하나, 둘, 셋, ...';
     default: return '1';
   }
 }

@@ -190,6 +190,10 @@ const ORDERED_FORMAT: Record<string, (typeof LevelFormat)[keyof typeof LevelForm
   '①, ②, ③, ...': LevelFormat.DECIMAL_ENCLOSED_CIRCLE,
   'ア, イ, ウ, ...': LevelFormat.AIUEO_FULL_WIDTH,
   'イ, ロ, ハ, ...': LevelFormat.IROHA_FULL_WIDTH,
+  '가, 나, 다, ...': LevelFormat.GANADA,
+  'ㄱ, ㄴ, ㄷ, ...': LevelFormat.CHOSUNG,
+  '일, 이, 삼, ...': LevelFormat.KOREAN_COUNTING,
+  '하나, 둘, 셋, ...': LevelFormat.KOREAN_LEGAL,
 };
 
 // ---- unit conversions ------------------------------------------------------
