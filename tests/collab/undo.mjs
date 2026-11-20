@@ -266,6 +266,22 @@ try {
   check(ia.at === 1 && ia.count === 1 && ia.text.startsWith('Go One') && JSON.stringify(ia) === JSON.stringify(ib),
     `one undo puts the image back and keeps the typing before it (${JSON.stringify(ia)} | ${JSON.stringify(ib)})`);
 
+  // A layout field the map does not hold (state from before the field existed) stays as
+  // each client has it, and the fields beside it still arrive.
+  const LAYOUT = '/src/lib/storage/pageLayout.svelte.ts';
+  const frames = (page) => page.evaluate(async (url) => JSON.stringify((await import(url)).layout.hfFrames), LAYOUT);
+  const framed = { frames: { header: { border: { top: null, right: null, bottom: '1pt solid #000000', left: null }, padding: { top: 0, right: 0, bottom: 0.1, left: 0 }, gap: 0.5 } }, framesFirst: null };
+  await a.evaluate(async ([url, f]) => { (await import(url)).layout.hfFrames = f; }, [LAYOUT, framed]);
+  await pause();
+  const shared = await frames(b);
+  await a.evaluate(() => window.__yjsUndo.ydoc.getMap('state').delete('layout/hfFrames'));
+  await pause();
+  await pick(a, 'margins', 'margins-wide');
+  await pause();
+  const [fa, fb, wa, wb] = [await frames(a), await frames(b), await margin(a), await margin(b)];
+  check(shared === JSON.stringify(framed) && fa === shared && fb === shared && wa === wb,
+    `a layout field missing from the shared state keeps its value (${fb}; margins ${wa} | ${wb})`);
+
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (e) {
   check(false, `collab undo run threw: ${e}`);
