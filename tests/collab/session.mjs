@@ -1029,7 +1029,7 @@ try {
     const panes = (page) => page.evaluate(() => {
       const box = (q) => { const r = document.querySelector(q)?.getBoundingClientRect(); return r ? [Math.round(r.left), Math.round(r.right)] : null; };
       const kept = JSON.parse(localStorage.getItem('edentext-panes') ?? '{}');
-      return { pane: box('.chat-pane'), page: box('.editor-panes'), chat: kept.chat, comments: kept.comments ?? { side: 'right', width: 260 } };
+      return { pane: box('.chat-pane'), page: box('.editor-panes'), chat: kept.chat, comments: kept.comments ?? { width: 260 } };
     });
     const p0 = await panes(b);
     const grip = await b.locator('.chat-pane .pane-resize').boundingBox();
@@ -1054,7 +1054,7 @@ try {
     const p2 = await panes(b);
     const w = (p) => p.pane[1] - p.pane[0];
     check(w(p1) === w(p0) + 64 && p1.chat?.side === 'left' && p1.pane[1] <= p1.page[0] + 1 && w(p2) === w(p1) && p2.pane[1] <= p2.page[0] + 1
-      && p2.comments.side === 'right' && p2.comments.width === 260 && !afterReload.length,
+      && (p2.comments.side ?? 'right') === 'right' && p2.comments.width === 260 && !afterReload.length,
       `the chat pane drags and keys wider, docks left beside the page, keeps both after a reload, apart from the comments pane; the reload empties the chat (${w(p0)} → ${w(p1)} → ${w(p2)}, ${JSON.stringify(p2.chat)}, comments ${JSON.stringify(p2.comments)}, page ${p2.page}, ${afterReload.length} lines)`);
     await toggle(b);
 
