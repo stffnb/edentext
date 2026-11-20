@@ -95,8 +95,10 @@ follows the table's direction, so Arabic text leaves a cell the way the key poin
 Shift extending the cell selection the same way. Tab, sort and "first column" are grid order.
 
 - **DOCX**: Word mirrors a table by `w:bidiVisual` in its own `w:tblPr` alone, and then reads
-  `w:left`/`w:start` of `w:tcBorders`, `w:tblBorders`, `w:tcMar`, `w:tblCellMar` as the leading
-  (right) side, `w:tblInd` from the right edge and `w:jc` mirrored (ECMA-376 §17.4; grid
+  `w:left`/`w:start` of `w:tcBorders`, `w:tblBorders` as the leading
+  (right) side, `w:tblInd` from the right edge and `w:jc` mirrored, but `w:left`/`w:right` of
+  `w:tblCellMar`/`w:tcMar` as drawn (seen in Word, as in LibreOffice), so both directions swap
+  the paddings of a right-to-left table (ECMA-376 §17.4; grid
   order, `w:gridSpan`, `w:gridBefore`, `w:tblLook` first column are logical anyway). So the
   export writes `w:bidiVisual` for a right-to-left table (`w:val="off"` for a left-to-right one
   on a right-to-left page or in a right-to-left table, which LibreOffice would mirror by
@@ -107,8 +109,8 @@ Shift extending the cell selection the same way. Tab, sort and "first column" ar
   as left/right, and sets `dir` where the table runs against the page. A file of this editor
   from before (`sectionDirOnly`, no `w:bidiVisual`) wrote the sides as drawn: its tables
   follow the page and swap their sides. LibreOffice 26.2 differs from the standard (probed):
-  it also mirrors by the section, but reads and writes every side and the indent as drawn,
-  so a table with unequal sides shows them swapped there; Word could not be probed.
+  it also mirrors by the section, but reads and writes every border and the indent as drawn,
+  so a table with unequal borders shows them swapped there.
 - **ODF** sides are the drawn ones, so both directions swap the cells' left and right for a
   right-to-left table (`physicalTables`, `convertTable`); margins need none. The table's own
   `style:writing-mode` (`rl-tb`/`lr-tb`, LibreOffice's `page` inherits) is written where it runs

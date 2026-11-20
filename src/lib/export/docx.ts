@@ -3255,7 +3255,9 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
   let ml = Number(node.attrs?.marginLeft) || 0;
   let mr = Number(node.attrs?.marginRight) || 0;
   if (ml + mr > contentWidthCm - 1) { ml = 0; mr = 0; }
-  const pad = parseCellPadding(node.attrs?.cellPadding) ?? DEFAULT_CELL_PADDING;
+  // Word mirrors the borders of a w:bidiVisual table but reads its cell margins as drawn.
+  const drawn = (p: readonly number[]) => (rtl ? [p[0], p[3], p[2], p[1]] : p);
+  const pad = drawn(parseCellPadding(node.attrs?.cellPadding) ?? DEFAULT_CELL_PADDING);
   const colsCm = columnWidthsCm(node, contentWidthCm - ml - mr);
   const colsTwip = colsCm?.map(cmToTwip);
   const totalTwip = colsTwip ? colsTwip.reduce((a, b) => a + b, 0) : cmToTwip(contentWidthCm - ml - mr);
@@ -3280,7 +3282,7 @@ function tableToDocx(node: TiptapNode, contentWidthCm: number, num: Numbering, f
       const widthTwip = colsTwip ? colsTwip.slice(col, col + colspan).reduce((a, b) => a + b, 0) : undefined;
       col += colspan;
       // The cell's own margins (w:tcMar); absent, Word falls back to the table's.
-      const ownPad = parseCellPadding(cell.attrs?.cellPadding);
+      const own = parseCellPadding(cell.attrs?.cellPadding), ownPad = own && drawn(own);
       const content = formulaCellContent(cell) ?? cell.content;
       cells.push(new TableCell({
         ...(mergedColumn ? {} : revMarkRevisions(cell.attrs?.revMark)),

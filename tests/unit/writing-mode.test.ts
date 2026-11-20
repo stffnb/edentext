@@ -215,6 +215,9 @@ describe('paragraph alignment and direction', () => {
       // The indent is the leading edge's: the right margin of a right-to-left table.
       expect(mirrored).toMatch(/<w:tblInd [^>]*w:w="1134"/);
       expect(await xml(false, null)).toMatch(/<w:tblInd [^>]*w:w="567"/);
+      // Cell margins stay drawn sides: the leading 0.5cm is the right of a mirrored table.
+      expect(mirrored).toMatch(/<w:tblCellMar>.*?<w:left [^>]*w:w="57"\/>.*?<w:right [^>]*w:w="283"\/>/);
+      expect(await xml(false, null)).toMatch(/<w:tblCellMar>.*?<w:left [^>]*w:w="283"\/>/);
       // ODF draws the first column's leading border on the right.
       const content = strFromU8(unzipSync(await odtOf(table(null), true))['content.xml']);
       expect(content).toMatch(/fo:border-right="[^"]*#ff0000"/i);
@@ -249,7 +252,8 @@ describe('paragraph alignment and direction', () => {
       const old = shape(importDocx(zipSync(files)).content);
       expect(old.dir).toBe(null);
       expect(old.cells[0].slice(2, 4)).toEqual([null, '3pt solid #FF0000']);
-      expect(old.pad).toEqual([0, 0.5, 0, 0.1]);
+      // The margins of the file at hand are drawn ones already; they swap like the borders.
+      expect(old.pad).toEqual([0, 0.1, 0, 0.5]);
       expect(old.margins).toEqual([2, 1]);
       // Any other producer's table without w:bidiVisual runs left to right, as in Word.
       files['docProps/app.xml'] = strToU8(strFromU8(files['docProps/app.xml']).replace(/\/>\s*$/, '><Application>Microsoft Office Word</Application></Properties>'));

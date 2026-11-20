@@ -4018,6 +4018,8 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
   const attrs: Record<string, unknown> = { ...(tableMargins(tbl, useWeights, ctx, padBase[3], rtl && !drawnSides) ?? {}) };
   if (pad) attrs.cellPadding = pad;
   if (drawnSides) swapCellSides(attrs);
+  // Cell margins are drawn sides even in a mirrored table, unlike its borders.
+  else if (rtl) for (const a of [attrs, ...rows.flatMap((row) => (row.content ?? []).map((cell) => cell.attrs!))]) swapCellPadding(a);
   if (rtl !== ctx.pageRtl) attrs.dir = rtl ? 'rtl' : 'ltr';
   // w:tblHeader on the first row: Word repeats it at the top of every page the table
   // continues on. Only a leading run of rows can carry it, so the first one decides.
@@ -4037,11 +4039,16 @@ function buildTable(tbl: Element, ctx: Ctx): Node | null {
 
 // A cell's (or table's) left and right borders and margins change places.
 function swapCellSides(attrs: Record<string, unknown>): void {
-  const { borderLeft, borderRight, cellPadding: p } = attrs;
+  const { borderLeft, borderRight } = attrs;
   delete attrs.borderLeft;
   delete attrs.borderRight;
   if (borderRight != null) attrs.borderLeft = borderRight;
   if (borderLeft != null) attrs.borderRight = borderLeft;
+  swapCellPadding(attrs);
+}
+
+function swapCellPadding(attrs: Record<string, unknown>): void {
+  const p = attrs.cellPadding;
   if (Array.isArray(p)) attrs.cellPadding = [p[0], p[3], p[2], p[1]];
 }
 
