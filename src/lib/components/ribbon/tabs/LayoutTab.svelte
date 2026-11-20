@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatDecimal, parseDecimal } from '../../../i18n/number';
   import type { Editor } from '@tiptap/core';
   import RibbonGroup from '../RibbonGroup.svelte';
   import RibbonButton from '../RibbonButton.svelte';
@@ -77,20 +78,20 @@
   const FORMATS = Object.keys(PAGE_FORMAT_CM) as NamedPageFormat[];
   const EDGES = ['top', 'bottom', 'left', 'right'] as const;
 
-  const fmtCm = (v: number) => (Math.round(v * 100) / 100).toString().replace('.', ',');
+  const fmtCm = (v: number) => formatDecimal(v);
 
   // Mirrored, the left/right fields are the inner/outer pair and say so.
   const mLabel = (edge: (typeof EDGES)[number]) => t().toolbarExpanded.margins[marginAxisLabel(edge, pageMargins)];
 
   function setMargin(edge: (typeof EDGES)[number], raw: string) {
-    const v = parseFloat(raw.replace(',', '.'));
+    const v = parseDecimal(raw);
     if (isNaN(v)) return;
     setMargins({ ...pageMargins, [edge]: Math.min(10, Math.max(0, v)) });
   }
   // A typed width or height: the page takes the box, its orientation following the sides.
   function setPageSize(side: 'w' | 'h', input: HTMLInputElement) {
     const cur = pageDimsCm(pageFormat, pageOrientation);
-    const v = parseFloat(input.value.replace(',', '.'));
+    const v = parseDecimal(input.value);
     const next = sizeSetup(side === 'w' ? v : cur.w, side === 'h' ? v : cur.h);
     if (!next) { input.value = fmtCm(cur[side]); return; }
     pageFormat = next.format;
@@ -128,7 +129,7 @@
   const num = (v: number | '') => (v === '' ? '' : String(Math.round(v * 100) / 100));
 
   function apply(fn: (v: number) => void, raw: string) {
-    const v = parseFloat(raw.replace(',', '.'));
+    const v = parseDecimal(raw);
     if (!isNaN(v)) fn(v);
   }
 </script>

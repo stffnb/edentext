@@ -54,6 +54,10 @@ describe('autoCorrectFix', () => {
     expect(typed("geht'", 'de')).toBe('geht’');
     expect(typed("don'")).toBe('don’'); // an apostrophe mid-word closes, as in LibreOffice
     expect(typed("'")).toBe('‘');
+    // LibreOffice's locale data: Arabic keeps the straight double quote, Persian takes guillemets.
+    expect(typed('قال "كلمة"', 'ar-SA')).toBe('قال "كلمة"');
+    expect(typed("'", 'ar-SA')).toBe('‘');
+    expect(typed('"', 'fa-IR')).toBe('«');
   });
 
   it('capitalizes the first letter of a sentence', () => {
