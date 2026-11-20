@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { popover } from './ribbon/menu.svelte';
   import type { Editor } from '@tiptap/core';
   import { activeParagraphBorderPresets, type ParaBorderPreset } from '../editor/extensions/paragraphBox';
   import { t } from '../i18n/i18n.svelte';
@@ -44,16 +45,9 @@
     else editor.chain().focus().setParagraphBorders(id, { widthPt, color }).run();
   }
 
-  function clickOutside(node: HTMLElement) {
-    function handler(e: MouseEvent) {
-      if (!node.contains(e.target as Node)) open = false;
-    }
-    window.addEventListener('mousedown', handler);
-    return { destroy() { window.removeEventListener('mousedown', handler); } };
-  }
 </script>
 
-<div class="border-picker" use:clickOutside>
+<div class="border-picker" use:popover={() => (open = false)}>
   <button
     class="bp-trigger"
     class:active={open}

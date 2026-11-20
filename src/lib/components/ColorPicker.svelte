@@ -289,6 +289,7 @@
     }
   }
 
+  // Escape outside the panel too: WebKit leaves a clicked button unfocused.
   function colorPickerClickOutside(node: HTMLElement) {
     function handler(e: MouseEvent) {
       if (!node.contains(e.target as Node)) {
@@ -296,8 +297,10 @@
         view = 'palette';
       }
     }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && open) cancelMoreColors(); };
     window.addEventListener('mousedown', handler);
-    return { destroy() { window.removeEventListener('mousedown', handler); } };
+    window.addEventListener('keydown', onKey);
+    return { destroy() { window.removeEventListener('mousedown', handler); window.removeEventListener('keydown', onKey); } };
   }
 </script>
 

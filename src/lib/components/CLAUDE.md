@@ -26,6 +26,7 @@ settling, split/grid views, zoom, headers/footers, review UI, templates, or debu
 Read the focused architecture document for ribbon, pagination, frames, tables, formatting,
 formulas, or notes before changing those areas.
 - Every `<dialog>` and popover window gets its frame and the ribbon's `--w-*` palette from `styles/global.css`, wherever it is mounted; a component sets only size and layout.
+- A popover closes on an outside mousedown and on Escape anywhere (`popover`/`clickOutside`, `ribbon/menu.svelte.ts`): WebKit does not focus a clicked button, so a key handler on the trigger never gets the key.
 - Modal `<dialog>`s move by their `<h2>` title via `dragDialogs()` (`utils/dragWindow.ts`), modeless windows via `use:dragWindow`.
 - `PromptDialog.svelte`'s `askText()` stands in for `window.prompt()`, which Electron does not implement; never call `prompt()` directly. A `<dialog>`'s `close` event lands a task late, so every dialog's `onclose` ignores it once the dialog is open again, and `askText()` reopens for a newer request instead of cancelling it.
 - `SaveFormatDialog.svelte` asks the first Save for a format; without a save picker (Firefox, Safari, Brave) it also asks the first Save and every Save As for the document name, since a download never reports the name it was saved under. A file chosen in a picker names the document instead.

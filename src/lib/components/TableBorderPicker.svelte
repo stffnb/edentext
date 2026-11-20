@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { popover } from './ribbon/menu.svelte';
   import type { Editor } from '@tiptap/core';
   import { activeBorderPresets, type BorderPreset } from '../editor/extensions/tableCellBorders';
   import { selectionTableRtl } from '../editor/extensions/tableView';
@@ -55,16 +56,9 @@
     else editor.chain().focus().setTableBorders(sideOf(id), { widthPt, color }).run();
   }
 
-  function clickOutside(node: HTMLElement) {
-    function handler(e: MouseEvent) {
-      if (!node.contains(e.target as Node)) open = false;
-    }
-    window.addEventListener('mousedown', handler);
-    return { destroy() { window.removeEventListener('mousedown', handler); } };
-  }
 </script>
 
-<div class="border-picker" use:clickOutside>
+<div class="border-picker" use:popover={() => (open = false)}>
   <button
     class="bp-trigger"
     class:active={open}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { popover } from './ribbon/menu.svelte';
   import type { Editor } from '@tiptap/core';
   import { historyLog, undoSteps, redoSteps } from '../utils/historyLog.svelte';
   import { flushPending } from '../editor/extensions/stateHistory';
@@ -49,26 +50,9 @@
     if (open && displayed.length === 0) close();
   });
 
-  // Close on outside-click or Escape (mirrors TablePicker's clickOutside action).
-  function popover(node: HTMLElement) {
-    function onDown(e: MouseEvent) {
-      if (!node.contains(e.target as Node)) close();
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') close();
-    }
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
-    return {
-      destroy() {
-        window.removeEventListener('mousedown', onDown);
-        window.removeEventListener('keydown', onKey);
-      },
-    };
-  }
 </script>
 
-<div class="history-split" use:popover>
+<div class="history-split" use:popover={close}>
   <div class="history-control">
     <button
       class="history-main"

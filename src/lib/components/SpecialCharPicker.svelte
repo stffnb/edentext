@@ -2,6 +2,7 @@
   import type { Editor } from '@tiptap/core';
   import { CHAR_CATEGORIES, type SpecialChar } from '../utils/specialChars';
   import { t } from '../i18n/i18n.svelte';
+  import { popover } from './ribbon/menu.svelte';
 
   // Category tab label by its English name, with the name itself as fallback.
   function categoryLabel(name: string): string {
@@ -110,30 +111,17 @@
     saveRecents(next);
   }
 
-  // On both the trigger and the dropdown: opening leaves the focus on the trigger,
-  // which sits outside the dropdown and never delivers the key to it.
-  function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') open = false;
-  }
-
-  function charPickerClickOutside(node: HTMLElement) {
-    function handler(e: MouseEvent) {
-      if (!node.contains(e.target as Node)) open = false;
-    }
-    window.addEventListener('mousedown', handler);
-    return { destroy() { window.removeEventListener('mousedown', handler); } };
-  }
 </script>
 
-<div class="char-picker" use:charPickerClickOutside>
-  <button class="char-trigger" onclick={openPicker} onkeydown={onKeydown} title={t().special.insertChar} aria-pressed={open}>
+<div class="char-picker" use:popover={() => (open = false)}>
+  <button class="char-trigger" onclick={openPicker} title={t().special.insertChar} aria-pressed={open}>
     <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <text x="8" y="12.5" font-size="14" font-weight="700" font-family="var(--font-serif, serif)" fill="currentColor" text-anchor="middle">Ω</text>
     </svg>
   </button>
 
   {#if open}
-    <div class="char-dropdown" role="dialog" onkeydown={onKeydown} aria-label={t().special.insertChar} tabindex="-1">
+    <div class="char-dropdown" role="dialog" aria-label={t().special.insertChar} tabindex="-1">
       <!-- svelte-ignore a11y_autofocus -->
       <input
         type="text"

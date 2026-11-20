@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { popover } from './ribbon/menu.svelte';
   import type { Editor } from '@tiptap/core';
   import { activeTableLook, activeTableStyle, styleRegions } from '../editor/extensions/tableStyle';
   import { DEFAULT_TABLE_LOOK } from '../styles/tableStyles';
@@ -33,16 +34,9 @@
     editor?.chain().focus().setTableStyle(name).run();
   }
 
-  function clickOutside(node: HTMLElement) {
-    function handler(e: MouseEvent) {
-      if (!node.contains(e.target as Node)) open = false;
-    }
-    window.addEventListener('mousedown', handler);
-    return { destroy() { window.removeEventListener('mousedown', handler); } };
-  }
 </script>
 
-<div class="style-picker" use:clickOutside>
+<div class="style-picker" use:popover={() => (open = false)}>
   <button
     class="tsp-trigger"
     class:active={open}

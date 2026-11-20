@@ -128,17 +128,30 @@ export function pinPanels(node: HTMLElement) {
   };
 }
 
-// Closes the menu when a mousedown lands outside `node`. Attach to the element
+// Closes the menu on Escape or when a mousedown lands outside `node`. Attach to the element
 // wrapping a trigger and its panel, and name the menu it owns: every wrapper sees
 // every mousedown, so without the id each would close a sibling's open menu — and
 // the panel would be gone before the click on one of its rows ever fired.
 export function clickOutside(node: HTMLElement, id?: string) {
-  function handler(e: MouseEvent) {
-    if (id !== undefined && !isMenuOpen(id)) return;
-    if (!node.contains(e.target as Node)) closeMenu();
-  }
-  window.addEventListener('mousedown', handler);
-  return { destroy() { window.removeEventListener('mousedown', handler); } };
+  return popover(node, () => {
+    if (id === undefined || isMenuOpen(id)) closeMenu();
+  });
+}
+
+// Runs `close` on a mousedown outside `node` and on Escape anywhere: WebKit does not
+// focus a clicked button, so a key handler on a trigger or its panel never gets the key.
+export function popover(node: HTMLElement, close: () => void) {
+  const onDown = (e: MouseEvent) => { if (!node.contains(e.target as Node)) close(); };
+  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+  window.addEventListener('mousedown', onDown);
+  window.addEventListener('keydown', onKey);
+  return {
+    update(next: () => void) { close = next; },
+    destroy() {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    },
+  };
 }
 
 // A reused picker keeps its trigger inside its own component, so the caption the
