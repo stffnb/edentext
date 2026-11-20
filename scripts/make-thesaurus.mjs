@@ -15,6 +15,7 @@ const SOURCES = [
   { code: 'uk', dat: 'uk_UA/th_uk_UA.dat', license: 'uk_UA/README_th_uk_UA.txt' },
   { code: 'id', dat: 'id/th_id_ID_v2.dat', license: 'id/README-thes' },
   { code: 'ar', dat: 'ar/th_ar.dat', license: 'ar/COPYING.txt' },
+  { code: 'pl', dat: 'pl_PL/th_pl_PL_v2.dat', license: 'pl_PL/README_en.txt' },
 ];
 
 // "(noun)", "(ugs.)", "(generic term)" — a label to read, not a word to insert. Arabic

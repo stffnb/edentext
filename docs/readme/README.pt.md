@@ -33,7 +33,7 @@
 
 ---
 
-O EdenText é um processador de texto poderoso que funciona no navegador, das notas rápidas a livros inteiros. Sem servidor nem conta: tudo é processado localmente e os documentos nunca saem do computador. Basta abrir a ligação, ou instalar o EdenText como aplicação e trabalhar offline. Na maioria dos idiomas, a primeira transferência é de cerca de 2 MB; os dicionários e os tipos de letra são carregados quando são precisos[^1]. A interface está disponível em inglês, alemão, espanhol, francês, italiano, português, grego, russo, ucraniano, indonésio, árabe, japonês e chinês (simplificado e tradicional).
+O EdenText é um processador de texto poderoso que funciona no navegador, das notas rápidas a livros inteiros. Sem servidor nem conta: tudo é processado localmente e os documentos nunca saem do computador. Basta abrir a ligação, ou instalar o EdenText como aplicação e trabalhar offline. Na maioria dos idiomas, a primeira transferência é de cerca de 2 MB; os dicionários e os tipos de letra são carregados quando são precisos[^1]. A interface está disponível em inglês, alemão, espanhol, francês, italiano, português, grego, russo, ucraniano, polaco, indonésio, árabe, japonês, coreano e chinês (simplificado e tradicional).
 
 > [!NOTE]
 > O EdenText ainda está em **beta** e em desenvolvimento ativo. Testes e verificações de
@@ -70,7 +70,7 @@ O EdenText é um processador de texto poderoso que funciona no navegador, das no
 - **Revisão** — registo de alterações e conversas de comentários em balões na margem,
   comparação e união com outro ficheiro,
   marcações imprimíveis, verificação ortográfica (inglês, alemão, espanhol, francês, italiano,
-  português, grego, russo, ucraniano, indonésio e árabe), sinónimos (os mesmos idiomas, exceto o grego),
+  português, grego, russo, ucraniano, polaco, indonésio e árabe), sinónimos (os mesmos idiomas, exceto o grego),
   verificação gramatical (inglês)
 - **Assistente de IA opcional** — com um fornecedor à escolha ou um modelo local; responde
   a perguntas sobre o documento e edita-o através de alterações registadas. Pode ser desligado;

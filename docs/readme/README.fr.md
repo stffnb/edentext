@@ -33,7 +33,7 @@
 
 ---
 
-EdenText est un traitement de texte puissant qui s’utilise dans le navigateur, pour tout écrire, de la note rapide au livre entier. Ni serveur ni compte : tout est traité en local et vos documents ne quittent jamais votre ordinateur. Il suffit d’ouvrir le lien, ou d’installer EdenText comme application pour l’utiliser hors ligne. Pour la plupart des langues, le premier téléchargement fait environ 2 Mo ; les dictionnaires et les polices sont chargés au besoin[^1]. L’interface est disponible en anglais, allemand, espagnol, français, italien, portugais, grec, russe, ukrainien, indonésien, arabe, japonais et chinois (simplifié et traditionnel).
+EdenText est un traitement de texte puissant qui s’utilise dans le navigateur, pour tout écrire, de la note rapide au livre entier. Ni serveur ni compte : tout est traité en local et vos documents ne quittent jamais votre ordinateur. Il suffit d’ouvrir le lien, ou d’installer EdenText comme application pour l’utiliser hors ligne. Pour la plupart des langues, le premier téléchargement fait environ 2 Mo ; les dictionnaires et les polices sont chargés au besoin[^1]. L’interface est disponible en anglais, allemand, espagnol, français, italien, portugais, grec, russe, ukrainien, polonais, indonésien, arabe, japonais, coréen et chinois (simplifié et traditionnel).
 
 > [!NOTE]
 > EdenText est encore en **bêta** et en développement actif. Des tests et des
@@ -71,7 +71,7 @@ EdenText est un traitement de texte puissant qui s’utilise dans le navigateur,
 - **Outils de révision** – suivi des modifications et fils de commentaires dans des bulles
   en marge, comparaison et fusion avec un autre fichier, marques de révision imprimables,
   vérification orthographique (anglais, allemand, espagnol, français, italien, portugais,
-  grec, russe, ukrainien, indonésien et arabe), synonymes (toutes ces langues sauf le grec), vérification
+  grec, russe, ukrainien, polonais, indonésien et arabe), synonymes (toutes ces langues sauf le grec), vérification
   grammaticale (anglais)
 - **Assistant IA facultatif** – avec le fournisseur de votre choix ou un modèle local ; il
   répond aux questions sur le document et le modifie sous forme de modifications suivies. Il

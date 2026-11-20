@@ -185,6 +185,25 @@ describe('Indonesian spell-check (hunspell-asm)', () => {
   });
 });
 
+describe('Polish spell-check (hunspell-asm)', () => {
+  let pl: Hunspell;
+  beforeAll(async () => {
+    pl = await makeChecker('pl');
+  });
+
+  // The affix file ships as ISO-8859-2 and is vendored as UTF-8, so the diacritics must match.
+  it('accepts diacritics and inflected forms', () => {
+    for (const w of ['źdźbło', 'zażółcić', 'gęślą', 'jaźń', 'najpiękniejszymi', 'nieprzyjacielskiego', 'Warszawie']) {
+      expect(pl.spell(w), w).toBe(true);
+    }
+  });
+
+  it('flags a genuine misspelling and suggests the correction', () => {
+    expect(pl.spell('zażułcić')).toBe(false);
+    expect(pl.suggest('zażułcić')).toContain('zażółcić');
+  });
+});
+
 describe('Arabic spell-check (hunspell-asm)', () => {
   let ar: Hunspell;
   beforeAll(async () => {

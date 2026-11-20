@@ -36,9 +36,11 @@ export const LANGUAGES: LanguageDef[] = [
   { code: 'el', label: 'Ελληνικά', odf: { language: 'el', country: 'GR' } },
   { code: 'ru', label: 'Русский', odf: { language: 'ru', country: 'RU' } },
   { code: 'uk', label: 'Українська', odf: { language: 'uk', country: 'UA' } },
+  { code: 'pl', label: 'Polski', odf: { language: 'pl', country: 'PL' } },
   { code: 'id', label: 'Bahasa Indonesia', odf: { language: 'id', country: 'ID' } },
   { code: 'ar', label: 'العربية', odf: { language: 'ar', country: 'SA' } },
   { code: 'ja-JP', label: '日本語', odf: { language: 'ja', country: 'JP' }, noDict: true },
+  { code: 'ko-KR', label: '한국어', odf: { language: 'ko', country: 'KR' }, noDict: true },
   { code: 'zh-CN', label: '中文（简体）', odf: { language: 'zh', country: 'CN' }, noDict: true },
   { code: 'zh-TW', label: '中文（繁體）', odf: { language: 'zh', country: 'TW' }, noDict: true },
 ];
@@ -158,7 +160,7 @@ export function pickDocumentLanguage(main: DocumentLanguage, other: string | nul
 }
 
 // The Han font an East Asian document defaults to, by region; null for any other language.
-const CJK_DOC_FONT: Record<string, string> = { TW: 'PMingLiU', HK: 'PMingLiU', MO: 'PMingLiU', JP: 'Yu Mincho' };
+const CJK_DOC_FONT: Record<string, string> = { TW: 'PMingLiU', HK: 'PMingLiU', MO: 'PMingLiU', JP: 'Yu Mincho', KR: 'Malgun Gothic' };
 export function cjkDocFont(tag: string): string | null {
   if (!isAsianTag(tag)) return null;
   return CJK_DOC_FONT[odfFromTag(tag)?.country ?? ''] ?? 'SimSun';

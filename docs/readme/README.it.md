@@ -33,7 +33,7 @@
 
 ---
 
-EdenText è un elaboratore di testi potente che funziona nel browser, adatto a tutto: dagli appunti veloci ai libri interi. Niente server, niente account: l'elaborazione avviene in locale e i tuoi documenti non lasciano mai il computer. Basta aprire il link, oppure installarlo come app e lavorare offline. Per la maggior parte delle lingue il primo download è di circa 2 MB; dizionari e caratteri vengono caricati quando servono[^1]. L'interfaccia è disponibile in inglese, tedesco, spagnolo, francese, italiano, portoghese, greco, russo, ucraino, indonesiano, arabo, giapponese e cinese (semplificato e tradizionale).
+EdenText è un elaboratore di testi potente che funziona nel browser, adatto a tutto: dagli appunti veloci ai libri interi. Niente server, niente account: l'elaborazione avviene in locale e i tuoi documenti non lasciano mai il computer. Basta aprire il link, oppure installarlo come app e lavorare offline. Per la maggior parte delle lingue il primo download è di circa 2 MB; dizionari e caratteri vengono caricati quando servono[^1]. L'interfaccia è disponibile in inglese, tedesco, spagnolo, francese, italiano, portoghese, greco, russo, ucraino, polacco, indonesiano, arabo, giapponese, coreano e cinese (semplificato e tradizionale).
 
 > [!NOTE]
 > EdenText è ancora in **beta** ed è in pieno sviluppo. Test automatici e prove di
@@ -69,7 +69,7 @@ EdenText è un elaboratore di testi potente che funziona nel browser, adatto a t
   citazioni e bibliografia, indice analitico, formule (LaTeX)
 - **Strumenti di revisione**: revisioni e commenti con risposte nelle aree commenti a margine,
   confronto e unione con un altro file, stampa delle revisioni, controllo ortografico
-  (inglese, tedesco, spagnolo, francese, italiano, portoghese, greco, russo, ucraino, indonesiano e arabo),
+  (inglese, tedesco, spagnolo, francese, italiano, portoghese, greco, russo, ucraino, polacco, indonesiano e arabo),
   sinonimi (in tutte queste lingue tranne il greco), controllo grammaticale (inglese)
 - **Assistente IA facoltativo**: con il provider che preferisci o con un modello locale;
   risponde a domande sul documento e lo modifica sotto forma di revisioni. Si può

@@ -33,7 +33,7 @@
 
 ---
 
-EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von der schnellen Notiz bis zum ganzen Buch. Kein Server, kein Konto: Alles wird lokal verarbeitet, die Dokumente verlassen nie den eigenen Rechner. Einfach den Link öffnen oder EdenText als App installieren und offline nutzen. Der erste Download ist für die meisten Sprachen etwa 2 MB groß; Wörterbücher und Schriften werden erst bei Bedarf geladen[^1]. Die Oberfläche gibt es auf Englisch, Deutsch, Spanisch, Französisch, Italienisch, Portugiesisch, Griechisch, Russisch, Ukrainisch, Indonesisch, Arabisch, Japanisch und Chinesisch (vereinfacht und traditionell).
+EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von der schnellen Notiz bis zum ganzen Buch. Kein Server, kein Konto: Alles wird lokal verarbeitet, die Dokumente verlassen nie den eigenen Rechner. Einfach den Link öffnen oder EdenText als App installieren und offline nutzen. Der erste Download ist für die meisten Sprachen etwa 2 MB groß; Wörterbücher und Schriften werden erst bei Bedarf geladen[^1]. Die Oberfläche gibt es auf Englisch, Deutsch, Spanisch, Französisch, Italienisch, Portugiesisch, Griechisch, Russisch, Ukrainisch, Polnisch, Indonesisch, Arabisch, Japanisch, Koreanisch und Chinesisch (vereinfacht und traditionell).
 
 > [!NOTE]
 > EdenText ist noch in der **Beta**-Phase und wird laufend weiterentwickelt. Tests und
@@ -70,7 +70,7 @@ EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von de
 - **Überarbeiten** – Änderungsverfolgung und Kommentar-Threads in Sprechblasen am Rand,
   Vergleichen und Zusammenführen mit einer anderen Datei,
   druckbares Markup, Rechtschreibprüfung (Englisch, Deutsch, Spanisch, Französisch, Italienisch,
-  Portugiesisch, Griechisch, Russisch, Ukrainisch, Indonesisch und Arabisch), Synonyme (dieselben Sprachen
+  Portugiesisch, Griechisch, Russisch, Ukrainisch, Polnisch, Indonesisch und Arabisch), Synonyme (dieselben Sprachen
   ohne Griechisch), Grammatikprüfung (Englisch)
 - **Optionaler KI-Assistent** – mit einem frei wählbaren Anbieter oder einem lokalen Modell;
   beantwortet Fragen zum Dokument und bearbeitet es mit Änderungsverfolgung. Lässt sich
