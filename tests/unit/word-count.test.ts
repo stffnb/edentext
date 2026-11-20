@@ -63,6 +63,11 @@ describe('countText', () => {
     expect(whole(doc(p(t('abc中文def')))).words).toBe(4);
   });
 
+  // Korean is spaced between words, and both word processors count it by its spaces.
+  it('counts Hangul words by their spaces', () => {
+    expect(whole(doc(p(t('오늘은 날씨가 정말 좋습니다. 우리는 공원에 갑니다.')))).words).toBe(7);
+  });
+
   it('counts a selection range only', () => {
     const d = doc(p(t('eins zwei drei')));
     // Positions 1..5: the run "eins" inside the first paragraph.
