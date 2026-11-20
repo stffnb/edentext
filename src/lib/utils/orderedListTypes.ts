@@ -37,8 +37,8 @@ export type CjkNumFormat = '一, 二, 三, ...' | '壹, 贰, 叁, ...' | '甲, �
   | 'ア, イ, ウ, ...' | 'イ, ロ, ハ, ...';
 
 // The Arabic formats: the letters in alphabetical and in the older abjad order, spelled as
-// LibreOffice writes them (probed), and Word's Arabic-Indic digits (hindiNumbers), which
-// LibreOffice has no numbering for and counts 1, 2, 3.
+// LibreOffice writes them (probed), and Arabic-Indic digits, which neither LibreOffice nor
+// Word has a numbering for: DOCX carries them as a right-to-left decimal label.
 export type ArabicNumFormat = '١, ٢, ٣, ...' | 'أ, ب, ت, ...' | 'ا, ب, ج, ...';
 
 // The Korean formats as LibreOffice spells them (probed): the 14 syllables and consonants,

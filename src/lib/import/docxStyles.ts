@@ -487,6 +487,9 @@ export class DocxStyles {
         if (ilvl == null) continue;
         const def: LevelDef = {};
         const fmt = firstChild(lvl, 'numFmt'); if (fmt) def.numFmt = wVal(fmt) ?? undefined;
+        // Arabic-Indic digits have no format in Word: a decimal label set right-to-left.
+        const lvlRPr = firstChild(lvl, 'rPr'), lvlRtl = lvlRPr && firstChild(lvlRPr, 'rtl');
+        if (def.numFmt === 'decimal' && lvlRtl && !/^(0|false|off)$/.test(wVal(lvlRtl) ?? '')) def.numFmt = 'hindiNumbers';
         const txt = firstChild(lvl, 'lvlText'); if (txt) def.lvlText = wVal(txt) ?? undefined;
         // An absent w:start is 0: LibreOffice numbers such a level from 0 (probed).
         const start = firstChild(lvl, 'start'); const n = start ? parseInt(wVal(start) ?? '', 10) : 0; if (Number.isFinite(n)) def.start = n;

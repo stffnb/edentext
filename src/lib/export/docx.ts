@@ -175,6 +175,7 @@ const ORDERED_FORMAT: Record<string, (typeof LevelFormat)[keyof typeof LevelForm
   // LibreOffice writes both of its counting modes to it.
   aa: LevelFormat.LOWER_LETTER,
   AA: LevelFormat.UPPER_LETTER,
+  // Stands in for Arabic-Indic digits until `arabicIndicLevels` writes the level.
   '١, ٢, ٣, ...': LevelFormat.HINDI_NUMBERS,
   'أ, ب, ت, ...': LevelFormat.ARABIC_ALPHA,
   'ا, ب, ج, ...': LevelFormat.ARABIC_ABJAD,
@@ -2421,6 +2422,21 @@ function declareW14(xml: string): string {
   });
 }
 
+// Word has no numbering format for Arabic-Indic digits (its hindiNumbers are Devanagari)
+// and shapes a decimal label by its run: such a level goes out decimal and right-to-left.
+function arabicIndicLevels(xml: string): string {
+  const HINDI = '<w:numFmt w:val="hindiNumbers"/>';
+  if (!xml.includes(HINDI)) return xml;
+  return xml.replace(/<w:lvl\b[^>]*>[\s\S]*?<\/w:lvl>/g, (lvl) => {
+    if (!lvl.includes(HINDI)) return lvl;
+    const dec = lvl.replace(HINDI, '<w:numFmt w:val="decimal"/>').replace('<w:rPr/>', '');
+    const at = dec.indexOf('<w:rPr>');
+    if (at < 0) return dec.replace('</w:lvl>', '<w:rPr><w:rtl/></w:rPr></w:lvl>');
+    const tail = dec.slice(at).search(/<w:(?:cs|em|lang|eastAsianLayout|specVanish|oMath)\b|<\/w:rPr>/);
+    return `${dec.slice(0, at + tail)}<w:rtl/>${dec.slice(at + tail)}`;
+  });
+}
+
 // Post-pack pass (runs last) over what the library writes: the effect toggles above,
 // a paragraph's w:pBdr sides in the schema's sequence (top, left, bottom, right, between,
 // bar), and a page field with no cached result (a reader shows what it finds there).
@@ -2431,7 +2447,7 @@ function patchPackedXml(bytes: Uint8Array): Uint8Array {
   for (const [path, data] of Object.entries(files)) {
     if (!/^word\/.*\.xml$/.test(path)) continue;
     const xml = strFromU8(data);
-    const sorted = declareW14(placeEffectToggles(xml)).replace(/<w:pBdr>([\s\S]*?)<\/w:pBdr>/g, (_m, inner: string) => {
+    const sorted = declareW14(placeEffectToggles(arabicIndicLevels(xml))).replace(/<w:pBdr>([\s\S]*?)<\/w:pBdr>/g, (_m, inner: string) => {
       const sides = inner.match(/<w:(?:top|left|bottom|right|between|bar)\b[^>]*\/>/g) ?? [];
       if (sides.join('') !== inner) return _m;
       const rank = (s: string) => PBDR_ORDER.indexOf(/^<(w:\w+)/.exec(s)![1]);
