@@ -1831,6 +1831,11 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   white-space: nowrap;
   user-select: none;
 }
+.ProseMirror-yjs-cursor[dir='rtl'] > div {
+  left: auto;
+  right: 0;
+  border-radius: 3px 3px 0 3px;
+}
 @media print {
   .collab-carets { display: none; }
 }
@@ -1838,4 +1843,6 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
 /* A jump to someone's caret or held zone marks it a moment in their colour (collab/presence.svelte.ts). */
 .ProseMirror-yjs-cursor.collab-flash > div { animation: collab-flash-label 1.6s ease-out; }
 @keyframes collab-flash-label { 0%, 60% { transform: scale(1.25); transform-origin: left bottom; } }
+.ProseMirror-yjs-cursor[dir='rtl'].collab-flash > div { animation-name: collab-flash-label-rtl; }
+@keyframes collab-flash-label-rtl { 0%, 60% { transform: scale(1.25); transform-origin: right bottom; } }
 @keyframes collab-flash { 0%, 50% { box-shadow: 0 0 0 3px var(--hf-held); } 100% { box-shadow: 0 0 0 3px transparent; } }

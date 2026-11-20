@@ -69,6 +69,7 @@ export function caretsPlugin(awareness: Awareness, look: Look): Plugin {
             el.className = 'ProseMirror-yjs-cursor';
             el.dataset.client = String(m.id);
             el.append(document.createElement('div'));
+            (el.firstElementChild as HTMLElement).dir = 'auto';
             layer.append(el);
             carets.set(m.id, el);
           }
@@ -82,6 +83,10 @@ export function caretsPlugin(awareness: Awareness, look: Look): Plugin {
             el.style.left = `${(c.left - origin.left) / scale}px`;
             el.style.top = `${(c.top - origin.top) / scale}px`;
             el.style.height = `${(c.bottom - c.top) / scale}px`;
+            // The label runs the way the caret's paragraph reads, so it stays on the page.
+            const at = view.domAtPos(m.head).node;
+            const block = at instanceof Element ? at : at.parentElement;
+            el.dir = block && getComputedStyle(block).direction === 'rtl' ? 'rtl' : 'ltr';
           }
           seen.add(m.id);
           if (!reg || m.anchor === m.head) continue;
