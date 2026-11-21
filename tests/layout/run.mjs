@@ -206,12 +206,23 @@ function lintLayout() {
     return own.filter((l) => l.top < mid && l.bottom > mid).sort((a, b) => a.left - b.left)
       .map((l) => l.text).join(' ').replace(/\s+/g, ' ').trim().slice(0, 40);
   });
+  // The spaces a line ends with hang past it unpainted, so only its words count.
+  const wordsOf = (l) => {
+    const words = [];
+    for (const m of l.node.nodeValue.slice(l.from, l.to).matchAll(/\S+/g)) {
+      const range = document.createRange();
+      range.setStart(l.node, l.from + m.index); range.setEnd(l.node, l.from + m.index + m[0].length);
+      for (const r of range.getClientRects()) { const b = rel(r); if (b.bottom > l.top + 1 && b.top < l.bottom - 1) words.push(b); }
+    }
+    return words;
+  };
   // Body text stays on a sheet and, in a single-section document, inside the margins.
   for (const l of lines) {
     if (l.kind !== 'body' && l.kind !== 'note') continue;
     if (l.page < 0) { issue('in the page gap', l); continue; }
     const s = sheets[l.page];
-    if (l.left < s.left - 1 || l.right > s.right + 1) issue('off the page', l, { sheet: box(s) });
+    const off = (b) => b.left < s.left - 1 || b.right > s.right + 1;
+    if (off(l) && wordsOf(l).some(off)) issue('off the page', l, { sheet: box(s) });
     if (!oneSection) continue;
     const [ml, mr] = side == null ? [margins.left, margins.right] : [side, side];
     const body = { left: s.left + ml, top: s.top + margins.top, right: s.right - mr, bottom: s.bottom - margins.bottom };
@@ -221,14 +232,7 @@ function lintLayout() {
     // A table stands where the file indents it, in the margin too; its text is held to it.
     const left = Math.min(body.left, l.within?.left ?? body.left) - 6, right = Math.max(body.right, l.within?.right ?? body.right) + 6;
     if (l.left >= left && l.right <= right) continue;
-    // The spaces a line ends with hang past it unpainted, so only its words count.
-    const words = [];
-    for (const m of l.node.nodeValue.slice(l.from, l.to).matchAll(/\S+/g)) {
-      const range = document.createRange();
-      range.setStart(l.node, l.from + m.index); range.setEnd(l.node, l.from + m.index + m[0].length);
-      for (const r of range.getClientRects()) { const b = rel(r); if (b.bottom > l.top + 1 && b.top < l.bottom - 1) words.push(b); }
-    }
-    if (words.some((b) => b.left < left || b.right > right)) issue('beyond the side margin', l, { body: box(body) });
+    if (wordsOf(l).some((b) => b.left < left || b.right > right)) issue('beyond the side margin', l, { body: box(body) });
   }
   // A heading stays with the block it introduces, across a page and a column alike,
   // unless that block asks for the break itself or the heading's file style drops the keep.
