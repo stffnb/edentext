@@ -103,6 +103,14 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- if not .webSpeech }}{{ $_ := set $dictation "webSpeech" false }}{{ end }}
 {{- end }}
 {{- if $dictation }}{{ $_ := set $cfg "dictation" $dictation }}{{ end }}
+{{- $templates := dict }}
+{{- with .Values.templates }}
+{{- if not .enabled }}{{ $_ := set $templates "enabled" false }}{{ end }}
+{{- if not .builtIn }}{{ $_ := set $templates "builtIn" false }}{{ end }}
+{{- if not .save }}{{ $_ := set $templates "save" false }}{{ end }}
+{{- with .items }}{{ $_ := set $templates "items" . }}{{ end }}
+{{- end }}
+{{- if $templates }}{{ $_ := set $cfg "templates" $templates }}{{ end }}
 {{- if $cfg }}{{ toPrettyJson $cfg }}{{ end }}
 {{- end }}
 

@@ -162,6 +162,22 @@ dictation:
       name: ""
       key: api-key
 
+# What New from Template offers, in the same edentext.config.json.
+templates:
+  # false takes New from Template and Save as Template away.
+  enabled: true
+  # false leaves the built-in templates out of the gallery.
+  builtIn: true
+  # false takes Save as Template away.
+  save: true
+  # Up to 50 .ott, .odt, .dotx or .docx files, for example
+  # { id: letter, name: { en: Letter, de: Brief }, url: templates/letter.ott, preview: templates/letter.png }.
+  # name and description are a text or one per language; a relative url is the site's.
+  items: []
+  # A volume served read-only at /templates/, which the items' url can name, for example
+  # { configMap: { name: edentext-templates } } or { persistentVolumeClaim: { claimName: templates } }.
+  volume: {}
+
 nodeSelector: {}
 tolerations: []
 affinity: {}
