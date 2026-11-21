@@ -1902,7 +1902,7 @@
       if (stored.missing) alert(t().dialogs.picturesNotRestored(stored.missing));
     });
     // Re-register the restored document's embedded fonts so it renders in the right face;
-    // FontFace load fires 'loadingdone', which Editor.svelte re-paginates on. A file opened
+    // registering sends 'loadingdone', which Editor.svelte re-paginates on. A file opened
     // while the store was still reading has its own, and registering would replace them.
     void loadEmbeddedFonts().then((fonts) => {
       if (embeddedFonts().length) return;
