@@ -57,7 +57,7 @@ export function reloadAlone(fresh = false): void {
   location.reload();
 }
 
-/** What a joiner opens once it has left, carried over the reload: a file, a built-in template or a new document. */
+/** What a joiner opens once it has left, carried over the reload: a file, a template (built in or the installation's) or a new document. */
 export type Opening = { file: { bytes: Uint8Array; name: string; handle: FileSystemFileHandle | null } } | { template: string } | { blank: true };
 
 // One entry per tab, named in its sessionStorage, so another tab loading meanwhile takes none.

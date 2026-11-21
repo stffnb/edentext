@@ -98,7 +98,8 @@
   import NavigatorPane from './lib/components/NavigatorPane.svelte';
   import type { PageBox } from './lib/utils/pageStrip';
   import AiPane, { askAi, resetAiChat } from './lib/components/AiPane.svelte';
-  import { setEmbedHostConfig } from './lib/storage/hostConfig.svelte';
+  import { pickText, setEmbedHostConfig, templateOffer, type HostTemplate } from './lib/storage/hostConfig.svelte';
+  import { hostTemplateBytes } from './lib/templates/host';
   import { aiConfig, aiAnswering, aiEnabled, AI_COMMENT_EVENT, OPEN_AI_CHAT_EVENT } from './lib/storage/ai.svelte';
   import { navigatorSettings, setNavigator } from './lib/storage/navigator.svelte';
   import { aiErrorText, isAbort } from './lib/ai/client';
@@ -563,7 +564,7 @@
   let islandCommands = $derived(searchableCommands([
     ...RIBBON_COMMANDS,
     ...styleCommands(visibleStyles(styleSheet(), showAllStyles()).map((s) => s.name)),
-  ], islandShown, { ai: aiEnabled(), volatile, embedded, dictation: dictationAvailable(), collab: !!collabRelay() }).filter((c) => !RIBBON_ONLY.has(c.id)));
+  ], islandShown, { ai: aiEnabled(), volatile, embedded, dictation: dictationAvailable(), collab: !!collabRelay(), templates: templateOffer() }).filter((c) => !RIBBON_ONLY.has(c.id)));
 
   // Where the island keeps a command: its own place if it moved one, the ribbon's tab otherwise.
   function islandPlace(c: RibbonCommand): { category: Category | null; via?: string } {
@@ -943,6 +944,29 @@
     editor.commands.focus();
   }
 
+  // An installation's template: fetched first, so a failure leaves the open document as
+  // it is, then opened as an .ott is, whatever its extension. Embedded, the host hears of it.
+  async function applyHostTemplate(entry: HostTemplate, asked = false) {
+    if (!editor || (!asked && leaveFirst({ template: entry.id }))) return;
+    if (!asked && isDocNonEmpty() && !confirm(t().dialogs.confirmNew)) return;
+    const name = pickText(entry.name, locale());
+    busyTask = 'loading';
+    let bytes: Uint8Array;
+    try {
+      bytes = await hostTemplateBytes(entry);
+      if (isProtected(bytes)) throw new Error('a template cannot be password-protected');
+    } catch (err) {
+      busyTask = null;
+      console.error('[templates] Could not load', entry.url ?? entry.fileName, err);
+      alert(t().templates.loadFailed);
+      return;
+    }
+    busyTask = null;
+    if (!(await applyImport(bytes, null, entry.fileName, undefined, true, name))) return;
+    if (embedded) notify('template', { template: entry.id, name });
+    editor?.commands.focus();
+  }
+
   // Replace the document with a parsed .odt; adopt its geometry/header/footer and
   // track the source handle (null for the fallback file input) so Save overwrites it.
   // Distinct explicit font names (textStyle marks, either half of the pair) anywhere in a
@@ -1095,7 +1119,7 @@
   // `host` is an embedding application's or the session's load: it replaces the document
   // unasked, and hears of warnings and failures instead of the reader. `asked`: the reader
   // already agreed to replace it. False = nothing was opened.
-  async function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null, sourceName?: string, host?: { warn: (warnings: string[]) => void }, asked = false): Promise<boolean> {
+  async function applyImport(bytes: Uint8Array, handle: FileSystemFileHandle | null, sourceName?: string, host?: { warn: (warnings: string[]) => void }, asked = false, templateName?: string): Promise<boolean> {
     if (!editor || (!host && leaveFirst({ file: { bytes, name: sourceName ?? '', handle } }))) return false;
     try {
       // Before anything reads the archive: an encrypted file is not one yet.
@@ -1110,7 +1134,7 @@
       const name = sourceName?.toLowerCase() ?? '';
       // A template is loaded for its content but never bound as the handle, so the
       // first Save prompts for a new document instead of overwriting the template.
-      const isTemplate = name.endsWith('.ott') || name.endsWith('.dotx');
+      const isTemplate = templateName !== undefined || name.endsWith('.ott') || name.endsWith('.dotx');
       const { result, isDocx } = await importBytes(bytes, name);
       const { content, error: bodyError } = repairContent(result.content, editor.schema);
       const zoneErrors: string[] = [];
@@ -1144,7 +1168,8 @@
       resetHistory();
       resetDocumentSettings();
       // Adopt the opened file's name as the document name (drives the save filename).
-      if (sourceName) documentName = docNameOfFile(sourceName);
+      if (templateName !== undefined) documentName = templateName;
+      else if (sourceName) documentName = docNameOfFile(sourceName);
       // Adopt the document's page setup; what it leaves out stays at the default.
       adoptLayout(result);
       // The file says whether it goes on recording; ours is not the setting that counts.
@@ -1571,6 +1596,7 @@
     }
     if (s.ai !== undefined) setEmbedHostConfig('ai', s.ai);
     if (s.dictation !== undefined) setEmbedHostConfig('dictation', s.dictation);
+    if (s.templates !== undefined) setEmbedHostConfig('templates', s.templates);
     if (typeof s.name === 'string') {
       // The file's name as the host keeps it, which is no edit of the document.
       const clean = !dirty;
@@ -1717,8 +1743,13 @@
   async function openAlone(opening: Opening) {
     if ('file' in opening) await applyImport(opening.file.bytes, opening.file.handle, opening.file.name || undefined, undefined, true);
     else if ('template' in opening) {
+      // The installation's entries are loaded again by now; one that is gone opens an empty document.
+      const offer = templateOffer();
+      const own = offer.items.find((e) => e.id === opening.template);
       const entry = [...TEMPLATES, ...SHELVED].find((e) => e.id === opening.template);
-      if (entry) applyTemplate(entry, true);
+      if (own) await applyHostTemplate(own, true);
+      else if (entry && offer.builtIn) applyTemplate(entry, true);
+      else startBlank();
     } else {
       startBlank();
       editor?.commands.focus();
@@ -2119,6 +2150,8 @@
             <path d="M8 8v3.5M6.25 9.75h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
           </svg>
         </button>
+        {/if}
+        {#if templateOffer().gallery}
         <button class="file-action-btn" data-cmd="newFromTemplate" onclick={() => (templateGalleryOpen = true)} disabled={!editor} title={t().templates.title}>
           <!-- Page with folded corner + text lines: new from template -->
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -2127,6 +2160,8 @@
             <path d="M5.5 8.5h5M5.5 10.5h5M5.5 12.5h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
           </svg>
         </button>
+        {/if}
+        {#if !embedded}
         <button class="file-action-btn" data-cmd="open" onclick={handleOpen} disabled={!editor} title={`${t().app.open} (${shortcutHint('open')})`}>
           <!-- Folder -->
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -2181,7 +2216,7 @@
                   <span>{t().browserDocs.title}</span>
                 </button>
               {/if}
-              {#if !embedded}
+              {#if templateOffer().save}
               <button class="theme-option" data-cmd="saveTemplate" onclick={handleSaveTemplate} role="menuitem">
                 <span>{t().app.template}</span>
                 <span class="theme-option-hint">{t().app.templateHint}</span>
@@ -2553,7 +2588,7 @@
   </footer>
 
   <AboutDialog bind:open={aboutOpen} />
-  <TemplateGalleryDialog bind:open={templateGalleryOpen} onPick={applyTemplate} />
+  <TemplateGalleryDialog bind:open={templateGalleryOpen} onPick={applyTemplate} onPickHost={applyHostTemplate} />
   <AutoCorrectDialog bind:open={autoCorrectOpen} />
   <DictationConsent />
   <AutoTextDialog bind:open={autoTextOpen} editor={activeEditor} />

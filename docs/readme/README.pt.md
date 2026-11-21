@@ -152,7 +152,7 @@ compilada; `npm run build` gera os mesmos ficheiros em `dist/`. Qualquer servido
 alojar essa pasta. A imagem de contentor também pode ser criada localmente com
 `docker build -t edentext .`.
 Para Kubernetes, existe um chart Helm mantido pela comunidade em [`charts/edentext`](../../charts/edentext).
-Como configurar o assistente de IA e o ditado para todos os utilizadores está em [`docs/self-hosting.md`](../self-hosting.md) (em inglês).
+Como configurar o assistente de IA, o ditado e os modelos de documento para todos os utilizadores está em [`docs/self-hosting.md`](../self-hosting.md) (em inglês).
 
 Para atualizar, copie os ficheiros novos por cima dos antigos em vez de esvaziar primeiro
 a pasta. Os separadores abertos antes da atualização continuam a carregar os ficheiros da

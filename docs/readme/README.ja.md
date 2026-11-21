@@ -150,7 +150,7 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 このフォルダーは任意の Web サーバーで公開できます。
 コンテナイメージは `docker build -t edentext .` で手元でもビルドできます。
 Kubernetes 向けには、コミュニティが保守する Helm チャートが [`charts/edentext`](../../charts/edentext) にあります。
-AI アシスタントと音声入力をすべてのユーザー向けにあらかじめ設定する方法は [`docs/self-hosting.md`](../self-hosting.md)（英語）にあります。
+AI アシスタント、音声入力、文書テンプレートをすべてのユーザー向けにあらかじめ設定する方法は [`docs/self-hosting.md`](../self-hosting.md)（英語）にあります。
 
 更新するときは、フォルダーを空にせず、新しいファイルを古いファイルの上にコピーしてください。
 更新前に開いていたタブは、再読み込みされるまで自分のバージョンのファイルを読み込み続けます。

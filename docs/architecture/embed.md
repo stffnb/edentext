@@ -11,9 +11,9 @@ Another web application can show EdenText in an iframe and keep the document its
   framing the editor leaves no name or key behind. Preferences the reader picks (theme,
   language, user name, zoom) still go to `localStorage`, which a browser partitions per
   embedding site. Settings ▸ Privacy, whose choices are about the browser copy, is hidden.
-- **The host owns the file.** Both chromes and the command search drop New, From
-  template, Open, Browser documents, Save As and Save as template
-  (`HOST_FILE_COMMANDS` in `ribbon/commands.ts`). Save, its button and Ctrl+S send
+- **The host owns the file.** Both chromes and the command search drop New, Open, Browser
+  documents, Save As, Save as template and, without a `templates` option, From template
+  (`HOST_FILE_COMMANDS`, `templateOffer`). Save, its button and Ctrl+S send
   `saveRequest` to the host. The name field is read-only, and there is no unload warning
   and no `launchQueue`. Print, PDF, protection and document properties stay.
 - **Attribution.** The status bar shows `PoweredBy.svelte`, a link to the homepage;
@@ -33,7 +33,7 @@ name and meaning. A change that breaks this raises the protocol number in `ready
 
 | Host → editor | Fields | Reply (`response`, same `id`) |
 |---|---|---|
-| `init` | `user?`, `locale?`, `theme?`, `chrome?`, `name?`, `accent?`, `ai?`, `dictation?` | `ok` |
+| `init` | `user?`, `locale?`, `theme?`, `chrome?`, `name?`, `accent?`, `ai?`, `dictation?`, `templates?` | `ok` |
 | `configure` | the same, at any later time | `ok` |
 | `load` | `bytes` (ArrayBuffer), `name` | `ok: false` if the reader backed out (password) |
 | `new` | `name?` | `ok` |
@@ -63,6 +63,7 @@ A failure is answered with `error: message`.
   The assistant is **on by default**, and a reader can enter any provider in the frame,
   which then receives document text: a host that must keep documents in-house sends
   `ai: false`.
+- **`templates`** offers New from Template (`docs/self-hosting.md`); a pick sends `template`.
 - **`new`** replaces the document with an empty, unchanged one without asking, as New
   does; `name` is the host's file name for it.
 
@@ -73,6 +74,7 @@ A failure is answered with `error: message`.
 | `dirty` | `dirty` |
 | `saveRequest` | – |
 | `warning` | `warnings` |
+| `template` | `template` (the entry's `id`), `name`: a template opened as a new, unchanged document in place of the host's file |
 
 ## Host side (`public/embed.js`)
 
@@ -109,6 +111,7 @@ gets them without further setup.
 | `accent` | `slate`, `blue`, `teal`, `green`, `violet`, `berry`, `graphite` or a `#rrggbb` colour |
 | `ai` | `false` removes the AI assistant and its settings; `true` leaves it to the reader; `{ provider, endpoint, model, contextTokens, locked }` presets it, never with a key |
 | `dictation` | `false` removes dictation; `{ server, model, locked, webSpeech }` presets its speech server and whether the browser's recognition stays on offer |
+| `templates` | `{ builtIn, items }` offers New from Template: `builtIn: true` the built-in templates, `items` up to 50 of yours, each `{ id, name, description, preview }` with `url` or `bytes` + `fileName`; `false` removes it |
 
 An unknown value is ignored, so the setting keeps what it had.
 
@@ -120,7 +123,7 @@ An unknown value is ignored, so the setting keeps what it had.
 | `newDocument(name?)` | starts an empty document |
 | `export(format)` | the document as a `File`: `odt`, `docx` or `pdf` |
 | `markSaved()` | tells the editor the exported file is stored, which clears `dirty` |
-| `on(event, fn)` | `dirty` (`{ dirty }`), `saveRequest` (the reader pressed Save or Ctrl+S), `warning` (`{ warnings }`, what an import could not keep); returns an unsubscribe function |
+| `on(event, fn)` | `dirty` (`{ dirty }`), `saveRequest` (the reader pressed Save or Ctrl+S), `warning` (`{ warnings }`, what an import could not keep), `template` (`{ template, name }`); returns an unsubscribe function |
 | `destroy()` | removes the iframe |
 
 ## npm packages
@@ -138,7 +141,9 @@ repository variable `NPM_PUBLISH` is `true`.
   `embed.config.json` (`["self"]` without `--origins`) and replaces only a folder holding
   `index.html`, `embed.js` and `licenses.txt`. The Vite plugin (`@edentext/app/vite`)
   serves them under `/edentext/` in the dev server, with a 404 rather than the host's
-  SPA fallback past them, and copies them into the client build.
+  SPA fallback past them, and copies them into the client build. A copy without a language
+  works: a dictionary or thesaurus answered with a 404 or HTML counts as not shipped
+  (`NotServed`, `utils/loadFailure.ts`) and goes unchecked quietly.
 - **`@edentext/embed`** is `public/embed.js` with `defaultUrl` set to `/edentext/`, so
   the entry has no `import.meta.url` (checked with Vite, webpack and esbuild);
   `element.js` defines `<eden-text>`, `react.js` `<EdenText>`, both importable without a
@@ -151,9 +156,6 @@ showing and driving it over messages leaves the host's code outside the AGPL. Ea
 helper file opens with a `/*!` notice, which esbuild and terser keep and Vite 8 drops,
 so a host shipping third-party notices lists the helper with its MIT dependencies.
 `@edentext/app` declares AGPL-3.0-only and carries the MIT text as `LICENSE.MIT`.
-
-A copy without a language works: a dictionary or thesaurus answered with a 404 or HTML
-counts as not shipped (`NotServed`, `utils/loadFailure.ts`) and goes unchecked quietly.
 
 **Same origin.** Under the host's `/edentext/` the editor shares its storage (all
 `localStorage` keys begin with `edentext-`; embed mode writes only preferences, no
@@ -168,11 +170,9 @@ package README recommends a subdomain with the application in `--origins`.
 
 - **iframe `sandbox`** needs `allow-scripts allow-same-origin allow-modals allow-popups`,
   plus `allow-downloads` for the print fallbacks; without same-origin there is no storage.
-- **No file pickers:** File System Access is unavailable in a cross-origin iframe; embed
-  mode needs none.
+- **No file pickers:** a cross-origin iframe has no File System Access; embed mode needs none.
 - **Local network:** Chromium blocks a public page from framing a loopback or private
-  address, so host and EdenText share a kind of network (the smoke leg serves its host
-  from a second loopback server).
+  address: host and EdenText share a kind of network (the smoke leg's is a second server).
 - **iframe `allow`:** `embed.js` grants `clipboard-read` (Paste), `clipboard-write` and
   `local-fonts`; a host that drops one loses only that feature.
 

@@ -1178,6 +1178,7 @@ const pl: Messages = {
   },
   templates: {
     title: 'Nowy z szablonu',
+    loadFailed: 'Nie udało się wczytać szablonu. Otwarty dokument nie został zmieniony.',
     din5008b: {
       name: 'List wg DIN 5008 (formularz B)',
       description: 'Pismo firmowe według normy niemieckiej z pełnym nagłówkiem firmowym: pole adresowe do koperty z okienkiem od 45 mm, blok informacyjny, znaczniki składania.',

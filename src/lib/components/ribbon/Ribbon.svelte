@@ -44,6 +44,7 @@
   import { dictationAvailable } from '../../dictation/session.svelte';
   import { volatile } from '../../storage/docScope';
   import { embedded, whiteLabel } from '../../embed/mode';
+  import { templateOffer } from '../../storage/hostConfig.svelte';
 
   let {
     editor,
@@ -205,7 +206,7 @@
   let searchable = $derived(searchableCommands([
     ...RIBBON_COMMANDS,
     ...styleCommands(visibleStyles(styleSheet(), showAllStyles()).map((s) => s.name)),
-  ], shown, { ai: aiEnabled(), volatile, embedded, dictation: dictationAvailable(), collab: !!onCollab }));
+  ], shown, { ai: aiEnabled(), volatile, embedded, dictation: dictationAvailable(), collab: !!onCollab, templates: templateOffer() }));
 
   const act = (id: string) => actOnCommand(document.querySelector(`.ribbon [data-cmd="${CSS.escape(id)}"]`));
 
@@ -245,9 +246,15 @@
           <button data-cmd="newDocument" onclick={() => run(onNew)} disabled={!editor}>
             <Icon name="newDoc" size={16} />{t().app.newDocument}
           </button>
+          {/if}
+          <!-- The installation decides which templates there are, and an embedding host whether. -->
+          {#if templateOffer().gallery}
           <button data-cmd="newFromTemplate" onclick={() => run(onNewFromTemplate)} disabled={!editor}>
             <Icon name="foldMarks" size={16} />{t().templates.title}
           </button>
+          {#if embedded}<hr />{/if}
+          {/if}
+          {#if !embedded}
           <button data-cmd="open" onclick={() => run(onOpen)} disabled={!editor}>
             <Icon name="folder" size={16} />{t().app.open}
             <span class="menu-key">{shortcutHint('open')}</span>
@@ -281,7 +288,7 @@
             <Icon name="export" size={16} />{t().app.vectorPdf}
             <span class="menu-sub">{t().app.vectorHint}</span>
           </button>
-          {#if !embedded}
+          {#if templateOffer().save}
           <button data-cmd="saveTemplate" onclick={() => run(onSaveTemplate)}>
             <Icon name="export" size={16} />{t().app.template}
             <span class="menu-sub">{t().app.templateHint}</span>
