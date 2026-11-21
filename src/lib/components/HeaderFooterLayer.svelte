@@ -2,7 +2,7 @@
   import { tick, untrack } from 'svelte';
   import { Editor, type Content } from '@tiptap/core';
   import { layOutZoneTabs, zoneDefaultStops } from '../editor/extensions/tabStops';
-  import { FORCE_PAGE_RECALC } from '../editor/extensions/pageBreaks';
+  import { FORCE_PAGE_RECALC, placeZoneFrames } from '../editor/extensions/pageBreaks';
   import { zoneExtensions } from '../editor/extensions';
   import { StateStep, ZoneHistory } from '../editor/extensions/stateHistory';
   import { RECORDING } from '../editor/extensions/trackChanges';
@@ -483,6 +483,7 @@
         tabQueue.clear();
         for (const z of zones) { tabsDirty.delete(z); tabsWidth.set(z, z.style.width); }
         layOutZoneTabs(zones);
+        for (const root of zones.flatMap((z) => Array.from(z.querySelectorAll<HTMLElement>('.tiptap')))) placeZoneFrames(root);
       });
     }
     tabQueue.add(node);
@@ -642,7 +643,8 @@
       // appears to jump. Focus the zone explicitly without scrolling instead.
       // Deferred: leaving a zone removes this DOM mid-render, and the blur ProseMirror
       // dispatches then would tick state while Svelte is still flushing.
-      onTransaction: () => {
+      onTransaction: ({ editor }) => {
+        placeZoneFrames(editor.view.dom as HTMLElement);
         queueMicrotask(() => hfTick++);
       },
       onUpdate: ({ editor }) => {
@@ -1096,12 +1098,6 @@
     padding: var(--hf-frame-pad);
     background: var(--hf-frame-bg, none) !important;
     min-height: var(--hf-frame-min, 0px);
-  }
-  /* A paragraph ending in an inline atom (a page field) gets a phantom trailing <br> the
-     static <p> lacks; ProseMirror marks that case with a separator <img>, so hide the
-     break only then. A real Enter-made line has no separator and keeps its caret. */
-  .hf-zone :global(.tiptap p:has(img.ProseMirror-separator) > br.ProseMirror-trailingBreak) {
-    display: none;
   }
   .hf-zone :global([data-page-field]) {
     white-space: pre;

@@ -441,11 +441,12 @@ export function placeTogether(run: () => void): void {
 }
 
 function columnPlace(view: EditorView, el: HTMLElement): (() => void) | void {
-  const end = el.dataset.columnEnd != null;
-  if (!el.isConnected || (el.dataset.columnX == null && !end)) return;
+  const side = el.dataset.columnSide;
+  if (!el.isConnected || (el.dataset.columnX == null && !side)) return;
   const left = leftInEditor(view, el) - (parseFloat(el.style.marginLeft) || 0);
-  // Against the column's far edge, or at its own x from the near one.
-  const x = end ? frameColumnWidth(view, el) - el.offsetWidth : Number(el.dataset.columnX) || 0;
+  // Against the column's far edge or in its middle, or at its own x from the near one.
+  const room = side ? frameColumnWidth(view, el) - el.offsetWidth : 0;
+  const x = side === 'right' ? room : side === 'center' ? room / 2 : Number(el.dataset.columnX) || 0;
   const marginLeft = `${Math.round(frameColumn(view, el) + x - left)}px`;
   return () => { el.style.marginLeft = marginLeft; };
 }
@@ -630,7 +631,15 @@ export function placePageFrames(view: EditorView, grid: PageGrid): void {
   placeFrames(Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>(PLACED), (el) => [view, el]), grid);
 }
 
-const PLACED = '[data-page-y], [data-column-x], [data-column-end]';
+const PLACED = '[data-page-y], [data-column-x], [data-column-side]';
+
+// A zone has no pagination pass: its frames are placed again after an edit and after its
+// tabs are laid out, both of which move the anchors they are measured from. `root` is the
+// zone's editor element, a shown zone's being a copy no view owns.
+export function placeZoneFrames(root: HTMLElement): void {
+  const view = { dom: root } as unknown as EditorView;
+  placeFrames(Array.from(root.querySelectorAll<HTMLElement>(PLACED), (el) => [view, el]));
+}
 
 // A pane lays out exactly as the view it mirrors, so its frames take that view's
 // margins instead of each measuring them again; one whose frames differ is measured.
