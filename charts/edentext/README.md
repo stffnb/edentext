@@ -131,6 +131,30 @@ and no trusted proxies, the limit per address is off; behind another load balanc
 visitors' browsers; it does not stop a program outside a browser. The relay's memory
 limit must lie above `relay.maxBuffered` plus the process itself (about 64 MiB).
 
+## Templates
+
+`templates` decides what New from Template offers, in the same `edentext.config.json`
+(field rules in `docs/self-hosting.md`): `enabled: false` removes it and Save as
+Template, `builtIn: false` the built-in templates, `save: false` only Save as Template.
+The files themselves come from a volume of yours, served read-only at `/templates/`:
+
+```bash
+kubectl -n edentext create configmap edentext-templates --from-file=letter.ott --from-file=letter.png
+```
+
+```yaml
+templates:
+  builtIn: false
+  volume: { configMap: { name: edentext-templates } }
+  items:
+    - id: letter
+      name: { en: Business letter, de: Geschäftsbrief }
+      url: templates/letter.ott
+      preview: templates/letter.png
+```
+
+A ConfigMap holds at most 1 MiB; larger files go on a `persistentVolumeClaim`.
+
 ## AI assistant and dictation
 
 The chart can preset an AI provider and a speech recognition server for every user. It

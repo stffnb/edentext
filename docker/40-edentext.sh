@@ -50,6 +50,18 @@ flag locked "${EDENTEXT_DICTATION_LOCKED:-}" EDENTEXT_DICTATION_LOCKED
 flag webSpeech "${EDENTEXT_DICTATION_WEB_SPEECH:-}" EDENTEXT_DICTATION_WEB_SPEECH
 section dictation
 
+flag enabled "${EDENTEXT_TEMPLATES_ENABLED:-}" EDENTEXT_TEMPLATES_ENABLED
+flag builtIn "${EDENTEXT_TEMPLATES_BUILT_IN:-}" EDENTEXT_TEMPLATES_BUILT_IN
+flag save "${EDENTEXT_TEMPLATES_SAVE:-}" EDENTEXT_TEMPLATES_SAVE
+# The entries as a JSON array, taken as written; the editor drops what it cannot use.
+case "${EDENTEXT_TEMPLATES_ITEMS:-}" in
+  '') ;;
+  *[[:cntrl:]]*) fail 'EDENTEXT_TEMPLATES_ITEMS holds a control character' ;;
+  \[*\]) add items "$EDENTEXT_TEMPLATES_ITEMS" ;;
+  *) fail 'EDENTEXT_TEMPLATES_ITEMS must be a JSON array' ;;
+esac
+section templates
+
 if [ -n "$json" ]; then
   printf '{ %s }\n' "$json" > "$html/edentext.config.json"
 else

@@ -132,7 +132,24 @@ assert_contains "$workdir/proxy-nokey.yaml" 'location /stt/' 'speech proxy was n
 assert_not_contains "$workdir/proxy-nokey.yaml" 'initContainers:' 'proxy without a Secret runs an init container'
 assert_not_contains "$workdir/proxy-nokey.yaml" 'location /ai/' 'speech proxy rendered an AI proxy'
 
+printf '%s\n' 'Rendering template presets'
+assert_not_contains "$workdir/default.yaml" 'mountPath: /usr/share/nginx/html/templates' 'default render mounts a templates volume'
+helm template edentext "$chart" --namespace edentext --set templates.builtIn=false,templates.save=false \
+  --set-string 'templates.items[0].url=templates/letter.ott,templates.items[0].name.de=Brief,templates.items[0].name.en=Letter' \
+  --set-string templates.volume.configMap.name=edentext-templates > "$workdir/templates.yaml"
+assert_contains "$workdir/templates.yaml" '"builtIn": false' 'built-in templates switch was not rendered'
+assert_contains "$workdir/templates.yaml" '"url": "templates/letter.ott"' 'template entry was not rendered'
+assert_contains "$workdir/templates.yaml" '"de": "Brief"' 'localized template name was not rendered'
+assert_contains "$workdir/templates.yaml" 'mountPath: /usr/share/nginx/html/templates' 'templates volume was not mounted'
+assert_contains "$workdir/templates.yaml" 'name: edentext-templates' 'templates volume source was not rendered'
+
 printf '%s\n' 'Rejecting invalid values'
+if helm template edentext "$chart" --set-string 'templates.items[0].url=javascript:alert(1).ott' > /dev/null 2>&1; then
+  fail 'a template accepted a script address'
+fi
+if helm template edentext "$chart" --set-string 'templates.items[0].url=letter.ott,templates.items[0].apiKey=x' > /dev/null 2>&1; then
+  fail 'a template accepted an unknown field'
+fi
 if helm template edentext "$chart" --set replicaCount=0 > /dev/null 2>&1; then
   fail 'replicaCount accepted zero'
 fi

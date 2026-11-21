@@ -25,6 +25,30 @@ export interface EdenTextDictation {
   webSpeech?: boolean;
 }
 
+/** A template New from Template offers: a file by address, or its bytes with a file name. */
+export interface EdenTextTemplate {
+  /** Kept across a reload; derived from the address or file name when absent. */
+  id?: string;
+  /** A text, or one per language tag ('de', 'pt-BR'); the file name when absent. */
+  name?: string | Record<string, string>;
+  description?: string | Record<string, string>;
+  /** An .ott, .odt, .dotx or .docx file; relative to the editor's page. */
+  url?: string;
+  bytes?: ArrayBuffer;
+  fileName?: string;
+  /** A picture of the first page; fetched, so another origin must allow CORS. */
+  preview?: string;
+}
+
+/** The same fields as `templates` in edentext.config.json, plus entries by bytes. */
+export interface EdenTextTemplates {
+  enabled?: boolean;
+  /** true adds the built-in templates, which an embedded editor leaves out by default. */
+  builtIn?: boolean;
+  /** Up to 50. */
+  items?: EdenTextTemplate[];
+}
+
 /** Every setting holds for the page it was sent to and is never stored: send them with each `init`. */
 export interface EdenTextSettings {
   /** The name on comments and recorded changes. */
@@ -49,6 +73,11 @@ export interface EdenTextSettings {
    * microphone unless the constructor's options say `dictation: false`.
    */
   dictation?: boolean | EdenTextDictation;
+  /**
+   * New from Template shows only for an object with `items` or `builtIn: true`; false
+   * hides it. Save as Template never shows, as the host keeps the files.
+   */
+  templates?: boolean | EdenTextTemplates;
 }
 
 export interface EdenTextOptions extends EdenTextSettings {
@@ -61,6 +90,8 @@ export interface EdenTextEvents {
   /** The reader pressed Save or Ctrl+S. */
   saveRequest: { type: 'saveRequest' };
   warning: { type: 'warning'; warnings: string[] };
+  /** The reader started a new, unsaved document from a template: it has no file of the host's yet. */
+  template: { type: 'template'; template: string; name: string };
 }
 
 export class EdenTextFrame {

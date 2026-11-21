@@ -1165,6 +1165,7 @@ const de: Messages = {
   },
   templates: {
     title: 'Neu aus Vorlage',
+    loadFailed: 'Die Vorlage konnte nicht geladen werden. Das geöffnete Dokument bleibt unverändert.',
     din5008b: {
       name: 'Brief nach DIN 5008 (Form B)',
       description: 'Geschäftsbrief nach deutscher Norm mit vollem Briefkopf: Anschriftfeld für den Fensterumschlag ab 45 mm, Infoblock, Falzmarken.',

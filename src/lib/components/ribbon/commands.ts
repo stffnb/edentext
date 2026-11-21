@@ -204,18 +204,20 @@ export function tabOf(cmd: RibbonCommand, shown: readonly Tab[]): Tab | null | u
 }
 
 // The file commands an embedding host application takes over (`embed/mode.ts`).
-const HOST_FILE_COMMANDS = new Set(['newDocument', 'newFromTemplate', 'open', 'browserDocuments', 'saveAsOdt', 'saveAsDocx', 'saveTemplate']);
+const HOST_FILE_COMMANDS = new Set(['newDocument', 'open', 'browserDocuments', 'saveAsOdt', 'saveAsDocx']);
 
 /** What the search offers: commands on a shown tab or in the File menu, the assistant
  *  only while it is on, dictation only where it works, the kept-documents list only when
- *  documents are kept, sessions only with a relay, and no file command the host
- *  application has taken over. */
-export function searchableCommands(cmds: RibbonCommand[], shown: readonly Tab[], opts: { ai: boolean; volatile: boolean; embedded?: boolean; dictation?: boolean; collab?: boolean }): RibbonCommand[] {
+ *  documents are kept, sessions only with a relay, the template commands as the
+ *  installation offers them (`templateOffer`), and no file command the host has taken over. */
+export function searchableCommands(cmds: RibbonCommand[], shown: readonly Tab[], opts: { ai: boolean; volatile: boolean; embedded?: boolean; dictation?: boolean; collab?: boolean; templates: { gallery: boolean; save: boolean } }): RibbonCommand[] {
   return cmds.filter((c) => tabOf(c, shown) !== undefined
     && (opts.ai || !c.id.startsWith('ai'))
     && (opts.dictation || c.id !== 'dictate')
     && !(opts.volatile && c.id === 'browserDocuments')
     && (opts.collab || c.id !== 'collab')
+    && (opts.templates.gallery || c.id !== 'newFromTemplate')
+    && (opts.templates.save || c.id !== 'saveTemplate')
     && !(opts.embedded && HOST_FILE_COMMANDS.has(c.id)));
 }
 
