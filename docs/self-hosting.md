@@ -1,9 +1,10 @@
-# AI, dictation and templates from the server
+# AI, dictation, templates and collaboration from the server
 
 An installation can set up the AI assistant and dictation for all its users, so nobody
 has to enter a provider or a speech server, and decide which templates New from Template
 offers. EdenText stays static: it runs no model and ships none. You point it at a server
 you operate or a provider you use; template files are ordinary files on your web server.
+Shared sessions need one small server of their own, the relay ([Collaboration](#collaboration)).
 
 ## The preset file
 
@@ -91,6 +92,8 @@ The image writes the file and the proxies from environment variables when it sta
 | `EDENTEXT_TEMPLATES_ITEMS` | the `items` array as JSON; mount the files, e.g. `-v ./templates:/usr/share/nginx/html/templates:ro` |
 | `EDENTEXT_AI_PROXY_UPSTREAM`, `EDENTEXT_DICTATION_PROXY_UPSTREAM` | root URL that `/ai/` or `/stt/` forwards to; the preset address then defaults to `/ai/v1` or `/stt/v1` |
 | `EDENTEXT_AI_PROXY_API_KEY`, `EDENTEXT_DICTATION_PROXY_API_KEY` | key the proxy adds (`Authorization: Bearer`, `x-api-key` for Anthropic) |
+| `EDENTEXT_RELAY_UPSTREAM` | the collaboration relay `/relay` forwards to, as `http://host:port` (see below) |
+| `EDENTEXT_RELAY_TRUSTED_PROXIES` | addresses or CIDR ranges of the proxies in front, whose `X-Forwarded-For` names the client |
 
 An external provider, its key from the host's environment:
 
@@ -121,10 +124,42 @@ services:
 Through `/v1`, Ollama ignores the context size a request asks for; set it on the server
 with `OLLAMA_CONTEXT_LENGTH`.
 
+## Collaboration
+
+Shared sessions need the relay, a second image. The app offers *Collaborate…* only once
+`/relay` on its own host reaches one, so point it there:
+
+```yaml
+services:
+  edentext:
+    image: ghcr.io/stffnb/edentext
+    ports: ["8080:80"]
+    environment:
+      EDENTEXT_RELAY_UPSTREAM: http://relay:4390
+    depends_on: [relay]
+  relay:
+    image: ghcr.io/stffnb/edentext-relay
+    environment:
+      TRUST_PROXY: "1"
+      ALLOWED_ORIGINS: https://docs.example.org
+```
+
+- nginx looks the relay's host up when it starts, as it does for the proxies above, and
+  does not start while that name is unknown; hence `depends_on`.
+- **`TRUST_PROXY=1`** lets the relay count connections per client, not per app container.
+  Behind another proxy, set `EDENTEXT_RELAY_TRUSTED_PROXIES` to its address, or every
+  user shares the proxy's limit.
+- **`ALLOWED_ORIGINS`** is the address users open EdenText at. Without it any web page
+  may use your relay through its visitors' browsers.
+- **HTTPS:** the browser then connects with `wss://` through the same host, so the TLS proxy
+  in front must pass WebSocket upgrades on `/relay`.
+- The relay's limits (people per session, connections per address) are environment
+  variables, listed in [`relay/CLAUDE.md`](../relay/CLAUDE.md).
+
 ## Kubernetes
 
-The Helm chart has the same presets and proxies as values, with keys from Secrets, and
-mounts a volume of template files under `/templates/`; see
+The Helm chart has the same presets and proxies as values, with keys from Secrets, mounts
+a volume of template files under `/templates/` and runs the relay by default; see
 [`charts/edentext/README.md`](../charts/edentext/README.md).
 
 ## Choosing a speech model
