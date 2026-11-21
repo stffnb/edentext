@@ -10,7 +10,7 @@
   import { authorColors } from '../editor/authorColors';
   import { isUndoRedo } from '../editor/undo';
   import { TextSelection, type Transaction } from '@tiptap/pm/state';
-  import { localPastedHtml, plainPastedSpaces, unwrapPastedBoxes } from '../editor/paste';
+  import { fillPastedPictures, localPastedHtml, plainPastedSpaces, unwrapPastedBoxes } from '../editor/paste';
   import { readClickCaret } from '../editor/clickCaret';
   import { hfIsEmpty, DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, NO_HF_FRAMES, type HfSetFrames, type HfFrame, type HfDoc, type HfZone, type HfVariant, type HfDistances, type HfSet, type HfZoneKey, type PageZones } from '../storage/headerFooter';
   import { cmToPx, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
@@ -767,12 +767,15 @@
         placeZoneFrames(editor.view.dom as HTMLElement);
         queueMicrotask(() => hfTick++);
       },
+      // A picture fetched for a paste here lands when the zone is next open or edited.
+      onCreate: ({ editor }) => void fillPastedPictures(editor.view),
       onUpdate: ({ editor }) => {
+        fillPastedPictures(editor.view);
         writeZone(editingIndex, zoneKey(zone, editingVariant), editor.getJSON() as HfDoc);
       },
       editorProps: {
         // As in the body: a size-less box a foreign paste wraps blocks in is spilled back.
-        transformPastedHTML: localPastedHtml,
+        transformPastedHTML: (html, view) => localPastedHtml(html, { view: () => view }),
         transformPasted: (slice) => unwrapPastedBoxes(plainPastedSpaces(slice)),
         handleDOMEvents: { mousedown: readClickCaret },
         handleKeyDown: (_view, event) => {

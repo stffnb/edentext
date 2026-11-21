@@ -1673,7 +1673,7 @@ const pl: Messages = {
     documentNotLoaded:
       'Ostatni dokument uniemożliwił uruchomienie edytora. Czy mimo to chcesz wczytać go ponownie?\n\nAnuluj tworzy nowy, pusty dokument; stary pozostaje w pamięci przeglądarki pod nazwą „edentext-doc-broken”.',
     remoteImagesDropped: (n) =>
-      `Nie udało się skopiować do dokumentu ${n === 1 ? 'obrazu' : `${n} obrazów`} z internetu, więc ${n === 1 ? 'go usunięto. Zapisz obraz jako plik i wstaw go z dysku.' : 'je usunięto. Zapisz obrazy jako pliki i wstaw je z dysku.'}`,
+      `Nie udało się skopiować do dokumentu ${n === 1 ? 'obrazu' : `${n} obrazów`} z internetu. ${n === 1 ? 'Zapisz obraz jako plik i wstaw go z dysku.' : 'Zapisz obrazy jako pliki i wstaw je z dysku.'}`,
     picturesNotRestored: (n) =>
       `Nie udało się przywrócić ${n} ${n === 1 ? 'obrazu' : 'obrazów'} z pamięci przeglądarki, więc ${n === 1 ? 'jest wyświetlany jako uszkodzony' : 'są wyświetlane jako uszkodzone'}. Otwórz zapisany plik dokumentu, aby ${n === 1 ? 'go' : 'je'} odzyskać.`,
   },

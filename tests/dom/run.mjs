@@ -2710,36 +2710,64 @@ try {
     await fp.close();
   }
 
-  // A paste from a web page: a picture carried as data arrives at its place and size, one
-  // behind a URL is never requested and leaves its alt text, no empty block, and a notice.
+  // A paste from a web page: a picture carried as data arrives as it is, one behind a URL is
+  // fetched once without cookie or referrer and embedded at its place and size, never shown
+  // from its address; one the fetch cannot read leaves its alt text, no empty block, a notice.
   {
-    const pp = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
-    collectErrors(pp, pageErrors, 'paste: ');
+    const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAGQAAAAoCAIAAACHGsgUAAAAMklEQVR4nO3BMQEAAADCoPVPbQwfoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOBnAylIAAFuCwUpAAAAAElFTkSuQmCC', 'base64');
     const asked = [];
-    await pp.route(/remote\.invalid/, (r) => { asked.push(r.request().url()); return r.abort(); });
+    const web = createServer((req, res) => {
+      asked.push(`${req.url}${req.headers.cookie || req.headers.referer ? ' with cookie or referrer' : ''}`);
+      const open = { 'access-control-allow-origin': '*' };
+      if (req.url === '/open.png') res.writeHead(200, { ...open, 'content-type': 'image/png' }).end(PNG);
+      else if (req.url === '/closed.png') res.writeHead(200, { 'content-type': 'image/png' }).end(PNG);
+      else res.writeHead(200, { ...open, 'content-type': 'text/html' }).end('<p>a page</p>');
+    });
+    await new Promise((r) => web.listen(0, '127.0.0.1', r));
+    const site = `http://127.0.0.1:${web.address().port}`;
+    const pp = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
+    // WebKit reports a fetch the other host refused as a page error although it is caught.
+    pp.on('pageerror', (err) => { if (!/access control checks/.test(String(err))) pageErrors.push(`paste: ${err}`); });
+    const shown = [];
+    pp.on('request', (r) => { if (r.url().startsWith(site) && r.resourceType() !== 'fetch') shown.push(r.url()); });
     await pp.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
     await pp.waitForSelector('.tiptap-host .tiptap', { timeout: 15_000 });
-    const got = await pp.evaluate(async () => {
-      const editor = document.querySelector('.tiptap-host .tiptap').editor, { view } = editor;
+    const read = () => pp.evaluate(() => {
+      const { view } = document.querySelector('.tiptap-host .tiptap').editor;
+      const blocks = [];
+      view.state.doc.forEach((n) => {
+        const pic = n.firstChild?.type.name === 'image' ? n.firstChild.attrs : null;
+        blocks.push(`${n.type.name}:${n.textContent}${pic ? `${pic.src.split(/[;,]/)[0]} ${pic.width}x${pic.height}` : ''}`);
+      });
+      return { blocks: blocks.join(' | '), notice: document.querySelector('.save-notice')?.textContent ?? '',
+        byAddress: [...view.dom.querySelectorAll('img')].filter((i) => /^(?:https?:)?\/\//.test(i.getAttribute('src') ?? '')).length + (JSON.stringify(view.state.doc.toJSON()).includes('127.0.0.1') ? 1 : 0) };
+    });
+    await pp.evaluate((site) => {
+      const editor = document.querySelector('.tiptap-host .tiptap').editor;
       const canvas = Object.assign(document.createElement('canvas'), { width: 300, height: 120 });
       canvas.getContext('2d').fillRect(0, 0, 300, 120);
-      const web = 'https://remote.invalid';
-      const html = `<p><a href="${web}/"><picture><source srcset="${web}/logo.webp"><img src="${web}/logo.png" alt="Logo" loading="lazy"></picture></a></p>`
-        + `<h1><img src="${web}/wordmark.svg" alt="Wordmark" height="40"></h1><p><img src="//remote.invalid/bare.png"></p>`
-        + `<h2><a href="${web}/"><img src="${canvas.toDataURL()}" width="150" height="60" alt="own"></a></h2><p>First line</p><p>Second line</p>`;
       editor.commands.setContent('<p></p>');
       editor.commands.focus('start');
-      view.pasteHTML(html);
-      await new Promise((r) => setTimeout(r, 300));
-      const blocks = [];
-      view.state.doc.forEach((n) => blocks.push(`${n.type.name}:${n.textContent}${n.firstChild?.type.name === 'image' ? `image ${n.firstChild.attrs.width}x${n.firstChild.attrs.height}` : ''}`));
-      const drawn = view.dom.querySelector('h2 img[src^="data:"]')?.getBoundingClientRect();
-      return { blocks, drawn: drawn ? `${Math.round(drawn.width)}x${Math.round(drawn.height)}` : null, notice: document.querySelector('.save-notice')?.textContent ?? '' };
-    });
-    check(got.blocks.join(' | ') === 'paragraph:Logo | heading:Wordmark | heading:image 150x60 | paragraph:First line | paragraph:Second line'
-      && got.drawn === '150x60' && /3 pictures/.test(got.notice) && !asked.length,
-      `a pasted web selection keeps its data picture, the alt text of the others and no empty block, asks no other host and says so (${JSON.stringify({ ...got, asked })})`);
+      editor.view.pasteHTML(`<p><picture><source srcset="${site}/open.webp"><img src="${site}/open.png" alt="Logo" loading="lazy"></picture></p>`
+        + `<h1><img src="${site}/open.png" alt="Sized" width="50"></h1><h2><img src="${site}/closed.png" alt="Wordmark" height="40"></h2>`
+        + `<p><img src="${site}/closed.png"></p><p><img src="${site}/page" alt="A page"></p><p><img src="/relative.png" alt="Relative"></p>`
+        + `<h3><img src="${canvas.toDataURL()}" width="150" height="60" alt="own"></h3><p>First line</p><p>Second line</p>`);
+    }, site);
+    await pp.waitForFunction(() => document.querySelector('.save-notice'), null, { timeout: 10_000 }).catch(() => {});
+    const got = await read();
+    check(got.blocks === 'paragraph:data:image/png 100x40 | heading:data:image/png 50x20 | heading:Wordmark | paragraph:A page | paragraph:Relative | heading:data:image/png 150x60 | paragraph:First line | paragraph:Second line'
+      && /4 pictures/.test(got.notice) && !got.byAddress && !shown.length && asked.length === 5 && !asked.some((a) => a.includes(' with ')),
+      `a pasted web selection embeds the pictures it can fetch, keeps the alt text of the others and no empty block, and shows none by its address (${JSON.stringify({ ...got, shown, asked })})`);
+    await pp.keyboard.press(`${MOD}+z`);
+    await pp.waitForTimeout(200);
+    const undone = (await read()).blocks;
+    await pp.keyboard.press(`${MOD}+Shift+z`);
+    await pp.waitForTimeout(200);
+    const redone = (await read()).blocks;
+    check(undone === 'paragraph:' && redone === got.blocks && asked.length === 5,
+      `one undo takes the paste with its fetched pictures, a redo brings both back without asking again (${JSON.stringify({ undone, redone })})`);
     await pp.close();
+    web.close();
   }
 
 } catch (err) {

@@ -1649,7 +1649,7 @@ const id: Messages = {
     documentNotLoaded:
       'Dokumen terakhir membuat editor gagal dimulai. Tetap muat lagi?\n\nBatal memulai dokumen baru yang kosong; dokumen lama disimpan di penyimpanan browser dengan nama “edentext-doc-broken”.',
     remoteImagesDropped: (n) =>
-      `${n === 1 ? 'Satu gambar' : `${n} gambar`} dari web tidak dapat disalin ke dalam dokumen dan telah dihapus. Simpan gambar sebagai file, lalu sisipkan dari sana.`,
+      `${n === 1 ? 'Satu gambar' : `${n} gambar`} dari web tidak dapat disalin ke dalam dokumen. Simpan gambar sebagai file, lalu sisipkan dari sana.`,
     picturesNotRestored: (n) =>
       `${n} gambar tidak dapat dipulihkan dari penyimpanan browser dan ditampilkan sebagai gambar rusak. Buka file dokumen yang tersimpan untuk mendapatkannya kembali.`,
   },

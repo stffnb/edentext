@@ -83,7 +83,7 @@ EdenText è un elaboratore di testi potente che funziona nel browser, adatto a t
   o il tuo server vocale, ad es. Whisper
 - **Private by design**: i documenti non lasciano mai il computer e tutta
   l'elaborazione avviene in locale; installato come app funziona anche offline.
-  L'editor non invia nulla, a meno che non si attivi l'assistente IA, che invia i dati al provider scelto. In una sessione condivisa il documento arriva cifrato agli altri partecipanti passando per il relay. Per la dettatura il browser può inviare l’audio al suo servizio vocale.
+  L'editor non invia nulla, a meno che non si attivi l'assistente IA, che invia i dati al provider scelto. In una sessione condivisa il documento arriva cifrato agli altri partecipanti passando per il relay. Per la dettatura il browser può inviare l’audio al suo servizio vocale. Quando si incolla da una pagina web, le sue immagini vengono scaricate una volta dai rispettivi server e salvate nel documento.
   I documenti vengono salvati automaticamente nel browser; in Documenti recenti si può
   scegliere di eliminare quelli chiusi all'avvio successivo o di non conservarli affatto,
   e una finestra privata non lascia traccia una volta chiusa

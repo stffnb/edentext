@@ -1650,7 +1650,7 @@ const zhHans: Messages = {
     documentNotLoaded:
       '上一个文档导致编辑器无法启动。仍要再次加载它吗？\n\n选择“取消”将新建一个空文档；旧文档会以“edentext-doc-broken”保留在浏览器存储中。',
     remoteImagesDropped: (n: number) =>
-      `有 ${n} 张来自网络的图片无法复制到文档中，已被移除。请先把图片保存为文件，再从文件插入。`,
+      `有 ${n} 张来自网络的图片无法复制到文档中。请先把图片保存为文件，再从文件插入。`,
     picturesNotRestored: (n: number) =>
       `有 ${n} 张图片无法从浏览器存储中恢复，显示为损坏。请打开该文档保存的文件以找回它们。`,
   },

@@ -82,7 +82,7 @@ EdenText is a web-based, powerful word processor for everything from quick notes
   recognition or your own speech server, e.g. Whisper
 - **Private by design** — your documents never leave your computer, all
   processing runs locally; works offline as an installable app. The editor sends nothing,
-  unless you switch on the AI assistant, which sends to the provider you chose. A shared session sends the document, encrypted, through the relay to the others in it. Dictation uses the browser’s speech recognition, which may send the audio to its speech service.
+  unless you switch on the AI assistant, which sends to the provider you chose. A shared session sends the document, encrypted, through the relay to the others in it. Dictation uses the browser’s speech recognition, which may send the audio to its speech service. Pasting from a web page fetches the pictures in it once from their sites, to store them in the document.
   Documents are autosaved in the browser; Recent documents can be set to delete
   closed ones at the next start or not keep them at all, and a private window
   leaves nothing behind once it is closed

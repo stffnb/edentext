@@ -1651,8 +1651,8 @@ const it: Messages = {
       'L\'ultimo documento ha impedito l\'avvio dell\'editor. Caricarlo comunque di nuovo?\n\n“Annulla” apre un nuovo documento vuoto; quello vecchio resta nell\'archivio del browser con il nome “edentext-doc-broken”.',
     remoteImagesDropped: (n: number) =>
       n === 1
-        ? 'Un\'immagine dal web non è stata copiata nel documento ed è stata rimossa. Salva l\'immagine come file e inseriscila da lì.'
-        : `${n} immagini dal web non sono state copiate nel documento e sono state rimosse. Salva le immagini come file e inseriscile da lì.`,
+        ? 'Un\'immagine dal web non è stata copiata nel documento. Salva l\'immagine come file e inseriscila da lì.'
+        : `${n} immagini dal web non sono state copiate nel documento. Salva le immagini come file e inseriscile da lì.`,
     picturesNotRestored: (n: number) =>
       n === 1
         ? 'Un\'immagine non è stata ripristinata dall\'archivio del browser e appare danneggiata. Apri il file salvato del documento per recuperarla.'

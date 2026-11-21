@@ -84,7 +84,7 @@ EdenText to rozbudowany edytor tekstu działający w przeglądarce – do wszyst
   przeglądarki albo własnemu serwerowi rozpoznawania mowy, np. Whisper
 - **Private by Design** – dokumenty nigdy nie opuszczają komputera, całe
   przetwarzanie odbywa się lokalnie; jako zainstalowana aplikacja EdenText działa offline. Edytor niczego nie wysyła,
-  chyba że zostanie włączony asystent AI – wtedy dane trafiają do wybranego dostawcy. We wspólnej sesji dokument trafia w postaci zaszyfrowanej przez serwer relay do pozostałych uczestników. Dyktowanie korzysta z rozpoznawania mowy przeglądarki, która może wysyłać nagranie do swojej usługi mowy.
+  chyba że zostanie włączony asystent AI – wtedy dane trafiają do wybranego dostawcy. We wspólnej sesji dokument trafia w postaci zaszyfrowanej przez serwer relay do pozostałych uczestników. Dyktowanie korzysta z rozpoznawania mowy przeglądarki, która może wysyłać nagranie do swojej usługi mowy. Przy wklejaniu ze strony internetowej jej obrazy są jednorazowo pobierane z ich serwerów i zapisywane w dokumencie.
   Dokumenty są zapisywane automatycznie w przeglądarce; listę „Ostatnie dokumenty” można ustawić tak, by zamknięte
   dokumenty były usuwane przy następnym uruchomieniu albo w ogóle nie były przechowywane, a okno prywatne
   po zamknięciu nie zostawia żadnych śladów

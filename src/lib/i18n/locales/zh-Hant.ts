@@ -1651,7 +1651,7 @@ const zhHant: Messages = {
     documentNotLoaded:
       '上一份文件導致編輯器無法啟動。仍要再次載入它嗎？\n\n選擇「取消」會新增一份空白文件；舊文件會以「edentext-doc-broken」保留在瀏覽器儲存空間中。',
     remoteImagesDropped: (n: number) =>
-      `有 ${n} 張來自網路的圖片無法複製到文件中，已移除。請先把圖片存成檔案，再從檔案插入。`,
+      `有 ${n} 張來自網路的圖片無法複製到文件中。請先把圖片存成檔案，再從檔案插入。`,
     picturesNotRestored: (n: number) =>
       `有 ${n} 張圖片無法從瀏覽器儲存空間還原，顯示為損毀。請開啟該文件已儲存的檔案，即可取回這些圖片。`,
   },

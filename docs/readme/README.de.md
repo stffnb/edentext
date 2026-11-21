@@ -83,7 +83,7 @@ EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von de
   oder einen eigenen Spracherkennungsserver, etwa Whisper
 - **Private by Design** – Dokumente verlassen nie den Rechner, alles läuft lokal; als
   installierte App auch offline. Der Editor selbst sendet nichts, außer bei eingeschaltetem
-  KI-Assistenten an den gewählten Anbieter. In einer gemeinsamen Sitzung geht das Dokument verschlüsselt über das Relay an die anderen Teilnehmer. Beim Diktieren kann der Browser den Ton an seinen Sprachdienst schicken. Dokumente werden automatisch im Browser
+  KI-Assistenten an den gewählten Anbieter. In einer gemeinsamen Sitzung geht das Dokument verschlüsselt über das Relay an die anderen Teilnehmer. Beim Diktieren kann der Browser den Ton an seinen Sprachdienst schicken. Beim Einfügen aus einer Webseite werden deren Bilder einmal von ihren Servern geholt und im Dokument gespeichert. Dokumente werden automatisch im Browser
   gesichert; unter „Zuletzt verwendete Dokumente“ lässt sich einstellen, dass geschlossene
   Dokumente beim nächsten Start gelöscht oder gar nicht erst gespeichert werden. Ein
   privates Fenster hinterlässt nach dem Schließen keine Spuren
