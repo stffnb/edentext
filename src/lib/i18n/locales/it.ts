@@ -44,7 +44,7 @@ const it: Messages = {
     spellLanguageHint: 'Per tutto il documento; viene salvata nel file',
     autoCorrectHint: 'Virgolette, trattini, maiuscole e tabella delle sostituzioni',
     open: 'Apri…',
-    rulerHint: 'Rientri e tabulazioni sopra la pagina',
+    rulerHint: 'Rientri e tabulazioni sopra la pagina, margini a lato',
     formattingMarksHint: 'Segni di paragrafo, spazi e tabulazioni sullo schermo',
     pageLabels: 'Numeri di pagina accanto alla pagina',
     pageLabelsHint: 'Il numero del foglio in basso a destra di ogni pagina; non viene stampato',
@@ -812,6 +812,8 @@ const it: Messages = {
     firstLineIndent: 'Rientro prima riga',
     leftIndent: 'Rientro sinistro',
     rightIndent: 'Rientro destro',
+    topMargin: 'Margine superiore',
+    bottomMargin: 'Margine inferiore',
     tabType: {
       left: 'Tabulazione sinistra',
       center: 'Tabulazione centrata',

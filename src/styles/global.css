@@ -1001,8 +1001,8 @@ dialog, [popover][role='dialog'] {
   --radius: 6px;
 }
 
-/* Docked side panes and the ruler too, on the chrome colour the ribbon and status bar share. */
-.ai-pane, .navigator-pane, .comments-pane, .revisions-pane, .ruler {
+/* Docked side panes and the rulers too, on the chrome colour the ribbon and status bar share. */
+.ai-pane, .navigator-pane, .comments-pane, .revisions-pane, .ruler, .vruler {
   --color-surface: var(--w-chrome);
   --color-toolbar-bg: var(--w-chrome);
   --color-border: var(--w-border);

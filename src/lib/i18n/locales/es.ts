@@ -44,7 +44,7 @@ const es: Messages = {
     spellLanguageHint: 'Para todo el documento; se guarda con el archivo',
     autoCorrectHint: 'Comillas, guiones, mayúsculas y la tabla de sustituciones',
     open: 'Abrir…',
-    rulerHint: 'Sangrías y tabulaciones encima de la página',
+    rulerHint: 'Sangrías y tabulaciones encima de la página, márgenes al lado',
     formattingMarksHint: 'Marcas de párrafo, espacios y tabulaciones en pantalla',
     pageLabels: 'Números de página junto a la página',
     pageLabelsHint: 'El número de hoja abajo a la derecha de cada página; no se imprime',
@@ -813,6 +813,8 @@ const es: Messages = {
     firstLineIndent: 'Sangría de primera línea',
     leftIndent: 'Sangría izquierda',
     rightIndent: 'Sangría derecha',
+    topMargin: 'Margen superior',
+    bottomMargin: 'Margen inferior',
     tabType: {
       left: 'Tabulación izquierda',
       center: 'Tabulación centrada',

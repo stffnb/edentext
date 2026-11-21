@@ -56,7 +56,7 @@ const pl: Messages = {
     spellLanguageHint: 'Dla całego dokumentu; zapisywany razem z plikiem',
     autoCorrectHint: 'Cudzysłowy, myślniki, wielkie litery i tabela zamian',
     open: 'Otwórz…',
-    rulerHint: 'Wcięcia i tabulatory nad stroną',
+    rulerHint: 'Wcięcia i tabulatory nad stroną, marginesy z boku',
     formattingMarksHint: 'Znaki akapitu, spacje i tabulatory na ekranie',
     pageLabels: 'Numery stron obok strony',
     pageLabelsHint: 'Numer arkusza w prawym dolnym rogu każdej strony; nie jest drukowany',
@@ -828,6 +828,8 @@ const pl: Messages = {
     firstLineIndent: 'Wcięcie pierwszego wiersza',
     leftIndent: 'Wcięcie z lewej',
     rightIndent: 'Wcięcie z prawej',
+    topMargin: 'Górny margines',
+    bottomMargin: 'Dolny margines',
     tabType: {
       left: 'Tabulator lewy',
       center: 'Tabulator środkowy',
