@@ -38,9 +38,9 @@ export const DEFAULT_LINE_PX = 19;
 
 export type LineRect = { left: number; right: number; top: number; height: number };
 
-// The first rect of each rendered line, in document order — column 1's lines
-// before column 2's. A rect joins the line it overlaps by half the taller of the
-// two, so a raised run (a verse number, a superscript) is no line of its own.
+// Each rendered line, in document order — column 1's lines before column 2's: the top
+// and height of its first rect, the left and right of all of them. A rect joins the line
+// it overlaps by half the taller of the two, so a raised run is no line of its own.
 export function groupLines(rects: LineRect[]): LineRect[] {
   const lines: LineRect[] = [];
   let band: { top: number; bottom: number } | null = null;
@@ -48,10 +48,15 @@ export function groupLines(rects: LineRect[]): LineRect[] {
     const bottom = r.top + r.height;
     if (band) {
       const overlap = Math.min(band.bottom, bottom) - Math.max(band.top, r.top);
-      if (overlap >= Math.max(band.bottom - band.top, r.height) / 2) continue;
+      if (overlap >= Math.max(band.bottom - band.top, r.height) / 2) {
+        const line = lines[lines.length - 1];
+        line.left = Math.min(line.left, r.left);
+        line.right = Math.max(line.right, r.right);
+        continue;
+      }
     }
     band = { top: r.top, bottom };
-    lines.push(r);
+    lines.push({ ...r });
   }
   return lines;
 }
