@@ -269,7 +269,8 @@ try {
   }
   const todo = docs.filter((d) => !only || only.test(d)).sort((a, b) => isLong(a) - isLong(b));
   const retried = new Set();
-  const lo = LO ? loPages(todo) : new Map();
+  const timings = [];
+  const lo =LO ? loPages(todo) : new Map();
 
   for (const file of todo) {
     const name = nameOf(file);
@@ -360,13 +361,10 @@ try {
     const was = prev?.frames ?? null;
     const shifted = !was ? [] : frames.length !== was.length ? [[`${frames.length} frame(s)`, `${was.length}`]]
       : frames.map((row, i) => [row, was[i]]).filter(([a, b]) => nums(a).some((v, k) => Math.abs(v - nums(b)[k]) > 2));
-    // ponytail: wall clock read through a 500ms poll, so only three times the recorded
-    // load plus a second of slack counts as a regression.
-    const slow = prev && ms > prev.ms * 3 + 1000 ? `${ms}ms against ${prev.ms}ms` : null;
+    if (prev?.ms != null) timings.push({ name, ms, was: prev.ms });
     const label = `${name}  editor ${r.pages}p${ref != null ? ` / LO ${ref}p` : ''}${off && pagesOk ? ' (~)' : ''}  ${r.issues.length} issue(s)${allowed ? `, ${allowed} known` : ''}${prev ? '' : ' (new)'}`;
-    check(pagesOk && r.issues.length <= allowed && (UPDATE || (!moved.length && !slow && !shifted.length)), label);
+    check(pagesOk && r.issues.length <= allowed && (UPDATE || (!moved.length && !shifted.length)), label);
     for (const [now, old] of shifted.slice(0, 5)) console.log(`    header/footer frame "${now}", the baseline has "${old}"`);
-    if (slow) console.log(`    slower than the baseline: ${slow}`);
     for (const [pg, now, was] of moved.slice(0, 5)) console.log(`    p${pg} starts "${now}", the baseline has "${was}"`);
     if (moved.length > 5) console.log(`    … ${moved.length - 5} page start(s) more`);
     for (const i of r.issues.length > allowed || !prev ? r.issues.slice(0, 8) : []) {
@@ -380,6 +378,16 @@ try {
       if (/Execution context was destroyed/.test(err.message) && !retried.has(file)) { retried.add(file); todo.push(file); continue; }
       check(false, `${name}: ${err.message.split('\n')[0]}`);
     }
+  }
+  // Loads are judged against the run's median slowdown (recorded times under half a second
+  // count as half a second), so a busy machine slows every document alike and fails none;
+  // one document over three times that median and over three times its record plus 1s fails.
+  const factor = ({ ms, was }) => ms / Math.max(was, 500);
+  const ratios = timings.map(factor).sort((a, b) => a - b);
+  const median = ratios.length >= 5 ? Math.max(1, ratios[ratios.length >> 1]) : 1;
+  if (median >= 1.5) console.log(`the whole run loaded ${median.toFixed(1)}× slower than the baseline; load times are judged against that`);
+  if (!UPDATE) for (const t of timings) {
+    if (t.ms > t.was * 3 + 1000 && factor(t) > 3 * median) check(false, `${t.name}  slower than the baseline: ${t.ms}ms against ${t.was}ms`);
   }
   if (Object.keys(localFresh).length) {
     const here = new Set([...localDocs(), ...longDocs()].map(nameOf).filter((n) => !dupes.has(n)));
