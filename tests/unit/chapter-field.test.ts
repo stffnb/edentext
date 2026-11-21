@@ -35,6 +35,12 @@ describe('chapter field', () => {
     expect(fieldOf(back.footer)).toEqual({ type: 'chapterField', attrs: { level: 1, text: 'Cached chapter' } });
   });
 
+  it.each(['number-and-name', 'number', 'plain-number'])('keeps text:display="%s" through ODF', async (display) => {
+    const shown: N = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'chapterField', attrs: { level: 2, text: 'Cached', display } }] }] };
+    const back = await importOdt(await buildOdt(doc, margins, 'portrait', { ...hf, footer: shown }));
+    expect(fieldOf(back.footer)?.attrs).toEqual({ level: 2, text: 'Cached', display });
+  });
+
   it('round-trips through DOCX as a STYLEREF field', async () => {
     const bytes = await buildDocx(doc, margins, 'portrait', hf);
     // The numeric form (outline level) — Word resolves a quoted style name against the
@@ -54,6 +60,15 @@ const CS = (page: number, level: number, text: string, atTop = false): ChapterSt
 // LibreOffice's text:chapter, probed: the header reads the page top, the footer the
 // last chapter begun on the page; a heading only tops a page it opens itself.
 describe('chapter field resolution', () => {
+  it('shows the name, the number or both, a line break in the heading as a space', () => {
+    const numbered: ChapterStart[] = [{ page: 1, level: 1, text: 'Part\nOne', number: 'A.', plain: 'A' }, CS(2, 1, 'Bare')];
+    expect(chapterOn(numbered, 1, 1, 'footer')).toBe('Part One');
+    expect(chapterOn(numbered, 1, 1, 'footer', 'number-and-name')).toBe('A. Part One');
+    expect(chapterOn(numbered, 1, 1, 'footer', 'number')).toBe('A.');
+    expect(chapterOn(numbered, 1, 1, 'footer', 'plain-number')).toBe('A');
+    expect(chapterOn(numbered, 2, 1, 'footer', 'number-and-name')).toBe('Bare');
+  });
+
   const starts = [CS(1, 1, 'Intro', true), CS(2, 1, 'Tables'), CS(2, 1, 'Frames'), CS(4, 1, 'Notes', true)];
 
   it('header shows the chapter in force at the page top', () => {

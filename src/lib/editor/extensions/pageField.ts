@@ -43,6 +43,11 @@ export const ChapterField = Node.create({
         default: '',
         parseHTML: (el: HTMLElement) => el.textContent ?? '',
       },
+      // What the field shows of its heading (ODF text:display); null is the name.
+      display: {
+        default: null,
+        parseHTML: (el: HTMLElement) => el.getAttribute('data-display'),
+      },
     };
   },
 
@@ -51,6 +56,7 @@ export const ChapterField = Node.create({
   },
 
   renderHTML({ node }) {
-    return ['span', { 'data-page-field': 'chapter', 'data-level': String(node.attrs.level) }, node.attrs.text || ' '];
+    return ['span', { 'data-page-field': 'chapter', 'data-level': String(node.attrs.level),
+      ...(node.attrs.display ? { 'data-display': node.attrs.display } : {}) }, node.attrs.text || ' '];
   },
 });

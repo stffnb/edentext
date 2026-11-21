@@ -6,6 +6,7 @@ import { cjkDocFont, odfFromTag, tagFromOdf } from '../storage/documentLanguage'
 import { ASIAN_SCRIPT_RE, COMPLEX_SCRIPT_RE } from '../utils/script';
 import { GENERATOR, ODF_LOOK_ATTRS, normalizeColor, labelledItems } from '../export/odt';
 import { AUTO_COLOR } from '../utils/color';
+import { CHAPTER_DISPLAYS, type ChapterDisplay } from '../utils/chapterField';
 import { HEADING_STYLE_OVERRIDES, MAX_HEADING_LEVEL } from '../styles/headings';
 import { isAllowedUri } from '@tiptap/extension-link';
 import { builtinStyleSheet, DEFAULT_STYLE, screenFontName, type ParaProps, type Style, type StyleSheet, type TextProps } from '../styles/styleSheet';
@@ -3062,11 +3063,11 @@ function convertInline(root: Element, ctx: Ctx, baseProps: PropMap, defaults: Bl
               out.push(field);
               continue;
             }
-            // The running head's chapter name; text:display="number"/"plain-number" is a
-            // numbering we don't track, so those keep the file's cached string.
-            if (ctx.zone && e.localName === 'chapter' && e.getAttributeNS(NS.text, 'display') === 'name') {
+            // The running head's chapter: its name, its number or both (text:display).
+            const shows = e.getAttributeNS(NS.text, 'display') as ChapterDisplay | null;
+            if (ctx.zone && e.localName === 'chapter' && shows && CHAPTER_DISPLAYS.includes(shows)) {
               const level = Number(e.getAttributeNS(NS.text, 'outline-level')) || 1;
-              const field: Node = { type: 'chapterField', attrs: { level, text: e.textContent ?? '' } };
+              const field: Node = { type: 'chapterField', attrs: { level, text: e.textContent ?? '', ...(shows === 'name' ? {} : { display: shows }) } };
               const marks = marksFor(props, ctx.resolver, defaults);
               if (marks.length) field.marks = marks;
               out.push(field);

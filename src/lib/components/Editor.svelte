@@ -21,7 +21,7 @@
   import TextBoxToolbar from './TextBoxToolbar.svelte';
   import type { WrapMode } from '../editor/extensions/image';
   import { findTextBox, type ShapeKind, type TextVAlign } from '../editor/extensions/textBox';
-  import { blockText } from '../editor/extensions/outline';
+  import { blockText, headingNumbers } from '../editor/extensions/outline';
   import { catchUpIndexes } from '../editor/extensions/tableOfContents';
   import { fillPastedPictures, fitPastedSlice, localPastedHtml } from '../editor/paste';
   import { readClickCaret } from '../editor/clickCaret';
@@ -140,6 +140,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     if (!editor || editor.isDestroyed) return [];
     const vm = readVerticalMargins(editor.view.dom as HTMLElement);
     const out: ChapterStart[] = [];
+    const numbers = headingNumbers(editor.state.doc, styleSheet().outline);
     editor.state.doc.descendants((node, pos) => {
       if (node.type.name !== 'heading') return;
       const text = blockText(node);
@@ -150,7 +151,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       // Nothing above the heading on its page (within half a line): the page's running
       // head counts it, a heading below other content only counts from the next page.
       const atTop = top - (vm.grid.topOf(page) + vm.top) < 10;
-      out.push({ page, level: (node.attrs.level as number) ?? 1, text, atTop });
+      const number = numbers.get(pos);
+      out.push({ page, level: (node.attrs.level as number) ?? 1, text, atTop,
+        ...(number?.label ? { number: number.label.trim(), plain: number.parts.join('.') } : {}) });
     });
     return out;
   }

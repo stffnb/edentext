@@ -19,7 +19,7 @@
   import { DEFAULT_PAGE_NUMBERING, isLeftPage, printedPageNumber, type PageNumbering } from '../storage/pageNumbering';
   import { formatOrdinal } from '../utils/orderedListTypes';
   import { cssBorder } from '../editor/extensions/tableCellBorders';
-  import { chapterOn, type ChapterStart } from '../utils/chapterField';
+  import { chapterOn, type ChapterDisplay, type ChapterStart } from '../utils/chapterField';
   import { t } from '../i18n/i18n.svelte';
   import { nameIsland } from '../i18n/shortcut';
   import { allPagesDrawn } from './pageWindow.svelte';
@@ -614,11 +614,16 @@
     return formatOrdinal(pageNumberAt(page), sets[sectionOf(page)]?.pageNumberFormat ?? pageNumbering.format);
   }
 
+  function chapterText(el: Element, page: number, zone: HfZone): string {
+    return chapterOn(chapterStarts, page, Number(el.getAttribute('data-level')) || 1, zone,
+      (el.getAttribute('data-display') as ChapterDisplay | null) ?? 'name');
+  }
+
   // What a field shows on a page: the chapter there, the page count or the page's label.
   // The count stays decimal, as the field LibreOffice and Word write does.
   function fieldText(el: Element, page: number, total: number, zone: HfZone): string {
     const kind = el.getAttribute('data-page-field');
-    return kind === 'chapter' ? chapterOn(chapterStarts, page, Number(el.getAttribute('data-level')) || 1, zone)
+    return kind === 'chapter' ? chapterText(el, page, zone)
       : kind === 'count' ? String(total) : pageLabel(page);
   }
 
@@ -879,7 +884,7 @@
     if (!liveMount) return;
     for (const el of Array.from(liveMount.querySelectorAll('[data-page-field]'))) {
       const kind = el.getAttribute('data-page-field');
-      if (kind === 'chapter') el.textContent = chapterOn(chapterStarts, editingPage, Number(el.getAttribute('data-level')) || 1, hfActive ?? 'header');
+      if (kind === 'chapter') el.textContent = chapterText(el, editingPage, hfActive ?? 'header');
       else el.textContent = kind === 'count' ? String(numPages) : pageLabel(editingPage);
     }
     const fieldText = Array.from(liveMount.querySelectorAll('[data-page-field]'), (el) => el.textContent).join('\u0001');
