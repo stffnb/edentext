@@ -213,10 +213,12 @@ export const ZoneHistory = Extension.create<Options, Storage>({
   },
 
   addCommands() {
-    const run = (dir: 'undo' | 'redo') => () => ({ dispatch }: { dispatch?: unknown }) => {
+    const run = (dir: 'undo' | 'redo') => () => ({ dispatch, tr }: { dispatch?: unknown; tr: Transaction }) => {
       const body = this.options.body();
       // Pending zone edits are an undo step, and once committed they end the redo branch.
       if (!dispatch) return dir === 'undo' ? !!this.storage.from || !!body?.can().undo() : !this.storage.from && !!body?.can().redo();
+      // The body's step puts this zone's content back itself, under this command's own transaction.
+      tr.setMeta('preventDispatch', true);
       flushPending();
       return !!body?.commands[dir]();
     };
