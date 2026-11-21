@@ -197,4 +197,4 @@ An open outline is **stroked only**, whatever fill its style declares, as both p
 - **Writing** goes back out as the shape's own geometry: ODF a `non-primitive`
   `<draw:enhanced-geometry>` in its 21600 viewBox (LibreOffice writes it back unchanged),
   DOCX an `<a:custGeom>` path list in its EMU extent; LibreOffice draws both as we do.
-- **A frame anchored to its box** (ODF `text:anchor-type="frame"`, a direct child of `draw:text-box`: the picture of a LibreOffice figure frame, beside its caption) joins the box's paragraph after it, else the one before, else one of its own (`anchorBoxFrames`, `import/odt.ts`).
+- **A frame anchored to its box** (ODF `text:anchor-type="frame"`, a direct child of `draw:text-box`: the picture of a LibreOffice figure frame, beside its caption) joins the box's paragraph after it, else the one before, else one of its own (`anchorBoxFrames`, `import/odt.ts`). **Optimal wrap** (`style:wrap="dynamic"`) wraps only where the roomier side of the frame, less its margin there, is at least 2cm (`dynamicWrapRoom`); under that the frame stands between the lines, as LibreOffice sets it.

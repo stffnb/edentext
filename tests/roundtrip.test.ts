@@ -3057,6 +3057,28 @@ describe('Leg 37: a box inside a box is unwrapped on import (ODT)', () => {
     for (const box of boxes) check('with the picture in it', JSON.stringify(box.content).includes('"type":"image"'), box.content);
     check('and the caption after it', /"image".*caption/.test(JSON.stringify(boxes[0]?.content)), boxes[0]?.content);
   });
+
+  // Optimal wrap gives the text a side only where 2cm of room is left beside the frame.
+  it('reads an optimal wrap by the room beside the frame', () => {
+    const frame = (width: number) => `<text:p><draw:frame draw:style-name="fr1" text:anchor-type="paragraph" svg:width="${width}cm"><draw:text-box><text:p>box</text:p></draw:text-box></draw:frame>text</text:p>`;
+    const contentXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0">
+ <office:automatic-styles><style:style style:name="fr1" style:family="graphic"><style:graphic-properties style:wrap="dynamic" style:horizontal-pos="left" style:horizontal-rel="paragraph" fo:margin-left="0.3cm" fo:margin-right="0.3cm"/></style:style></office:automatic-styles>
+ <office:body><office:text>${[14.5, 14.3, 10].map(frame).join('')}</office:text></office:body>
+</office:document-content>`;
+    const stylesXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0">
+ <office:automatic-styles><style:page-layout style:name="pm1"><style:page-layout-properties fo:page-width="21cm" fo:page-height="29.7cm" fo:margin-top="2cm" fo:margin-bottom="2cm" fo:margin-left="2cm" fo:margin-right="2cm"/></style:page-layout></office:automatic-styles>
+ <office:master-styles><style:master-page style:name="Standard" style:page-layout-name="pm1"/></office:master-styles>
+</office:document-styles>`;
+    const foreign = zipSync({
+      mimetype: [strToU8('application/vnd.oasis.opendocument.text'), { level: 0 }],
+      'content.xml': [strToU8(contentXml), { level: 6 }],
+      'styles.xml': [strToU8(stylesXml), { level: 6 }],
+    } as any);
+    const sides = boxesIn(importOdt(foreign).content).map((b: N) => b.attrs?.wrap !== 'topBottom');
+    check('1.9cm of room stands alone, 2.1cm and more wrap', JSON.stringify(sides) === '[false,true,true]', sides);
+  });
 });
 
 describe('Leg 38: a language per paragraph and per run (ODT + DOCX)', () => {
