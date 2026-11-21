@@ -300,6 +300,7 @@ try {
   check(!fresh[0] && fresh[1] === 'Company letter', `templates: a picked template opens as a new document under its name (${fresh})`);
   const searched = async () => {
     await tp.fill('.cmd-search input', 'template');
+    await tp.waitForSelector('#cmd-search-list [role="option"]', { timeout: 3000 }).catch(() => {});
     const hits = await tp.$$eval('#cmd-search-list [role="option"]', (els) => els.map((e) => e.textContent.trim()));
     await tp.keyboard.press('Escape');
     return hits;
