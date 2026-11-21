@@ -43,7 +43,9 @@ import { DEFAULT_LINE_NUMBERING, type LineNumbering } from '../storage/lineNumbe
 import { DEFAULT_LINE_GRID, type LineGrid } from '../storage/lineGrid';
 import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import Ruler from './Ruler.svelte';
-  import { sectionAt } from './sectionSetup';
+  import VerticalRuler from './VerticalRuler.svelte';
+  import { withSectionProps } from './sectionSetup';
+  import { reading } from '../collab/reading.svelte';
   import { saveDocument, loadDocument, markDocumentLoaded, withoutDefaults } from '../storage/autosave';
   import { IDB_SRC } from '../storage/imageStore';
   import { applyMarginVars, cmToPx, PX_PER_CM, DEFAULT_MARGINS, type PageMargins } from '../storage/pageMargins';
@@ -57,7 +59,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import { RESYNC_NOTES } from '../editor/extensions/notes';
   import { applyPageSizeVars, pageDimsCm, type PageFormat } from '../storage/pageFormat';
   import { MAX_PAGE_COLUMNS } from '../storage/theme';
-  import { DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, NO_HF_FRAMES, hfIsEmpty, hfUsesChapterField, type HfSetFrames, type HfDoc, type HfZone, type HfDistances, type HfSet, type HfZoneKey, type PageZones } from '../storage/headerFooter';
+  import { DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, NO_HF_FRAMES, hfIsEmpty, hfUsesChapterField, spreadMargins, type HfSetFrames, type HfDoc, type HfZone, type HfDistances, type HfSet, type HfZoneKey, type PageZones } from '../storage/headerFooter';
   import { pageStartBlock, type PageBox } from '../utils/pageStrip';
   import { FORCE_PAGE_RECALC, PAGE_GAP, pageOfElement, readVerticalMargins, topInEditor, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { SHEET_CHANGED } from '../editor/extensions/listMarker';
@@ -66,13 +68,13 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import { fitPagesZoom, wheelZoomFactor } from '../utils/zoom';
   import { styleCss, singleLineHeight, fauxBold } from '../styles/styleSheet';
   import { styleSheet } from '../styles/sheet.svelte';
-  import { t } from '../i18n/i18n.svelte';
+  import { t, uiRtl } from '../i18n/i18n.svelte';
   import { withShortcut } from '../i18n/shortcut';
   import '../../styles/editor.css';
 
   let {
     editor = $bindable(), tick = $bindable(0), currentPage = $bindable(1), numPages = $bindable(1),
-    zoom = 100, onZoom, onDocumentLost, showFormattingMarks = false, showFieldShading = true, showPageLabels = true, showRuler = true, splitView = false, pageColumns = 1, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
+    zoom = 100, onZoom, onDocumentLost, onPageMargins, showFormattingMarks = false, showFieldShading = true, showPageLabels = true, showRuler = true, splitView = false, pageColumns = 1, pageMargins = DEFAULT_MARGINS, orientation = 'portrait',
     pageFormat = 'A4', tabIntervalCm = DEFAULT_TAB_INTERVAL_CM, spacingModel = 'add', spacingAtPageStart = true, documentEpoch = 0, pageRtl = false, hyphenate = false, documentLanguage = 'en', pageNumbering = DEFAULT_PAGE_NUMBERING, pageDecor = EMPTY_PAGE_DECOR, lineNumbering = DEFAULT_LINE_NUMBERING, lineGrid = DEFAULT_LINE_GRID, balanceSpaces = false, foldMarks = false, commentAuthor = '',
     headerDoc = $bindable(null), footerDoc = $bindable(null), hfDistances = DEFAULT_HF_DISTANCES, hfFrames = NO_HF_FRAMES,
     headerFirstDoc = $bindable(null), footerFirstDoc = $bindable(null), differentFirstPage = false,
@@ -86,6 +88,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     onZoom?: (zoom: number) => void;
     /** The stored document was given up at startup; the editor starts empty. */
     onDocumentLost?: () => void;
+    /** The document's page margins, set from the vertical ruler. */
+    onPageMargins?: (margins: PageMargins) => void;
     showFormattingMarks?: boolean; showFieldShading?: boolean; showPageLabels?: boolean; showRuler?: boolean; pageMargins?: PageMargins; orientation?: Orientation; pageFormat?: PageFormat; tabIntervalCm?: number; spacingModel?: SpacingModel; spacingAtPageStart?: boolean;
     /** Two panes onto this document, scrolled on their own (Word's View ▸ Split). */
     splitView?: boolean;
@@ -413,15 +417,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     return own[0] === band[first ? 0 : 1] && own[1] === band[first ? 2 : 3] ? '' : [z.page, ...own].join('|');
   }).filter(Boolean).join(','));
 
-  // The page the ruler measures: the edited zone's, else the caret's. Scrolled away from
-  // the caret's section, it measures that section's first page instead of the one in view.
+  // The page the rulers measure: the edited zone's, else the caret's, wherever the view
+  // has scrolled to, so they change only when the caret moves to another page.
   let hfEditingPage = $state(1);
-  let rulerPage = $derived.by(() => {
-    if (hfActive) return hfEditingPage;
-    const section = tick >= 0 && editor ? sectionAt(editor.state) : 0;
-    if ((pageBoxes[currentPage - 1]?.section ?? 0) === section) return currentPage;
-    return section > 0 ? sectionStartPages[section - 1] ?? currentPage : 1;
-  });
+  let caretPage = $state(1);
+  let rulerPage = $derived(hfActive ? hfEditingPage : Math.max(1, Math.min(numPages, caretPage)));
   // That page's own paper and margins, an even page of a mirrored setup swapping its sides.
   let rulerGeometry = $derived.by(() => {
     const box = pageBoxes[rulerPage - 1];
@@ -429,6 +429,29 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     const margins = m.mirrored && leftPageAt(rulerPage) ? { ...m, left: m.right, right: m.left } : m;
     return { left: box?.left ?? 0, width: box?.width ?? paperWidth, margins };
   });
+  // The same page for the vertical ruler: its box, and its zones as the zone layer lays them.
+  let hfLayers = $state<(HeaderFooterLayer | undefined)[]>([]);
+  let verticalRulerGeometry = $derived.by(() => {
+    const box = pageBoxes[rulerPage - 1] ?? { top: 0, left: 0, width: paperWidth, height: firstCycle - PAGE_GAP };
+    const bands = hfLayers[0]?.rulerBands(rulerPage) ?? { header: null, footer: null };
+    return { top: box.top, left: box.left, width: box.width, height: box.height, margins: rulerGeometry.margins, ...bands, editing: hfActive };
+  });
+  // A margin dragged on the vertical ruler: the measured page's section where it has margins
+  // of its own, else the document's, spread to the sections as the page setup fields do.
+  function setRulerMargin(edge: 'top' | 'bottom', cm: number): void {
+    const i = pageBoxes[rulerPage - 1]?.section ?? 0;
+    const s = i > 0 ? extraHfSections[i - 1] : null;
+    const first = i === 0 ? 1 : sectionStartPages[i - 1] ?? 1;
+    const field = rulerPage === first && s?.marginsFirst ? 'marginsFirst' : s?.margins ? 'margins' : null;
+    const own = field ? s?.[field] : null;
+    if (field && own) {
+      extraHfSections = withSectionProps(extraHfSections, i, { [field]: { ...own, [edge]: cm } });
+      return;
+    }
+    const next = { ...pageMargins, [edge]: cm };
+    extraHfSections = spreadMargins(extraHfSections, pageMargins, next);
+    onPageMargins?.(next);
+  }
 
   $effect(() => {
     const s = document.documentElement.style;
@@ -1052,6 +1075,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // The scroller's footprint holds page + strip; .paper-scaler's `margin: 0 auto` then
   // centres the pair, so the page sits left of centre as it does in LibreOffice.
   let scaledCanvasWidth = $derived(scaledWidth + Math.round(reviewArea * appliedZoom / 100));
+  // Both rulers, once the canvas is measured; a page grid draws neither.
+  let vRuler = $derived(showRuler && !!scaledWidth);
   // Each pane scroller's width: the page labels may reach as far right as it does.
   let paneWidths = $state<number[]>([]);
 
@@ -1204,9 +1229,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       try {
         const coords = coordsAt(view, editor.state.selection.head);
         const cursorMidY = (coords.top + coords.bottom) / 2;
+        caretPage = pageAtY((cursorMidY - tiptapRect.top) / zoomFactor);
         if (cursorMidY >= editorRect.top && cursorMidY <= editorRect.bottom) {
-          const cursorInDoc = (cursorMidY - tiptapRect.top) / zoomFactor;
-          currentPage = pageAtY(cursorInDoc);
+          currentPage = caretPage;
           return;
         }
       } catch {
@@ -1621,7 +1646,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         (view as unknown as { domObserver: { flush(): void } }).domObserver.flush();
         const coords = caretCoords(view);
         const cursorInDoc = ((coords.top + coords.bottom) / 2 - tiptap.getBoundingClientRect().top) / (appliedZoom / 100);
-        currentPage = pageAtY(cursorInDoc);
+        currentPage = caretPage = pageAtY(cursorInDoc);
         followCaret(currentPage, onPaper(coords), scrolls);
         if (scrolls && el) followedAt = { top: el.scrollTop, left: el.scrollLeft };
       } catch { /* ignore */ }
@@ -1924,6 +1949,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
 <div
   class="editor"
   class:pane-below={splitView && i > 0}
+  class:with-vruler={vRuler}
   style:flex={splitView && i === 0 ? `0 0 ${splitRatio}%` : '1'}
   bind:this={scrollers[i]}
   bind:clientWidth={paneWidths[i]}
@@ -1936,12 +1962,15 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
 >
   <!-- Follows the edited header/footer zone: its stops are what a left/centre/right
        running head rides on, and the zone spans the same text column as the body. -->
-  {#if showRuler && scaledWidth}
+  {#if vRuler}
     <Ruler editor={hfActive ? hfEditor : editor} tick={hfActive ? hfTick : tick} zoom={appliedZoom} width={scaledWidth} page={rulerGeometry} gutter={scaledCanvasWidth - scaledWidth} {pageRtl} />
   {/if}
   <!-- Reserves the scaled scroll footprint; the transform on .paper reserves none.
        Before the first measure (size 0) it's left unsized so .paper isn't clipped. -->
   <div class="paper-scaler" style={scaledWidth ? `width: ${scaledCanvasWidth}px; height: ${scaledHeight}px;` : ''}>
+    {#if vRuler}
+      <VerticalRuler zoom={appliedZoom} page={verticalRulerGeometry} end={uiRtl()} editable={!reading() && tick >= 0 && !!editor?.isEditable} onMargin={setRulerMargin} />
+    {/if}
     {@render paper(i, 0, 0)}
     {#if showPageLabels && scaledWidth}
       <!-- The scaler is centred in the scroller, whose 1rem padding is room as well. -->
@@ -2014,6 +2043,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         {pageRtl}
         {chapterStarts}
         {pageNumbering}
+        bind:this={hfLayers[i]}
         bind:zoneHeights={hfZoneHeights}
         bind:zoneIntrusions={hfZoneIntrusions}
         bind:pageZones={hfPageZones}
@@ -2124,6 +2154,12 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     flex: 1;
     min-height: 0;
     min-width: 0;
+  }
+
+  /* Room for the vertical ruler beside the canvas, so the page and the horizontal ruler
+     stay centred together in what is left. */
+  .with-vruler {
+    padding-inline-start: calc(1rem + 28px);
   }
 
   /* The lower pane sits below the toolbar island, so it needs none of its clearance. */

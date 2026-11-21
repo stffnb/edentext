@@ -3,6 +3,7 @@
   import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
   import { activeTabStops, OPEN_TABS_DIALOG_EVENT, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
   import { t } from '../i18n/i18n.svelte';
+  import { scaleMarks, snapCm } from './rulerScale';
 
   // Horizontal ruler: the tab stops and indents of the block the cursor is in.
   // Positions are cm from the text margin the block starts at, the attr's own origin:
@@ -20,10 +21,7 @@
   } = $props();
 
   const TYPES: TabAlign[] = ['left', 'center', 'right', 'decimal'];
-  const SNAP_CM = 0.05;
   const DRAG_OFF_PX = 18; // pulled this far off the ruler = drop the stop
-  const SUB_TICK_GAP_PX = 8; // quarter/half marks need this spacing, which also clears a label
-  const LABEL_GAP_PX = 16; // a two-digit label plus air
 
   let type = $state<TabAlign>('left');
   let strip: HTMLDivElement;
@@ -31,7 +29,9 @@
   const scale = $derived(zoom / 100);
   const margins = $derived(page.margins);
   const pageCm = $derived(page.width / PX_PER_CM);
-  const offsetCm = $derived(page.left / PX_PER_CM);
+  // Scaled px the page stands in from the sheet's edges: the strip spans the page alone.
+  const before = $derived(page.left * scale);
+  const after = $derived(Math.max(0, width - (page.left + page.width) * scale));
   // The block under the cursor; `tick` re-evaluates it on every transaction.
   const info = $derived(tick >= 0 && editor ? activeTabStops(editor.state) : null);
 
@@ -40,26 +40,20 @@
     const dir = tick >= 0 ? editor?.state.selection.$from.parent.attrs.dir : null;
     return dir ? dir === 'rtl' : pageRtl;
   });
-  // The margin the text starts at, and where it lies on the sheet.
+  // The margin the text starts at, and where it lies on the page.
   const startMargin = $derived(rtl ? margins.right : margins.left);
-  const originCm = $derived(rtl ? offsetCm + pageCm - margins.right : offsetCm + margins.left);
+  const originCm = $derived(rtl ? pageCm - margins.right : margins.left);
   const sign = $derived(rtl ? -1 : 1);
 
   // cm from the starting text margin → px within the strip, and back.
   const px = (cm: number) => (originCm + sign * cm) * PX_PER_CM * scale;
   const cmAt = (clientX: number) =>
-    Math.round((sign * ((clientX - strip.getBoundingClientRect().left) / scale / PX_PER_CM - originCm)) / SNAP_CM) * SNAP_CM;
-  // Marks stay on the page; the sheet beside a narrower page is shaded as margin.
+    snapCm(sign * ((clientX - strip.getBoundingClientRect().left) / scale / PX_PER_CM - originCm));
+  // Marks stay on the page.
   const onPage = (cm: number) => cm >= -startMargin && cm <= pageCm - startMargin;
 
   const textCm = $derived(Math.max(0, pageCm - margins.left - margins.right));
-  const ticks = $derived(Array.from({ length: Math.ceil(pageCm) + 1 }, (_, i) => i - Math.floor(startMargin)));
-  // Between the cm marks: quarters, else halves, else none, whichever the zoom leaves room for.
-  const subStep = $derived([0.25, 0.5].find((step) => step * PX_PER_CM * scale >= SUB_TICK_GAP_PX) ?? 0);
-  const subTicks = $derived(subStep ? ticks.flatMap((cm) =>
-    Array.from({ length: 1 / subStep - 1 }, (_, i) => cm + (i + 1) * subStep)) : []);
-  // Zoomed far out, only every 2nd or 5th cm keeps its number.
-  const labelEvery = $derived([1, 2, 5].find((n) => n * PX_PER_CM * scale >= LABEL_GAP_PX) ?? 10);
+  const { ticks, subTicks, labelEvery } = $derived(scaleMarks(startMargin, pageCm, scale));
 
   // Marker glyphs in a shared 10×10 box: L / ⊥ / ⅃, plus ⊥ with a dot for decimal. The
   // stem is the stop's own position, so it stays centred in the box and the foot's
@@ -128,7 +122,7 @@
     } else if (target.kind === 'indentRight') {
       // Measured from the right text edge inwards, mirroring the left indent. Snapped
       // again: the pointer's own snap doesn't survive the subtraction from textCm.
-      const snapped = Math.round(Math.max(0, textCm - cm) / SNAP_CM) * SNAP_CM;
+      const snapped = snapCm(Math.max(0, textCm - cm));
       editor?.chain().focus().setIndentRight(snapped).run();
     } else {
       editor?.chain().focus().setIndentFirst(cm - info.indent).run();
@@ -155,9 +149,10 @@
 
 <!-- The strip beside the page is reserved here too, so the auto margins centre the
      ruler over the same footprint as .paper-scaler and it stays above the page. -->
-<div class="ruler" dir="ltr" style="width: {width + gutter}px; padding-right: {gutter}px">
+<div class="ruler" dir="ltr" style="width: {width + gutter}px; padding-left: {before}px; padding-right: {after + gutter}px">
   <button
     class="tab-type"
+    style="left: {before - 28}px"
     onpointerdown={(e) => e.preventDefault()}
     onclick={() => (type = TYPES[(TYPES.indexOf(type) + 1) % TYPES.length])}
     title={t().ruler.tabType[type]}
