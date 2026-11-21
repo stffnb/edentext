@@ -232,22 +232,47 @@ try {
       return [...metas];
     });
     if (idle.length) r.issues.push({ page: 1, kind: 'dispatches while idle', text: idle.join(', ') });
+    // Where the pictures and boxes of the first pages' headers and footers stand: no line
+    // of text moves with one, so the page starts alone would not show it shifting.
+    const frames = await page.evaluate(() => {
+      const sheets = Array.from(document.querySelectorAll('.page-sheet')).slice(0, 4).map((s) => s.getBoundingClientRect());
+      const zoom = sheets[0] ? sheets[0].width / document.querySelector('.page-sheet').offsetWidth || 1 : 1;
+      const out = [];
+      for (const zone of document.querySelectorAll('.hf-zone')) {
+        if (zone.closest('.hf-measure')) continue;
+        for (const f of zone.querySelectorAll('.image-node, .textbox-node')) {
+          if (f.parentElement.closest('.textbox-node')) continue;
+          const b = (f.querySelector('.image-rotor, .textbox-rotor') ?? f).getBoundingClientRect();
+          const i = sheets.findIndex((s) => b.top + b.height / 2 >= s.top && b.top + b.height / 2 <= s.bottom);
+          if (i < 0) continue;
+          const n = (v) => Math.round(v / zoom);
+          out.push(`p${i + 1} ${zone.classList.contains('hf-footer') ? 'footer' : 'header'} ${n(b.left - sheets[i].left)},${n(b.top - sheets[i].top)} ${n(b.width)}x${n(b.height)}`);
+        }
+      }
+      return out.sort();
+    });
     const ref = lo.get(file);
     const off = ref == null ? 0 : r.pages - ref;
     // A page or a tenth either way is the slack two layout engines take.
     const pagesOk = Math.abs(off) <= Math.max(1, Math.round((ref ?? 0) / 10));
     // What the baseline holds: where each page starts, and what the load cost.
     const prev = known[name];
-    fresh[name] = { pages: r.pages, lines: r.lines, ms, starts: r.starts };
+    fresh[name] = { pages: r.pages, lines: r.lines, ms, starts: r.starts, ...(frames.length ? { frames } : {}) };
     // Compared without its spaces: a decoration splits the text node it covers, and the
     // pieces are rejoined with one space whether the file had one there or not.
     const bare = (t) => String(t).replace(/\s+/g, '');
     const moved = prev ? r.starts.map((t, i) => [i + 1, t, prev.starts[i] ?? '—']).filter(([, a, b]) => bare(a) !== bare(b)) : [];
+    // A frame a pixel or two off is rounding; a baseline older than the frames holds none.
+    const nums = (row) => (row.match(/-?\d+/g) ?? []).map(Number);
+    const was = prev?.frames ?? null;
+    const shifted = !was ? [] : frames.length !== was.length ? [[`${frames.length} frame(s)`, `${was.length}`]]
+      : frames.map((row, i) => [row, was[i]]).filter(([a, b]) => nums(a).some((v, k) => Math.abs(v - nums(b)[k]) > 2));
     // ponytail: wall clock read through a 500ms poll, so only three times the recorded
     // load plus a second of slack counts as a regression.
     const slow = prev && ms > prev.ms * 3 + 1000 ? `${ms}ms against ${prev.ms}ms` : null;
     const label = `${name}  editor ${r.pages}p${ref != null ? ` / LO ${ref}p` : ''}${off && pagesOk ? ' (~)' : ''}  ${r.issues.length} issue(s)${prev ? '' : ' (new)'}`;
-    check(pagesOk && !r.issues.length && (UPDATE || (!moved.length && !slow)), label);
+    check(pagesOk && !r.issues.length && (UPDATE || (!moved.length && !slow && !shifted.length)), label);
+    for (const [now, old] of shifted.slice(0, 5)) console.log(`    header/footer frame "${now}", the baseline has "${old}"`);
     if (slow) console.log(`    slower than the baseline: ${slow}`);
     for (const [pg, now, was] of moved.slice(0, 5)) console.log(`    p${pg} starts "${now}", the baseline has "${was}"`);
     if (moved.length > 5) console.log(`    … ${moved.length - 5} page start(s) more`);

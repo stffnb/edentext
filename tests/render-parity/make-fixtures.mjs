@@ -458,6 +458,26 @@ await write('21-spacing-split.docx', [{
   ]).flat(),
 }]);
 
+// 22. Frames in a header and a footer, in the shapes that have no x of their own: set
+// against an edge or the middle of the margins beside an aligned or tabbed paragraph,
+// one above its anchor, and a paragraph ending in line breaks under it.
+const hfPic = (width, x, type, y = 0) => new ImageRun({ type: 'png', data: PNG, transformation: { width, height: 30 },
+  floating: { horizontalPosition: { relative: 'margin', align: x }, verticalPosition: { relative: 'paragraph', offset: y },
+    wrap: { type, side: 'bothSides' }, allowOverlap: true } });
+await write('22-hf-frames.docx', [{
+  properties: { page },
+  headers: { default: new Header({ children: [
+    new Paragraph({ alignment: AlignmentType.RIGHT, children: [hfPic(60, 'left', 2, -57150), new TextRun('Running head')] }),
+    new Paragraph({ tabStops: [{ type: TabStopType.RIGHT, position: 9638 }],
+      children: [new TextRun({ children: ['\t'] }), new TextRun({ break: 1 }), new TextRun({ break: 1 })] }),
+  ] }) },
+  footers: { default: new Footer({ children: [
+    new Paragraph({ alignment: AlignmentType.CENTER, tabStops: [{ type: TabStopType.RIGHT, position: 9638 }],
+      children: [new TextRun('Left'), hfPic(40, 'right', 1), hfPic(50, 'center', 3), new TextRun({ children: ['\tPage ', PageNumber.CURRENT] })] }),
+  ] }) },
+  children: Array.from({ length: 14 }, (_, i) => para(`${i + 1}. ${LOREM}`)),
+}]);
+
 // ODT twins, written by LibreOffice itself — the dominant ODT producer, so they carry
 // its own conventions (percentage font sizes, Text Body, list styles) and exercise the
 // foreign-document path our own exporter never produces.

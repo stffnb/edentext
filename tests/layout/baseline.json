@@ -2,8 +2,8 @@
  "chromium/darwin": {
   "docs/showcase/book.docx": {
    "pages": 104,
-   "lines": 3354,
-   "ms": 1700,
+   "lines": 3344,
+   "ms": 1100,
    "starts": [
     "Alice’s Adventures in Wonderland",
     "Contents",
@@ -113,8 +113,8 @@
   },
   "docs/showcase/book.odt": {
    "pages": 104,
-   "lines": 3389,
-   "ms": 1500,
+   "lines": 3379,
+   "ms": 900,
    "starts": [
     "Alice’s Adventures in Wonderland",
     "Contents",
@@ -224,8 +224,8 @@
   },
   "docs/showcase/newsletter.docx": {
    "pages": 2,
-   "lines": 134,
-   "ms": 100,
+   "lines": 140,
+   "ms": 200,
    "starts": [
     "Eden Astronomy Society",
     "Observing nights this autumn"
@@ -233,8 +233,8 @@
   },
   "docs/showcase/newsletter.odt": {
    "pages": 2,
-   "lines": 134,
-   "ms": 100,
+   "lines": 140,
+   "ms": 200,
    "starts": [
     "Eden Astronomy Society",
     "Observing nights this autumn"
@@ -263,7 +263,7 @@
   "docs/showcase/thesis-review.odt": {
    "pages": 13,
    "lines": 583,
-   "ms": 700,
+   "ms": 300,
    "starts": [
     "Widow and Orphan Control in Browser-Base",
     "Abstract",
@@ -283,7 +283,7 @@
   "docs/showcase/thesis.docx": {
    "pages": 13,
    "lines": 520,
-   "ms": 200,
+   "ms": 300,
    "starts": [
     "Widow and Orphan Control in Browser-Base",
     "Abstract",
@@ -303,7 +303,7 @@
   "docs/showcase/thesis.odt": {
    "pages": 13,
    "lines": 579,
-   "ms": 700,
+   "ms": 200,
    "starts": [
     "Widow and Orphan Control in Browser-Base",
     "Abstract",
@@ -323,7 +323,7 @@
   "fuzz/seed-1.odt": {
    "pages": 1,
    "lines": 33,
-   "ms": 100,
+   "ms": 200,
    "starts": [
     "fünf ipsum fünf \"quote\""
    ]
@@ -331,7 +331,7 @@
   "fuzz/seed-10.odt": {
    "pages": 1,
    "lines": 3,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "🙂ok"
    ]
@@ -347,7 +347,7 @@
   "fuzz/seed-3.odt": {
    "pages": 1,
    "lines": 2,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     ""
    ]
@@ -355,7 +355,7 @@
   "fuzz/seed-4.odt": {
    "pages": 1,
    "lines": 31,
-   "ms": 100,
+   "ms": 200,
    "starts": [
     "sit a&b <tag> a&b fünf"
    ]
@@ -363,15 +363,15 @@
   "fuzz/seed-5.odt": {
    "pages": 1,
    "lines": 9,
-   "ms": 0,
+   "ms": 200,
    "starts": [
     "sit Lorem"
    ]
   },
   "fuzz/seed-6.odt": {
    "pages": 1,
-   "lines": 32,
-   "ms": 100,
+   "lines": 33,
+   "ms": 200,
    "starts": [
     "Lorem a&b fünf fünf <tag>"
    ]
@@ -386,8 +386,8 @@
   },
   "fuzz/seed-8.odt": {
    "pages": 1,
-   "lines": 14,
-   "ms": 100,
+   "lines": 20,
+   "ms": 200,
    "starts": [
     "ipsum ipsum dolor a&b"
    ]
@@ -395,7 +395,7 @@
   "fuzz/seed-9.odt": {
    "pages": 1,
    "lines": 9,
-   "ms": 200,
+   "ms": 100,
    "starts": [
     "<tag> dolor Größe €42 a&b"
    ]
@@ -421,7 +421,7 @@
   "tests/corpus/02-blocks.docx": {
    "pages": 1,
    "lines": 24,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Document Title"
    ]
@@ -437,7 +437,7 @@
   "tests/corpus/03-fonts.docx": {
    "pages": 1,
    "lines": 37,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Lorem ipsum dolor sit amet, consectetur "
    ]
@@ -445,7 +445,7 @@
   "tests/corpus/03-fonts.odt": {
    "pages": 1,
    "lines": 37,
-   "ms": 0,
+   "ms": 200,
    "starts": [
     "Lorem ipsum dolor sit amet, consectetur "
    ]
@@ -453,7 +453,7 @@
   "tests/corpus/04-table.docx": {
    "pages": 1,
    "lines": 26,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Before the table"
    ]
@@ -461,7 +461,7 @@
   "tests/corpus/04-table.odt": {
    "pages": 1,
    "lines": 26,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Before the table"
    ]
@@ -469,7 +469,7 @@
   "tests/corpus/05-breaks.docx": {
    "pages": 2,
    "lines": 159,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "1. Lorem ipsum dolor sit amet, consectet",
     "minim veniam, quis nostrud exercitation "
@@ -505,7 +505,7 @@
   "tests/corpus/07-nowidow.docx": {
    "pages": 2,
    "lines": 119,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "1. Lorem ipsum dolor sit amet, consectet",
     "labore et dolore magna aliqua. Ut enim a"
@@ -514,7 +514,7 @@
   "tests/corpus/07-nowidow.odt": {
    "pages": 2,
    "lines": 119,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "1. Lorem ipsum dolor sit amet, consectet",
     "labore et dolore magna aliqua. Ut enim a"
@@ -523,7 +523,7 @@
   "tests/corpus/08-lists.docx": {
    "pages": 1,
    "lines": 17,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Bullets"
    ]
@@ -531,7 +531,7 @@
   "tests/corpus/08-lists.odt": {
    "pages": 1,
    "lines": 17,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Bullets"
    ]
@@ -539,7 +539,7 @@
   "tests/corpus/09-headerfooter.docx": {
    "pages": 2,
    "lines": 160,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "1. Lorem ipsum dolor sit amet, consectet",
     "18. Lorem ipsum dolor sit amet, consecte"
@@ -548,7 +548,7 @@
   "tests/corpus/09-headerfooter.odt": {
    "pages": 2,
    "lines": 160,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "1. Lorem ipsum dolor sit amet, consectet",
     "18. Lorem ipsum dolor sit amet, consecte"
@@ -557,7 +557,7 @@
   "tests/corpus/10-tabs.docx": {
    "pages": 1,
    "lines": 15,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Default tabs follow:"
    ]
@@ -565,7 +565,7 @@
   "tests/corpus/10-tabs.odt": {
    "pages": 1,
    "lines": 15,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Default tabs follow:"
    ]
@@ -573,7 +573,7 @@
   "tests/corpus/11-marks.docx": {
    "pages": 1,
    "lines": 15,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "underlined struck highlighted colored su"
    ]
@@ -581,7 +581,7 @@
   "tests/corpus/11-marks.odt": {
    "pages": 1,
    "lines": 15,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "underlined struck highlighted colored su"
    ]
@@ -589,7 +589,7 @@
   "tests/corpus/12-notes.docx": {
    "pages": 1,
    "lines": 14,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "A claim 1 and another 2 in one paragraph"
    ]
@@ -597,7 +597,7 @@
   "tests/corpus/12-notes.odt": {
    "pages": 1,
    "lines": 14,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "A claim 1 and another 2 in one paragraph"
    ]
@@ -605,7 +605,7 @@
   "tests/corpus/13-images.docx": {
    "pages": 1,
    "lines": 7,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Before after."
    ]
@@ -613,7 +613,7 @@
   "tests/corpus/13-images.odt": {
    "pages": 1,
    "lines": 7,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Before after."
    ]
@@ -629,7 +629,7 @@
   "tests/corpus/14-formulas.odt": {
    "pages": 1,
    "lines": 13,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Inline in the sentence."
    ]
@@ -647,7 +647,7 @@
   "tests/corpus/15-chapters.odt": {
    "pages": 3,
    "lines": 36,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Introduction",
     "Results",
@@ -667,7 +667,7 @@
   "tests/corpus/16-hf-variants.odt": {
    "pages": 3,
    "lines": 208,
-   "ms": 0,
+   "ms": 200,
    "starts": [
     "1. Lorem ipsum dolor sit amet, consectet",
     "18. Lorem ipsum dolor sit amet, consecte",
@@ -677,7 +677,7 @@
   "tests/corpus/17-sections.docx": {
    "pages": 3,
    "lines": 50,
-   "ms": 600,
+   "ms": 100,
    "starts": [
     "Portrait first",
     "Landscape middle",
@@ -687,7 +687,7 @@
   "tests/corpus/17-sections.odt": {
    "pages": 3,
    "lines": 50,
-   "ms": 600,
+   "ms": 100,
    "starts": [
     "Portrait first",
     "Landscape middle",
@@ -697,7 +697,7 @@
   "tests/corpus/18-table-sections.docx": {
    "pages": 3,
    "lines": 42,
-   "ms": 600,
+   "ms": 100,
    "starts": [
     "Before the tables",
     "R1C1 R1C2 R1C3 R1C4 R1C5 R1C6",
@@ -707,7 +707,7 @@
   "tests/corpus/18-table-sections.odt": {
    "pages": 3,
    "lines": 42,
-   "ms": 600,
+   "ms": 100,
    "starts": [
     "Before the tables",
     "R1C1 R1C2 R1C3 R1C4 R1C5 R1C6",
@@ -717,7 +717,7 @@
   "tests/corpus/19-index-sections.docx": {
    "pages": 3,
    "lines": 22,
-   "ms": 600,
+   "ms": 100,
    "starts": [
     "Chapter One",
     "No headings yet — apply Heading 1, 2 or",
@@ -727,7 +727,7 @@
   "tests/corpus/19-index-sections.odt": {
    "pages": 3,
    "lines": 22,
-   "ms": 500,
+   "ms": 100,
    "starts": [
     "Chapter One",
     "No headings yet — apply Heading 1, 2 or",
@@ -737,7 +737,7 @@
   "tests/corpus/20-index-footer.docx": {
    "pages": 6,
    "lines": 130,
-   "ms": 200,
+   "ms": 100,
    "starts": [
     "Chapter 1",
     "Opening note for the chapter.",
@@ -763,7 +763,7 @@
   "tests/corpus/21-spacing-split.docx": {
    "pages": 7,
    "lines": 318,
-   "ms": 200,
+   "ms": 100,
    "starts": [
     "Section 1",
     "Lorem ipsum dolor sit amet, consectetur ",
@@ -788,10 +788,36 @@
     "aliqua. Ut enim ad minim veniam, quis no"
    ]
   },
+  "tests/corpus/22-hf-frames.docx": {
+   "pages": 1,
+   "lines": 74,
+   "ms": 100,
+   "starts": [
+    "1. Lorem ipsum dolor sit amet, consectet"
+   ],
+   "frames": [
+    "p1 footer 373,1057 50x30",
+    "p1 footer 679,1057 40x30",
+    "p1 header 76,41 60x30"
+   ]
+  },
+  "tests/corpus/22-hf-frames.odt": {
+   "pages": 1,
+   "lines": 74,
+   "ms": 100,
+   "starts": [
+    "1. Lorem ipsum dolor sit amet, consectet"
+   ],
+   "frames": [
+    "p1 footer 373,1057 50x30",
+    "p1 footer 679,1057 40x30",
+    "p1 header 76,41 60x30"
+   ]
+  },
   "tests/corpus/word/01-flow.docx": {
    "pages": 2,
    "lines": 120,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "1. Lorem ipsum dolor sit amet, consectet",
     "18. Lorem ipsum dolor sit amet, consecte"
@@ -800,7 +826,7 @@
   "tests/corpus/word/02-blocks.docx": {
    "pages": 1,
    "lines": 24,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Document Title"
    ]
@@ -808,7 +834,7 @@
   "tests/corpus/word/03-fonts.docx": {
    "pages": 1,
    "lines": 37,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Lorem ipsum dolor sit amet, consectetur "
    ]
@@ -816,7 +842,7 @@
   "tests/corpus/word/04-table.docx": {
    "pages": 1,
    "lines": 18,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Before the table"
    ]
@@ -824,7 +850,7 @@
   "tests/corpus/word/05-breaks.docx": {
    "pages": 2,
    "lines": 159,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "1. Lorem ipsum dolor sit amet, consectet",
     "minim veniam, quis nostrud exercitation "
@@ -833,7 +859,7 @@
   "tests/corpus/word/06-calibri.docx": {
    "pages": 2,
    "lines": 100,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "1. Lorem ipsum dolor sit amet, consectet",
     "19. Lorem ipsum dolor sit amet, consecte"
@@ -842,7 +868,7 @@
   "tests/corpus/word/07-nowidow.docx": {
    "pages": 2,
    "lines": 119,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "1. Lorem ipsum dolor sit amet, consectet",
     "labore et dolore magna aliqua. Ut enim a"
@@ -851,7 +877,7 @@
   "tests/corpus/word/08-lists.docx": {
    "pages": 1,
    "lines": 17,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Bullets"
    ]
@@ -859,7 +885,7 @@
   "tests/corpus/word/09-headerfooter.docx": {
    "pages": 2,
    "lines": 160,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "1. Lorem ipsum dolor sit amet, consectet",
     "18. Lorem ipsum dolor sit amet, consecte"
@@ -868,7 +894,7 @@
   "tests/corpus/word/10-tabs.docx": {
    "pages": 1,
    "lines": 15,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Default tabs follow:"
    ]
@@ -876,7 +902,7 @@
   "tests/corpus/word/11-marks.docx": {
    "pages": 1,
    "lines": 15,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "underlined struck highlighted colored su"
    ]
@@ -884,7 +910,7 @@
   "tests/corpus/word/12-notes.docx": {
    "pages": 1,
    "lines": 14,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "A claim 1 and another 2 in one paragraph"
    ]
@@ -892,7 +918,7 @@
   "tests/corpus/word/13-images.docx": {
    "pages": 1,
    "lines": 7,
-   "ms": 0,
+   "ms": 100,
    "starts": [
     "Before after."
    ]
