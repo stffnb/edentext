@@ -258,6 +258,9 @@ class TocView {
     this.schedule();
   };
 
+  // A font arriving after the rows were drawn changes the gap each leader was cut for.
+  private onFonts = () => { if (!this.editor.isDestroyed) this.fillLeaders(); };
+
   constructor(editor: Editor, node: PMNode, getPos: () => number, view: EditorView) {
     this.editor = editor;
     this.view = view;
@@ -272,6 +275,7 @@ class TocView {
     this.lastLook = lookOf(node);
 
     tocViews.add(this);
+    document.fonts?.addEventListener?.('loadingdone', this.onFonts);
     // Mount deferred so .paper exists and the first pagination pass has run.
     requestAnimationFrame(() => {
       if (isSplitPane(this.view)) return this.adoptMain();
@@ -704,6 +708,7 @@ class TocView {
 
   destroy(): void {
     tocViews.delete(this);
+    document.fonts?.removeEventListener?.('loadingdone', this.onFonts);
     this.paper?.removeEventListener('pm-pagecount', this.onPageCount);
     this.paper?.removeEventListener(INDEX_UPDATE, this.onUpdate);
   }
