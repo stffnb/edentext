@@ -654,6 +654,8 @@ const de: Messages = {
     citationNotInHf: 'Zitate sind in Kopf-/Fußzeilen nicht verfügbar',
     bookmarkNotInHf: 'Textmarken sind in Kopf-/Fußzeilen nicht verfügbar',
     clearFormatting: 'Formatierung löschen',
+    formatPainter: 'Format übertragen',
+    formatPainterHint: 'Doppelklick, um es auf mehrere Stellen zu übertragen',
   },
   image: {
     wrapToolbar: 'Textumbruch um das Bild',

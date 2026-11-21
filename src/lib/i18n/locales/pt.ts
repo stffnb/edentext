@@ -652,6 +652,8 @@ const pt: Messages = {
     citationNotInHf: 'As citações não estão disponíveis em cabeçalhos e rodapés',
     bookmarkNotInHf: 'Os marcadores não estão disponíveis em cabeçalhos e rodapés',
     clearFormatting: 'Limpar formatação',
+    formatPainter: 'Pincel de Formatação',
+    formatPainterHint: 'Faça duplo clique para aplicar em vários locais',
   },
   image: {
     wrapToolbar: 'Moldar texto à volta da imagem',

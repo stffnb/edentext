@@ -19,6 +19,8 @@ no-break spaces and no ordinary one (a web editor's copy) gets plain spaces back
 
 `undoYjs.ts` overrides the undo manager's `destroy`, `stopCapturing` and `lastChange` and reads `Y.Item` internals (`_start`, `right`, `deleted`, `id.client`), and `yjsRedo.ts` wraps `Y.Item.prototype.integrate` for an undo's restored items (yjs#823), so `package.json` pins `yjs`, `y-protocols` and `@tiptap/y-tiptap`; update them only with `npm run test:collab` and `UNDO=yjs npm run test:monkey` green.
 
+`formatPainter.svelte.ts` is the format painter's one brush for the app (picked format, kept on or not, Escape, the page's brush cursor); `utils/formatPainter.ts` picks and paints, `extensions/formatPainter.ts` paints on mouse-up in the body and a zone (`docs/architecture/formatting.md`, Format painter).
+
 `clickCaret.ts` (`readClickCaret`, the body's and the zone's `mousedown`): a click that focuses a view reads its caret in at once, since ProseMirror puts its old selection back 20 ms after a focus that no `selectionchange` has followed yet, which a busy page in Firefox delays past that.
 
 ## Keyboard shortcuts (`shortcuts.ts`, `extensions/shortcuts.ts`)

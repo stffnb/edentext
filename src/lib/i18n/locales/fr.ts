@@ -662,6 +662,8 @@ const fr: Messages = {
     citationNotInHf: 'Les citations ne sont pas disponibles dans les en-têtes et pieds de page',
     bookmarkNotInHf: 'Les signets ne sont pas disponibles dans les en-têtes et pieds de page',
     clearFormatting: 'Effacer la mise en forme',
+    formatPainter: 'Reproduire la mise en forme',
+    formatPainterHint: 'Double-cliquez pour l’appliquer à plusieurs endroits',
   },
   image: {
     wrapToolbar: 'Habillage de l’image',
