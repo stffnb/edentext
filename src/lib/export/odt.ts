@@ -37,6 +37,7 @@ import { colorModeOf, cropOf, wrapGap, wrapGapAttr, type ColorMode, type Crop, t
 import { imageSizeCm } from '../import/imageFormats';
 import { numberLocale, parseCellNumber, toWriterFormula, type CellRef, type NumberLocale } from '../utils/tableFormula';
 import { presetOdfGeometry } from '../utils/shapePresets';
+import { CHAPTER_DISPLAYS, type ChapterDisplay } from '../utils/chapterField';
 import { SHAPES, arrowHeadCm, boxHeads, isShapeKind, isLineKind, odfEnhancedGeometry, odfEnhancedPath, asShapePreset, asTextArea, type PathHeads, type ShapeKind, type DrawingMlPreset, type TextArea } from '../utils/shapes';
 import { normalizeLeader, parseTabStops } from '../editor/extensions/tabStops';
 import { charStyleProps, listMarkerFormat, type MarkerFormat } from '../editor/extensions/listMarker';
@@ -192,7 +193,7 @@ const BME = '\uE014';
 // (XRF{i}XRF<text>XRF); applyBookmarks rewrites it to <text:bookmark-ref>. U+E015.
 const XRF = '\uE015';
 
-// Sentinel wrapping a chapter field (CHP<level>CHP<name>CHP), from replacePageFields;
+// Sentinel wrapping a chapter field (CHP<level>[:<display>]CHP<name>CHP), from replacePageFields;
 // applyInlineSentinels rewrites it to <text:chapter>. U+E016.
 const CHP = '\uE016';
 
@@ -4495,11 +4496,12 @@ function applyTextEffects(odtBytes: Uint8Array): Uint8Array {
   return rezipOdt(files);
 }
 
-// CHP<level>CHP<cached name>CHP — the cached name is what a reader shows before it
+// CHP<level>[:<display>]CHP<cached name>CHP — the cached name is what a reader shows before it
 // resolves the field itself, so it rides along like LibreOffice writes it.
 function chapterSentinel(node: TiptapNode): string {
   const level = Number(node.attrs?.level) || 1;
-  return `${CHP}${level}${CHP}${String(node.attrs?.text ?? '')}${CHP}`;
+  const display = CHAPTER_DISPLAYS.indexOf(node.attrs?.display as ChapterDisplay);
+  return `${CHP}${level}${display > 0 ? `:${display}` : ''}${CHP}${String(node.attrs?.text ?? '')}${CHP}`;
 }
 
 // A header's page fields → sentinel runs carrying the atom's marks, so they ride every
@@ -4951,8 +4953,9 @@ function applyInlineSentinels(odtBytes: Uint8Array): Uint8Array {
     .replace(new RegExp(`${SPC}+`, 'g'), (m) => (m.length > 1 ? `<text:s text:c="${m.length}"/>` : '<text:s/>'))
     .split(PGN).join('<text:page-number text:select-page="current">1</text:page-number>')
     .replace(new RegExp(`${PGC}(\\d*)${PGC}`, 'g'), '<text:page-count>$1</text:page-count>')
-    .replace(new RegExp(`${CHP}(\\d)${CHP}([\\s\\S]*?)${CHP}`, 'g'),
-      (_m, level: string, name: string) => `<text:chapter text:display="name" text:outline-level="${level}">${name}</text:chapter>`);
+    .replace(new RegExp(`${CHP}(\\d)(?::(\\d))?${CHP}([\\s\\S]*?)${CHP}`, 'g'),
+      (_m, level: string, display: string | undefined, name: string) =>
+        `<text:chapter text:display="${CHAPTER_DISPLAYS[Number(display ?? 0)]}" text:outline-level="${level}">${name}</text:chapter>`);
   content = content.replace(new RegExp(`${CHAR_TAB_STOP}(?! style:char)`, 'g'), `${CHAR_TAB_STOP} style:char="."`);
   files['content.xml'] = strToU8(content);
   return rezipOdt(files);
