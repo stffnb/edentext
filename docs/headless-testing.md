@@ -31,8 +31,10 @@ and checks the rendered lines: none overlap, none sit in the page gap or past th
 none cross a single-section document's margins, no heading ends a page or column, nothing
 is wider than the page. A tab's box, a frame, a formula and the decor are not lines.
 It then holds the document against `tests/layout/baseline.json`, which records where each
-page starts and what the load cost: a page starting elsewhere is a layout change the run
-prints page by page, and a load over three times its recorded time is a regression. The
+page starts, where the pictures and boxes of the first four pages' headers and footers stand
+(`frames`, no line of text moves with one; `22-hf-frames` holds the shapes) and what the load
+cost: a page starting elsewhere or a frame over 2px off is a layout change the run prints,
+and a load over three times its recorded time is a regression. The
 baseline is keyed by engine and platform (line breaking is theirs) and `LAYOUT_UPDATE=1`
 records it again — the answer to a deliberate change, never to a surprise. A `[regex]`
 argument limits the run to the documents whose name matches. LibreOffice's counts are
