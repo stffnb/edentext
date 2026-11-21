@@ -722,7 +722,7 @@ try {
     await page.evaluate((d) => {
       localStorage.setItem('edentext-doc', JSON.stringify(d));
       localStorage.setItem('edentext-header', JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Head' }] }] }));
-    }, { type: 'doc', content: [block(words('first line')), block(words('second line'))] });
+    }, { type: 'doc', content: [block(words('first line')), block(words('second line')), ...Array.from({ length: 70 }, (_, i) => block(words(`more ${i + 1}`)))] });
     const geo = () => page.evaluate(() => {
       const r = (e) => e?.getBoundingClientRect();
       const strip = r(document.querySelector('.vruler .strip'));
@@ -761,6 +761,13 @@ try {
     const lands = dragged.line - dragged.sheet.top;
     check(Math.abs(lands - 4 * 96 / 2.54) < 3 && label === '4 cm' && Math.abs(undone.line - before.line) < 1 && Math.abs(dragged.tick - before.tick) < 0.5,
       `dragging the top margin 2 cm down puts the text at 4 cm (${lands.toFixed(1)}px, ${label}), an undo puts it back (${(undone.line - before.line).toFixed(1)}px) and the horizontal ruler stays over the page`);
+    // Scrolling to the next page leaves the ruler on the caret's page.
+    await page.evaluate(() => { const e = document.querySelector('.editor'); e.scrollTop = e.scrollHeight; });
+    await page.waitForTimeout(400);
+    const away = await geo();
+    check(away.sheet.bottom < 200 && Math.abs(away.strip.top - away.sheet.top) < 1.5, `scrolled to the next page, the vertical ruler stays on the caret's page (${(away.strip.top - away.sheet.top).toFixed(1)}px)`);
+    await page.evaluate(() => { document.querySelector('.editor').scrollTop = 0; });
+    await page.waitForTimeout(300);
     await page.locator('.ribbon-tab', { hasText: /^View$/ }).first().click();
     await page.locator('[data-cmd="ruler"]').first().click();
     await page.waitForTimeout(300);
