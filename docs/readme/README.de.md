@@ -72,6 +72,10 @@ EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von de
   druckbares Markup, Rechtschreibprüfung (Englisch, Deutsch, Spanisch, Französisch, Italienisch,
   Portugiesisch, Griechisch, Russisch, Ukrainisch, Polnisch, Indonesisch, Arabisch und Koreanisch), Synonyme (dieselben Sprachen
   ohne Griechisch und Koreanisch), Grammatikprüfung (Englisch)
+- **Zusammenarbeit in Echtzeit** – mehrere Personen bearbeiten über einen Link gleichzeitig
+  dasselbe Dokument: Jeder sieht den Cursor der anderen, dazu gibt es einen Sitzungschat und einen
+  Link nur zum Lesen für alle, die bloß mitlesen sollen. Ende-zu-Ende-verschlüsselt, sodass der
+  Server dazwischen das Dokument nicht lesen kann. Benötigt ein Relay, siehe [Zusammenarbeit](#zusammenarbeit)
 - **Optionaler KI-Assistent** – mit einem frei wählbaren Anbieter oder einem lokalen Modell;
   beantwortet Fragen zum Dokument und bearbeitet es mit Änderungsverfolgung. Lässt sich
   abschalten; Anfragen gehen direkt an den Anbieter, ohne Umweg über einen EdenText-Server
@@ -81,7 +85,7 @@ EdenText ist eine leistungsstarke Textverarbeitung im Browser, für alles von de
   eigenen Spracherkennungsserver, etwa Whisper auf dem eigenen Rechner, in jedem Browser und in der Desktop-App
 - **Private by Design** – Dokumente verlassen nie den Rechner, alles läuft lokal; als
   installierte App auch offline. Der Editor selbst sendet nichts, außer bei eingeschaltetem
-  KI-Assistenten an den gewählten Anbieter. Beim Diktieren kann der Browser den Ton an seinen Sprachdienst schicken. Dokumente werden automatisch im Browser
+  KI-Assistenten an den gewählten Anbieter. In einer gemeinsamen Sitzung geht das Dokument verschlüsselt über das Relay an die anderen Teilnehmer. Beim Diktieren kann der Browser den Ton an seinen Sprachdienst schicken. Dokumente werden automatisch im Browser
   gesichert; unter „Zuletzt verwendete Dokumente“ lässt sich einstellen, dass geschlossene
   Dokumente beim nächsten Start gelöscht oder gar nicht erst gespeichert werden. Ein
   privates Fenster hinterlässt nach dem Schließen keine Spuren
@@ -111,6 +115,46 @@ beides gemeinfrei.
 </tr>
 </table>
 
+## Zusammenarbeit
+
+**Datei → Zusammenarbeiten…** startet eine Sitzung für das geöffnete Dokument und liefert
+zwei Links: einen zum Bearbeiten und einen nur zum Lesen. Wer einen Link öffnet, bekommt
+das Dokument in den eigenen Browser und sieht jede Änderung, sobald sie passiert. Ein Konto
+oder eine Installation braucht niemand.
+
+- Man sieht, wo die anderen gerade sind (Cursor und Auswahl, mit Namen), kann zu jemandem
+  springen oder ihm folgen, in Kommentaren Personen erwähnen und im Sitzungschat schreiben.
+- „Rückgängig“ nimmt nur die eigenen Änderungen zurück; Kommentare und aufgezeichnete
+  Änderungen tragen jeweils den Namen ihres Verfassers.
+- Eine Sitzung besteht, solange jemand sie geöffnet hat, und fasst bis zu sechs Personen,
+  sofern der Betreiber kein anderes Limit setzt. Nur wer sie gestartet hat, speichert das
+  Dokument; die anderen können beim Verlassen eine Kopie behalten.
+- Alle in einer Sitzung sollten dieselbe EdenText-Version verwenden.
+
+**Verschlüsselung.** Der Schlüssel ist der Teil des Links nach `#`, den ein Browser nie an
+einen Server schickt. Jeder Browser verschlüsselt, was er sendet (AES-GCM); das Relay leitet
+also Daten weiter, die es nicht lesen kann, und speichert nichts davon. Es sieht allerdings
+Netzwerkadressen, Zeitpunkte, Nachrichtengrößen und wie viele Personen an einer Sitzung
+teilnehmen. Wer den Bearbeitungslink hat, kann das Dokument ändern; daher sollte man ihn so
+sorgfältig weitergeben wie das Dokument selbst.
+
+**Wo es funktioniert.** Sitzungen brauchen ein Relay, einen kleinen Server in
+[`relay/`](../../relay), der mit jedem Release als `ghcr.io/stffnb/edentext-relay`
+veröffentlicht wird. Der Befehl „Zusammenarbeiten“ erscheint nur, wo die App eines findet:
+
+- **Kubernetes:** Das [Helm-Chart](../../charts/edentext) bringt das Relay standardmäßig mit.
+- **Eigener Server:** Das Relay-Image starten (Port 4390) und den vorgeschalteten Webserver
+  `/relay` auf dem Host der App als WebSocket dorthin weiterleiten lassen. Das Container-Image
+  der App sucht das Relay dort; ein eigener Build tut das mit
+  `VITE_COLLAB_RELAY=same-origin npm run build`, und
+  `VITE_COLLAB_RELAY=wss://relay.example.org/relay` gibt ein Relay auf einem anderen Host an.
+  Die Limits des Relays sind Umgebungsvariablen, aufgeführt in
+  [`relay/CLAUDE.md`](../../relay/CLAUDE.md) (englisch).
+- **Entwicklung:** `npm run relay` neben `npm run dev`.
+
+Das Container-Image der App ohne ein solches Relay, das Release-Archiv und
+[edentext.app](https://edentext.app) bieten keine Sitzungen an.
+
 ## Desktop-App
 
 Zu jedem Release gibt es außerdem unsignierte Desktop-Installer (Electron):
@@ -132,6 +176,7 @@ neuere Version gibt.
 ```bash
 npm install
 npm run dev      # Entwicklungsserver mit Hot-Reload
+npm run relay    # Relay für gemeinsame Sitzungen auf dem Entwicklungsserver
 npm test         # Testsuite
 npm run build    # Produktions-Build → dist/
 cd desktop && npm install && npm start   # Desktop-App auf demselben Build

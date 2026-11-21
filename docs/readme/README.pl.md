@@ -72,6 +72,11 @@ EdenText to rozbudowany edytor tekstu działający w przeglądarce – do wszyst
   drukowanie adiustacji, sprawdzanie pisowni (angielski, niemiecki, hiszpański, francuski, włoski, portugalski,
   grecki, rosyjski, ukraiński, polski, indonezyjski, arabski i koreański), synonimy (wszystkie te języki oprócz greckiego i koreańskiego), sprawdzanie gramatyki
   (angielski)
+- **Współpraca w czasie rzeczywistym** – kilka osób edytuje jednocześnie ten sam dokument
+  za pomocą linku: każdy widzi kursory pozostałych, jest czat sesji i link tylko do odczytu
+  dla tych, którzy mają jedynie śledzić zmiany. Dzięki szyfrowaniu end-to-end serwer
+  pośredniczący nie może odczytać dokumentu. Wymaga serwera relay, zob.
+  [Współpraca](#współpraca)
 - **Opcjonalny asystent AI** – z własnym dostawcą lub modelem lokalnym;
   odpowiada na pytania o dokument i wprowadza w nim zmiany jako śledzone zmiany. Można go
   wyłączyć; zapytania trafiają bezpośrednio do dostawcy, bez pośrednictwa serwera EdenText
@@ -81,7 +86,7 @@ EdenText to rozbudowany edytor tekstu działający w przeglądarce – do wszyst
   serwera rozpoznawania mowy, np. Whisper na tym komputerze, w każdej przeglądarce i w aplikacji desktopowej
 - **Private by Design** – dokumenty nigdy nie opuszczają komputera, całe
   przetwarzanie odbywa się lokalnie; jako zainstalowana aplikacja EdenText działa offline. Edytor niczego nie wysyła,
-  chyba że zostanie włączony asystent AI – wtedy dane trafiają do wybranego dostawcy. Dyktowanie korzysta z rozpoznawania mowy przeglądarki, która może wysyłać nagranie do swojej usługi mowy.
+  chyba że zostanie włączony asystent AI – wtedy dane trafiają do wybranego dostawcy. We wspólnej sesji dokument trafia w postaci zaszyfrowanej przez serwer relay do pozostałych uczestników. Dyktowanie korzysta z rozpoznawania mowy przeglądarki, która może wysyłać nagranie do swojej usługi mowy.
   Dokumenty są zapisywane automatycznie w przeglądarce; listę „Ostatnie dokumenty” można ustawić tak, by zamknięte
   dokumenty były usuwane przy następnym uruchomieniu albo w ogóle nie były przechowywane, a okno prywatne
   po zamknięciu nie zostawia żadnych śladów
@@ -111,6 +116,44 @@ wszystko w domenie publicznej.
 </tr>
 </table>
 
+## Współpraca
+
+**Plik → Współpraca…** rozpoczyna sesję dla otwartego dokumentu i daje dwa linki: jeden do
+edycji, drugi tylko do odczytu. Kto otworzy link, dostaje dokument w swojej przeglądarce
+i widzi każdą zmianę na bieżąco. Nikt nie potrzebuje konta ani instalacji.
+
+- Widać, gdzie są pozostali (kursor i zaznaczenie, z nazwami uczestników), można przejść do
+  kogoś lub podążać za nim, wspominać osoby w komentarzach i pisać na czacie sesji.
+- „Cofnij” wycofuje tylko własne zmiany; komentarze i śledzone zmiany są oznaczone nazwą
+  autora.
+- Sesja trwa, dopóki ktoś ma ją otwartą, i mieści do sześciu osób, chyba że administrator
+  ustawi inny limit. Dokument zapisuje tylko osoba, która rozpoczęła sesję; pozostali mogą
+  zachować kopię przy wyjściu.
+- Wszyscy uczestnicy sesji powinni używać tej samej wersji EdenText.
+
+**Szyfrowanie.** Kluczem jest część linku po `#`, której przeglądarka nigdy nie wysyła do
+serwera. Każda przeglądarka szyfruje to, co wysyła (AES-GCM), więc serwer relay przekazuje
+dane, których nie potrafi odczytać, i niczego z nich nie przechowuje. Widzi natomiast adresy
+sieciowe, czas, rozmiary wiadomości i liczbę osób w sesji. Każdy, kto ma link do edycji,
+może zmieniać dokument, dlatego należy przekazywać go równie ostrożnie jak sam dokument.
+
+**Gdzie to działa.** Sesje wymagają serwera relay – niewielkiego serwera z katalogu
+[`relay/`](../../relay), publikowanego z każdym wydaniem jako `ghcr.io/stffnb/edentext-relay`.
+Polecenie „Współpraca” pojawia się tylko tam, gdzie aplikacja go znajdzie:
+
+- **Kubernetes:** [chart Helm](../../charts/edentext) domyślnie uruchamia też serwer relay.
+- **Własny serwer:** należy uruchomić obraz serwera relay (port 4390) i skonfigurować
+  stojący przed nim serwer WWW tak, by przekazywał mu `/relay` na hoście aplikacji jako
+  WebSocket. Obraz kontenera aplikacji szuka serwera relay właśnie tam; własna kompilacja
+  również, jeśli zbudować ją poleceniem `VITE_COLLAB_RELAY=same-origin npm run build`, a
+  `VITE_COLLAB_RELAY=wss://relay.example.org/relay` wskazuje serwer relay na innym hoście.
+  Limity serwera relay ustawia się zmiennymi środowiskowymi wymienionymi w
+  [`relay/CLAUDE.md`](../../relay/CLAUDE.md) (po angielsku).
+- **Rozwój:** `npm run relay` obok `npm run dev`.
+
+Obraz kontenera aplikacji bez takiego serwera relay, archiwum z wydania i
+[edentext.app](https://edentext.app) nie oferują sesji.
+
 ## Aplikacja desktopowa
 
 Każde wydanie zawiera też niepodpisane instalatory aplikacji desktopowej zbudowanej w Electronie:
@@ -132,6 +175,7 @@ o dostępności nowszej wersji.
 ```bash
 npm install
 npm run dev      # serwer deweloperski z hot-reloadem
+npm run relay    # serwer relay dla wspólnych sesji na serwerze deweloperskim
 npm test         # zestaw testów
 npm run build    # kompilacja produkcyjna → dist/
 cd desktop && npm install && npm start   # aplikacja desktopowa na tej samej kompilacji

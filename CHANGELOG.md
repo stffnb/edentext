@@ -862,7 +862,6 @@ The gap against Word/LibreOffice, most valuable first. Reviewed 2026-09-13.
 **Out of scope for now**
 - Mail merge, data sources, form fields
 - Master documents
-- Real-time collaboration (there is no backend by design)
 - Macros / scripting
 
 ### Known limitations

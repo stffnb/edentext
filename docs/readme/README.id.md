@@ -72,6 +72,10 @@ EdenText adalah pengolah kata berbasis web yang tangguh untuk segala keperluan, 
   markup yang dapat dicetak, pemeriksaan ejaan (bahasa Inggris, Jerman, Spanyol, Prancis, Italia,
   Portugis, Yunani, Rusia, Ukraina, Polandia, Indonesia, Arab, dan Korea), sinonim (semua bahasa
   tersebut kecuali Yunani dan Korea), pemeriksaan tata bahasa (bahasa Inggris)
+- **Kolaborasi waktu nyata** — beberapa orang mengedit satu dokumen secara bersamaan melalui
+  sebuah tautan: masing-masing melihat kursor yang lain, ada obrolan sesi, dan tautan hanya baca
+  bagi yang cukup mengikuti saja. Terenkripsi end-to-end, sehingga server perantara tidak dapat
+  membaca dokumennya. Memerlukan server relay, lihat [Kolaborasi](#kolaborasi)
 - **Asisten AI opsional** — dengan penyedia pilihan Anda sendiri atau model lokal;
   menjawab pertanyaan tentang dokumen dan mengeditnya sebagai perubahan terlacak. Dapat
   dimatikan; permintaan langsung dikirim ke penyedia, tanpa melalui server EdenText
@@ -83,7 +87,7 @@ EdenText adalah pengolah kata berbasis web yang tangguh untuk segala keperluan, 
 - **Private by Design** — dokumen Anda tidak pernah keluar dari komputer, semua
   pemrosesan berjalan secara lokal; dapat bekerja offline sebagai aplikasi yang diinstal. Editor
   tidak mengirim apa pun, kecuali jika Anda mengaktifkan asisten AI, yang mengirim ke penyedia
-  pilihan Anda. Dikte memakai pengenalan ucapan browser, yang mungkin mengirim audio ke layanan ucapannya.
+  pilihan Anda. Sesi bersama mengirim dokumen dalam bentuk terenkripsi melalui relay kepada peserta lain di sesi tersebut. Dikte memakai pengenalan ucapan browser, yang mungkin mengirim audio ke layanan ucapannya.
   Dokumen disimpan otomatis di browser; di “Dokumen terbaru”, Anda dapat mengatur agar dokumen
   yang ditutup dihapus saat aplikasi dibuka berikutnya atau tidak disimpan sama sekali, dan jendela
   pribadi tidak meninggalkan jejak apa pun setelah ditutup
@@ -113,6 +117,46 @@ keduanya berstatus domain publik.
 </tr>
 </table>
 
+## Kolaborasi
+
+**File → Kolaborasi…** memulai sesi untuk dokumen yang sedang dibuka dan memberi Anda dua
+tautan: satu untuk mengedit dan satu hanya baca. Siapa pun yang membuka tautan akan menerima
+dokumen di browser-nya dan melihat setiap perubahan saat itu juga. Tidak perlu akun atau
+instalasi apa pun.
+
+- Anda melihat posisi peserta lain (kursor dan pilihan, beserta namanya), dapat melompat ke
+  seseorang atau mengikutinya, menyebut orang di komentar, dan menulis di obrolan sesi.
+- “Batalkan” hanya membatalkan suntingan Anda sendiri; komentar dan perubahan terlacak
+  mencantumkan nama penulisnya.
+- Sesi bertahan selama masih ada yang membukanya, dengan maksimal enam orang kecuali
+  pengelola server menetapkan batas lain. Hanya orang yang memulai sesi yang menyimpan
+  dokumen; peserta lain dapat menyimpan salinan saat keluar.
+- Semua peserta sesi sebaiknya memakai versi EdenText yang sama.
+
+**Enkripsi.** Kuncinya adalah bagian tautan setelah `#`, yang tidak pernah dikirim browser ke
+server. Setiap browser mengenkripsi apa yang dikirimnya (AES-GCM), sehingga relay meneruskan
+data yang tidak dapat dibacanya dan tidak menyimpan apa pun. Namun relay tetap melihat alamat
+jaringan, waktu, ukuran pesan, dan jumlah orang dalam sebuah sesi. Siapa pun yang memegang
+tautan edit dapat mengubah dokumen, jadi bagikan tautan itu sama hati-hatinya dengan
+dokumennya sendiri.
+
+**Tempat fitur ini tersedia.** Sesi memerlukan relay, server kecil di [`relay/`](../../relay)
+yang diterbitkan bersama setiap rilis sebagai `ghcr.io/stffnb/edentext-relay`. Perintah
+“Kolaborasi” hanya muncul jika aplikasi menemukan relay:
+
+- **Kubernetes:** [Helm chart](../../charts/edentext) menjalankan relay secara default.
+- **Server sendiri:** jalankan image relay (port 4390) dan atur server web di depannya agar
+  meneruskan `/relay` pada host aplikasi ke relay tersebut sebagai WebSocket. Image container
+  aplikasi mencari relay di sana; build sendiri melakukan hal yang sama dengan
+  `VITE_COLLAB_RELAY=same-origin npm run build`, sedangkan
+  `VITE_COLLAB_RELAY=wss://relay.example.org/relay` menunjuk relay di host lain. Batasan relay
+  diatur lewat variabel lingkungan yang tercantum di [`relay/CLAUDE.md`](../../relay/CLAUDE.md)
+  (dalam bahasa Inggris).
+- **Pengembangan:** `npm run relay` di samping `npm run dev`.
+
+Image container aplikasi tanpa relay seperti itu, arsip rilis, dan
+[edentext.app](https://edentext.app) tidak menyediakan sesi.
+
 ## Aplikasi desktop
 
 Setiap rilis juga menyertakan penginstal desktop tanpa tanda tangan digital yang dibuat dengan Electron:
@@ -134,6 +178,7 @@ jika versi yang lebih baru sudah tersedia.
 ```bash
 npm install
 npm run dev      # server pengembangan dengan hot reload
+npm run relay    # relay kolaborasi untuk sesi bersama di server pengembangan
 npm test         # rangkaian pengujian
 npm run build    # build produksi → dist/
 cd desktop && npm install && npm start   # aplikasi desktop di atas build yang sama
