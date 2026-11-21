@@ -55,4 +55,7 @@ export async function registerEmbeddedFonts(fonts: EmbeddedFont[]): Promise<void
       registered.push(face);
     } catch { /* skip an unreadable/blocked font */ }
   }
+  // A face added once it has loaded fires no event in any engine, so the set is told:
+  // text drawn before it (a restored document's) is measured again by every listener.
+  if (registered.length) document.fonts.dispatchEvent(new Event('loadingdone'));
 }
