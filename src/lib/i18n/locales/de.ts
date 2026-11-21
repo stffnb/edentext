@@ -655,6 +655,7 @@ const de: Messages = {
     bookmarkNotInHf: 'Textmarken sind in Kopf-/Fußzeilen nicht verfügbar',
     clearFormatting: 'Formatierung löschen',
     formatPainter: 'Format übertragen',
+    formatPainterShort: 'Format',
     formatPainterHint: 'Doppelklick, um es auf mehrere Stellen zu übertragen',
   },
   image: {

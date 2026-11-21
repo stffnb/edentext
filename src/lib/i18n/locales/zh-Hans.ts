@@ -654,6 +654,7 @@ const zhHans: Messages = {
     bookmarkNotInHf: '页眉/页脚中不能使用书签',
     clearFormatting: '清除格式',
     formatPainter: '格式刷',
+    formatPainterShort: '格式刷',
     formatPainterHint: '双击可连续应用到多处',
   },
   image: {

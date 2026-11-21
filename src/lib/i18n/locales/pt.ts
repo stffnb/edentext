@@ -653,6 +653,7 @@ const pt: Messages = {
     bookmarkNotInHf: 'Os marcadores não estão disponíveis em cabeçalhos e rodapés',
     clearFormatting: 'Limpar formatação',
     formatPainter: 'Pincel de Formatação',
+    formatPainterShort: 'Formato',
     formatPainterHint: 'Faça duplo clique para aplicar em vários locais',
   },
   image: {

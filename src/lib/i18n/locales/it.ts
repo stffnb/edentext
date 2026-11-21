@@ -653,6 +653,7 @@ const it: Messages = {
     bookmarkNotInHf: 'I segnalibri non sono disponibili in intestazioni e piè di pagina',
     clearFormatting: 'Cancella formattazione',
     formatPainter: 'Copia formato',
+    formatPainterShort: 'Formato',
     formatPainterHint: 'Doppio clic per applicarlo in più punti',
   },
   image: {

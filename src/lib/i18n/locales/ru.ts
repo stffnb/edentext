@@ -664,6 +664,7 @@ const ru: Messages = {
     bookmarkNotInHf: 'Закладки в колонтитулах недоступны',
     clearFormatting: 'Очистить форматирование',
     formatPainter: 'Формат по образцу',
+    formatPainterShort: 'Формат',
     formatPainterHint: 'Дважды щёлкните, чтобы применить в нескольких местах',
   },
   image: {

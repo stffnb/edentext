@@ -664,6 +664,7 @@ const uk: Messages = {
     bookmarkNotInHf: 'Закладки в колонтитулах недоступні',
     clearFormatting: 'Очистити форматування',
     formatPainter: 'Формат за зразком',
+    formatPainterShort: 'Формат',
     formatPainterHint: 'Двічі клацніть, щоб застосувати в кількох місцях',
   },
   image: {

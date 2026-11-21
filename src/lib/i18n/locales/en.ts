@@ -663,6 +663,7 @@ const en = {
     bookmarkNotInHf: 'Bookmarks are not available in headers/footers',
     clearFormatting: 'Clear formatting',
     formatPainter: 'Format Painter',
+    formatPainterShort: 'Format',
     formatPainterHint: 'Double-click to apply it to several places',
   },
   image: {

@@ -656,6 +656,7 @@ const ja: Messages = {
     bookmarkNotInHf: 'ヘッダー/フッターではブックマークを使えません',
     clearFormatting: '書式のクリア',
     formatPainter: '書式のコピー/貼り付け',
+    formatPainterShort: '書式',
     formatPainterHint: 'ダブルクリックすると複数の箇所に続けて適用できます',
   },
   image: {
