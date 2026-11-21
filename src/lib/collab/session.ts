@@ -10,6 +10,7 @@ import { readOnlyFilter, readingKey, setReading } from './reading.svelte';
 import { shareZones } from './zones.svelte';
 import { HAS, PICTURE, WANT, keyPictures, picturesKey, sessionPictures, unkeyPictures } from './pictures';
 import { IDB_SRC } from '../storage/imageStore';
+import { dropOrphanPictures, pasteOwner, pastersWith } from '../editor/paste';
 import { cleanColor, shownName } from './names';
 import { caretsKey, caretsPlugin } from './carets';
 
@@ -413,7 +414,19 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   };
   ydoc.on('update', onUpdate);
   type Change = { added: number[]; updated: number[]; removed: number[] };
+  // Whose squares a client fills (`paste.ts`): kept past its going, as its state is gone by then.
+  const pasters = new Map<number, string>();
+  pastersWith(() => [...awareness.getStates().values()].map((s) => s.paster).filter((o) => typeof o === 'string'));
   const onPresence = ({ added, updated, removed }: Change, origin: unknown) => {
+    for (const id of [...added, ...updated]) {
+      const o = awareness.getStates().get(id)?.paster;
+      if (typeof o === 'string') pasters.set(id, o);
+    }
+    // A writer gone leaves squares nobody will fill: the repairer settles them once, after
+    // the edits that writer sent before going.
+    const gone = removed.filter((id) => id !== ydoc.clientID).map((id) => pasters.get(id)).filter((o): o is string => !!o);
+    for (const id of removed) pasters.delete(id);
+    if (gone.length && binding && repairer?.()) { applyInbox(); dropOrphanPictures(editor.view, gone); }
     if (origin === 'local') {
       const state = awareness.getLocalState(), rest = JSON.stringify(state && { ...state, cursor: undefined });
       caretDue = true;
@@ -657,6 +670,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
   // `peer` first: a presence without one is never taken.
   awareness.setLocalStateField('peer', me);
   awareness.setLocalStateField('user', host.user());
+  if (!reading) awareness.setLocalStateField('paster', pasteOwner);
   const unshareZones = shareZones(awareness);
   if (keeps) awareness.setLocalStateField('keeps', true);
   if (bound) bind(bound(pictures));
@@ -693,6 +707,7 @@ function connect(editor: Editor, keys: SessionKeys, host: SessionHost, ydoc: Y.D
       goodbye();
       channel.close();
       awareness.off('update', onPresence);
+      pastersWith(null);
       unshareZones();
       awareness.destroy();
       ydoc.off('update', onUpdate);

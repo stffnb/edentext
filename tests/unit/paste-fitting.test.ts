@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { getSchema } from '@tiptap/core';
 import { DOMParser as PMDOMParser, Fragment, Slice } from '@tiptap/pm/model';
 import { extensions } from '../../src/lib/editor/extensions';
-import { dropRemoteImages, localPastedHtml, PASTE_NOTICE_EVENT, unwrapPastedBoxes, flattenToInline, plainPastedSpaces } from '../../src/lib/editor/paste';
+import { dropRemoteImages, localPastedHtml, PASTE_NOTICE_EVENT, withoutPictureSquares, unwrapPastedBoxes, flattenToInline, plainPastedSpaces } from '../../src/lib/editor/paste';
 
 const schema = getSchema(extensions);
 const para = (text: string) => schema.nodes.paragraph.create(null, schema.text(text));
@@ -76,6 +76,24 @@ describe('localPastedHtml', () => {
     const html = `<h1><img src="${data}"></h1><p><a href="${web}"><picture><source srcset="${web}/a.webp"><img src="${data}"></picture></a></p><ul><li><img src="${data}"></li></ul>`;
     expect(localPastedHtml(html)).toBe(html);
     expect(blocks(html)).toEqual(['heading:image', 'paragraph:image', 'bulletList:image']);
+  });
+
+  it('carries a fetch as a square with id and alt text only; no file and no load keeps one nobody fills', () => {
+    vi.stubGlobal('fetch', () => new Promise(() => {}));
+    const html = localPastedHtml(`<p><img src="${web}/a.png" alt="Logo"></p><ul><li><p><img src="${web}/b.png"></p></li><li>item</li></ul>`, { view: () => null });
+    vi.unstubAllGlobals();
+    expect(html).not.toContain('tracker');
+    const doc = PMDOMParser.fromSchema(schema).parse(new DOMParser().parseFromString(html, 'text/html').body);
+    const json = doc.toJSON();
+    const text = (j: unknown) => schema.nodeFromJSON(j).textContent;
+    const images = (j: unknown) => JSON.stringify(j).split('"image"').length - 1;
+    // Still being fetched here, so a load keeps both; a file shows alt text and drops the bare one's item.
+    expect(images(withoutPictureSquares(json, schema, true))).toBe(2);
+    const file = withoutPictureSquares({ args: [json] }, schema).args[0];
+    expect([images(file), text(file), schema.nodeFromJSON(file).child(1).childCount]).toEqual([0, 'Logoitem', 1]);
+    // A square whose fetch went with an earlier page settles on loading.
+    const orphan = JSON.parse(JSON.stringify(json).replace(/id=%22p[0-9a-z]+/g, 'id=%22pgone0000x'));
+    expect(text(withoutPictureSquares(orphan, schema, true))).toBe('Logoitem');
   });
 });
 

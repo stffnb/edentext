@@ -23,7 +23,7 @@
   import { findTextBox, type ShapeKind, type TextVAlign } from '../editor/extensions/textBox';
   import { blockText, headingNumbers } from '../editor/extensions/outline';
   import { catchUpIndexes } from '../editor/extensions/tableOfContents';
-  import { fillPastedPictures, fitPastedSlice, localPastedHtml } from '../editor/paste';
+  import { copiedWithoutSquares, dropOrphanPictures, fillPastedPictures, fitPastedSlice, localPastedHtml } from '../editor/paste';
   import { readClickCaret } from '../editor/clickCaret';
   import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state';
   import { EditorView } from '@tiptap/pm/view';
@@ -1442,6 +1442,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         // The direct prop wins over every plugin's, so the fitting fixes run here.
         transformPastedHTML: (html) => localPastedHtml(html, { view: () => editor?.view ?? null, fit: fittedSize }),
         transformPasted: (raw, view) => fitPastedSlice(raw, view.state),
+        transformCopied: (slice) => copiedWithoutSquares(slice),
       },
       onTransaction: ({ editor: e, transaction }) => {
         // Deferred: a blur tr arrives synchronously when a pane-layout switch tears
@@ -1484,6 +1485,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       },
     });
 
+    // A restored document's grey squares lost the fetch they waited for with the last page.
+    dropOrphanPictures(editor.view);
     // On the view's own DOM, not hosts[0]: switching the pane layout replaces the
     // host element, and a listener there would go down with it.
     editor.view.dom.addEventListener('pm-pagecount', onPageCount);

@@ -29,7 +29,7 @@
   import { convertUnsupportedImages } from './lib/import/imageFormats';
   import { repairContent, repairZones } from './lib/import/repairContent';
   import en from './lib/i18n/locales/en';
-  import { PASTE_NOTICE_EVENT } from './lib/editor/paste';
+  import { PASTE_NOTICE_EVENT, dropOrphanPictures, holdsPictureSquare, withoutPictureSquares } from './lib/editor/paste';
   import { getPageBreakDebug } from './lib/editor/extensions/pageBreaks';
   import { RECORDING, settledDoc } from './lib/editor/extensions/trackChanges';
   import { getColumnsFlowDebug } from './lib/editor/extensions/columnsFlow';
@@ -844,6 +844,7 @@
   function loadContent(content: Content): void {
     editor?.chain().setMeta(RECORDING, true).cancelCommentDraft().setContent(wrapLooseTextBoxes(content))
       .command(({ tr }) => { tr.setSelection(Selection.atStart(tr.doc)); return true; }).run();
+    dropOrphanPictures(editor?.view ?? null);
     editor?.view.dom.closest('.editor')?.scrollTo({ top: 0 });
   }
 
@@ -1383,11 +1384,17 @@
     if (missing) throw new Error(t().collab.picturesPending);
     return full;
   }
-  // What leaves the editor in a session first waits for pictures still on their way, which a
-  // notice says; one nobody here has stops it.
-  async function picturesHere(json: TiptapNode): Promise<void> {
+  // What leaves the editor first waits for pictures still on their way, which a notice says:
+  // a session's that nobody here has stop it; a paste's grey squares, filled or settled by the
+  // client fetching them, are waited for until their fetch timed out. Returns the document then.
+  async function picturesHere(json: TiptapNode): Promise<TiptapNode> {
     const keys = lackedKeys([json, exportArgs()]);
     if (keys.length && !await untilHeld(keys, () => (collabView()?.missing ?? 0) > 0)) throw new Error(t().collab.picturesPending);
+    if (!editor || !holdsPictureSquare(editor.state.doc)) return json;
+    collabNotice = 'loading';
+    for (const end = Date.now() + 25_000; editor && holdsPictureSquare(editor.state.doc) && Date.now() < end;) await new Promise((ok) => setTimeout(ok, 200));
+    if (untrack(() => collabNotice === 'loading')) collabNotice = null;
+    return editor ? squareless(editor.getJSON() as TiptapNode) : json;
   }
   // A session's start file leaves its large pictures out: the shared doc and stores name them
   // by key and size, and each joiner asks for them, so its text shows before they come.
@@ -1396,13 +1403,15 @@
     const keyed = <T,>(v: T) => mapSrcs(v, (src) => { const key = imageKey(src); return key ? IDB_SRC + key : src; }) as T;
     return buildOdt(keyed(editor!.getJSON() as TiptapNode), ...keyed(exportArgs()));
   }
+  // A file never shows a paste's grey square: one still there goes as a failed fetch would.
+  const squareless = <T,>(v: T): T => (editor ? withoutPictureSquares(v, editor.schema) : v);
   async function buildBytes(kind: DocumentFormat, json: TiptapNode): Promise<Uint8Array> {
     if (kind === 'docx') {
       const { buildDocx } = await import('./lib/export/docx');
-      return buildDocx(withPictures(editor ? withRenderedBoxHeights(editor.view) as TiptapNode : json), ...exportArgs());
+      return buildDocx(squareless(withPictures(editor ? withRenderedBoxHeights(editor.view) as TiptapNode : json)), ...squareless(exportArgs()));
     }
     const { buildOdt } = await import('./lib/export/odt');
-    return buildOdt(withPictures(json), ...exportArgs());
+    return buildOdt(squareless(withPictures(json)), ...squareless(exportArgs()));
   }
 
   async function handleSave() {
@@ -1414,7 +1423,7 @@
     // untitled document does everywhere else, and let Save As do the rest.
     if (!fileHandle && !documentHasFile) { saveFormatKind = null; saveFormatOpen = true; return; }
     if (!(await ensurePassword())) return;
-    const json = editor.getJSON() as TiptapNode;
+    let json = editor.getJSON() as TiptapNode;
     try {
       // Someone else's changes to the file are not overwritten unasked: declining saves
       // under another name instead.
@@ -1425,7 +1434,7 @@
       }
       // A document opened as .docx round-trips through the same format, like both
       // reference word processors — not silently rewritten to .odt under its old name.
-      await picturesHere(json);
+      json = await picturesHere(json);
       const name = documentFormat === 'docx' ? suggestedFilenameDocx(json) : suggestedFilename(json);
       const picked = !fileHandle;
       fileHandle = await saveDocument(await buildBytes(documentFormat, json), name, documentFormat, fileHandle, docPassword);
@@ -1469,10 +1478,10 @@
     if (!fsSupported && typedName === undefined) { saveFormatKind = kind; saveFormatOpen = true; return; }
     if (typedName !== undefined) documentName = typedName;
     if (!(await ensurePassword())) return;
-    const json = editor.getJSON() as TiptapNode;
+    let json = editor.getJSON() as TiptapNode;
     const name = kind === 'docx' ? suggestedFilenameDocx(json) : suggestedFilename(json);
     try {
-      await picturesHere(json);
+      json = await picturesHere(json);
       fileHandle = await saveDocument(await buildBytes(kind, json), name, kind, null, docPassword);
       documentFormat = kind;
       if (fileHandle) documentName = docNameOfFile(fileHandle.name);
@@ -1494,10 +1503,10 @@
     if (!editor) return;
     exportMenuOpen = false;
     if (!(await ensurePassword())) return;
-    const json = editor.getJSON() as TiptapNode;
+    let json = editor.getJSON() as TiptapNode;
     try {
       const { odtToOtt, docxToDotx } = await import('./lib/export/template');
-      await picturesHere(json);
+      json = await picturesHere(json);
       const kind = documentFormat === 'docx' ? 'dotx' : 'ott';
       const bytes = kind === 'dotx' ? docxToDotx(await buildBytes('docx', json)) : odtToOtt(await buildBytes('odt', json));
       await saveDocument(bytes, `${stripOdtExtension(suggestedFilename(json))}.${kind}`, kind, null, docPassword);
@@ -1836,8 +1845,8 @@
     if (!editor) return;
     exportMenuOpen = false;
     try {
-      const json = editor.getJSON() as TiptapNode;
-      await picturesHere(json);
+      let json = editor.getJSON() as TiptapNode;
+      json = await picturesHere(json);
       await printPdf({
         json,
         fileName: suggestedFilename(json),
