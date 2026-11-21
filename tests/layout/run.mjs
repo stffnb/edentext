@@ -136,8 +136,14 @@ function lintLayout() {
 
   // Where a text node is painted: a frame may sit on the text by design, a formula
   // stacks its own boxes, and a hidden or spacer node is not painted at all.
+  // `clips`: the boxes that cut the node's text off (an exact row's cell), `table`: the
+  // outermost table around it, which the file may stand in the margin.
+  let clips = [], table = null;
   const originOf = (node) => {
+    clips = []; table = null;
     for (let e = node.parentElement; e && e !== paper; e = e.parentElement) {
+      if (e.classList.contains('tableWrapper')) table = e;
+      if (e.tagName === 'TD' || e.tagName === 'TH') { if (getComputedStyle(e).overflow !== 'visible') clips.push(rel(e.getBoundingClientRect())); }
       if (e.hasAttribute('data-page-break-spacer') || e.classList.contains('band-layer')) return null;
       if (e.classList.contains('page-decor-layer') || e.classList.contains('line-number-layer')) return null;
       if (e.classList.contains('hf-layer')) return 'hf';
@@ -155,14 +161,17 @@ function lintLayout() {
     if (!n.nodeValue.trim()) continue;
     const kind = originOf(n);
     if (!kind) continue;
+    const within = table && rel(table.getBoundingClientRect());
     // Between the tabs: a tab's own box runs to its stop, past a cell's edge if need be.
     for (const m of n.nodeValue.matchAll(/[^\t]+/g)) {
       const range = document.createRange();
       range.setStart(n, m.index); range.setEnd(n, m.index + m[0].length);
       for (const r of range.getClientRects()) {
-        if (r.width < 0.5 || r.height < 0.5) continue;
         const b = rel(r);
-        lines.push({ ...b, kind, page: pageOf((b.top + b.bottom) / 2), text: m[0].trim().slice(0, 40) });
+        // What a clipping cell cuts off is not painted: an exact row hides the lines past it.
+        for (const c of clips) { b.top = Math.max(b.top, c.top); b.bottom = Math.min(b.bottom, c.bottom); b.left = Math.max(b.left, c.left); b.right = Math.min(b.right, c.right); }
+        if (b.right - b.left < 0.5 || b.bottom - b.top < 0.5) continue;
+        lines.push({ ...b, kind, within, node: n, from: m.index, to: m.index + m[0].length, page: pageOf((b.top + b.bottom) / 2), text: m[0].trim().slice(0, 40) });
       }
     }
   }
@@ -209,7 +218,17 @@ function lintLayout() {
     if (l.top < body.top - 3) issue('above the top margin', l, { body: box(body) });
     if (l.bottom > body.bottom + 3) issue('below the bottom margin', l, { body: box(body) });
     // ponytail: 6px of slack for a justified line's overhang and the sheet's own border.
-    if (l.left < body.left - 6 || l.right > body.right + 6) issue('beyond the side margin', l, { body: box(body) });
+    // A table stands where the file indents it, in the margin too; its text is held to it.
+    const left = Math.min(body.left, l.within?.left ?? body.left) - 6, right = Math.max(body.right, l.within?.right ?? body.right) + 6;
+    if (l.left >= left && l.right <= right) continue;
+    // The spaces a line ends with hang past it unpainted, so only its words count.
+    const words = [];
+    for (const m of l.node.nodeValue.slice(l.from, l.to).matchAll(/\S+/g)) {
+      const range = document.createRange();
+      range.setStart(l.node, l.from + m.index); range.setEnd(l.node, l.from + m.index + m[0].length);
+      for (const r of range.getClientRects()) { const b = rel(r); if (b.bottom > l.top + 1 && b.top < l.bottom - 1) words.push(b); }
+    }
+    if (words.some((b) => b.left < left || b.right > right)) issue('beyond the side margin', l, { body: box(body) });
   }
   // A heading stays with the block it introduces, across a page and a column alike,
   // unless that block asks for the break itself or the heading's file style drops the keep.
