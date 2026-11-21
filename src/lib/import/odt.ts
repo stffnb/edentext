@@ -1717,7 +1717,7 @@ function convertToc(el: Element, ctx: Ctx, indexKind: IndexKind): Node {
     // A caption index has one level and declares no text:outline-level.
     const level = Number(tpl.getAttributeNS(NS.text, 'outline-level')) || 1;
     const named = ctx.resolver.namedAncestor(tpl.getAttributeNS(NS.text, 'style-name'));
-    if (!(level >= 1) || !named) continue;
+    if (!(level >= 1) || level > maxLevel || !named) continue;
     const display = ctx.styleNames.get(named) ?? named;
     // An entry template resolving to the default style names no style of its own.
     if (display === DEFAULT_STYLE) continue;

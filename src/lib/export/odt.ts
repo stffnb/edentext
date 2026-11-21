@@ -300,7 +300,7 @@ function isHeadingNode(node: TiptapNode): boolean {
 // Styles to define in the file: every built-in (Word/LibreOffice always define their
 // standard styles) plus the user styles the document actually references, with their
 // parent chains.
-function usedStyleNames(doc: TiptapNode, sheet: StyleSheet): Set<string> {
+function usedStyleNames(doc: TiptapNode, sheet: StyleSheet, tocs: TocExport[] = []): Set<string> {
   const used = new Set<string>();
   const addChain = (name: string) => {
     let cur: string | null | undefined = name;
@@ -315,6 +315,8 @@ function usedStyleNames(doc: TiptapNode, sheet: StyleSheet): Set<string> {
     node.content?.forEach(walk);
   };
   walk(doc);
+  // An index's rows are styled by the level styles it names, which no paragraph carries.
+  for (const toc of tocs) for (const name of toc.levelStyles ?? []) if (name) addChain(name);
   return used;
 }
 
@@ -5918,7 +5920,7 @@ function withIndexLead(xml: string, lead: string): string {
   return xml.slice(0, cut) + lead + xml.slice(cut);
 }
 
-function applyToc(odtBytes: Uint8Array, tocs: TocExport[], contentWidthCm: number, bibTypes: string[]): Uint8Array {
+function applyToc(odtBytes: Uint8Array, tocs: TocExport[], contentWidthCm: number, bibTypes: string[], sheet: StyleSheet): Uint8Array {
   if (!tocs.length) return odtBytes;
   const files = unzipSync(odtBytes);
   const contentBytes = files['content.xml'];
@@ -5941,12 +5943,14 @@ function applyToc(odtBytes: Uint8Array, tocs: TocExport[], contentWidthCm: numbe
   const tabPosCm = Math.max(1, Math.round(contentWidthCm * 1000) / 1000);
   // One set of entry styles per index family actually present; a caption index has the
   // single level its ODF template declares.
+  // A level style the document itself defines under a minted name stays the document's.
+  const named = new Set(tocs.flatMap(t => t.levelStyles ?? []).filter((n): n is string => !!n && !!sheet.paragraph[n]).map(odfStyleName));
   const styles = [...new Set(tocs.map(t => t.kind))]
     .map((kind) => {
       const spec = ODF_INDEX[kind];
       const levels = kind === 'toc' ? HEADING_LEVELS : [1];
       return contentsHeadingStyle(spec.heading)
-        + levels.map(l => contentsEntryStyle(`${spec.entryStyle}${l}`, l, tabPosCm)).join('');
+        + levels.filter(l => !named.has(`${spec.entryStyle}${l}`)).map(l => contentsEntryStyle(`${spec.entryStyle}${l}`, l, tabPosCm)).join('');
     })
     .join('')
     + tocs.map((t, i) => (t.columns ? columnsSectionStyle(t.columns, `IdxSec${i + 1}`) : '')).join('');
@@ -6246,14 +6250,14 @@ export async function buildOdt(docJson: TiptapNode, margins: PageMargins = DEFAU
   // After every other content.xml pass: the note's own runs are hoisted into the body,
   // so they must be fully resolved before they are cut out and moved into <text:note>.
   const withNotes = applyNotes(withBookmarks, notes);
-  const withToc = applyToc(withNotes, tocs, contentWidthCm, [...new Set(bibMarks.map(m => m.type))]);
+  const withToc = applyToc(withNotes, tocs, contentWidthCm, [...new Set(bibMarks.map(m => m.type))], styles);
   const withPageBreaks = applyPageBreaks(withToc);
   const withEmptyFontSizes = applyEmptyLineFontSizes(withPageBreaks);
   const withParaBoxes = applyParagraphBoxes(withEmptyFontSizes);
   // Effects first: applyCharacterStyles then clones the style that already carries them.
   const withNamedStyles = applyCharacterStyles(applyTextEffects(applyParagraphStyles(withParaBoxes)));
   const usedTables = new Set(tableStyleNames.filter((t): t is TableStyleRef => !!t).map(t => t.name));
-  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(withZones, styles), usedTables, new Set(listStyleRepoints.filter((n): n is string => !!n)), tabIntervalCm, margins.mirrored === true, rtl, notesSettings, hyphenate, pageNumbering, decor, lineNumbering, lineGrid);
+  const withStyles = rewriteStylesXml(withNamedStyles, language ?? null, pageFormat, orientation, styles, usedStyleNames(withZones, styles, tocs), usedTables, new Set(listStyleRepoints.filter((n): n is string => !!n)), tabIntervalCm, margins.mirrored === true, rtl, notesSettings, hyphenate, pageNumbering, decor, lineNumbering, lineGrid);
   const withBib = applyBibliographyConfig(withStyles, tocs.some((t) => t.kind === 'bibliography' && t.citationStyle === 'numbered'));
   const cut = cutZones(withBib, zoneIds.size);
   zoneXml = cut.xml;
