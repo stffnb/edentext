@@ -86,6 +86,8 @@ export const EMPTY_HF_SET: HfSet = {
 // HeaderFooterLayer to Editor.svelte.
 export const HF_ZONE_KEYS = ['header', 'footer', 'headerFirst', 'footerFirst', 'headerEven', 'footerEven'] as const;
 export type HfZoneKey = (typeof HF_ZONE_KEYS)[number];
+/** A page whose zones are another height (px) than their set's, its fields filled in. */
+export type PageZones = { page: number; header: HfZoneKey; footer: HfZoneKey; headerPx: number; footerPx: number };
 
 // A margin edit in the UI: the values that changed go to every section with margins of
 // its own as well, or an imported book whose chapters each carry a pair would not move.
