@@ -873,6 +873,9 @@ type Leaf = {
   // Keep with next (DOCX w:keepNext, ODF fo:keep-with-next; pageBreak.ts): the leaf
   // moves to the next page when its successor's first line no longer fits below it.
   keepNext?: boolean;
+  // An index breaks itself between its rows (tableOfContents.ts): what has to fit for
+  // it to start on a page, its title and first row.
+  indexHead?: number;
   // First block of a new section (pageBreak.ts `sectionBreak`): the page it lands on
   // is where that section's header/footer starts repeating.
   sectionStart?: boolean;
@@ -1708,7 +1711,13 @@ export const PageBreaks = Extension.create({
               // no inner doc positions, so it can't be line-split — measure it atomically
               // (pushed whole if it overflows; a TOC taller than a page can't be pushed).
               if (child.dataset?.toc) {
+                // Less the gap the index itself gave a first row that crossed a page.
+                const row = child.querySelector<HTMLElement>('.toc-entry');
+                const head = row
+                  ? (row.getBoundingClientRect().bottom - child.getBoundingClientRect().top) / getScaleFactor() - (parseFloat(row.style.marginTop) || 0)
+                  : undefined;
                 leaves.push({
+                  indexHead: head,
                   el: child,
                   kind: 'atomic',
                   naturalTop: naturalTopOf(child),
@@ -2223,9 +2232,13 @@ export const PageBreaks = Extension.create({
                     // than the page slot): pushing just moves the problem one page
                     // down forever — the flow line-splits the paragraph instead.
                     noPushReason = 'columns-line-split-pending';
+                  } else if (leaf.indexHead !== undefined && effectiveTop + leaf.indexHead <= contentEnd) {
+                    // The index's rows are paragraphs in both word processors: it starts
+                    // here and breaks between them, which its own view does.
+                    noPushReason = 'index-breaks-rows';
                   } else if (pageOpener && !cf) {
                     noPushReason = 'page-opener-no-push';
-                  } else if (leaf.naturalHeight <= CONTENT_HEIGHT || cf) {
+                  } else if (leaf.naturalHeight <= CONTENT_HEIGHT || cf || leaf.indexHead !== undefined) {
                     // A columns fragment may be pushed even when taller than a page:
                     // the flow splits it again once it sits at the next page top.
                     const target = pageContentStart(page + 1, topRest, grid);
@@ -2307,6 +2320,7 @@ export const PageBreaks = Extension.create({
                 const needs = (j: number) => {
                   const next = leaves[j];
                   const wantLines = next.el.getAttribute('data-widow-control') === 'false' ? 1 : MIN_KEPT_LINES;
+                  if (next.indexHead !== undefined) return run(j) + next.indexHead;
                   return run(j) + (next.kind === 'atomic'
                     ? Math.min(next.naturalHeight, CONTENT_HEIGHT)
                     : firstLinesHeight(next.el, scale, wantLines) + (parseFloat(getComputedStyle(next.el).paddingTop) || 0));
