@@ -2054,6 +2054,16 @@ function collectStyleSheet(resolver: StyleResolver, ctx: Ctx): StyleSheet {
   // A right-to-left page's default is the right edge (LibreOffice writes it into Standard,
   // this editor into the default-style), so a style without a parent does not own it.
   const rootBase: PropMap = resolver.pageRtl ? { 'fo:text-align': 'right' } : {};
+  // A block outside the body (a list item, a cell) names no style and was measured against
+  // the file's default one, so the sheet carries that: the file's own, or where it defines
+  // none the default-style alone, which is all such a style would resolve to.
+  if (defs.has(DEFAULT_STYLE)) keep.add(DEFAULT_STYLE);
+  else {
+    const text = textPropsFromOdf(resolver.paraTextProps(null), resolver);
+    dropDefaultAsianFont(text, resolver.documentLanguage().main);
+    sheet.paragraph[DEFAULT_STYLE] = { ...sheet.paragraph[DEFAULT_STYLE], text,
+      para: ownProps(paraPropsFromOdf(resolver.paraProps(null), resolver), paraPropsFromOdf(rootBase, resolver)) };
+  }
   for (const odfName of keep) {
     const def = defs.get(odfName)!;
     const name = displayStyleName(odfName, def.display);
