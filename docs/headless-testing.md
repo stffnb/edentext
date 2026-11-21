@@ -34,7 +34,9 @@ It then holds the document against `tests/layout/baseline.json`, which records w
 page starts, where the pictures and boxes of the first four pages' headers and footers stand
 (`frames`, no line of text moves with one; `22-hf-frames` holds the shapes) and what the load
 cost: a page starting elsewhere or a frame over 2px off is a layout change the run prints,
-and a load over three times its recorded time is a regression. The
+and a load is judged after the run against its median slowdown (records under 0.5s count
+as 0.5s): a load over three times its record plus a second and over three times that
+median is a regression, while a run slow as a whole only prints its median. The
 baseline is keyed by engine and platform (line breaking is theirs) and `LAYOUT_UPDATE=1`
 records it again — the answer to a deliberate change, never to a surprise. A `[regex]`
 argument limits the run to the documents whose name matches. LibreOffice's counts are
