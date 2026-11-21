@@ -323,7 +323,7 @@ function pictureAlignX(frame: Element, attrs: Record<string, unknown>, gp: PropM
   if (x != null) attrs.wrapOffset = Math.round(x * 100) / 100;
 }
 
-function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, gp: PropMap, contentCm = 0, leftMarginCm = 0, heights?: { pageHeightCm: number; textHeightCm: number }): void {
+function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, gp: PropMap, contentCm = 0, leftMarginCm = 0, heights?: { pageHeightCm: number; textHeightCm: number; zone?: boolean }): void {
   const deg = frameRotationDeg(el);
   if (deg) attrs.rotation = deg;
   const anchor = el.getAttributeNS(NS.text, 'anchor-type');
@@ -383,7 +383,7 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
   const y = vpos === 'from-top' && (!rel || rel.startsWith('paragraph') || rel === 'line' || fromPage || fromBody)
     ? placedAt(el, 'y') : vpos === 'top' && (fromPage || fromBody) ? 0
       : room != null && (fromPage || fromBody) && (vpos === 'middle' || vpos === 'bottom') ? (vpos === 'middle' ? room / 2 : room) : null;
-  if (y != null && attrs.wrap && (fromPage || fromBody || y > 0 || (attrs.wrap === 'through' && y < 0))) {
+  if (y != null && attrs.wrap && (fromPage || fromBody || y > 0 || ((attrs.wrap === 'through' || heights?.zone) && y < 0))) {
     attrs.wrapOffsetY = Math.round(y * 100) / 100;
     if (fromPage) attrs.wrapFromPage = true;
     if (fromBody) attrs.wrapFromBody = true;
