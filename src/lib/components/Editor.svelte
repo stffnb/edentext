@@ -44,7 +44,7 @@ import { DEFAULT_LINE_GRID, type LineGrid } from '../storage/lineGrid';
 import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import Ruler from './Ruler.svelte';
   import VerticalRuler from './VerticalRuler.svelte';
-  import { sectionAt, withSectionProps } from './sectionSetup';
+  import { withSectionProps } from './sectionSetup';
   import { reading } from '../collab/reading.svelte';
   import { saveDocument, loadDocument, markDocumentLoaded, withoutDefaults } from '../storage/autosave';
   import { IDB_SRC } from '../storage/imageStore';
@@ -400,15 +400,11 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     return (page === first ? s?.marginsFirst ?? s?.margins : s?.margins) ?? pageMargins;
   });
 
-  // The page the ruler measures: the edited zone's, else the caret's. Scrolled away from
-  // the caret's section, it measures that section's first page instead of the one in view.
+  // The page the rulers measure: the edited zone's, else the caret's, wherever the view
+  // has scrolled to, so they change only when the caret moves to another page.
   let hfEditingPage = $state(1);
-  let rulerPage = $derived.by(() => {
-    if (hfActive) return hfEditingPage;
-    const section = tick >= 0 && editor ? sectionAt(editor.state) : 0;
-    if ((pageBoxes[currentPage - 1]?.section ?? 0) === section) return currentPage;
-    return section > 0 ? sectionStartPages[section - 1] ?? currentPage : 1;
-  });
+  let caretPage = $state(1);
+  let rulerPage = $derived(hfActive ? hfEditingPage : Math.max(1, Math.min(numPages, caretPage)));
   // That page's own paper and margins, an even page of a mirrored setup swapping its sides.
   let rulerGeometry = $derived.by(() => {
     const box = pageBoxes[rulerPage - 1];
@@ -1214,9 +1210,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
       try {
         const coords = coordsAt(view, editor.state.selection.head);
         const cursorMidY = (coords.top + coords.bottom) / 2;
+        caretPage = pageAtY((cursorMidY - tiptapRect.top) / zoomFactor);
         if (cursorMidY >= editorRect.top && cursorMidY <= editorRect.bottom) {
-          const cursorInDoc = (cursorMidY - tiptapRect.top) / zoomFactor;
-          currentPage = pageAtY(cursorInDoc);
+          currentPage = caretPage;
           return;
         }
       } catch {
@@ -1631,7 +1627,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         (view as unknown as { domObserver: { flush(): void } }).domObserver.flush();
         const coords = caretCoords(view);
         const cursorInDoc = ((coords.top + coords.bottom) / 2 - tiptap.getBoundingClientRect().top) / (appliedZoom / 100);
-        currentPage = pageAtY(cursorInDoc);
+        currentPage = caretPage = pageAtY(cursorInDoc);
         followCaret(currentPage, onPaper(coords), scrolls);
         if (scrolls && el) followedAt = { top: el.scrollTop, left: el.scrollLeft };
       } catch { /* ignore */ }
