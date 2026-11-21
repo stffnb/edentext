@@ -704,6 +704,13 @@ try {
     return rulerOn(text);
   };
   const rulers = [await caretIn('landscape'), await caretIn('portrait')];
+  // The vertical ruler stands beside the caret's own page, a narrower one's left edge too.
+  const beside = await page.evaluate(() => {
+    const strip = document.querySelector('.vruler .strip').getBoundingClientRect();
+    const sheet = Array.from(document.querySelectorAll('.page-sheet'), (s) => s.getBoundingClientRect()).find((r) => Math.abs(r.top - strip.top) < 2);
+    return sheet ? sheet.left - strip.right : null;
+  });
+  check(beside !== null && beside >= 0 && beside < 12, `beside a wider section, the vertical ruler stands at its own page's edge (${beside?.toFixed(1)}px off)`);
   const landHeader = page.locator('.hf-zone.hf-header').nth(1);
   await landHeader.scrollIntoViewIfNeeded();
   await landHeader.dblclick({ timeout: 5000 }).catch(() => landHeader.dispatchEvent('dblclick'));

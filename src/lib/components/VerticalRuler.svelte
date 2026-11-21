@@ -89,9 +89,10 @@
   const label = (edge: Edge) => (edge === 'top' ? t().ruler.topMargin : t().ruler.bottomMargin);
 </script>
 
-<!-- A rail of no height at the page's top; the strip inside sticks to the scroller's side
+<!-- A rail of no height at the page's top, inset to the page's own side edge (a page
+     narrower than the widest is centred); the strip inside sticks to the scroller's side
      edge when the page scrolls sideways and moves with it up and down. -->
-<div class="vruler-rail" class:end>
+<div class="vruler-rail" class:end style="padding-{end ? 'right' : 'left'}: {page.left * scale}px">
   <div class="vruler" dir="ltr">
     <div
       class="strip"
@@ -159,6 +160,7 @@
      under the horizontal ruler's tab-type button, and needs .editor's extra side padding. */
   .vruler-rail {
     display: flex;
+    box-sizing: border-box;
     height: 0;
   }
 
