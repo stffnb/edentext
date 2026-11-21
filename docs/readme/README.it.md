@@ -71,6 +71,11 @@ EdenText è un elaboratore di testi potente che funziona nel browser, adatto a t
   confronto e unione con un altro file, stampa delle revisioni, controllo ortografico
   (inglese, tedesco, spagnolo, francese, italiano, portoghese, greco, russo, ucraino, polacco, indonesiano, arabo e coreano),
   sinonimi (in tutte queste lingue tranne il greco e il coreano), controllo grammaticale (inglese)
+- **Collaborazione in tempo reale**: più persone modificano insieme lo stesso documento
+  tramite un link: ciascuno vede il cursore degli altri, c'è una chat della sessione e un link
+  in sola lettura per chi deve solo seguire. Crittografia end-to-end, quindi il server
+  intermedio non può leggere il documento. Richiede un server relay, vedi
+  [Collaborazione](#collaborazione)
 - **Assistente IA facoltativo**: con il provider che preferisci o con un modello locale;
   risponde a domande sul documento e lo modifica sotto forma di revisioni. Si può
   disattivare; le richieste vanno direttamente al provider, senza passare da un server EdenText
@@ -80,7 +85,7 @@ EdenText è un elaboratore di testi potente che funziona nel browser, adatto a t
   server vocale, ad es. Whisper sul tuo computer, in qualsiasi browser e nell’app desktop
 - **Private by design**: i documenti non lasciano mai il computer e tutta
   l'elaborazione avviene in locale; installato come app funziona anche offline.
-  L'editor non invia nulla, a meno che non si attivi l'assistente IA, che invia i dati al provider scelto. Per la dettatura il browser può inviare l’audio al suo servizio vocale.
+  L'editor non invia nulla, a meno che non si attivi l'assistente IA, che invia i dati al provider scelto. In una sessione condivisa il documento arriva cifrato agli altri partecipanti passando per il relay. Per la dettatura il browser può inviare l’audio al suo servizio vocale.
   I documenti vengono salvati automaticamente nel browser; in Documenti recenti si può
   scegliere di eliminare quelli chiusi all'avvio successivo o di non conservarli affatto,
   e una finestra privata non lascia traccia una volta chiusa
@@ -110,6 +115,44 @@ entrambi di pubblico dominio.
 </tr>
 </table>
 
+## Collaborazione
+
+**File → Collabora…** avvia una sessione per il documento aperto e ti dà due link, uno per
+modificare e uno in sola lettura. Chi apre un link riceve il documento nel proprio browser e
+vede ogni modifica nel momento in cui avviene. Non servono account né installazioni.
+
+- Vedi dove si trovano gli altri (cursore e selezione, con il loro nome), puoi raggiungere
+  qualcuno o seguirlo, menzionare persone nei commenti e scrivere nella chat della sessione.
+- Il comando Annulla toglie solo le tue modifiche; commenti e modifiche registrate riportano
+  il nome di chi li ha fatti.
+- Una sessione dura finché qualcuno la tiene aperta e accoglie fino a sei persone, salvo che
+  il gestore imposti un altro limite. Solo chi l'ha avviata salva il documento; gli altri
+  possono tenerne una copia quando escono.
+- Tutti i partecipanti a una sessione dovrebbero usare la stessa versione di EdenText.
+
+**Crittografia.** La chiave è la parte del link dopo `#`, che un browser non invia mai a un
+server. Ogni browser cifra ciò che invia (AES-GCM), quindi il relay inoltra dati che non può
+leggere e non ne conserva nessuno. Vede però indirizzi di rete, orari, dimensioni dei
+messaggi e quante persone partecipano a una sessione. Chiunque abbia il link di modifica può
+cambiare il documento, quindi condividilo con la stessa cura del documento stesso.
+
+**Dove funziona.** Le sessioni richiedono un relay, un piccolo server in [`relay/`](../../relay)
+pubblicato con ogni release come `ghcr.io/stffnb/edentext-relay`. Il comando Collabora
+compare solo dove l'app ne trova uno:
+
+- **Kubernetes:** il [chart Helm](../../charts/edentext) avvia il relay per impostazione predefinita.
+- **Server proprio:** avvia l'immagine del relay (porta 4390) e configura il web server che
+  sta davanti perché gli inoltri `/relay` sull'host dell'app, come WebSocket. L'immagine
+  container dell'app cerca il relay lì; una build propria fa lo stesso con
+  `VITE_COLLAB_RELAY=same-origin npm run build`, mentre
+  `VITE_COLLAB_RELAY=wss://relay.example.org/relay` indica un relay su un altro host. I limiti
+  del relay sono variabili d'ambiente, elencate in [`relay/CLAUDE.md`](../../relay/CLAUDE.md)
+  (in inglese).
+- **Sviluppo:** `npm run relay` accanto a `npm run dev`.
+
+L'immagine container dell'app senza un relay del genere, l'archivio della release e
+[edentext.app](https://edentext.app) non offrono sessioni.
+
 ## App desktop
 
 Ogni release include anche programmi di installazione desktop non firmati, realizzati con Electron:
@@ -131,6 +174,7 @@ stesso file, crea i PDF senza passare dalla finestra di stampa e all'avvio avvis
 ```bash
 npm install
 npm run dev      # server di sviluppo con ricaricamento automatico
+npm run relay    # relay di collaborazione per le sessioni condivise sul server di sviluppo
 npm test         # suite di test
 npm run build    # build di produzione → dist/
 cd desktop && npm install && npm start   # app desktop sulla stessa build

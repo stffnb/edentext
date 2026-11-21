@@ -73,6 +73,11 @@ EdenText est un traitement de texte puissant qui s’utilise dans le navigateur,
   vérification orthographique (anglais, allemand, espagnol, français, italien, portugais,
   grec, russe, ukrainien, polonais, indonésien, arabe et coréen), synonymes (toutes ces langues sauf le grec et le coréen), vérification
   grammaticale (anglais)
+- **Collaboration en temps réel** – plusieurs personnes modifient le même document en même
+  temps grâce à un lien : chacun voit le curseur des autres, avec une discussion de la session
+  et un lien en lecture seule pour ceux qui doivent seulement suivre. Chiffrée de bout en bout :
+  le serveur intermédiaire ne peut pas lire le document. Nécessite un serveur relais, voir
+  [Collaboration](#collaboration)
 - **Assistant IA facultatif** – avec le fournisseur de votre choix ou un modèle local ; il
   répond aux questions sur le document et le modifie sous forme de modifications suivies. Il
   peut être désactivé ; les requêtes vont directement au fournisseur, sans passer par
@@ -84,7 +89,7 @@ EdenText est un traitement de texte puissant qui s’utilise dans le navigateur,
 - **Private by Design** – vos documents ne quittent jamais votre
   ordinateur, tout est traité en local ; fonctionne hors ligne comme application
   installable. L’éditeur n’envoie rien, sauf si vous activez l’assistant IA, qui
-  transmet alors au fournisseur que vous avez choisi. Pour la dictée, le navigateur peut envoyer le son à son service vocal. Les documents sont enregistrés automatiquement dans le
+  transmet alors au fournisseur que vous avez choisi. Une session partagée transmet le document, chiffré, aux autres participants via le relais. Pour la dictée, le navigateur peut envoyer le son à son service vocal. Les documents sont enregistrés automatiquement dans le
   navigateur ; dans « Documents récents », on peut choisir de supprimer les documents
   fermés au démarrage suivant ou de ne pas les enregistrer du tout. Une fenêtre de
   navigation privée ne laisse aucune trace une fois fermée
@@ -115,6 +120,47 @@ Carroll, tous deux dans le domaine public.
 </tr>
 </table>
 
+## Collaboration
+
+**Fichier → Collaborer…** démarre une session pour le document ouvert et vous donne deux
+liens, l’un pour modifier, l’autre en lecture seule. Quiconque ouvre un lien reçoit le
+document dans son navigateur et voit chaque modification au moment où elle se produit.
+Personne n’a besoin de compte ni d’installation.
+
+- Vous voyez où se trouvent les autres (curseur et sélection, avec leur nom), pouvez rejoindre
+  quelqu’un ou le suivre, mentionner des personnes dans les commentaires et écrire dans la
+  discussion de la session.
+- « Annuler » ne reprend que vos propres modifications ; les commentaires et les
+  modifications suivies portent le nom de leur auteur.
+- Une session dure tant que quelqu’un la garde ouverte et accueille jusqu’à six personnes,
+  sauf si l’administrateur fixe une autre limite. Seule la personne qui l’a démarrée
+  enregistre le document ; les autres peuvent en garder une copie en partant.
+- Tous les participants d’une session devraient utiliser la même version d’EdenText.
+
+**Chiffrement.** La clé est la partie du lien après `#`, qu’un navigateur n’envoie jamais à
+un serveur. Chaque navigateur chiffre ce qu’il envoie (AES-GCM) : le relais transmet donc
+des données qu’il ne peut pas lire, et n’en conserve aucune. Il voit en revanche les
+adresses réseau, les horaires, la taille des messages et le nombre de personnes dans une
+session. Quiconque possède le lien de modification peut changer le document : transmettez-le
+donc avec autant de soin que le document lui-même.
+
+**Où cela fonctionne.** Les sessions ont besoin d’un relais, un petit serveur situé dans
+[`relay/`](../../relay) et publié à chaque version sous le nom `ghcr.io/stffnb/edentext-relay`.
+La commande « Collaborer » n’apparaît que là où l’application en trouve un :
+
+- **Kubernetes :** le [chart Helm](../../charts/edentext) fait tourner le relais par défaut.
+- **Votre propre serveur :** lancez l’image du relais (port 4390) et configurez le serveur web
+  placé devant pour qu’il lui transmette `/relay` sur l’hôte de l’application, en WebSocket.
+  L’image de conteneur de l’application cherche le relais à cet endroit ; une version compilée
+  soi-même aussi, avec `VITE_COLLAB_RELAY=same-origin npm run build`, tandis que
+  `VITE_COLLAB_RELAY=wss://relay.example.org/relay` désigne un relais sur un autre hôte. Les
+  limites du relais sont des variables d’environnement, listées dans
+  [`relay/CLAUDE.md`](../../relay/CLAUDE.md) (en anglais).
+- **Développement :** `npm run relay` à côté de `npm run dev`.
+
+L’image de conteneur de l’application sans ce relais, l’archive de version et
+[edentext.app](https://edentext.app) ne proposent pas de sessions.
+
 ## Application de bureau
 
 Chaque version s’accompagne aussi d’installateurs non signés pour ordinateur, créés avec Electron :
@@ -137,6 +183,7 @@ disponible.
 ```bash
 npm install
 npm run dev      # serveur de développement avec rechargement à chaud
+npm run relay    # relais de collaboration pour les sessions partagées sur le serveur de développement
 npm test         # suite de tests
 npm run build    # build de production → dist/
 cd desktop && npm install && npm start   # application de bureau sur le même build

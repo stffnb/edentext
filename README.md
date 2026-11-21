@@ -71,6 +71,10 @@ EdenText is a web-based, powerful word processor for everything from quick notes
   printable markup, spell check (English, German, Spanish, French, Italian, Portuguese,
   Greek, Russian, Ukrainian, Polish, Indonesian, Arabic and Korean), synonyms (all of these but Greek and Korean), grammar check
   (English)
+- **Real-time collaboration** — several people edit one document at the same time through a
+  link: each other’s cursors, a session chat and a read-only link for those who should only
+  follow along. End-to-end encrypted, so the server in between cannot read the document.
+  Needs a relay, see [Collaboration](#collaboration)
 - **Optional AI assistant** — with your own provider or a local model;
   answers questions about the document and edits it as tracked changes. Can be
   switched off; requests go directly to the provider, without an EdenText server
@@ -80,7 +84,7 @@ EdenText is a web-based, powerful word processor for everything from quick notes
   speech server, e.g. Whisper on this computer, in any browser and the desktop app
 - **Private by design** — your documents never leave your computer, all
   processing runs locally; works offline as an installable app. The editor sends nothing,
-  unless you switch on the AI assistant, which sends to the provider you chose. Dictation uses the browser’s speech recognition, which may send the audio to its speech service.
+  unless you switch on the AI assistant, which sends to the provider you chose. A shared session sends the document, encrypted, through the relay to the others in it. Dictation uses the browser’s speech recognition, which may send the audio to its speech service.
   Documents are autosaved in the browser; Recent documents can be set to delete
   closed ones at the next start or not keep them at all, and a private window
   leaves nothing behind once it is closed
@@ -110,6 +114,41 @@ both public domain.
 </tr>
 </table>
 
+## Collaboration
+
+**File → Collaborate…** starts a session for the open document and gives you two links, one
+to edit and one to read only. Whoever opens a link gets the document in their browser and
+sees every change as it happens. Nobody needs an account or an installation.
+
+- You see where the others are (cursor and selection, with their names), can jump to
+  someone or follow them, mention people in comments and write in the session chat.
+- Undo takes back only your own edits; comments and tracked changes carry each author’s name.
+- A session lasts as long as someone has it open, with up to six people unless the operator
+  sets another limit. Only the person who started it saves the document; the others can
+  keep a copy when they leave.
+- Everyone in a session should use the same EdenText version.
+
+**Encryption.** The key is the part of the link after `#`, which a browser never sends to a
+server. Each browser encrypts what it sends (AES-GCM), so the relay passes on data it
+cannot read, and it stores none of it. It does see network addresses, times, message sizes
+and how many people share a session. Anyone who has the edit link can change the
+document, so pass it on as carefully as the document itself.
+
+**Where it works.** Sessions need a relay, a small server in [`relay/`](relay) that is
+published as `ghcr.io/stffnb/edentext-relay` with each release. The Collaborate command
+only appears where the app finds one:
+
+- **Kubernetes:** the [Helm chart](charts/edentext) runs the relay by default.
+- **Your own server:** run the relay image (port 4390) and let the web server in front pass
+  `/relay` on the app’s host to it, as a WebSocket. The app image looks for the relay there;
+  a build of your own does with `VITE_COLLAB_RELAY=same-origin npm run build`, and
+  `VITE_COLLAB_RELAY=wss://relay.example.org/relay` names a relay on another host. The
+  relay’s limits are environment variables, listed in [`relay/CLAUDE.md`](relay/CLAUDE.md).
+- **Development:** `npm run relay` beside `npm run dev`.
+
+The app image without such a relay, the release archive and
+[edentext.app](https://edentext.app) do not offer sessions.
+
 ## Desktop app
 
 Each release also carries unsigned desktop installers built with Electron:
@@ -131,6 +170,7 @@ newer version is out.
 ```bash
 npm install
 npm run dev      # dev server with hot-reload
+npm run relay    # collaboration relay for shared sessions on the dev server
 npm test         # test suite
 npm run build    # production build → dist/
 cd desktop && npm install && npm start   # desktop app on the same build
