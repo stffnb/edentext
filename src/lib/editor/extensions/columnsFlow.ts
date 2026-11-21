@@ -278,15 +278,15 @@ export const ColumnsFlow = Extension.create({
           return open;
         }
 
-        // First document position on a line. Its first rect in document order runs
-        // from whichever edge is logically first — the right one on a line of Hebrew
-        // or Arabic — so both edges are probed and the earlier position wins.
-        function lineStartPos(line: LineRect): number | null {
+        // First document position on a line of the block spanning `from`–`to`. The line
+        // starts at its right edge in Hebrew or Arabic, so both edges are probed and the
+        // earlier position wins; an edge that is a hanging space hits nothing of the block.
+        function lineStartPos(line: LineRect, from: number, to: number): number | null {
           const top = line.top + line.height / 2;
-          const a = editorView.posAtCoords({ left: line.left + 1, top });
-          const b = editorView.posAtCoords({ left: line.right - 1, top });
-          const pos = Math.min(a?.pos ?? Infinity, b?.pos ?? Infinity);
-          return Number.isFinite(pos) ? pos : null;
+          const hits = [line.left + 1, line.right - 1]
+            .map((left) => editorView.posAtCoords({ left, top })?.pos ?? -1)
+            .filter((pos) => pos > from && pos < to);
+          return hits.length ? Math.min(...hits) : null;
         }
 
         // Split the paragraph at `blockIndex` at the line consuming `budgetPx` (a
@@ -309,11 +309,10 @@ export const ColumnsFlow = Extension.create({
             budgetLines = 1;
           }
           const prefixLines = Math.min(Math.max(budgetLines, 1), lines.length - 1);
-          const pos = lineStartPos(lines[prefixLines]);
-          if (pos === null) return false;
           let blockStart = frag.pos + 1;
           for (let j = 0; j < blockIndex; j++) blockStart += frag.node.child(j).nodeSize;
-          if (pos <= blockStart + 1 || pos >= blockStart + block.nodeSize - 1) return false;
+          const pos = lineStartPos(lines[prefixLines], blockStart + 1, blockStart + block.nodeSize - 1);
+          if (pos === null) return false;
           const typesAfter = [
             { type: frag.node.type, attrs: frag.node.attrs },
             { type: block.type, attrs: { ...block.attrs, joinPrev: true } },
