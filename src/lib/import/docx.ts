@@ -3209,8 +3209,9 @@ function anchorWrap(anchor: Element, ctx: Ctx): { wrap: 'left' | 'right' | 'topB
     const cm = (name: string) => { const emu = parseInt(anchor.getAttribute(name) ?? '', 10); return Number.isFinite(emu) && emu > 0 ? round2(emu / 360000) : 0; };
     return gapOf(cm('distT'), cm('distB'), wrap === 'right' ? cm('distL') : 0, wrap === 'left' ? cm('distR') : 0);
   };
-  // A wrapped frame can't start above its paragraph; a run-through one simply overlaps.
-  const y = (wrap: string) => (offsetYCm != null && offsetYCm < 0 && wrap !== 'through' && !fromPage && !fromBody ? null : offsetYCm);
+  // A wrapped frame can't start above its paragraph; a run-through one simply overlaps,
+  // as every frame of a header or footer does.
+  const y = (wrap: string) => (offsetYCm != null && offsetYCm < 0 && wrap !== 'through' && !ctx.zone && !fromPage && !fromBody ? null : offsetYCm);
   const at = (wrap: 'left' | 'right' | 'topBottom' | 'through') => ({ wrap, offsetCm, alignXCm: null as number | null, offsetYCm: y(wrap), fromPage, fromBody, alignH, distCm: distOf(wrap) });
   const cx = intAttr(anchor.getElementsByTagNameNS(WP, 'extent')[0], '', 'cx') ?? 0;
   // wrapNone is Word's in-front-of / behind-text: the text runs through the frame, so it
