@@ -1154,6 +1154,7 @@ const id: Messages = {
   },
   templates: {
     title: 'Baru dari templat',
+    loadFailed: 'Templat tidak dapat dimuat. Dokumen yang terbuka tidak berubah.',
     din5008b: {
       name: 'Surat DIN 5008 (Bentuk B)',
       description: 'Surat bisnis standar Jerman dengan kop surat lengkap: kolom alamat untuk amplop berjendela mulai 45 mm, blok informasi, tanda lipat.',

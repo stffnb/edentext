@@ -1173,6 +1173,7 @@ const en = {
   },
   templates: {
     title: 'New from template',
+    loadFailed: 'The template could not be loaded. The open document is unchanged.',
     din5008b: {
       name: 'DIN 5008 letter (Form B)',
       description: 'German-standard business letter with a full letterhead: address field for a window envelope from 45 mm, info block, fold marks.',

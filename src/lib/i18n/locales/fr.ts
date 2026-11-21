@@ -1166,6 +1166,7 @@ const fr: Messages = {
   },
   templates: {
     title: 'Nouveau à partir d’un modèle',
+    loadFailed: 'Impossible de charger le modèle. Le document ouvert n’a pas été modifié.',
     din5008b: {
       name: 'Lettre DIN 5008 (forme B)',
       description: 'Lettre commerciale selon la norme allemande, avec en-tête complet : zone d’adresse pour enveloppe à fenêtre à partir de 45 mm, bloc d’informations et repères de pliage.',

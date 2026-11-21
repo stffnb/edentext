@@ -1,12 +1,39 @@
 <script lang="ts">
-  import { t } from '../i18n/i18n.svelte';
+  import { locale, t } from '../i18n/i18n.svelte';
   import { TEMPLATES } from '../templates/registry';
   import type { TemplateEntry } from '../templates/types';
+  import { pickText, templateOffer, type HostTemplate } from '../storage/hostConfig.svelte';
+  import { hostTemplatePreview } from '../templates/host';
 
-  let { open = $bindable(false), onPick }: {
+  let { open = $bindable(false), onPick, onPickHost }: {
     open?: boolean;
     onPick?: (entry: TemplateEntry) => void;
+    onPickHost?: (entry: HostTemplate) => void;
   } = $props();
+
+  // The installation's own templates come first, then the built-in ones it leaves on.
+  const offer = $derived(templateOffer());
+  const builtIn = $derived(offer.builtIn ? TEMPLATES : []);
+
+  // Previews load while the gallery is open; one that fails keeps the page sketch.
+  let previews = $state<Record<string, string>>({});
+  $effect(() => {
+    if (!open) return;
+    const urls: string[] = [];
+    let live = true;
+    for (const entry of offer.items) {
+      void hostTemplatePreview(entry).then((url) => {
+        if (!url) return;
+        if (url.startsWith('blob:')) urls.push(url);
+        if (live) previews = { ...previews, [entry.id]: url };
+      });
+    }
+    return () => {
+      live = false;
+      previews = {};
+      for (const url of urls) URL.revokeObjectURL(url);
+    };
+  });
 
   let dialogEl: HTMLDialogElement | null = $state(null);
 
@@ -29,6 +56,11 @@
     open = false;
     onPick?.(entry);
   }
+
+  function pickHost(entry: HostTemplate) {
+    open = false;
+    onPickHost?.(entry);
+  }
 </script>
 
 <dialog class="gallery" bind:this={dialogEl} onclose={onClose} onclick={onClick} aria-label={t().templates.title}>
@@ -42,7 +74,24 @@
     <h2>{t().templates.title}</h2>
     <div class="scroll">
       <div class="grid">
-        {#each TEMPLATES as entry (entry.id)}
+        {#each offer.items as entry (entry.id)}
+          {@const description = pickText(entry.description, locale())}
+          <button class="tpl" onclick={() => pickHost(entry)}>
+            {#if previews[entry.id]}
+              <img class="thumb" src={previews[entry.id]} alt="" width="84" height="118" loading="lazy"
+                onerror={() => { const { [entry.id]: _gone, ...rest } = previews; previews = rest; }} />
+            {:else}
+              <span class="thumb" dir="ltr" aria-hidden="true">
+                <span class="line l1"></span>
+                <span class="line l2"></span>
+                <span class="line l3"></span>
+              </span>
+            {/if}
+            <span class="name"><bdi>{pickText(entry.name, locale())}</bdi></span>
+            {#if description}<span class="desc"><bdi>{description}</bdi></span>{/if}
+          </button>
+        {/each}
+        {#each builtIn as entry (entry.id)}
           <button class="tpl" onclick={() => pick(entry)}>
             <!-- A stylized page per template: letters get an address block, the CV and
                  minutes a heading, the invoice and minutes a small table sketch. -->
@@ -176,6 +225,10 @@
     background: #fff;
     border: 1px solid var(--color-border);
     border-radius: 2px;
+  }
+  img.thumb {
+    box-sizing: border-box;
+    object-fit: contain;
   }
   .thumb > span {
     position: absolute;

@@ -258,6 +258,64 @@ try {
     && ![...document.querySelectorAll('.tiptap .pm-comment')].some((c) => c.textContent === 'Absatz 6.')),
   'a cancelled comment leaves nothing behind');
 
+  // An installation's templates (edentext.config.json): its files on another origin with
+  // CORS, the built-in ones left out, a missing one leaving the open document alone.
+  const tp = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
+  collectErrors(tp, pageErrors, '[templates] ');
+  const told = [];
+  tp.on('dialog', (d) => { told.push(d.message()); d.accept().catch(() => {}); });
+  let templates = { builtIn: false, items: [
+    { id: 'letter', name: { en: 'Company letter', de: 'Firmenbrief' }, description: 'With a table', url: 'https://files.example/t/letter.ott', preview: 'https://files.example/t/letter.png' },
+    { id: 'gone', name: 'Missing', url: 'tpl/missing.dotx' },
+  ] };
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  const cors = { 'access-control-allow-origin': '*' };
+  await tp.route('**/edentext.config.json', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ templates }) }));
+  await tp.route('https://files.example/t/letter.ott', (route) => route.fulfill({ headers: cors, contentType: 'application/vnd.oasis.opendocument.text-template', body: readFileSync(join(ROOT, 'tests/corpus/04-table.odt')) }));
+  await tp.route('https://files.example/t/letter.png', (route) => route.fulfill({ headers: cors, contentType: 'image/png', body: png }));
+  await tp.route('**/tpl/missing.dotx', (route) => route.fulfill({ status: 404, body: '' }));
+  await tp.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
+  await tp.waitForSelector('.tiptap', { timeout: 15_000 });
+  await tp.locator('.tiptap-host .tiptap').first().click();
+  await tp.keyboard.type('Keep me');
+  const fromGallery = async (name) => {
+    await tp.click('.ribbon-tab-file');
+    await tp.click('.ribbon [data-cmd="newFromTemplate"]');
+    await tp.waitForSelector('dialog.gallery[open] .tpl');
+    const cards = await tp.$$eval('dialog.gallery[open] .tpl', (els) => els.map((e) => [e.querySelector('.name').textContent.trim(), e.querySelector('img')?.src.slice(0, 5) ?? '']));
+    await tp.locator('dialog.gallery[open] .tpl', { hasText: name }).click();
+    return cards;
+  };
+  await tp.waitForTimeout(300);
+  const cards = await fromGallery('Missing');
+  await tp.waitForFunction(() => !document.querySelector('.busy-indicator, .busy'), null, { timeout: 10_000 }).catch(() => {});
+  await tp.waitForTimeout(500);
+  check(JSON.stringify(cards) === JSON.stringify([['Company letter', 'blob:'], ['Missing', '']]),
+    `templates: the gallery lists only the installation's entries, a preview from another origin as a picture (${JSON.stringify(cards)})`);
+  check(told.some((m) => /could not be loaded/.test(m)) && (await tp.textContent('.tiptap-host .tiptap')).includes('Keep me'),
+    `templates: a template that cannot be loaded leaves the document as it is (${told.join(' | ')})`);
+  await fromGallery('Company letter');
+  await tp.waitForFunction(() => document.querySelector('.tiptap table td')?.textContent.trim(), null, { timeout: 30_000 });
+  const fresh = await tp.evaluate(() => [document.querySelector('.tiptap-host .tiptap').textContent.includes('Keep me'), document.querySelector('.doc-name-input')?.value]);
+  check(!fresh[0] && fresh[1] === 'Company letter', `templates: a picked template opens as a new document under its name (${fresh})`);
+  const searched = async () => {
+    await tp.fill('.cmd-search input', 'template');
+    const hits = await tp.$$eval('#cmd-search-list [role="option"]', (els) => els.map((e) => e.textContent.trim()));
+    await tp.keyboard.press('Escape');
+    return hits;
+  };
+  check((await searched()).some((h) => /^New from template/.test(h)), 'templates: the command search offers New from Template');
+  templates = { enabled: false };
+  await tp.reload({ waitUntil: 'load' });
+  await tp.waitForSelector('.tiptap', { timeout: 15_000 });
+  await tp.click('.ribbon-tab-file');
+  const fileCmds = await tp.evaluate(() => ['newFromTemplate', 'saveTemplate', 'newDocument'].map((c) => !!document.querySelector(`.ribbon [data-cmd="${c}"]`)));
+  await tp.keyboard.press('Escape');
+  const hits = await searched();
+  check(fileCmds.join() === 'false,false,true' && !hits.some((h) => /^(New from template|Template)/.test(h)),
+    `templates: enabled false takes both template commands out of the File menu and the search (${fileCmds}; ${hits})`);
+  await tp.close();
+
   // Offline: the service worker keeps the editor as its shell, even after another page of
   // the instance was opened. Read from the cache, as WebKit's offline mode skips the worker.
   const sw = await browser.newPage({ serviceWorkers: 'allow' });
@@ -281,7 +339,7 @@ try {
       import { EdenTextFrame } from '/embed.js';
       window.events = [];
       window.ed = new EdenTextFrame(document.getElementById('c'), { url: 'http://localhost:${PORT}/', user: 'Host', locale: 'en', accent: 'teal', ai: false });
-      for (const t of ['dirty', 'saveRequest', 'warning']) ed.on(t, (m) => events.push(m));
+      for (const t of ['dirty', 'saveRequest', 'warning', 'template']) ed.on(t, (m) => events.push(m));
       ed.ready.then(() => { window.isReady = true; }, (e) => { window.readyError = e.message; });
     </script>`;
   const hostFiles = {
@@ -312,10 +370,10 @@ try {
   const look = await frame.evaluate(() => [document.documentElement.dataset.accent, !!document.querySelector('[data-cmd="aiPane"]')]);
   check(look.join() === 'teal,false', `embed: init sets the accent and switches the assistant off (${look})`);
   await frame.click('.ribbon-tab-file');
-  const fileMenu = await frame.evaluate(() => ['open', 'newDocument', 'saveAsOdt', 'saveTemplate', 'save']
+  const fileMenu = await frame.evaluate(() => ['open', 'newDocument', 'saveAsOdt', 'newFromTemplate', 'saveTemplate', 'save']
     .map((c) => !!document.querySelector(`.ribbon [data-cmd="${c}"]`)));
   await host.keyboard.press('Escape');
-  check(fileMenu.join() === 'false,false,false,false,true', `embed: the File menu keeps Save and drops the file commands (${fileMenu})`);
+  check(fileMenu.join() === 'false,false,false,false,false,true', `embed: the File menu keeps Save and drops the file commands and templates (${fileMenu})`);
 
   check(await host.evaluate(async () => ed.load(await (await fetch('/table.odt')).blob(), 'table.odt')), 'embed: load answers ok');
   await frame.waitForFunction(() => document.querySelector('.tiptap table td')?.textContent.trim(), null, { timeout: 30_000 });
@@ -356,6 +414,17 @@ try {
   await host.evaluate(() => ed.markSaved());
   await host.waitForFunction(() => events.filter((m) => m.type === 'dirty').at(-1)?.dirty === false, null, { timeout: 5_000 });
   check(true, 'embed: markSaved clears dirty');
+  // The host's own template, handed over as bytes: New from Template comes back, Save as Template stays away.
+  await host.evaluate(async () => ed.configure({ templates: { items: [{ id: 'own', name: 'Host letter', fileName: 'own.ott', bytes: await (await fetch('/table.odt')).arrayBuffer() }] } }));
+  await frame.click('.ribbon-tab-file');
+  const withTemplates = await frame.evaluate(() => ['newFromTemplate', 'saveTemplate'].map((c) => !!document.querySelector(`.ribbon [data-cmd="${c}"]`)));
+  await frame.click('.ribbon [data-cmd="newFromTemplate"]');
+  const gallery = await frame.$$eval('dialog.gallery[open] .tpl .name', (els) => els.map((e) => e.textContent.trim()));
+  await frame.click('dialog.gallery[open] .tpl');
+  await host.waitForFunction(() => events.some((m) => m.type === 'template'), null, { timeout: 15_000 }).catch(() => {});
+  const chosen = await host.evaluate(() => events.find((m) => m.type === 'template'));
+  check(withTemplates.join() === 'true,false' && gallery.join() === 'Host letter' && chosen?.template === 'own' && chosen?.name === 'Host letter',
+    `embed: a host's template option offers its entries only, and the host hears the choice (${withTemplates}; ${gallery}; ${JSON.stringify(chosen)})`);
   await host.evaluate(() => ed.newDocument('blank.odt'));
   await frame.waitForFunction(() => !document.querySelector('.tiptap')?.textContent.trim(), null, { timeout: 10_000 });
   check(await host.evaluate(() => events.filter((m) => m.type === 'dirty').at(-1)?.dirty === false), 'embed: new starts an empty, unchanged document');

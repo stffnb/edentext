@@ -151,7 +151,7 @@ In alternativa, ogni release contiene `edentext-<tag>.zip` con l'app già compil
 `npm run build` crea gli stessi file in `dist/`. Qualsiasi server web può ospitare questa cartella.
 L'immagine container si può anche creare in locale con `docker build -t edentext .`.
 Un chart Helm per Kubernetes, mantenuto dalla comunità, si trova in [`charts/edentext`](../../charts/edentext).
-Come configurare l’assistente IA e la dettatura per tutti gli utenti è spiegato in [`docs/self-hosting.md`](../self-hosting.md) (in inglese).
+Come configurare l’assistente IA, la dettatura e i modelli di documento per tutti gli utenti è spiegato in [`docs/self-hosting.md`](../self-hosting.md) (in inglese).
 
 Per un aggiornamento, copia i nuovi file sopra quelli vecchi invece di svuotare prima la cartella.
 Le schede aperte prima dell'aggiornamento continuano a caricare i file della propria versione

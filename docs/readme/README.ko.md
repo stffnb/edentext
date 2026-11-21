@@ -147,7 +147,7 @@ docker run -p 8080:80 ghcr.io/stffnb/edentext
 `npm run build`를 실행해도 `dist/`에 같은 파일이 만들어집니다. 이 폴더는 어떤 웹 서버로도 호스팅할 수 있습니다.
 컨테이너 이미지는 `docker build -t edentext .`로 직접 빌드할 수도 있습니다.
 커뮤니티에서 관리하는 Kubernetes용 Helm 차트는 [`charts/edentext`](../../charts/edentext)에 있습니다.
-AI 도우미와 받아쓰기를 모든 사용자에게 미리 설정하는 방법은 [`docs/self-hosting.md`](../self-hosting.md)(영어)를 참고하십시오.
+AI 도우미, 받아쓰기, 문서 서식 파일을 모든 사용자에게 미리 설정하는 방법은 [`docs/self-hosting.md`](../self-hosting.md)(영어)를 참고하십시오.
 
 업데이트할 때는 폴더를 먼저 비우지 말고 새 파일을 기존 파일 위에 덮어쓰십시오.
 업데이트 전에 열어 둔 탭은 새로 고칠 때까지 자기 버전의 파일을 계속 불러옵니다.

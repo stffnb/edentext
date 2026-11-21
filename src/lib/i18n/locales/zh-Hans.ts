@@ -1157,6 +1157,7 @@ const zhHans: Messages = {
   },
   templates: {
     title: '从模板新建',
+    loadFailed: '无法加载模板。当前打开的文档未做更改。',
     din5008b: {
       name: 'DIN 5008 商务信函（B 式）',
       description: '德国标准商务信函，含完整信头：45 毫米起的开窗信封地址栏、信息栏和折叠标记。',

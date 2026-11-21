@@ -1,8 +1,9 @@
-# AI and dictation from the server
+# AI, dictation and templates from the server
 
 An installation can set up the AI assistant and dictation for all its users, so nobody
-has to enter a provider or a speech server. EdenText stays static: it runs no model and
-ships none. You point it at a server you operate or a provider you use.
+has to enter a provider or a speech server, and decide which templates New from Template
+offers. EdenText stays static: it runs no model and ships none. You point it at a server
+you operate or a provider you use; template files are ordinary files on your web server.
 
 ## The preset file
 
@@ -29,6 +30,41 @@ section and field is optional; the file EdenText ships is empty and presets noth
 - Unknown keys and values of the wrong type are ignored. The file is never stored in the
   browser; a change holds from the next start. The desktop app does not read it.
 
+## Templates
+
+```json
+{
+  "templates": {
+    "builtIn": false,
+    "items": [
+      { "id": "letter", "name": { "en": "Business letter", "de": "Geschäftsbrief" },
+        "description": "With logo and footer", "url": "templates/letter.ott", "preview": "templates/letter.png" }
+    ]
+  }
+}
+```
+
+- **`enabled: false`** removes New from Template and Save as Template, from both toolbars
+  and the command search; **`save: false`** removes only Save as Template.
+- **`builtIn: false`** leaves the built-in templates out of the gallery. With no entries
+  left, New from Template goes as well.
+- **`items`**: up to 50 `.ott`, `.odt`, `.dotx` or `.docx` files. `url` is required; a
+  relative one is resolved against the editor's page, and only `http(s)` counts. `name`
+  and `description` are a text or one per language tag: the UI language's is shown, then
+  its base language's, then English's, then the first. Without `name` the file name shows.
+  `id` defaults to the address. `preview` is a picture of the first page, a sketch without.
+- A picked entry is fetched when it is picked, never cached, and opens as a new, unsaved
+  document named after the entry, whatever its extension: the first Save asks where. If it
+  cannot be loaded, the open document stays as it is. A password-protected file is refused.
+- **Another origin** needs CORS: the file and the preview are fetched by script, so their
+  server must send `Access-Control-Allow-Origin` with the editor's origin (or `*`). Same-origin
+  files need nothing, and their cookies go along, so they can sit behind the site's sign-in.
+
+**Embedded** (`docs/architecture/embed.md`), the editor offers no templates unless the host's
+`templates` option is an object with `items` or `builtIn: true`; it then takes this file's
+fields under its own, and an entry may carry `bytes` (an ArrayBuffer) and `fileName` instead
+of `url`, so a host behind a sign-in publishes nothing. Save as Template never shows there.
+
 ## Keys belong in the proxy
 
 The file is public, so it never holds an API key. Instead, the web server forwards
@@ -51,6 +87,8 @@ The image writes the file and the proxies from environment variables when it sta
 | `EDENTEXT_DICTATION_SERVER`, `EDENTEXT_DICTATION_MODEL` | the speech server preset |
 | `EDENTEXT_AI_LOCKED`, `EDENTEXT_DICTATION_LOCKED` | `true` fixes the preset |
 | `EDENTEXT_DICTATION_WEB_SPEECH` | `false` takes the browser's speech recognition off the list |
+| `EDENTEXT_TEMPLATES_ENABLED`, `EDENTEXT_TEMPLATES_BUILT_IN`, `EDENTEXT_TEMPLATES_SAVE` | `false` as `enabled`, `builtIn`, `save` above |
+| `EDENTEXT_TEMPLATES_ITEMS` | the `items` array as JSON; mount the files, e.g. `-v ./templates:/usr/share/nginx/html/templates:ro` |
 | `EDENTEXT_AI_PROXY_UPSTREAM`, `EDENTEXT_DICTATION_PROXY_UPSTREAM` | root URL that `/ai/` or `/stt/` forwards to; the preset address then defaults to `/ai/v1` or `/stt/v1` |
 | `EDENTEXT_AI_PROXY_API_KEY`, `EDENTEXT_DICTATION_PROXY_API_KEY` | key the proxy adds (`Authorization: Bearer`, `x-api-key` for Anthropic) |
 
@@ -85,7 +123,8 @@ with `OLLAMA_CONTEXT_LENGTH`.
 
 ## Kubernetes
 
-The Helm chart has the same presets and proxies as values, with keys from Secrets; see
+The Helm chart has the same presets and proxies as values, with keys from Secrets, and
+mounts a volume of template files under `/templates/`; see
 [`charts/edentext/README.md`](../charts/edentext/README.md).
 
 ## Choosing a speech model

@@ -1155,6 +1155,7 @@ const it: Messages = {
   },
   templates: {
     title: 'Nuovo da modello',
+    loadFailed: 'Impossibile caricare il modello. Il documento aperto non è stato modificato.',
     din5008b: {
       name: 'Lettera DIN 5008 (forma B)',
       description: 'Lettera commerciale secondo la norma tedesca, con intestazione completa: campo indirizzo per busta a finestra a partire da 45 mm, blocco informazioni, segni di piegatura.',

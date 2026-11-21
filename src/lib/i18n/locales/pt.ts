@@ -1156,6 +1156,7 @@ const pt: Messages = {
   },
   templates: {
     title: 'Novo a partir de modelo',
+    loadFailed: 'Não foi possível carregar o modelo. O documento aberto não foi alterado.',
     din5008b: {
       name: 'Carta DIN 5008 (formulário B)',
       description: 'Carta comercial segundo a norma alemã, com cabeçalho completo: campo de endereço para envelope de janela a partir de 45 mm, bloco de informações e marcas de dobra.',

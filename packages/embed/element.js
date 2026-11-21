@@ -1,12 +1,13 @@
 /*! EdenText embed helper | MIT License | Copyright (c) 2026 Steffen Becker */
 // <eden-text>: the editor as a custom element. Attributes are the options, the methods
-// sit on the element, and dirty, saveRequest, warning, ready and error are DOM events.
+// sit on the element, and dirty, saveRequest, warning, template, ready and error are DOM events.
 import { EdenTextFrame } from './index.js';
 
-const SETTINGS = ['user', 'locale', 'theme', 'chrome', 'name', 'accent', 'ai'];
-const EVENTS = ['dirty', 'saveRequest', 'warning'];
+// templates takes an object, so it goes through configure().
+const SETTINGS = ['user', 'locale', 'theme', 'chrome', 'name', 'accent', 'ai', 'dictation'];
+const EVENTS = ['dirty', 'saveRequest', 'warning', 'template'];
 
-const value = (name, raw) => (name === 'ai' ? raw !== 'false' : raw);
+const value = (name, raw) => (name === 'ai' || name === 'dictation' ? raw !== 'false' : raw);
 
 // Module evaluation must not fail where there is no DOM (server-side rendering).
 const Base = globalThis.HTMLElement ?? class {};
