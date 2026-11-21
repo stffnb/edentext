@@ -708,9 +708,12 @@ try {
   const beside = await page.evaluate(() => {
     const strip = document.querySelector('.vruler .strip').getBoundingClientRect();
     const sheet = Array.from(document.querySelectorAll('.page-sheet'), (s) => s.getBoundingClientRect()).find((r) => Math.abs(r.top - strip.top) < 2);
-    return sheet ? sheet.left - strip.right : null;
+    const bar = document.querySelector('.ruler .strip').getBoundingClientRect();
+    const corner = document.querySelector('.ruler .tab-type').getBoundingClientRect();
+    return sheet ? { gap: sheet.left - strip.right, bar: Math.abs(bar.left - sheet.left) + Math.abs(bar.right - sheet.right), corner: Math.abs(corner.left - strip.left) } : null;
   });
-  check(beside !== null && beside >= 0 && beside < 12, `beside a wider section, the vertical ruler stands at its own page's edge (${beside?.toFixed(1)}px off)`);
+  check(beside && beside.gap >= 0 && beside.gap < 12 && beside.bar < 2 && beside.corner < 2,
+    `beside a wider section, both rulers stand at their own page's edges (${beside?.gap.toFixed(1)}px beside, ${beside?.bar.toFixed(1)}px off its width, corner ${beside?.corner.toFixed(1)}px)`);
   const landHeader = page.locator('.hf-zone.hf-header').nth(1);
   await landHeader.scrollIntoViewIfNeeded();
   await landHeader.dblclick({ timeout: 5000 }).catch(() => landHeader.dispatchEvent('dblclick'));
