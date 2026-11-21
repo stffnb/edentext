@@ -924,11 +924,6 @@ type NoteAnchor = { id: string; dy: number };
 // One footnote waiting for a place at the foot of its anchor's page.
 type FootnoteBox = { id: string; el: HTMLElement; height: number };
 
-// Reserving space for a page's notes moves its own anchors, which may change the page
-// they sit on. The placement runs again on the new reservation until the two agree —
-// bounded, because a note that keeps its own anchor moving never settles.
-const MAX_NOTE_FIT_PASSES = 3;
-
 /** A node decoration that survives its node being replaced (see repairDecos). */
 export const blockDeco = (from: number, to: number, attrs: Record<string, string>): Decoration =>
   Decoration.node(from, to, attrs, { block: attrs });
@@ -1961,7 +1956,9 @@ export const PageBreaks = Extension.create({
           // One placement of every leaf against a given per-page note reservation. It
           // owns all its accumulators, so the note fixed-point below can simply run it
           // again on a reservation that changed.
-          function placeLeaves(reservedByPage: Map<number, number>) {
+          function placeLeaves(noteHeights: Map<string, number>, sepSpace: number) {
+            // Note heights each page's anchors have claimed so far, in flow order.
+            const claimed = new Map<number, number>();
             let cumulativeShift = 0;
             // Per-cell flow bracketing for a too-tall row (see Leaf flow markers): each
             // cell restarts from the shift inherited at the row top; the row then
@@ -2121,9 +2118,22 @@ export const PageBreaks = Extension.create({
               // A page's own reach wins over its section's.
               const topAt = (pg: number) => ownReach.get(pg)?.[0] ?? (pg === sectionFirstPage ? topFirst : topRest);
               const contentStart = pageTop + topAt(page);
-              const contentEnd = pageTop + grid.heightOf(page) - (ownReach.get(page)?.[1] ?? (onFirst ? bottomFirst : bottomRest))
-                - (reservedByPage.get(page) ?? 0);
-
+              // The page's notes end its body: those claimed by the leaves above, plus this
+              // leaf's own while anchor and note both fit. The first anchor that does not
+              // ends the page at its line, so anchor and note move on together.
+              let contentEnd = pageTop + grid.heightOf(page) - (ownReach.get(page)?.[1] ?? (onFirst ? bottomFirst : bottomRest));
+              let taken = claimed.get(page) ?? 0;
+              if (taken) contentEnd -= Math.min(taken + sepSpace, CONTENT_HEIGHT - 1);
+              for (const anchor of leaf.refs ?? []) {
+                const h = noteHeights.get(anchor.id);
+                if (h === undefined) continue;
+                const cost = h + (taken ? 0 : sepSpace);
+                const anchorTop = effectiveTop + anchor.dy;
+                if (anchorTop > contentEnd) break;
+                if (anchorTop > contentEnd - cost) { contentEnd = Math.max(anchorTop, contentStart + 1); break; }
+                contentEnd = Math.max(contentEnd - cost, contentStart + 1);
+                taken += h;
+              }
 
               // A leaf may need several spacers: a splittable block taller than one
               // page crosses multiple boundaries, one break each.
@@ -2492,7 +2502,10 @@ export const PageBreaks = Extension.create({
               for (const anchor of leaf.refs ?? []) {
                 let shift = shiftAtLeafTop;
                 for (const br of applied) if (br.at <= anchor.dy + 0.5) shift += br.height;
-                anchorPages.set(anchor.id, grid.pageAt(leaf.naturalTop + anchor.dy + shift));
+                const landed = grid.pageAt(leaf.naturalTop + anchor.dy + shift);
+                anchorPages.set(anchor.id, landed);
+                const h = noteHeights.get(anchor.id);
+                if (h !== undefined) claimed.set(landed, (claimed.get(landed) ?? 0) + h);
               }
               if (!placedAny && noPushReason !== null) {
                 placementsDebug.push({
@@ -2556,17 +2569,8 @@ export const PageBreaks = Extension.create({
             return out;
           }
 
-          const sameReservation = (a: Map<number, number>, b: Map<number, number>) =>
-            a.size === b.size && Array.from(a).every(([k, v]) => Math.abs((b.get(k) ?? NaN) - v) < 0.5);
-
-          let reserved = new Map<number, number>();
-          let placed = placeLeaves(reserved);
-          for (let pass = 0; footnotes.length && pass < MAX_NOTE_FIT_PASSES; pass++) {
-            const next = reservationFor(placed.anchorPages);
-            if (sameReservation(next, reserved)) break;
-            reserved = next;
-            placed = placeLeaves(reserved);
-          }
+          const placed = placeLeaves(new Map(footnotes.map((n) => [n.id, n.height])), sepSpace);
+          const reserved = reservationFor(placed.anchorPages);
           noteReserves.set(editorView, reserved);
           const {
             maxEffectiveBottom, sectionStartPages, blankPages, placements, collapsedTrailing,

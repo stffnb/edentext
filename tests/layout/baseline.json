@@ -894,6 +894,25 @@
     "186. Lorem ipsum dolor sit amet, consect"
    ]
   },
+  "tests/corpus/26-notes-rows.docx": {
+   "pages": 2,
+   "lines": 225,
+   "ms": 200,
+   "starts": [
+    "Row 1 Value 1",
+    "Row 39 5 Value 39"
+   ]
+  },
+  "tests/corpus/26-notes-rows.odt": {
+   "pages": 3,
+   "lines": 225,
+   "ms": 200,
+   "starts": [
+    "Row 1 Value 1",
+    "Row 39 5 Value 39",
+    "Row 59 15 Value 59"
+   ]
+  },
   "tests/corpus/word/01-flow.docx": {
    "pages": 2,
    "lines": 120,
