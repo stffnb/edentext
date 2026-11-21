@@ -124,6 +124,8 @@ export async function settle(page, loaded = false, timeout = 180_000) {
     if (!el || (!loaded && !(el.textContent.trim() || el.querySelector('img, table, .textbox-node, .formula, .toc')))) return false;
     const imgs = Array.from(document.querySelectorAll('.paper img'));
     if (imgs.some((i) => !i.complete)) return false;
+    // A face still on its way re-breaks every line it draws: what stands now is the fallback's.
+    if (document.fonts?.status === 'loading') return false;
     // The spacers' heights too, not just their count: they go on settling for a while
     // after the last one is placed, and the page a line lands on moves with them.
     const spacers = Array.from(document.querySelectorAll('[data-page-break-spacer]'));

@@ -880,6 +880,34 @@ try {
   check(freshSplit && wideSplit !== freshSplit && againSplit === freshSplit,
     `a paragraph split before its lines re-broke is split where they break now (${freshSplit} / ${wideSplit} / ${againSplit})`);
 
+  // A columns section cut while its lines broke elsewhere is cut again from its start: a
+  // cut is only joined back with room to spare, so the earlier one would stand.
+  const columnPara = (i) => block(words(Array.from({ length: 40 + (i % 4) * 9 }, (_, j) => `col${i} word${j}`).join(' ')));
+  await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
+    block(words('above the columns')),
+    { type: 'columns', attrs: { count: 2, gapCm: 0.5 }, content: Array.from({ length: 30 }, (_, i) => columnPara(i)) },
+    block(words('below the columns'))] });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
+  await settle(page, true);
+  const cuts = () => page.evaluate(() => {
+    const out = [];
+    document.querySelector('.tiptap-host .tiptap').editor.state.doc.forEach((n) => {
+      if (n.type.name === 'columns') out.push(`${n.childCount}/${n.textContent.length}`);
+    });
+    return out.join(' ');
+  });
+  const freshCuts = await cuts();
+  // Under two lines of the first page go: less than a join back asks for when they return.
+  await reflow('.tiptap .columns-node:first-of-type > p:first-child { padding-top: 36px !important }');
+  await settle(page, true);
+  const wideCuts = await cuts();
+  await reflow(null);
+  await settle(page, true);
+  const againCuts = await cuts();
+  check(freshCuts.includes(' ') && wideCuts !== freshCuts && againCuts === freshCuts,
+    `a columns section cut before its lines re-broke is cut where they break now (${freshCuts} / ${wideCuts} / ${againCuts})`);
+
   // In the larger-of spacing model a block's space above is a margin, outside the box the
   // page break moves: a manual break must clear it too, less the space below the block before.
   await page.evaluate((d) => {

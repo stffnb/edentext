@@ -640,8 +640,42 @@ export const ColumnsFlow = Extension.create({
         }
         flowDebugAccessors.set(editorView, buildDebug);
 
+        // Every chain back to one fragment each, so the next passes cut it as a fresh open
+        // would: a join waits for HYSTERESIS_PX of room, which keeps a cut made on other
+        // line breaks standing.
+        function rejoinChains(): boolean {
+          const frags = fragments();
+          const tr = editorView.state.tr;
+          for (let i = frags.length - 2; i >= 0; i--) {
+            if (!hasNextInChain(frags, i)) continue;
+            const { pos, node } = frags[i];
+            const joined = isJoinedPair(node.child(node.childCount - 1), frags[i + 1].node.child(0));
+            try {
+              tr.join(pos + node.nodeSize, joined ? 2 : 1);
+            } catch { /* this boundary stays */ }
+          }
+          if (!tr.docChanged) return false;
+          // The joined fragment would inherit a page slot's height and clip its own lines.
+          decorations = DecorationSet.empty;
+          dispatchFlow(tr);
+          return true;
+        }
+
+        // A face that lands re-breaks the lines the cuts were measured on, in the section
+        // or above it, so the flow starts over and no cut depends on when the face came.
+        let fontsLanded = false;
+        const onFonts = () => { fontsLanded = true; schedule(); };
+        const fontSet = typeof document === 'undefined' ? undefined : document.fonts;
+        fontSet?.addEventListener?.('loadingdone', onFonts);
+
         function run() {
           rafId = null;
+          if (fontsLanded && !editorView.composing && editorView.dom.isConnected) {
+            fontsLanded = false;
+            passes = 0;
+            splitAt.clear();
+            if (rejoinChains()) return;
+          }
           // The budget covers the decoration update too: it asks for a page recalc, whose
           // new geometry can change the next height again — a pump of its own.
           if (passes >= MAX_FLOW_PASSES) return;
@@ -678,6 +712,7 @@ export const ColumnsFlow = Extension.create({
           destroy() {
             if (rafId !== null) cancelAnimationFrame(rafId);
             rafId = null;
+            fontSet?.removeEventListener?.('loadingdone', onFonts);
             flowDebugAccessors.delete(editorView);
           },
         };
