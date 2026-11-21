@@ -82,10 +82,8 @@ EdenText est un traitement de texte puissant qui s’utilise dans le navigateur,
   répond aux questions sur le document et le modifie sous forme de modifications suivies. Il
   peut être désactivé ; les requêtes vont directement au fournisseur, sans passer par
   un serveur EdenText
-- **Dictée** – ce que vous dites s’affiche au curseur, avec la ponctuation dictée en
-  anglais et en allemand. Utilise la reconnaissance vocale du navigateur (Chrome, Edge,
-  Safari), qui peut envoyer le son à son service vocal ; EdenText demande avant la première fois ; ou votre
-  propre serveur vocal, par ex. Whisper sur votre ordinateur, dans tout navigateur et dans l’application de bureau
+- **Dictée** – ce que vous dites s’affiche au curseur, grâce à la reconnaissance vocale du
+  navigateur ou à votre propre serveur vocal, par ex. Whisper
 - **Private by Design** – vos documents ne quittent jamais votre
   ordinateur, tout est traité en local ; fonctionne hors ligne comme application
   installable. L’éditeur n’envoie rien, sauf si vous activez l’assistant IA, qui
