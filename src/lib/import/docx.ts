@@ -963,8 +963,11 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         } finally { ctx.contentWidthCm = outerCm; }
       }
     } else if (el.localName === 'sdt') {
+      // A page break ending the paragraph before moves what the control holds.
+      const pageBreak = breakPending;
       breakPending = false;
       flush();
+      const at = out.length;
       if (sdtIsToc(el)) {
         // A content-control-wrapped TOC → one node (regenerated live); skip its content.
         if (kind === 'body') {
@@ -990,6 +993,7 @@ function convertBlocks(children: Element[], ctx: Ctx, kind: BlockKind, boldByDef
         const content = fc(el, 'sdtContent');
         if (content) out.push(...convertBlocks(Array.from(content.children), ctx, kind, boldByDefault));
       }
+      if (pageBreak && kind === 'body') applyBreakBefore(out[at]);
     }
   }
   flush();
