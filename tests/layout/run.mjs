@@ -220,6 +220,18 @@ try {
     // quiet period it waits out afterwards is not part of the measurement.
     const ms = await page.evaluate(() => Math.round((window.__paritySince - window.__loadAt) / 100) * 100);
     const r = await page.evaluate(lintLayout);
+    // A settled document dispatches nothing: a plugin that keeps re-measuring puts the
+    // selection back each frame, and a click then never sets the caret.
+    const idle = await page.evaluate(async () => {
+      const eds = Array.from(document.querySelectorAll('.tiptap')).map((e) => e.editor).filter(Boolean);
+      const metas = new Set();
+      const seen = ({ transaction }) => metas.add(Object.keys(transaction.meta).join('+') || 'plain');
+      eds.forEach((ed) => ed.on('transaction', seen));
+      await new Promise((done) => setTimeout(done, 400));
+      eds.forEach((ed) => ed.off('transaction', seen));
+      return [...metas];
+    });
+    if (idle.length) r.issues.push({ page: 1, kind: 'dispatches while idle', text: idle.join(', ') });
     const ref = lo.get(file);
     const off = ref == null ? 0 : r.pages - ref;
     // A page or a tenth either way is the slack two layout engines take.
