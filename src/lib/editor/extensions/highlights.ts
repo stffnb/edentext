@@ -10,9 +10,14 @@ type SetOf = (state: EditorState) => DecorationSet | null | undefined;
 // and break its line, which pagination, measuring only on edits, would not see.
 export const HIGHLIGHTS = typeof CSS !== 'undefined' && 'highlights' in CSS;
 
+const CHROMIUM = HIGHLIGHTS && /Chrome\/|Chromium\//.test(navigator.userAgent);
 // WebKit draws every text line under a highlight in the highlight's colour and style (a
-// struck word's line in the squiggle's red), so there a range over such text is an overlay.
-const RESTYLES_LINES = HIGHLIGHTS && /AppleWebKit/.test(navigator.userAgent) && !/Chrome\/|Chromium\//.test(navigator.userAgent);
+// struck word's line in the squiggle's red), and a shadow round the squiggle too, so there a
+// range over such text is an overlay.
+const RESTYLES_LINES = HIGHLIGHTS && /AppleWebKit/.test(navigator.userAgent) && !CHROMIUM;
+// Chromium paints a text's own shadows (a glow, textEffects.ts) under a highlight, the others
+// only the highlight's: editor.css lends a highlight the text's shadows under this flag only.
+if (HIGHLIGHTS && !CHROMIUM) document.documentElement.toggleAttribute('data-highlight-shadows', true);
 
 // A boundary between nodes as the text offset beside it: WebKit paints nothing for a range
 // ending after a text node in a right-to-left block (a paragraph's last word, a word whose
@@ -24,6 +29,7 @@ function intoText(node: Node, offset: number, end: boolean): [Node, number] {
 }
 
 const hasLines =(range: AbstractRange, root: Element) => textsIn(range).some(({ node }) => {
+  if (node.parentElement && getComputedStyle(node.parentElement).textShadow !== 'none') return true;
   for (let el = node.parentElement; el && el !== root; el = el.parentElement) {
     if (getComputedStyle(el).textDecorationLine !== 'none') return true;
   }

@@ -1555,11 +1555,16 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   content: '→';
 }
 
-/* A highlight repaints its text in its own colour, not in -webkit-text-fill-color, and WebKit
-   without the text's shadows: an outline, shadow or relief (textEffects.ts) lends it both. */
+/* A highlight repaints its text in its own colour, not in -webkit-text-fill-color, and outside
+   Chromium without the text's shadows: an outline, shadow or relief (textEffects.ts) lends it
+   both, the shadows only outside Chromium, which keeps its own (highlights.ts sets the flag). */
 ::highlight(spell-error), ::highlight(grammar-error), ::highlight(search-match), ::highlight(search-match-thumb),
 ::highlight(search-match-current), ::highlight(comment-draft) {
   color: var(--fx-fill, currentcolor);
+}
+:root[data-highlight-shadows] ::highlight(spell-error), :root[data-highlight-shadows] ::highlight(grammar-error),
+:root[data-highlight-shadows] ::highlight(search-match), :root[data-highlight-shadows] ::highlight(search-match-thumb),
+:root[data-highlight-shadows] ::highlight(search-match-current), :root[data-highlight-shadows] ::highlight(comment-draft) {
   text-shadow: var(--fx-text-shadow, none);
 }
 
