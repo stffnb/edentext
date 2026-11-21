@@ -3036,6 +3036,27 @@ describe('Leg 37: a box inside a box is unwrapped on import (ODT)', () => {
       JSON.stringify(boxes[0]?.content).includes('innen'), boxes[0]?.content);
     check('and it is reported', f.warnings.some((w: string) => /nested in other text boxes/.test(w)), f.warnings);
   });
+
+  // A figure frame holds its picture as a frame anchored to the box, beside its caption.
+  it('keeps a frame anchored to the box itself', () => {
+    const contentXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <office:body><office:text>
+  <text:p><draw:frame text:anchor-type="paragraph" svg:width="8cm"><draw:text-box><draw:frame text:anchor-type="frame" svg:width="4cm" svg:height="2cm"><draw:image xlink:href="Pictures/x.png"/></draw:frame><text:p>caption</text:p></draw:text-box></draw:frame></text:p>
+  <text:p><draw:frame text:anchor-type="paragraph" svg:width="8cm"><draw:text-box><text:list><text:list-item><text:p>item</text:p></text:list-item></text:list><draw:frame text:anchor-type="frame" svg:width="4cm" svg:height="2cm"><draw:image xlink:href="Pictures/x.png"/></draw:frame></draw:text-box></draw:frame></text:p>
+ </office:text></office:body>
+</office:document-content>`;
+    const pngBytes = Uint8Array.from(atob(PNG.split(',')[1]), c => c.charCodeAt(0));
+    const foreign = zipSync({
+      mimetype: [strToU8('application/vnd.oasis.opendocument.text'), { level: 0 }],
+      'content.xml': [strToU8(contentXml), { level: 6 }],
+      'Pictures/x.png': [pngBytes, { level: 6 }],
+    } as any);
+    const boxes = boxesIn(importOdt(foreign).content);
+    check('both boxes arrive', boxes.length === 2, boxes.length);
+    for (const box of boxes) check('with the picture in it', JSON.stringify(box.content).includes('"type":"image"'), box.content);
+    check('and the caption after it', /"image".*caption/.test(JSON.stringify(boxes[0]?.content)), boxes[0]?.content);
+  });
 });
 
 describe('Leg 38: a language per paragraph and per run (ODT + DOCX)', () => {
