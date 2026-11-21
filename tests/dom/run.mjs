@@ -1607,10 +1607,13 @@ try {
   }, null, { timeout: 30_000 }).then(async () => {
     const box = await page.evaluate(() => {
       const host = document.querySelector('.tiptap-host .tiptap');
-      const hit = [...CSS.highlights.get('spell-error') ?? []].find((r) => host.contains(r.startContainer));
+      // By its text: WebKit draws the squiggle over shadowed text as a cover, not a highlight.
+      const text = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = text.nextNode()) && !node.data.includes('mispeled'));
       const range = document.createRange();
-      if (hit) { range.setStart(hit.startContainer, hit.startOffset); range.setEnd(hit.endContainer, hit.endOffset); }
-      hit?.startContainer.parentElement.scrollIntoView({ block: 'center' });
+      if (node) { range.setStart(node, node.data.indexOf('mispeled')); range.setEnd(node, node.data.indexOf('mispeled') + 8); }
+      node?.parentElement.scrollIntoView({ block: 'center' });
       const r = range.getBoundingClientRect();
       return { x: r.x, y: r.y, width: r.width, height: r.height };
     });
