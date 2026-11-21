@@ -170,6 +170,7 @@ CI runs against documents this editor did not write. A run with no argument comp
 that corpus *and* the local documents: `edentext-testdocs/` beside the main checkout
 (`tests/localDocs.mjs`; `EDENTEXT_TESTDOCS` names another folder), which every worktree
 finds and no commit can pick up — keep whatever real-world files you test against there.
+Its `long_documents/` subfolder runs only when a path or a pattern names its files.
 
 ## Names stay local
 

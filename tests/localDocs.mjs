@@ -15,9 +15,13 @@ const beside = () => {
 };
 export const LOCAL_DOCS = resolve(process.env.EDENTEXT_TESTDOCS ?? beside());
 
-export const localDocs = () => (existsSync(LOCAL_DOCS)
-  ? readdirSync(LOCAL_DOCS).filter((f) => /\.(odt|docx)$/i.test(f) && !f.startsWith('~$')).sort().map((f) => join(LOCAL_DOCS, f))
+// Documents too long for the everyday run lie in a subfolder, read only on request.
+export const LONG_DOCS = join(LOCAL_DOCS, 'long_documents');
+const list = (dir) => (existsSync(dir)
+  ? readdirSync(dir).filter((f) => /\.(odt|docx)$/i.test(f) && !f.startsWith('~$')).sort().map((f) => join(dir, f))
   : []);
+export const localDocs = () => list(LOCAL_DOCS);
+export const longDocs = () => list(LONG_DOCS);
 
 // The cheapest documents that between them still show every trait any of them has: each
 // pick is the one bringing the most uncovered traits for its load time.
