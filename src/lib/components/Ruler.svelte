@@ -29,7 +29,9 @@
   const scale = $derived(zoom / 100);
   const margins = $derived(page.margins);
   const pageCm = $derived(page.width / PX_PER_CM);
-  const offsetCm = $derived(page.left / PX_PER_CM);
+  // Scaled px the page stands in from the sheet's edges: the strip spans the page alone.
+  const before = $derived(page.left * scale);
+  const after = $derived(Math.max(0, width - (page.left + page.width) * scale));
   // The block under the cursor; `tick` re-evaluates it on every transaction.
   const info = $derived(tick >= 0 && editor ? activeTabStops(editor.state) : null);
 
@@ -38,16 +40,16 @@
     const dir = tick >= 0 ? editor?.state.selection.$from.parent.attrs.dir : null;
     return dir ? dir === 'rtl' : pageRtl;
   });
-  // The margin the text starts at, and where it lies on the sheet.
+  // The margin the text starts at, and where it lies on the page.
   const startMargin = $derived(rtl ? margins.right : margins.left);
-  const originCm = $derived(rtl ? offsetCm + pageCm - margins.right : offsetCm + margins.left);
+  const originCm = $derived(rtl ? pageCm - margins.right : margins.left);
   const sign = $derived(rtl ? -1 : 1);
 
   // cm from the starting text margin → px within the strip, and back.
   const px = (cm: number) => (originCm + sign * cm) * PX_PER_CM * scale;
   const cmAt = (clientX: number) =>
     snapCm(sign * ((clientX - strip.getBoundingClientRect().left) / scale / PX_PER_CM - originCm));
-  // Marks stay on the page; the sheet beside a narrower page is shaded as margin.
+  // Marks stay on the page.
   const onPage = (cm: number) => cm >= -startMargin && cm <= pageCm - startMargin;
 
   const textCm = $derived(Math.max(0, pageCm - margins.left - margins.right));
@@ -147,9 +149,10 @@
 
 <!-- The strip beside the page is reserved here too, so the auto margins centre the
      ruler over the same footprint as .paper-scaler and it stays above the page. -->
-<div class="ruler" dir="ltr" style="width: {width + gutter}px; padding-right: {gutter}px">
+<div class="ruler" dir="ltr" style="width: {width + gutter}px; padding-left: {before}px; padding-right: {after + gutter}px">
   <button
     class="tab-type"
+    style="left: {before - 28}px"
     onpointerdown={(e) => e.preventDefault()}
     onclick={() => (type = TYPES[(TYPES.indexOf(type) + 1) % TYPES.length])}
     title={t().ruler.tabType[type]}
