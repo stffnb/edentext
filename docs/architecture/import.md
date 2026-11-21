@@ -26,7 +26,7 @@ from automatic styles and direct node/run properties. A **paragraph** style nami
 on `Standard`, Writer's default paragraph style, not on the family `style:default-style` below it:
 LibreOffice writes a text box's paragraphs on such a style and keeps its own UI locale on the
 family default, so resolving past `Standard` gave every box paragraph that locale as direct
-formatting — and every run in it the document's own.
+formatting — and every run in it the document's own. The sheet always carries the file's default style (`collectStyleSheet`): a block outside the body names none and is measured against it, and a file defining no `Standard` gets the `style:default-style` alone there, or a list item took the editor's font.
 
 For each block and run, build a resolved-style yardstick first. Retain direct formatting only
 when it differs from that style or from a compatible editor default. This prevents export-import
