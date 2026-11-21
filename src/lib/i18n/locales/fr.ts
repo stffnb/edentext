@@ -1661,7 +1661,7 @@ const fr: Messages = {
     documentNotLoaded:
       'Le dernier document a empêché le démarrage de l’éditeur. Le charger quand même ?\n\n« Annuler » ouvre un nouveau document vide ; l’ancien est conservé dans le stockage du navigateur sous « edentext-doc-broken ».',
     remoteImagesDropped: (n) =>
-      `${n === 1 ? 'Une image du Web n’a' : `${n} images du Web n’ont`} pas pu être copiée${n === 1 ? '' : 's'} dans le document et ${n === 1 ? 'a été supprimée' : 'ont été supprimées'}. Enregistrez ${n === 1 ? 'l’image' : 'les images'} dans un fichier et insérez-${n === 1 ? 'la' : 'les'} à partir de celui-ci.`,
+      `${n === 1 ? 'Une image du Web n’a' : `${n} images du Web n’ont`} pas pu être copiée${n === 1 ? '' : 's'} dans le document. Enregistrez ${n === 1 ? 'l’image' : 'les images'} dans un fichier et insérez-${n === 1 ? 'la' : 'les'} à partir de celui-ci.`,
     picturesNotRestored: (n) =>
       `${n} ${n < 2 ? 'image n’a' : 'images n’ont'} pas pu être restaurée${n < 2 ? '' : 's'} depuis le stockage du navigateur et ${n < 2 ? 'est affichée comme endommagée' : 'sont affichées comme endommagées'}. Ouvrez le fichier enregistré du document pour ${n < 2 ? 'la' : 'les'} récupérer.`,
   },

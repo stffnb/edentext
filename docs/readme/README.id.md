@@ -84,7 +84,7 @@ EdenText adalah pengolah kata berbasis web yang tangguh untuk segala keperluan, 
 - **Private by Design** — dokumen Anda tidak pernah keluar dari komputer, semua
   pemrosesan berjalan secara lokal; dapat bekerja offline sebagai aplikasi yang diinstal. Editor
   tidak mengirim apa pun, kecuali jika Anda mengaktifkan asisten AI, yang mengirim ke penyedia
-  pilihan Anda. Sesi bersama mengirim dokumen dalam bentuk terenkripsi melalui relay kepada peserta lain di sesi tersebut. Dikte memakai pengenalan ucapan browser, yang mungkin mengirim audio ke layanan ucapannya.
+  pilihan Anda. Sesi bersama mengirim dokumen dalam bentuk terenkripsi melalui relay kepada peserta lain di sesi tersebut. Dikte memakai pengenalan ucapan browser, yang mungkin mengirim audio ke layanan ucapannya. Saat menempel dari halaman web, gambarnya diunduh satu kali dari servernya dan disimpan di dalam dokumen.
   Dokumen disimpan otomatis di browser; di “Dokumen terbaru”, Anda dapat mengatur agar dokumen
   yang ditutup dihapus saat aplikasi dibuka berikutnya atau tidak disimpan sama sekali, dan jendela
   pribadi tidak meninggalkan jejak apa pun setelah ditutup

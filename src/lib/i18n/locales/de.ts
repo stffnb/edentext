@@ -1658,7 +1658,7 @@ const de: Messages = {
     documentNotLoaded:
       'Das zuletzt bearbeitete Dokument hat den Start des Editors blockiert. Trotzdem noch einmal laden?\n\n„Abbrechen“ startet mit einem neuen, leeren Dokument; das alte bleibt im Browser-Speicher unter „edentext-doc-broken“ erhalten.',
     remoteImagesDropped: (n) =>
-      `${n === 1 ? 'Ein Bild' : `${n} Bilder`} aus dem Web ${n === 1 ? 'konnte' : 'konnten'} nicht in das Dokument übernommen werden und ${n === 1 ? 'wurde' : 'wurden'} entfernt. Bitte das Bild als Datei speichern und von dort einfügen.`,
+      `${n === 1 ? 'Ein Bild' : `${n} Bilder`} aus dem Web ${n === 1 ? 'konnte' : 'konnten'} nicht in das Dokument übernommen werden. Bitte das Bild als Datei speichern und von dort einfügen.`,
     picturesNotRestored: (n) =>
       `${n} ${n === 1 ? 'Bild konnte' : 'Bilder konnten'} nicht aus dem Browser-Speicher wiederhergestellt werden und ${n === 1 ? 'wird' : 'werden'} als defekt angezeigt. Die gespeicherte Datei des Dokuments öffnen, um ${n === 1 ? 'es' : 'sie'} zurückzuholen.`,
   },

@@ -61,7 +61,8 @@ function localeChunks(): Plugin {
 
 // A Content-Security-Policy for the built page, the web app's and the desktop app's alike.
 // Scripts come from the app itself (inline ones by hash) and wasm compiles; a document,
-// a paste or a model's answer cannot run code. connect-src stays open for the AI endpoint.
+// a paste or a model's answer cannot run code. connect-src stays open for the AI endpoint
+// and for the pictures of a pasted web page, fetched once; img-src shows no other origin.
 function contentSecurityPolicy(): Plugin {
   const counter = process.env.GOATCOUNTER ? ` ${new URL(process.env.GOATCOUNTER).origin}` : '';
   return {

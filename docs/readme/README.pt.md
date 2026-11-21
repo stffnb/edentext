@@ -83,7 +83,7 @@ O EdenText é um processador de texto poderoso que funciona no navegador, das no
 - **Ditado** — o que diz aparece no cursor, através do reconhecimento de voz do navegador
   ou do seu próprio servidor de voz, p. ex. Whisper
 - **Private by Design** — os documentos nunca saem do computador e tudo é
-  processado localmente; instalado como aplicação, funciona offline. O editor em si não envia nada, a não ser para o fornecedor escolhido quando o assistente de IA está ligado. Numa sessão partilhada, o documento segue encriptado, através do relay, para os outros participantes. Ao ditar, o navegador pode enviar o áudio para o seu serviço de voz.
+  processado localmente; instalado como aplicação, funciona offline. O editor em si não envia nada, a não ser para o fornecedor escolhido quando o assistente de IA está ligado. Numa sessão partilhada, o documento segue encriptado, através do relay, para os outros participantes. Ao ditar, o navegador pode enviar o áudio para o seu serviço de voz. Ao colar a partir de uma página web, as imagens desta são transferidas uma vez dos respetivos servidores e guardadas no documento.
   Os documentos são guardados automaticamente no navegador; em «Documentos recentes» pode
   definir-se que os documentos fechados são apagados no arranque seguinte ou que nem
   chegam a ser guardados. Uma janela privada não deixa rasto depois de fechada

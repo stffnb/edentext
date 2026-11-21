@@ -1652,7 +1652,7 @@ const pt: Messages = {
     documentNotLoaded:
       'O último documento impediu o editor de arrancar. Voltar a carregá-lo mesmo assim?\n\nCancelar cria um novo documento vazio; o antigo é mantido no armazenamento do navegador em «edentext-doc-broken».',
     remoteImagesDropped: (n) =>
-      `${n === 1 ? 'Uma imagem da Web não pôde' : `${n} imagens da Web não puderam`} ser copiada${n === 1 ? '' : 's'} para o documento e ${n === 1 ? 'foi removida' : 'foram removidas'}. Guarde ${n === 1 ? 'a imagem' : 'as imagens'} num ficheiro e insira-${n === 1 ? 'a' : 'as'} a partir dele.`,
+      `${n === 1 ? 'Uma imagem da Web não pôde' : `${n} imagens da Web não puderam`} ser copiada${n === 1 ? '' : 's'} para o documento. Guarde ${n === 1 ? 'a imagem' : 'as imagens'} num ficheiro e insira-${n === 1 ? 'a' : 'as'} a partir dele.`,
     picturesNotRestored: (n) =>
       `${n} ${n === 1 ? 'imagem não pôde' : 'imagens não puderam'} ser restaurada${n === 1 ? '' : 's'} do armazenamento do navegador e ${n === 1 ? 'é mostrada como danificada' : 'são mostradas como danificadas'}. Abra o ficheiro guardado do documento para ${n === 1 ? 'a recuperar' : 'as recuperar'}.`,
   },

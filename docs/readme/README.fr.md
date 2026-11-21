@@ -87,7 +87,7 @@ EdenText est un traitement de texte puissant qui s’utilise dans le navigateur,
 - **Private by Design** – vos documents ne quittent jamais votre
   ordinateur, tout est traité en local ; fonctionne hors ligne comme application
   installable. L’éditeur n’envoie rien, sauf si vous activez l’assistant IA, qui
-  transmet alors au fournisseur que vous avez choisi. Une session partagée transmet le document, chiffré, aux autres participants via le relais. Pour la dictée, le navigateur peut envoyer le son à son service vocal. Les documents sont enregistrés automatiquement dans le
+  transmet alors au fournisseur que vous avez choisi. Une session partagée transmet le document, chiffré, aux autres participants via le relais. Pour la dictée, le navigateur peut envoyer le son à son service vocal. Lors d’un collage depuis une page web, ses images sont téléchargées une fois depuis leurs serveurs et enregistrées dans le document. Les documents sont enregistrés automatiquement dans le
   navigateur ; dans « Documents récents », on peut choisir de supprimer les documents
   fermés au démarrage suivant ou de ne pas les enregistrer du tout. Une fenêtre de
   navigation privée ne laisse aucune trace une fois fermée

@@ -182,8 +182,8 @@ package README recommends a subdomain with the application in `--origins`.
   (`contentSecurityPolicy()` in `vite.config.ts`): scripts only from the app itself, the
   inline ones by hash, plus wasm; no plugins, no `<base>`, no form posts. A document, a
   paste or a model answer therefore cannot run script even past a sanitizer bug.
-  `connect-src` stays open because the AI endpoint is the reader's choice. The browser
-  legs fail on any violation.
+  `connect-src` stays open: the AI endpoint is the reader's choice, and a paste fetches a web
+  page's pictures once (`editor/paste.ts`); `img-src` shows no other origin. The browser legs fail on any violation.
 - **Who may frame it.** A `<meta>` policy cannot carry `frame-ancestors`, so the
   serving side sends it: the Helm chart's `frameAncestors` value, or the same header
   from any other server. Without it any page may frame the instance.

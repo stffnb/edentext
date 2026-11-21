@@ -23,7 +23,7 @@
   import { findTextBox, type ShapeKind, type TextVAlign } from '../editor/extensions/textBox';
   import { blockText } from '../editor/extensions/outline';
   import { catchUpIndexes } from '../editor/extensions/tableOfContents';
-  import { fitPastedSlice, localPastedHtml } from '../editor/paste';
+  import { fillPastedPictures, fitPastedSlice, localPastedHtml } from '../editor/paste';
   import { readClickCaret } from '../editor/clickCaret';
   import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state';
   import { EditorView } from '@tiptap/pm/view';
@@ -1437,7 +1437,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
           },
         },
         // The direct prop wins over every plugin's, so the fitting fixes run here.
-        transformPastedHTML: localPastedHtml,
+        transformPastedHTML: (html) => localPastedHtml(html, { view: () => editor?.view ?? null, fit: fittedSize }),
         transformPasted: (raw, view) => fitPastedSlice(raw, view.state),
       },
       onTransaction: ({ editor: e, transaction }) => {
@@ -1470,6 +1470,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         scheduleCaretPage();
       },
       onUpdate: ({ editor: e, transaction }) => {
+        // A fetched picture whose place an undo took away lands once a redo brings it back.
+        fillPastedPictures(e.view);
         saveDocument(() => withoutDefaults(e.getJSON(), e.schema));
         const ui = transaction.getMeta('uiEvent');
       },

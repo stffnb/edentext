@@ -1,7 +1,9 @@
 import { Fragment, Slice } from '@tiptap/pm/model';
 import type { MarkType, Node as PMNode, Schema } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import { inNote } from './extensions/notes';
+import { RECORDING } from './extensions/trackChanges';
 
 const LOCAL_IMAGE_SRC = /^(?:data:|idb:)/i;
 
@@ -28,18 +30,156 @@ export const PASTE_NOTICE_EVENT = 'odf-paste-notice';
 
 const HOLDS_CONTENT = 'img, br, hr, table, svg, math, video, canvas, input';
 const ALIGNED = 'p[align], h1[align], h2[align], h3[align], h4[align], h5[align], h6[align]';
+const FETCH_MS = 20_000;
+const MAX_PICTURE_BYTES = 32 * 1024 * 1024;
+
+type Size = { width: number; height: number };
+/** Where a paste's fetched pictures land: the live view, and the size a picture gets in it. */
+export type PasteTarget = { view: () => EditorView | null; fit?: (src: string) => Promise<Size | null> };
+// `data`: undefined while the fetch runs, null once it failed.
+type Pending = { url: string; width: number | null; height: number | null; data?: string | null; size?: Size | null };
+
+// A picture being fetched stands in the document as this grey square, which carries only
+// an id: its address stays on the client that pasted it, so no other client or file gets it.
+const pending = new Map<string, Pending>();
+const PENDING_SRC = 'data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2224%22%20height=%2224%22%20id=%22';
+const pendingSrc = (id: string) => `${PENDING_SRC}${id}%22%3E%3Crect%20width=%2224%22%20height=%2224%22%20fill=%22%23e5e7eb%22/%3E%3C/svg%3E`;
+const pendingId = (src: unknown) => (typeof src === 'string' && src.startsWith(PENDING_SRC) ? src.slice(PENDING_SRC.length).split('%22')[0] : null);
+
+// A size the HTML states in px; the square's own size is not the picture's.
+function statedPx(img: HTMLImageElement, side: 'width' | 'height'): number | null {
+  const px = /^(\d+(?:\.\d+)?)(?:px)?$/.exec((img.getAttribute(side) ?? img.style[side]).trim());
+  return px && +px[1] > 0 ? +px[1] : null;
+}
+
+// The address a clipboard picture names, if it is one on the web: the clipboard carries no
+// page address, so a relative one resolves only against the HTML's own <base>.
+function webUrl(src: string, base: string | null): string | null {
+  try {
+    const url = new URL(src.startsWith('//') && !base ? `https:${src}` : src, base ?? undefined);
+    return /^https?:$/.test(url.protocol) ? url.href : null;
+  } catch { return null; }
+}
+
+// One request without cookies or referrer, read up to the size cap; null for anything
+// that is no picture, too large, refused (CORS) or too slow.
+async function fetchPicture(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(FETCH_MS) });
+    const type = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+    if (!res.ok || !res.body || !type.startsWith('image/')) return null;
+    const reader = res.body.getReader();
+    const parts: BlobPart[] = [];
+    for (let size = 0; ;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if ((size += value.length) > MAX_PICTURE_BYTES) { void reader.cancel(); return null; }
+      parts.push(value);
+    }
+    return await new Promise((resolve) => {
+      const file = new FileReader();
+      file.onload = () => resolve(file.result as string);
+      file.onerror = () => resolve(null);
+      file.readAsDataURL(new Blob(parts, { type }));
+    });
+  } catch { return null; }
+}
+
+// The picture's own size, held within the view's text width; null where it does not decode.
+function naturalSize(src: string, view: EditorView | null): Promise<Size | null> {
+  return new Promise((resolve) => {
+    const probe = document.createElement('img');
+    probe.onload = () => {
+      const style = view && !view.isDestroyed ? getComputedStyle(view.dom) : null;
+      const room = style ? view!.dom.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) : 0;
+      const [w, h] = [probe.naturalWidth || 1, probe.naturalHeight || 1];
+      const scale = room > 0 && w > room ? room / w : 1;
+      resolve({ width: Math.round(w * scale), height: Math.round(h * scale) });
+    };
+    probe.onerror = () => resolve(null);
+    probe.src = src;
+  });
+}
+
+const notify = (images: number) => { if (images) window.dispatchEvent(new CustomEvent(PASTE_NOTICE_EVENT, { detail: { images } })); };
+
+// What goes with a picture that left nothing behind: every wrapper it alone filled, up to
+// the first one its parent can spare; a table cell and the document stay.
+function emptiedRange(doc: PMNode, pos: number): { from: number; to: number } {
+  const $pos = doc.resolve(pos);
+  let range = { from: pos, to: pos + 1 };
+  for (let d = $pos.depth; d > 0; d--) {
+    const node = $pos.node(d);
+    if (node.content.size !== 1 + 2 * ($pos.depth - d) || /^table(?:Cell|Header)$/.test(node.type.name)) break;
+    const index = $pos.index(d - 1);
+    if ($pos.node(d - 1).canReplace(index, index + 1)) range = { from: $pos.before(d), to: $pos.after(d) };
+  }
+  return range;
+}
 
 /**
- * Clipboard HTML with every picture the editor will not load (anything but its own data)
- * replaced by its alt text, and the wrappers that held nothing else removed, so no empty
- * paragraph or heading stands where it was. The count rides `PASTE_NOTICE_EVENT`.
+ * Puts every picture whose fetch has ended where its grey square stands: the picture as the
+ * editor's own data, or after a failure its alt text, else nothing. Off the undo stack, so
+ * undoing the paste takes the pictures with it. Failures, with `more`, go into one notice.
  */
-export function localPastedHtml(html: string): string {
+export function fillPastedPictures(view: EditorView | null, more = 0): void {
+  if (!view || view.isDestroyed || !pending.size) return notify(more);
+  const hits: { pos: number; node: PMNode; got: Pending }[] = [];
+  view.state.doc.descendants((node, pos) => {
+    const got = node.type.name === 'image' ? pending.get(pendingId(node.attrs.src) ?? '') : undefined;
+    if (got && got.data !== undefined) hits.push({ pos, node, got });
+  });
+  if (!hits.length) return notify(more);
+  const tr = view.state.tr.setMeta('addToHistory', false).setMeta(RECORDING, true);
+  let failed = 0;
+  // Last first, so an earlier position still holds after a removal.
+  for (const { pos, node, got } of hits.reverse()) {
+    const { width, height } = got;
+    const alt = String(node.attrs.alt ?? '');
+    if (got.data && got.size) {
+      const ratio = got.size.height / got.size.width;
+      const size = width && height ? { width, height }
+        : width ? { width, height: Math.round(width * ratio) }
+        : height ? { width: Math.round(height / ratio), height } : got.size;
+      tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...size, src: got.data });
+      continue;
+    }
+    failed++;
+    if (alt.trim()) tr.replaceWith(pos, pos + 1, view.state.schema.text(alt.trim(), node.marks));
+    else { const { from, to } = emptiedRange(tr.doc, pos); tr.delete(from, to); }
+  }
+  for (const { node } of hits) pending.delete(pendingId(node.attrs.src)!);
+  view.dispatch(tr);
+  notify(more + failed);
+}
+
+/**
+ * Clipboard HTML ready for the schema. A web picture becomes a grey square while `target`'s
+ * client fetches it once; with no target, or no address to fetch, its alt text stands in
+ * and the wrappers it alone filled go. Failures ride `PASTE_NOTICE_EVENT`, once per paste.
+ */
+export function localPastedHtml(html: string, target?: PasteTarget): string {
   if (!/<img\b|\balign=/i.test(html)) return html;
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  const base = doc.querySelector('base[href]')?.getAttribute('href') ?? null;
   let dropped = 0;
+  const ids: string[] = [];
   for (const img of Array.from(doc.querySelectorAll('img'))) {
-    if (LOCAL_IMAGE_SRC.test(img.getAttribute('src')?.trim() ?? '')) continue;
+    const src = img.getAttribute('src')?.trim() ?? '';
+    if (LOCAL_IMAGE_SRC.test(src)) continue;
+    const url = target ? webUrl(src, base) : null;
+    if (url) {
+      const id = `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+      pending.set(id, { url, width: statedPx(img, 'width'), height: statedPx(img, 'height') });
+      ids.push(id);
+      const got = pending.get(id)!;
+      img.setAttribute('src', pendingSrc(id));
+      // Both sides stated, so the node view has no size of the square's to write back.
+      img.setAttribute('width', String(got.width ?? got.height ?? 24));
+      img.setAttribute('height', String(got.height ?? got.width ?? 24));
+      for (const name of ['srcset', 'sizes', 'loading']) img.removeAttribute(name);
+      continue;
+    }
     dropped++;
     const alt = img.getAttribute('alt')?.trim();
     if (alt) { img.replaceWith(doc.createTextNode(alt)); continue; }
@@ -57,8 +197,17 @@ export function localPastedHtml(html: string): string {
   const aligned = Array.from(doc.querySelectorAll<HTMLElement>(ALIGNED)).filter((el) => !el.style.textAlign
     && /^(?:left|center|right|justify)$/i.test(el.getAttribute('align') ?? ''));
   for (const el of aligned) el.style.textAlign = el.getAttribute('align')!.toLowerCase();
-  if (!dropped && !aligned.length) return html;
-  if (dropped) window.dispatchEvent(new CustomEvent(PASTE_NOTICE_EVENT, { detail: { images: dropped } }));
+  if (!dropped && !aligned.length && !ids.length) return html;
+  if (!ids.length) notify(dropped);
+  else void Promise.all(ids.map(async (id) => {
+    const data = await fetchPicture(pending.get(id)!.url);
+    const size = data ? await (target!.fit ?? ((src) => naturalSize(src, target!.view())))(data) : null;
+    return { id, size, data: size ? data : null };
+  })).then((all) => {
+    // Set together: one step fills the whole paste.
+    for (const { id, size, data } of all) Object.assign(pending.get(id)!, { size, data });
+    fillPastedPictures(target!.view(), dropped);
+  });
   return doc.body.innerHTML;
 }
 
