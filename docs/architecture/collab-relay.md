@@ -15,6 +15,8 @@ restart ends no document: the browsers dial again and sync among themselves.
 - From the repository: `npm run relay` (port 4390). On its own: `cd relay && npm ci --omit=dev && node server.mjs`.
 - Container: `docker run -p 4390:4390 ghcr.io/stffnb/edentext-relay` (built from `relay/Dockerfile`).
 - Kubernetes: the Helm chart runs it beside the app and serves it at `/relay` (`charts/edentext`).
+- Docker: the app image serves it at `/relay` once `EDENTEXT_RELAY_UPSTREAM` names it
+  (`docker/40-edentext.sh`, a compose example in `docs/self-hosting.md`).
 - `/health` (and `/relay/health`) answer `ok`; the WebSocket is on `/relay`.
 
 ## Where the app finds it
@@ -27,7 +29,8 @@ restart ends no document: the browsers dial again and sync among themselves.
   `/relay` to the relay with the WebSocket upgrade and a long read timeout, as the chart's nginx does
   (`location /relay { proxy_pass http://relay:4390; proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; proxy_set_header X-Real-IP $remote_addr; proxy_read_timeout 1h; }`),
   and then run the relay with `TRUST_PROXY=1`, so its limit per address counts the clients, not the proxy.
-  The app image alone has no such proxy, so it shows no *Collaborate…* entry.
+  The app image writes that block itself from `EDENTEXT_RELAY_UPSTREAM`; without it, it shows
+  no *Collaborate…* entry.
 - unset: no sessions (a plain `npm run build`); embedded, there are none either.
 
 A page served over HTTPS needs `wss://`. Over plain HTTP sessions work too; only the copy buttons

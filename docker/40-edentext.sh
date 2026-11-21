@@ -1,6 +1,6 @@
 #!/bin/sh
-# Writes edentext.config.json and the /ai/ and /stt/ proxies from EDENTEXT_* variables at
-# container start (docs/self-hosting.md); without them the file presets nothing and no proxy
+# Writes edentext.config.json and the /ai/, /stt/ and /relay proxies from EDENTEXT_* variables
+# at container start (docs/self-hosting.md); without them the file presets nothing and no proxy
 # exists. Keys reach nginx only.
 set -eu
 
@@ -94,9 +94,37 @@ location $path {
 CONF
 }
 
+# Collaboration sessions: the WebSocket and its health check pass to the relay unchanged, with
+# the client's address for its limits per address (the relay runs with TRUST_PROXY=1).
+relay() {
+  upstream=${1%/}
+  case "$upstream" in http://?*|https://?*) ;; *) fail 'EDENTEXT_RELAY_UPSTREAM must be an http(s) URL' ;; esac
+  case "${upstream#*://}" in */*|*[\"\\\$\;{}[:space:]]*) fail 'EDENTEXT_RELAY_UPSTREAM must be a bare http(s)://host:port' ;; esac
+  trusted=''
+  set -f
+  for from in $(printf '%s' "${EDENTEXT_RELAY_TRUSTED_PROXIES:-}" | tr ',' ' '); do
+    case "$from" in *[!0-9A-Fa-f.:/]*) fail 'EDENTEXT_RELAY_TRUSTED_PROXIES takes addresses and CIDR ranges' ;; esac
+    echo "set_real_ip_from $from;"
+    trusted=1
+  done
+  set +f
+  [ -z "$trusted" ] || printf 'real_ip_header X-Forwarded-For;\nreal_ip_recursive on;\n'
+  cat <<CONF
+location /relay {
+  proxy_pass $upstream;
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade \$http_upgrade;
+  proxy_set_header Connection "upgrade";
+  proxy_set_header X-Real-IP \$remote_addr;
+  proxy_read_timeout 1h;
+  proxy_send_timeout 1h;
+}
+CONF
+}
+
 conf="$nginx/edentext.d/proxy.conf"
 rm -f "$conf"
-if [ -n "${EDENTEXT_AI_PROXY_UPSTREAM:-}${EDENTEXT_DICTATION_PROXY_UPSTREAM:-}" ]; then
+if [ -n "${EDENTEXT_AI_PROXY_UPSTREAM:-}${EDENTEXT_DICTATION_PROXY_UPSTREAM:-}${EDENTEXT_RELAY_UPSTREAM:-}" ]; then
   mkdir -p "$nginx/edentext.d"
   umask 077
   {
@@ -108,6 +136,7 @@ if [ -n "${EDENTEXT_AI_PROXY_UPSTREAM:-}${EDENTEXT_DICTATION_PROXY_UPSTREAM:-}" 
     if [ -n "${EDENTEXT_DICTATION_PROXY_UPSTREAM:-}" ]; then
       proxy /stt/ "$EDENTEXT_DICTATION_PROXY_UPSTREAM" Authorization "${EDENTEXT_DICTATION_PROXY_API_KEY:-}" 60s 16m
     fi
+    [ -z "${EDENTEXT_RELAY_UPSTREAM:-}" ] || relay "$EDENTEXT_RELAY_UPSTREAM"
   } > "$conf"
   # The image's own server block gains the include once, after its IPv6 setup has run.
   site="$nginx/conf.d/default.conf"
