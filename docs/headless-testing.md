@@ -50,7 +50,10 @@ header/footer frames and tables, over 20 and 100 pages) and a run takes only the
 fewest documents, cheapest load first, that between them still show every trait, plus any
 not yet recorded, which are recorded on that first run, findings included: a local
 document fails only with more findings than it was recorded with. A document adding no trait costs
-the everyday run nothing. `--plan` prints the choice; `LAYOUT_LOCAL=all` runs the whole
+the everyday run nothing. Documents in `long_documents/` (recorded as `local/long/<file>`)
+never join it, recorded or not: only `LAYOUT_LOCAL=all` or a pattern naming them runs them,
+with five times the load and settle limits. A byte-identical copy runs once and is named as
+removable. `--plan` prints the choice; `LAYOUT_LOCAL=all` runs the whole
 folder (before a release, after a change to pagination or an importer), `LAYOUT_LOCAL=0` none.
 The **monkey run** replays `MONKEY_OPS` random keys and commands per seed
 (`MONKEY_SEED`, `MONKEY_RUNS`, `MONKEY_DOC`; the whole run fails past `MONKEY_DEADLINE_MIN`, 45) on a corpus document — typing, formatting,
