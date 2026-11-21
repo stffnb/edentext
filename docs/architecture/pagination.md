@@ -111,7 +111,7 @@ of its page's — `:is(h1…h10)` and `.toc` in `editor.css` both reset `margin`
 
 **The content band.** A run carries its section's four reaches too
 (`fromPage|height|left|topFirst|topRest|bottomFirst|bottomRest`), so `PageGrid` answers
-`contentTopOf`/`contentBottomOf` per page and `bandAt(vm, y)` per y — what the flow, the
+`contentTopOf`/`contentBottomOf` per page (a page in `--pb-page-reach` keeps its own pair: its zones' height with the page fields filled in) and `bandAt(vm, y)` per y — what the flow, the
 index's rows and the column flow place against. `vm.top`/`vm.contentHeight` with a uniform
 `vm.cycle` is wrong twice: those are **section 1's** reaches, so a section whose footer
 stands in the text area keeps a row the flow would have pushed, and one page height

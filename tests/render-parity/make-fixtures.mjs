@@ -511,6 +511,17 @@ await write('24-index-under-heading.docx', [{
   ],
 }], undefined, { features: { updateFields: true } });
 
+// 25. A footer its page fields make a line taller: number and count at 36pt on a 2.5cm
+// line, which holds "9 12" and breaks "10 12". The body has to end higher from page 10 on.
+await write('25-hf-fields.docx', [{
+  properties: { page },
+  footers: { default: new Footer({ children: [
+    new Paragraph({ indent: { right: 8198 },
+      children: [new TextRun({ size: 72, children: [PageNumber.CURRENT, ' ', PageNumber.TOTAL_PAGES] })] }),
+  ] }) },
+  children: Array.from({ length: 190 }, (_, i) => para(`${i + 1}. ${LOREM}`)),
+}]);
+
 // ODT twins, written by LibreOffice itself — the dominant ODT producer, so they carry
 // its own conventions (percentage font sizes, Text Body, list styles) and exercise the
 // foreign-document path our own exporter never produces.
