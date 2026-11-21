@@ -656,6 +656,8 @@ const ko: Messages = {
     citationNotInHf: '머리글/바닥글에는 인용을 넣을 수 없습니다',
     bookmarkNotInHf: '머리글/바닥글에는 책갈피를 넣을 수 없습니다',
     clearFormatting: '모든 서식 지우기',
+    formatPainter: '서식 복사',
+    formatPainterHint: '두 번 클릭하면 여러 곳에 적용할 수 있습니다',
   },
   image: {
     wrapToolbar: '그림 텍스트 줄 바꿈',

@@ -663,6 +663,8 @@ const ru: Messages = {
     citationNotInHf: 'Ссылки на источники в колонтитулах недоступны',
     bookmarkNotInHf: 'Закладки в колонтитулах недоступны',
     clearFormatting: 'Очистить форматирование',
+    formatPainter: 'Формат по образцу',
+    formatPainterHint: 'Дважды щёлкните, чтобы применить в нескольких местах',
   },
   image: {
     wrapToolbar: 'Обтекание рисунка текстом',

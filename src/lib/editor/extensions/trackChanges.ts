@@ -132,7 +132,8 @@ export const FormatChange = revisionMark('formatChange', 'data-format-change').e
 export const UNFORMATTED_MARKS = new Set(['link', 'bookmark', 'comment', 'insertion', 'deletion', 'formatChange']);
 const formatOf = (marks: readonly PMMark[]) => marks.filter((m) => !UNFORMATTED_MARKS.has(m.type.name));
 
-const UNFORMATTED_ATTRS = new Set(['revMark', 'revFormat', 'joinPrev', 'sectionBreak']);
+/** Block attrs that say nothing about how a paragraph looks. */
+export const UNFORMATTED_ATTRS = new Set(['revMark', 'revFormat', 'joinPrev', 'sectionBreak']);
 export function blockFormat(type: string, attrs: Record<string, unknown>): BlockFormat {
   return { type, attrs: Object.fromEntries(Object.entries(attrs).filter(([k, v]) => !UNFORMATTED_ATTRS.has(k) && v != null)) };
 }

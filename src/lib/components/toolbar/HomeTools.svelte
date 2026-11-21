@@ -9,6 +9,7 @@
   import { closeMenu } from '../ribbon/menu.svelte';
   import { changeIndent } from '../formatCommands';
   import { clipboardCommand, readClipboard } from '../../editor/contextMenuItems';
+  import { painterClick, painting } from '../../editor/formatPainter.svelte';
   import { stepFontSize } from '../../editor/extensions/shortcuts';
   import { emphasisCss, hasTextEffect, type CapsMode, type Emphasis } from '../../editor/extensions/textEffects';
   import TextEffectsMenu from './TextEffectsMenu.svelte';
@@ -98,6 +99,7 @@
   <IslandButton icon="cut" cmd="cut" title={`${t().contextMenu.cut} (${withShortcut('Ctrl+X')})`} disabled={!hasSelection} onclick={() => editor && clipboardCommand(editor, 'cut')} />
   </ReadGate>
   <IslandButton icon="copy" cmd="copy" title={`${t().contextMenu.copy} (${withShortcut('Ctrl+C')})`} disabled={!hasSelection} onclick={() => editor && clipboardCommand(editor, 'copy')} />
+  <ReadGate><IslandButton icon="formatPainter" cmd="formatPainter" title={`${t().toolbarExpanded.formatPainter} – ${t().toolbarExpanded.formatPainterHint}`} disabled={!editor?.isEditable} active={painting()} onclick={(e) => painterClick(editor?.state, e)} /></ReadGate>
 </div>
 
 <div class="toolbar-separator"></div>

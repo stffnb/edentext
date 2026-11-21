@@ -663,6 +663,8 @@ const uk: Messages = {
     citationNotInHf: 'Посилання на джерела в колонтитулах недоступні',
     bookmarkNotInHf: 'Закладки в колонтитулах недоступні',
     clearFormatting: 'Очистити форматування',
+    formatPainter: 'Формат за зразком',
+    formatPainterHint: 'Двічі клацніть, щоб застосувати в кількох місцях',
   },
   image: {
     wrapToolbar: 'Обтікання зображення текстом',
