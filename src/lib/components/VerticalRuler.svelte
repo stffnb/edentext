@@ -19,6 +19,7 @@
   } = $props();
 
   const MAX_MARGIN_CM = 10; // the page setup fields' own limit
+  const LABEL_CLEAR_PX = 9; // a number this close to the bottom handle would sit under it
   let strip = $state<HTMLDivElement>();
 
   const scale = $derived(zoom / 100);
@@ -112,7 +113,7 @@
       {#each ticks as cm (cm)}
         {#if onPage(cm)}
           <div class="tick" style="top: {y(originCm + cm)}px">
-            {#if cm > 0 && cm < textCm && cm % labelEvery === 0}<span>{cm}</span>{/if}
+            {#if cm > 0 && y(textCm - cm) >= LABEL_CLEAR_PX && cm % labelEvery === 0}<span>{cm}</span>{/if}
           </div>
         {/if}
       {/each}
@@ -190,7 +191,8 @@
     width: 22px;
     box-sizing: border-box;
     background: var(--color-surface);
-    border: 1px solid color-mix(in srgb, var(--color-text) 25%, transparent);
+    /* Drawn inside rather than as a border, so marks count from the page's own top edge. */
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 25%, transparent);
     border-radius: 2px;
     overflow: hidden;
   }
