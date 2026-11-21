@@ -814,6 +814,24 @@
     "p1 header 76,41 60x30"
    ]
   },
+  "tests/corpus/23-formula-rows.docx": {
+   "pages": 2,
+   "lines": 352,
+   "ms": 400,
+   "starts": [
+    "Lorem ipsum dolor sit amet, consectetur ",
+    "Row 46"
+   ]
+  },
+  "tests/corpus/23-formula-rows.odt": {
+   "pages": 2,
+   "lines": 352,
+   "ms": 200,
+   "starts": [
+    "Lorem ipsum dolor sit amet, consectetur ",
+    "Row 46"
+   ]
+  },
   "tests/corpus/word/01-flow.docx": {
    "pages": 2,
    "lines": 120,
