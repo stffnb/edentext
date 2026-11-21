@@ -170,6 +170,33 @@
         "proxy": { "$ref": "#/definitions/proxy" }
       }
     },
+    "templates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "builtIn", "save", "items", "volume"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "builtIn": { "type": "boolean" },
+        "save": { "type": "boolean" },
+        "items": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["url"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "name": { "$ref": "#/definitions/localText" },
+              "description": { "$ref": "#/definitions/localText" },
+              "url": { "type": "string", "pattern": "^(https?://[^\\s]+|[^:\\s]+)\\.(ott|odt|dotx|docx)$" },
+              "preview": { "type": "string", "pattern": "^(https?://[^\\s]+|[^:\\s]+)$" }
+            }
+          }
+        },
+        "volume": { "type": "object" }
+      }
+    },
     "nodeSelector": { "$ref": "#/definitions/stringMap" },
     "tolerations": { "type": "array", "items": { "type": "object" } },
     "affinity": { "type": "object" }
@@ -195,11 +222,18 @@
     "relay",
     "ai",
     "dictation",
+    "templates",
     "nodeSelector",
     "tolerations",
     "affinity"
   ],
   "definitions": {
+    "localText": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "object", "minProperties": 1, "propertyNames": { "pattern": "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$" }, "additionalProperties": { "type": "string" } }
+      ]
+    },
     "proxy": {
       "type": "object",
       "additionalProperties": false,
