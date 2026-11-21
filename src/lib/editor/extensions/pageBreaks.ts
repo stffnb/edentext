@@ -441,9 +441,12 @@ export function placeTogether(run: () => void): void {
 }
 
 function columnPlace(view: EditorView, el: HTMLElement): (() => void) | void {
-  if (!el.isConnected || el.dataset.columnX == null) return;
+  const end = el.dataset.columnEnd != null;
+  if (!el.isConnected || (el.dataset.columnX == null && !end)) return;
   const left = leftInEditor(view, el) - (parseFloat(el.style.marginLeft) || 0);
-  const marginLeft = `${Math.round(frameColumn(view, el) + (Number(el.dataset.columnX) || 0) - left)}px`;
+  // Against the column's far edge, or at its own x from the near one.
+  const x = end ? frameColumnWidth(view, el) - el.offsetWidth : Number(el.dataset.columnX) || 0;
+  const marginLeft = `${Math.round(frameColumn(view, el) + x - left)}px`;
   return () => { el.style.marginLeft = marginLeft; };
 }
 
@@ -459,6 +462,16 @@ export function freeDragX(view: EditorView, el: HTMLElement, x: unknown): number
 function frameColumn(view: EditorView, el: HTMLElement): number {
   const box = el.parentElement?.closest<HTMLElement>('td, th, .textbox-content');
   return box ? leftInEditor(view, box) + (parseFloat(getComputedStyle(box).paddingLeft) || 0) : columnLeft(view, el);
+}
+
+// The width of the column frameColumn starts.
+function frameColumnWidth(view: EditorView, el: HTMLElement): number {
+  const box = el.parentElement?.closest<HTMLElement>('td, th, .textbox-content');
+  let block = el;
+  while (block.parentElement && block.parentElement !== view.dom) block = block.parentElement;
+  const of = box ?? (view.dom as HTMLElement), cs = getComputedStyle(of), sec = getComputedStyle(block);
+  const inset = (side: string) => (box ? 0 : parseFloat(sec.getPropertyValue(`--sec-inset-${side}`)) || 0);
+  return of.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0) - inset('left') - inset('right');
 }
 
 // The body column's left edge: the page margin, and in a section with margins of its own
@@ -617,7 +630,7 @@ export function placePageFrames(view: EditorView, grid: PageGrid): void {
   placeFrames(Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>(PLACED), (el) => [view, el]), grid);
 }
 
-const PLACED = '[data-page-y], [data-column-x]';
+const PLACED = '[data-page-y], [data-column-x], [data-column-end]';
 
 // A pane lays out exactly as the view it mirrors, so its frames take that view's
 // margins instead of each measuring them again; one whose frames differ is measured.
