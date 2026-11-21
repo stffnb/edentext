@@ -79,11 +79,8 @@ EdenText adalah pengolah kata berbasis web yang tangguh untuk segala keperluan, 
 - **Asisten AI opsional** — dengan penyedia pilihan Anda sendiri atau model lokal;
   menjawab pertanyaan tentang dokumen dan mengeditnya sebagai perubahan terlacak. Dapat
   dimatikan; permintaan langsung dikirim ke penyedia, tanpa melalui server EdenText
-- **Dikte** — bicaralah dan teksnya muncul di posisi kursor, dengan tanda baca yang diucapkan
-  dalam bahasa Inggris dan Jerman. Memakai pengenalan ucapan browser (Chrome, Edge, Safari), yang
-  mungkin mengirim audio ke layanan ucapannya; EdenText meminta izin sebelum pertama kali
-  dipakai. Atau gunakan server pengenalan ucapan Anda sendiri, mis. Whisper di komputer ini,
-  yang berfungsi di browser apa pun dan di aplikasi desktop
+- **Dikte** — bicaralah dan teksnya muncul di posisi kursor, melalui pengenalan ucapan browser
+  atau server pengenalan ucapan Anda sendiri, mis. Whisper
 - **Private by Design** — dokumen Anda tidak pernah keluar dari komputer, semua
   pemrosesan berjalan secara lokal; dapat bekerja offline sebagai aplikasi yang diinstal. Editor
   tidak mengirim apa pun, kecuali jika Anda mengaktifkan asisten AI, yang mengirim ke penyedia

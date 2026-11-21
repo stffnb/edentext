@@ -78,10 +78,8 @@ EdenText is a web-based, powerful word processor for everything from quick notes
 - **Optional AI assistant** — with your own provider or a local model;
   answers questions about the document and edits it as tracked changes. Can be
   switched off; requests go directly to the provider, without an EdenText server
-- **Dictation** — speak and the text appears at the cursor, with spoken punctuation in
-  English and German. Uses the browser’s speech recognition (Chrome, Edge, Safari), which
-  may send the audio to its speech service; EdenText asks before the first time; or your own
-  speech server, e.g. Whisper on this computer, in any browser and the desktop app
+- **Dictation** — speak and the text appears at the cursor, through the browser’s speech
+  recognition or your own speech server, e.g. Whisper
 - **Private by design** — your documents never leave your computer, all
   processing runs locally; works offline as an installable app. The editor sends nothing,
   unless you switch on the AI assistant, which sends to the provider you chose. A shared session sends the document, encrypted, through the relay to the others in it. Dictation uses the browser’s speech recognition, which may send the audio to its speech service.
