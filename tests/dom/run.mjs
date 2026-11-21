@@ -1174,6 +1174,26 @@ try {
   const wantH = [17, 17, 30, 30];
   check(exact.length === 4 && exact.every((r, i) => Math.abs(r.h - wantH[i]) < 0.5) && exact.every((r) => r.firstLines < 0.5 || r.h > 20),
     `an exact row keeps its height and clips what does not fit (${exact.map((r) => `${r.h.toFixed(2)}/${r.firstLines.toFixed(1)}`).join(', ')})`);
+  // Exact rows of any height settle: once measured, an idle document dispatches nothing,
+  // or the view would put the selection back before a click's caret is read.
+  const lineCell = (text) => ({ type: 'tableCell', attrs: { verticalAlign: 'middle', borderBottom: '1.5pt solid #000000' },
+    content: [{ type: 'paragraph', content: [words(text)] }] });
+  await page.evaluate((d) => document.querySelector('.tiptap').editor.commands.setContent(d), { type: 'doc', content: [
+    { type: 'table', content: Array.from({ length: 40 }, (_, i) => ({ type: 'tableRow', attrs: { rowHeight: 15 + i * 0.17, fixedHeight: true },
+      content: [lineCell(`row ${i}`), lineCell('x')] })) },
+  ] });
+  await settle(page, true);
+  await page.waitForTimeout(1500);
+  const idleRuns = await page.evaluate(async () => {
+    const ed = document.querySelector('.tiptap').editor;
+    let n = 0;
+    const count = () => n++;
+    ed.on('transaction', count);
+    await new Promise((r) => setTimeout(r, 800));
+    ed.off('transaction', count);
+    return n;
+  });
+  check(idleRuns === 0, `exact rows settle: an idle document dispatches nothing (${idleRuns} transactions)`);
   // Every cell of a row sits below the widest line on the row's top edge, a thin-topped
   // cell beside a thick-topped one too, as LibreOffice spaces rows (tableCellBorders.ts).
   const edgeCell = (top, lines) => ({ type: 'tableCell', attrs: { borderTop: top },

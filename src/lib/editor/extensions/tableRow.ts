@@ -63,8 +63,12 @@ function measureExact(view: EditorView): DecorationSet {
       const avail = h + (parseFloat(cs.paddingBottom) || 0) - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
       // The row's height holds the cell's borders too (probed: 0.5pt lines, 255tw rows
       // 4.5mm apart), and the ::after's own pull (less the excess it already takes) counts.
-      const pull = (parseFloat(getComputedStyle(td, '::after').marginTop) || 0) + (parseFloat(td.style.getPropertyValue('--exact-over')) || 0);
-      const over = Math.round(((bottom - top) * scale - avail + td.offsetHeight - td.clientHeight + pull) * 10) / 10;
+      const applied = parseFloat(td.style.getPropertyValue('--exact-over')) || 0;
+      const pull = (parseFloat(getComputedStyle(td, '::after').marginTop) || 0) + applied;
+      const measured = Math.round(((bottom - top) * scale - avail + td.offsetHeight - td.clientHeight + pull) * 10) / 10;
+      // The border comes in whole pixels and flips by one as the excess is applied, so a
+      // measurement within a pixel of the applied excess keeps it: no endless re-measuring.
+      const over = applied && Math.abs(measured - applied) <= 1.05 ? applied : measured;
       if (over <= 0.5) continue;
       const $pos = view.state.doc.resolve(view.posAtDOM(td, 0));
       for (let d = $pos.depth; d > 0; d--) {
