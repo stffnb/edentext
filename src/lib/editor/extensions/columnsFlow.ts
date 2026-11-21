@@ -225,7 +225,6 @@ export const ColumnsFlow = Extension.create({
       },
       view(editorView) {
         if (isSplitPane(editorView)) return {};
-        let destroyed = false;
         function fragments(): Fragment[] {
           const out: Fragment[] = [];
           editorView.state.doc.forEach((node, offset) => {
@@ -642,20 +641,8 @@ export const ColumnsFlow = Extension.create({
         }
         flowDebugAccessors.set(editorView, buildDebug);
 
-        // A face still loading re-breaks every line once it lands, and a split made on the
-        // fallback's metrics is not joined back (HYSTERESIS_PX), so the flow waits for it.
-        function fontsPending(): boolean {
-          const fonts = typeof document === 'undefined' ? undefined : document.fonts;
-          if (!fonts) return false;
-          void editorView.dom.offsetHeight; // layout requests the faces the text needs
-          if (fonts.status !== 'loading') return false;
-          void fonts.ready.then(() => { if (!destroyed) schedule(); });
-          return true;
-        }
-
         function run() {
           rafId = null;
-          if (fontsPending()) return;
           // The budget covers the decoration update too: it asks for a page recalc, whose
           // new geometry can change the next height again — a pump of its own.
           if (passes >= MAX_FLOW_PASSES) return;
@@ -690,7 +677,6 @@ export const ColumnsFlow = Extension.create({
           },
           // The plugin's state outlives this view, so a later one must find no frame pending.
           destroy() {
-            destroyed = true;
             if (rafId !== null) cancelAnimationFrame(rafId);
             rafId = null;
             flowDebugAccessors.delete(editorView);
