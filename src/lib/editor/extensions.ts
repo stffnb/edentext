@@ -86,6 +86,7 @@ import { PageNumber, PageCount, ChapterField } from './extensions/pageField';
 import { AutoCorrect } from './extensions/autoCorrect';
 import { WordCompletion } from './extensions/wordCompletion';
 import { Dictation } from './extensions/dictation';
+import { FormatPainter } from './extensions/formatPainter';
 import { AutoText } from './extensions/autoText';
 import { HEADING_LEVELS, MAX_HEADING_LEVEL } from '../styles/headings';
 import { setOutline, styleSheet } from '../styles/sheet.svelte';
@@ -371,6 +372,8 @@ export const extensions = [
   AutoText,
   // Spoken words at the caret, from the dictation session (docs/architecture/dictation.md).
   Dictation,
+  // The picked format lands on the next mouse selection, in the body and in a zone alike.
+  FormatPainter,
   SearchReplace.configure({ sheet: styleSheet }),
   // Word/LibreOffice key bindings that aren't TipTap defaults.
   Shortcuts,

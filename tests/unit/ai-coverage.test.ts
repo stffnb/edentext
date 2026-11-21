@@ -351,7 +351,7 @@ const RIBBON: Record<string, Entry> = {
   protect: na('a password is the user\'s to choose; the assistant never sees or sets it'),
   collab: na('sharing a document is the user\'s decision, and its link carries the key'),
   docProperties: check(page({ title: 'Report', keywords: 'a, b' }), () => loadDocProperties().title === 'Report'),
-  paste: same('text'), cut: same('mark:deletion'), copy: UI, pastePlain: same('text'),
+  paste: same('text'), cut: same('mark:deletion'), copy: UI, formatPainter: UI, pastePlain: same('text'),
   growFont: same('mark:textStyle.fontSize'), shrinkFont: same('mark:textStyle.fontSize'),
   fontFamily: same('mark:textStyle.fontFamily'), fontSize: same('mark:textStyle.fontSize'),
   changeCase: same('mark:textStyle.caps'), 'case-none': same('mark:textStyle.caps'), 'case-uppercase': same('mark:textStyle.caps'),

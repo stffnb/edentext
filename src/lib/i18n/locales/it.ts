@@ -652,6 +652,8 @@ const it: Messages = {
     citationNotInHf: 'Le citazioni non sono disponibili in intestazioni e piè di pagina',
     bookmarkNotInHf: 'I segnalibri non sono disponibili in intestazioni e piè di pagina',
     clearFormatting: 'Cancella formattazione',
+    formatPainter: 'Copia formato',
+    formatPainterHint: 'Doppio clic per applicarlo in più punti',
   },
   image: {
     wrapToolbar: 'Disposizione testo per l\'immagine',

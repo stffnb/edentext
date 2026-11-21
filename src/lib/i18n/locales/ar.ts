@@ -672,6 +672,8 @@ const ar: Messages = {
     citationNotInHf: 'الاقتباسات غير متاحة في رأس الصفحة وتذييلها',
     bookmarkNotInHf: 'الإشارات المرجعية غير متاحة في رأس الصفحة وتذييلها',
     clearFormatting: 'مسح التنسيق',
+    formatPainter: 'نسخ التنسيق',
+    formatPainterHint: 'انقر نقرًا مزدوجًا لتطبيقه على عدة مواضع',
   },
   image: {
     wrapToolbar: 'التفاف النص حول الصورة',
