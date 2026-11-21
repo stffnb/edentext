@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { compare, summarize, diffCauses, ROOTS, toLines } from './compare.mjs';
 import { devServer, settle, extractLayout } from '../browser.mjs';
-import { LOCAL_DOCS } from '../localDocs.mjs';
+import { LOCAL_DOCS, LONG_DOCS } from '../localDocs.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
@@ -132,13 +132,14 @@ async function editorRender(browser, file) {
 // ------------------------------------------------------------------- driver
 
 // An argument that names no file is a regular expression over the corpus' file names,
-// as the layout run's is; a path and a pattern combine.
+// as the layout run's is; a path and a pattern combine. Long local documents run only
+// when a path or a pattern names them.
 function corpus(args) {
   const paths = args.filter((a) => existsSync(resolve(a)));
   const pattern = args.filter((a) => !paths.includes(a));
   const only = pattern.length ? new RegExp(pattern.join('|')) : null;
   const out = [];
-  for (const p of paths.length ? paths : [join(HERE, '..', 'corpus'), LOCAL_DOCS]) {
+  for (const p of paths.length ? paths : [join(HERE, '..', 'corpus'), LOCAL_DOCS, ...(only ? [LONG_DOCS] : [])]) {
     const abs = resolve(p);
     if (!existsSync(abs)) continue;
     try {

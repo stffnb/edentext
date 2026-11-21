@@ -113,7 +113,7 @@ export async function openApp(port, opts = {}) {
 // count and document height to stop moving. An image still decoding has no height
 // yet and would settle the layout at a page count it leaves again a frame later.
 // `loaded`: the caller knows the file is in (a document may be empty for good).
-export async function settle(page, loaded = false) {
+export async function settle(page, loaded = false, timeout = 180_000) {
   // Each call waits out its own quiet period: a key left from the last call would pass at
   // once, before a change just asked for (an index update) has even landed.
   await page.evaluate(() => { window.__parityKey = undefined; });
@@ -137,7 +137,7 @@ export async function settle(page, loaded = false) {
     return performance.now() - (w.__paritySince ?? 0) > 3000;
     // Polled, not per frame: the predicate walks every spacer and index row, and on a
   // 60-page document doing that each frame starves the layout it is waiting for.
-  }, loaded, { timeout: 180_000, polling: 500 });
+  }, loaded, { timeout, polling: 500 });
 }
 
 // Runs in the browser: every rendered word and picture with its page and mm position.

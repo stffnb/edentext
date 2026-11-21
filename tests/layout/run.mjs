@@ -5,14 +5,14 @@ import { execFileSync, execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname, basename, extname, relative } from 'node:path';
+import { join, dirname, basename, extname, relative, sep } from 'node:path';
 import { ROOT, checker, devServer, openApp, settle } from '../browser.mjs';
-import { LOCAL_DOCS, localDocs, coreSet } from '../localDocs.mjs';
+import { LOCAL_DOCS, LONG_DOCS, localDocs, longDocs, coreSet } from '../localDocs.mjs';
 
 // `[regex]` limits the run by file name, `--no-cache` re-converts every document;
 // LAYOUT_UPDATE=1 records the baseline for this engine and platform instead of holding
-// the run against it. LAYOUT_LOCAL=all|0 runs every local document (tests/localDocs.mjs)
-// or none in place of their core set; `--plan` prints that choice and stops.
+// the run against it. LAYOUT_LOCAL=all|0 runs every local document, long ones too
+// (tests/localDocs.mjs), or none in place of their core set; `--plan` prints the choice.
 const PORT = +(process.env.LAYOUT_PORT ?? 4188);
 const SEEDS = +(process.env.LAYOUT_SEEDS ?? 10);
 const UPDATE = process.env.LAYOUT_UPDATE === '1';
@@ -44,23 +44,37 @@ const LOCAL_BASE = join(LOCAL_DOCS, 'layout-baseline.json');
 const localAll = (() => { try { return JSON.parse(readFileSync(LOCAL_BASE, 'utf8')); } catch { return {}; } })();
 const localKnown = localAll[KEY] ?? {};
 const localFresh = {};
-const sha = (p) => createHash('sha1').update(readFileSync(p)).digest('hex').slice(0, 16);
+const hashes = new Map();
+const sha = (p) => hashes.get(p) ?? hashes.set(p, createHash('sha1').update(readFileSync(p)).digest('hex').slice(0, 16)).get(p);
 const isLocal = (file) => file.startsWith(LOCAL_DOCS);
-const nameOf = (file) => (isLocal(file) ? `local/${basename(file)}` : file.startsWith(ROOT) ? relative(ROOT, file) : `fuzz/${basename(file)}`);
+const isLong = (file) => file.startsWith(LONG_DOCS + sep);
+const nameOf = (file) => (isLong(file) ? `local/long/${basename(file)}` : isLocal(file) ? `local/${basename(file)}`
+  : file.startsWith(ROOT) ? relative(ROOT, file) : `fuzz/${basename(file)}`);
 const MODE = process.env.LAYOUT_LOCAL ?? 'core';
+const dupes = new Set();
 {
-  const all = MODE === '0' ? [] : localDocs();
+  // A byte-identical copy runs once, under the first name; long documents never join the
+  // core set, only the full run or a pattern naming them.
+  const first = new Map();
+  const unique = (f) => {
+    if (!first.has(sha(f))) return first.set(sha(f), f);
+    console.log(`local duplicate: ${nameOf(f)} is ${nameOf(first.get(sha(f)))}, it can go`);
+    dupes.add(nameOf(f));
+  };
+  const all = (MODE === '0' ? [] : localDocs()).filter(unique);
+  const long = (MODE === '0' ? [] : longDocs()).filter(unique);
   // A changed file is a new document: what was recorded describes another one.
   const rec = (f) => { const e = localKnown[nameOf(f)]; return e && e.hash === sha(f) ? e : null; };
   const fresh = all.filter((f) => !rec(f));
   const core = coreSet(all.filter(rec).map((f) => ({ name: f, ms: rec(f).ms, traits: rec(f).traits ?? [] })));
-  const take = MODE === 'all' || only ? all : [...fresh, ...core.map((c) => c.name)];
+  const take = MODE === 'all' || only ? [...all, ...long] : [...fresh, ...core.map((c) => c.name)];
   docs.push(...take);
   if (all.length) {
     const secs = Math.round(core.reduce((t, c) => t + c.ms, 0) / 1000);
     console.log(`local documents (${LOCAL_DOCS}): ${all.length}, of them ${fresh.length} new, ${core.length} the core set (~${secs}s)`
-      + (MODE === 'all' || only ? '; all of them run' : `; LAYOUT_LOCAL=all runs the other ${all.length - take.length}`));
+      + (MODE === 'all' || only ? `; all of them run, and ${long.length} long one(s)${only ? ' the pattern names' : ''}` : `; LAYOUT_LOCAL=all runs the other ${all.length - take.length}`));
   }
+  if (long.length && MODE !== 'all' && !only) console.log(`long documents: ${long.length} wait for LAYOUT_LOCAL=all`);
   if (args.includes('--plan')) {
     for (const c of core) console.log(`  ${String(c.ms).padStart(6)}ms  ${basename(c.name)}  +${c.adds.length}: ${c.adds.slice(0, 6).join(' ')}${c.adds.length > 6 ? ' …' : ''}`);
     for (const f of fresh) console.log(`     new     ${basename(f)}`);
@@ -89,9 +103,12 @@ function loPages(paths) {
   const inDir = join(work, 'in'), out = join(work, 'pdf');
   mkdirSync(inDir, { recursive: true }); mkdirSync(out, { recursive: true });
   const named = todo.map((p, i) => { const f = join(inDir, `${i}-${basename(p)}`); copyFileSync(p, f); return f; });
-  execFileSync('soffice', ['--headless', '--norestore', `-env:UserInstallation=file://${work}/profile`, '--convert-to',
-    'pdf:writer_pdf_Export:{"IsSkipEmptyPages":{"type":"boolean","value":"false"}}', '--outdir', out, ...named],
-    { stdio: 'pipe', timeout: 900_000 });
+  // Long documents take LibreOffice minutes each; past the limit, what it did convert counts.
+  try {
+    execFileSync('soffice', ['--headless', '--norestore', `-env:UserInstallation=file://${work}/profile`, '--convert-to',
+      'pdf:writer_pdf_Export:{"IsSkipEmptyPages":{"type":"boolean","value":"false"}}', '--outdir', out, ...named],
+      { stdio: 'pipe', timeout: 900_000 + 300_000 * todo.filter(isLong).length });
+  } catch (err) { console.log(`LibreOffice stopped: ${String(err.message).split('\n')[0]}`); }
   named.forEach((f, i) => {
     const pdf = join(out, basename(f, extname(f)) + '.pdf');
     const m = existsSync(pdf) && /Pages:\s+(\d+)/.exec(execFileSync('pdfinfo', [pdf], { encoding: 'utf8' }));
@@ -231,23 +248,26 @@ try {
     writeFileSync(f, Buffer.from(odt, 'base64'));
     docs.push(f);
   }
-  const todo = docs.filter((d) => !only || only.test(d));
+  const todo = docs.filter((d) => !only || only.test(d)).sort((a, b) => isLong(a) - isLong(b));
   const retried = new Set();
   const lo = LO ? loPages(todo) : new Map();
 
   for (const file of todo) {
     const name = nameOf(file);
     const local = isLocal(file);
+    // A long document gets minutes to load and settle, and its reload minutes to tear down
+    // the long one before it; one that needs more is a finding.
+    const wait = isLong(file) ? 5 : 1;
     try {
     // A fresh editor for each document, so its settle cannot be the previous one's.
     await page.evaluate(() => localStorage.clear());
-    await page.reload({ waitUntil: 'load' });
-    await page.waitForSelector('.tiptap', { timeout: 30_000 });
+    await page.reload({ waitUntil: 'load', timeout: 30_000 * wait });
+    await page.waitForSelector('.tiptap', { timeout: 30_000 * wait });
     await page.evaluate(() => { window.__loadAt = performance.now(); });
     await page.setInputFiles('input.file-input[accept*=".odt"]', file);
     // The document's name says the file is in; a document may hold nothing to wait for.
-    await page.waitForFunction((n) => document.querySelector('.doc-name-input')?.value.startsWith(n), basename(file, extname(file)), { timeout: 60_000 });
-    await settle(page, true);
+    await page.waitForFunction((n) => document.querySelector('.doc-name-input')?.value.startsWith(n), basename(file, extname(file)), { timeout: 60_000 * wait });
+    await settle(page, true, 180_000 * wait);
     // The layout's own time: from the file going in to the last change settle saw, so the
     // quiet period it waits out afterwards is not part of the measurement.
     const ms = await page.evaluate(() => Math.round((window.__paritySince - window.__loadAt) / 100) * 100);
@@ -343,7 +363,7 @@ try {
     }
   }
   if (Object.keys(localFresh).length) {
-    const here = new Set(localDocs().map(nameOf));
+    const here = new Set([...localDocs(), ...longDocs()].map(nameOf).filter((n) => !dupes.has(n)));
     const kept = Object.entries({ ...localKnown, ...localFresh }).filter(([n]) => here.has(n)).sort();
     writeFileSync(LOCAL_BASE, JSON.stringify({ ...localAll, [KEY]: Object.fromEntries(kept) }, null, 1) + '\n');
   }
