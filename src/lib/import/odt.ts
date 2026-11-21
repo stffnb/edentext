@@ -586,6 +586,25 @@ function shapeStyleAttrs(gp: PropMap, attrs: Record<string, unknown>, defaultSol
   }
 }
 
+// A frame anchored to the box itself (text:anchor-type="frame") lies beside the box's
+// paragraphs, not in one: it joins the paragraph after it, as one anchored there would,
+// or the one before it, or gets one of its own, so a figure frame keeps its picture.
+function anchorBoxFrames(children: Element[]): Element[] {
+  const isPara = (c: Element | undefined) => !!c && c.namespaceURI === NS.text && (c.localName === 'p' || c.localName === 'h');
+  const out: Element[] = [];
+  let waiting: Element[] = [];
+  for (const c of children) {
+    if (c.namespaceURI === NS.draw) { waiting.push(c); continue; }
+    if (isPara(c) && waiting.length) { c.prepend(...waiting); waiting = []; }
+    out.push(c);
+  }
+  if (!waiting.length) return out;
+  let host = out[out.length - 1];
+  if (!isPara(host)) { host = waiting[0].ownerDocument.createElementNS(NS.text, 'text:p'); out.push(host); }
+  host.append(...waiting);
+  return out;
+}
+
 // The block content of a text box / shape: one table where the frame holds nothing
 // else, otherwise its text:* children and tables via the cell path, at least one paragraph.
 function textBoxContent(children: Element[], ctx: Ctx, widthCm: number | null, attrs: Record<string, unknown>): Node[] {
@@ -677,7 +696,7 @@ function textBoxNode(frame: Element, textBoxEl: Element, ctx: Ctx): Node {
   if (attrs.fillColor === null && !(parseFloat(gp['draw:opacity'] ?? '100') < 100)
     && ctx.resolver.hasCommonGraphicStyle(frame.getAttributeNS(NS.draw, 'style-name'))) delete attrs.fillColor;
   boxTextFlow(frame, ctx, attrs);
-  return { type: 'textBox', attrs, content: textBoxContent(Array.from(textBoxEl.children), ctx, wCm, attrs) };
+  return { type: 'textBox', attrs, content: textBoxContent(anchorBoxFrames(Array.from(textBoxEl.children)), ctx, wCm, attrs) };
 }
 
 // A <draw:frame> holding a formula object → a formula node. The MathML lives either
