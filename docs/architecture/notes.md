@@ -84,9 +84,11 @@ break the file's own rule that a pass must not read its own last answer:
 1. `collectLeaves` skips the notes that are out of flow and walks the section for the rest.
 2. Each footnote's height is measured once: out of flow at a fixed width, it does not
    depend on the page it lands on.
-3. `placeLeaves(reserved)` takes a per-page reservation off each `contentEnd`. A bounded
-   loop (`MAX_NOTE_FIT_PASSES` = 3) re-runs it until the reservation and the pages its own
-   anchors land on agree.
+3. `placeLeaves` takes the notes off each leaf's `contentEnd` as it goes: those the leaves
+   above it on the page have claimed, plus the leaf's own while anchor and note both fit.
+   The first anchor that does not ends the page at its line, so a row or a line moves on
+   with its note. Reserving a page's notes up front and re-placing until both agree never
+   settles where a row fits without its note but not with it (`26-notes-rows`).
 4. The anchor's page comes from the leaf that holds it plus the breaks above it: every
    break carries the leaf offset it applies from (`naturalY`), so an anchor below a line
    split follows its half of the paragraph onto the next page.

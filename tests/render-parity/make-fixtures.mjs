@@ -522,6 +522,23 @@ await write('25-hf-fields.docx', [{
   children: Array.from({ length: 190 }, (_, i) => para(`${i + 1}. ${LOREM}`)),
 }]);
 
+// 26. Footnotes anchored in table rows at a page end: each row fits there without its
+// note but not with it, so the row and its note have to move on together.
+await write('26-notes-rows.docx', [{
+  properties: { page },
+  children: [new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: Array.from({ length: 60 }, (_, i) => new TableRow({ children: [
+      new TableCell({ children: [new Paragraph({ children: [
+        new TextRun(`Row ${i + 1}`), ...(i >= 30 && i % 2 === 0 ? [new FootnoteReferenceRun((i - 28) / 2)] : []),
+      ] })] }),
+      cell(`Value ${i + 1}`),
+    ] })),
+  })],
+}], undefined, {
+  footnotes: Object.fromEntries(Array.from({ length: 15 }, (_, k) => [k + 1, { children: [para(`Note ${k + 1}. ${LOREM}`)] }])),
+});
+
 // ODT twins, written by LibreOffice itself — the dominant ODT producer, so they carry
 // its own conventions (percentage font sizes, Text Body, list styles) and exercise the
 // foreign-document path our own exporter never produces.
