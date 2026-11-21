@@ -41,6 +41,17 @@ argument limits the run to the documents whose name matches. LibreOffice's count
 cached by the document's hash in `node_modules/.cache/layout-pages.json`: a count is the
 file's and never our code's, so a run after an editor change has nothing to convert —
 `--no-cache` after installing or removing a font, which does change what it renders.
+**Local documents**, real-world files that may not be committed, lie in `edentext-testdocs/`
+beside the main checkout (`tests/localDocs.mjs`, `EDENTEXT_TESTDOCS`), with their own
+`layout-baseline.json` and the page-count cache, so no name reaches the repository. So that
+the folder can grow without the run growing with it, each recorded document keeps its
+traits (node and mark types by format, in body and zones, sections, mixed page sizes,
+header/footer frames and tables, over 20 and 100 pages) and a run takes only the **core set**: the
+fewest documents, cheapest load first, that between them still show every trait, plus any
+not yet recorded, which are recorded on that first run, findings included: a local
+document fails only with more findings than it was recorded with. A document adding no trait costs
+the everyday run nothing. `--plan` prints the choice; `LAYOUT_LOCAL=all` runs the whole
+folder (before a release, after a change to pagination or an importer), `LAYOUT_LOCAL=0` none.
 The **monkey run** replays `MONKEY_OPS` random keys and commands per seed
 (`MONKEY_SEED`, `MONKEY_RUNS`, `MONKEY_DOC`; the whole run fails past `MONKEY_DEADLINE_MIN`, 45) on a corpus document — typing, formatting,
 lists, tables, notes, frames and columns — and checks after each:
