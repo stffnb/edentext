@@ -654,6 +654,7 @@ const es: Messages = {
     bookmarkNotInHf: 'Los marcadores no están disponibles en encabezados ni pies',
     clearFormatting: 'Borrar formato',
     formatPainter: 'Copiar formato',
+    formatPainterShort: 'Formato',
     formatPainterHint: 'Haga doble clic para aplicarlo en varios lugares',
   },
   image: {

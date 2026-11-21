@@ -664,6 +664,7 @@ const el: Messages = {
     bookmarkNotInHf: 'Οι σελιδοδείκτες δεν είναι διαθέσιμοι σε κεφαλίδες/υποσέλιδα',
     clearFormatting: "Απαλοιφή μορφοποίησης",
     formatPainter: "Πινέλο μορφοποίησης",
+    formatPainterShort: 'Μορφή',
     formatPainterHint: "Διπλό κλικ για εφαρμογή σε πολλά σημεία",
   },
   image: {

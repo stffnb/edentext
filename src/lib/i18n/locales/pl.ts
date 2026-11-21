@@ -669,6 +669,7 @@ const pl: Messages = {
     bookmarkNotInHf: 'Zakładki nie są dostępne w nagłówkach ani stopkach',
     clearFormatting: 'Wyczyść formatowanie',
     formatPainter: 'Malarz formatów',
+    formatPainterShort: 'Format',
     formatPainterHint: 'Kliknij dwukrotnie, aby zastosować w kilku miejscach',
   },
   image: {

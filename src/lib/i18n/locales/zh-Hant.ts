@@ -655,6 +655,7 @@ const zhHant: Messages = {
     bookmarkNotInHf: '頁首/頁尾中無法使用書籤',
     clearFormatting: '清除格式',
     formatPainter: '複製格式',
+    formatPainterShort: '格式',
     formatPainterHint: '按兩下可連續套用到多處',
   },
   image: {

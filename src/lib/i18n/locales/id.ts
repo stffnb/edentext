@@ -652,6 +652,7 @@ const id: Messages = {
     bookmarkNotInHf: 'Bookmark tidak tersedia di header/footer',
     clearFormatting: 'Hapus pemformatan',
     formatPainter: 'Pewarna Format',
+    formatPainterShort: 'Format',
     formatPainterHint: 'Klik dua kali untuk menerapkannya di beberapa tempat',
   },
   image: {

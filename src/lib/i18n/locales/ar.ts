@@ -673,6 +673,7 @@ const ar: Messages = {
     bookmarkNotInHf: 'الإشارات المرجعية غير متاحة في رأس الصفحة وتذييلها',
     clearFormatting: 'مسح التنسيق',
     formatPainter: 'نسخ التنسيق',
+    formatPainterShort: 'تنسيق',
     formatPainterHint: 'انقر نقرًا مزدوجًا لتطبيقه على عدة مواضع',
   },
   image: {
