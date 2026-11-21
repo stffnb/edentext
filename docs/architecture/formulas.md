@@ -98,6 +98,11 @@ which is also where LibreOffice puts a formula alone in an ODF paragraph; insert
 empty paragraph, or switching one alone in its paragraph to display, centers the paragraph.
 Word stores no size for a formula, and neither do we.
 
+A display formula is a block, so the caret shim ProseMirror puts after a paragraph-ending atom
+would open a line of its own below it; `editor.css` takes the shim out of the flow, as for an
+image alone on its line. Measured without it: a table row holding only a formula 37.5px against
+LibreOffice's 19.1px, a 63-page guide at 67 pages (`23-formula-rows` in the corpus holds it).
+
 ## A pasted formula is a picture, not a formula
 
 Real documents mix both: one will carry OMML formulas *and* equations its author pasted
