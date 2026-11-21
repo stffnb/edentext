@@ -756,9 +756,11 @@ try {
     await page.evaluate(() => document.querySelector('.tiptap').editor.commands.undo());
     await page.waitForTimeout(800);
     const undone = await geo();
-    const moved = dragged.line - before.line;
-    check(Math.abs(moved - 2 * 96 / 2.54) < 3 && label === '4 cm' && Math.abs(undone.line - before.line) < 1 && Math.abs(dragged.tick - before.tick) < 0.5,
-      `dragging the top margin 2 cm moves the text (${moved.toFixed(1)}px, ${label}), an undo puts it back (${(undone.line - before.line).toFixed(1)}px) and the horizontal ruler stays over the page`);
+    // Measured from the sheet: earlier blocks leave a first-page header that may reach
+    // below the 2 cm margin, so the text starts at whichever lies lower.
+    const lands = dragged.line - dragged.sheet.top;
+    check(Math.abs(lands - 4 * 96 / 2.54) < 3 && label === '4 cm' && Math.abs(undone.line - before.line) < 1 && Math.abs(dragged.tick - before.tick) < 0.5,
+      `dragging the top margin 2 cm down puts the text at 4 cm (${lands.toFixed(1)}px, ${label}), an undo puts it back (${(undone.line - before.line).toFixed(1)}px) and the horizontal ruler stays over the page`);
     await page.locator('.ribbon-tab', { hasText: /^View$/ }).first().click();
     await page.locator('[data-cmd="ruler"]').first().click();
     await page.waitForTimeout(300);
@@ -2064,6 +2066,7 @@ try {
 
   // Zooming out step by step leaves nothing of the page's earlier edges on the dark
   // backdrop: the scaled page's clip sits on fractional pixels, which Chromium kept painted.
+  // The vertical ruler's strip beside the page is no such edge.
   await page.mouse.move(700, 500);
   await page.keyboard.down('Control');
   for (let i = 0; i < 40; i++) { await page.mouse.wheel(0, 60); await page.waitForTimeout(30); }
@@ -2078,6 +2081,8 @@ try {
     const at = (x, y) => (y * img.width + x) * 4;
     const pane = document.querySelector('.editor').getBoundingClientRect();
     const papers = Array.from(document.querySelectorAll('.paper'), (p) => p.getBoundingClientRect());
+    const vruler = document.querySelector('.vruler .strip')?.getBoundingClientRect();
+    const onRuler = (x, y) => vruler && x > vruler.left - 1 && x < vruler.right + 1 && y > vruler.top - 1 && y < vruler.bottom + 1;
     const top = Math.ceil(pane.top + 40), bottom = Math.floor(pane.bottom - 20), bg = at(Math.ceil(pane.left) + 20, bottom - 5);
     const columns = [];
     for (let x = Math.ceil(pane.left) + 2; x < pane.right - 20; x++) {
@@ -2085,7 +2090,7 @@ try {
       let n = 0;
       for (let y = top; y < bottom; y++) {
         const i = at(x, y);
-        if ([0, 1, 2].some((k) => Math.abs(data[i + k] - data[bg + k]) > 2)) n++;
+        if (!onRuler(x, y) && [0, 1, 2].some((k) => Math.abs(data[i + k] - data[bg + k]) > 2)) n++;
       }
       if (n > 20) columns.push(x);
     }
