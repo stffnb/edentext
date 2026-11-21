@@ -144,7 +144,7 @@ browser ──AES-256-GCM(kind byte + Yjs update / state vector / awareness / pi
   memory (`imageStore.ts`): the start file carries none, a new one goes to all as bytes
   (`PICTURE`) from whoever puts it in. One missing is asked of each other client in turn (`WANT`, awareness
   `peer`); a lack means not yet, so a newly confirmed client or one that got it since (`HAS`) is asked again; while nobody in the room has it: a grey box and a note. Files, autosave, clipboard and vector PDF get
-  pictures; saving, printing, PDF and copying wait for one still on its way under a notice, and fail only when nobody here has it. Leaving puts them back in.
+  pictures; saving, printing, PDF and copying wait for one still on its way under a notice, and fail only when nobody here has it. Leaving puts them back in. A web picture pasted in a session is fetched by the paster alone (`paste.ts`); its grey square waits for it, and once the paster's awareness (`paster`) is gone, the repairer turns what is left into alt text.
 - **Headers and footers** go as whole zones, so one person edits a zone at a time
   (`collab/zones.svelte.ts`, awareness field `zone`): the others see the name at it and
   cannot open it. Opened at once, the higher client id yields and may lose its first keys.

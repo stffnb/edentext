@@ -1,6 +1,7 @@
 import { Fragment, Slice } from '@tiptap/pm/model';
 import type { MarkType, Node as PMNode, Schema } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
+import { Transform } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 import { inNote } from './extensions/notes';
 import { RECORDING } from './extensions/trackChanges';
@@ -37,14 +38,21 @@ type Size = { width: number; height: number };
 /** Where a paste's fetched pictures land: the live view, and the size a picture gets in it. */
 export type PasteTarget = { view: () => EditorView | null; fit?: (src: string) => Promise<Size | null> };
 // `data`: undefined while the fetch runs, null once it failed.
-type Pending = { url: string; width: number | null; height: number | null; data?: string | null; size?: Size | null };
+type Pending = { url: string; width: number | null; height: number | null; data?: string | null; size?: Size | null; told?: boolean };
 
 // A picture being fetched stands in the document as this grey square, which carries only
-// an id: its address stays on the client that pasted it, so no other client or file gets it.
+// an id and the alt text: its address stays on the client that pasted it, so no other client
+// or file gets it. The id starts with that client's `pasteOwner`, which a session publishes.
 const pending = new Map<string, Pending>();
+export const pasteOwner = Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+const ownerOf = (id: string) => id.slice(1, 9);
+// The owners of the other clients in this client's session, who still fill their own squares.
+let present: () => string[] = () => [];
+export function pastersWith(fn: (() => string[]) | null): void { present = fn ?? (() => []); }
 const PENDING_SRC = 'data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2224%22%20height=%2224%22%20id=%22';
 const pendingSrc = (id: string) => `${PENDING_SRC}${id}%22%3E%3Crect%20width=%2224%22%20height=%2224%22%20fill=%22%23e5e7eb%22/%3E%3C/svg%3E`;
 const pendingId = (src: unknown) => (typeof src === 'string' && src.startsWith(PENDING_SRC) ? src.slice(PENDING_SRC.length).split('%22')[0] : null);
+const squareId = (node: PMNode) => (node.type.name === 'image' ? pendingId(node.attrs.src) : null);
 
 // A size the HTML states in px; the square's own size is not the picture's.
 function statedPx(img: HTMLImageElement, side: 'width' | 'height'): number | null {
@@ -124,19 +132,27 @@ function emptiedRange(doc: PMNode, pos: number): { from: number; to: number } {
  */
 export function fillPastedPictures(view: EditorView | null, more = 0): void {
   if (!view || view.isDestroyed || !pending.size) return notify(more);
-  const hits: { pos: number; node: PMNode; got: Pending }[] = [];
-  view.state.doc.descendants((node, pos) => {
-    const got = node.type.name === 'image' ? pending.get(pendingId(node.attrs.src) ?? '') : undefined;
-    if (got && got.data !== undefined) hits.push({ pos, node, got });
+  const tr = view.state.tr;
+  const failed = settleSquares(tr, (id) => pending.get(id)?.data !== undefined);
+  if (tr.docChanged) view.dispatch(tr.setMeta('addToHistory', false).setMeta(RECORDING, true));
+  notify(more + failed);
+}
+
+// Each square `due` names takes its fetched picture, or as a failed fetch its alt text, else
+// goes with the wrappers it alone filled. Returns how many failed anew. An entry stays, so a redo
+// that brings a square back fills it again.
+function settleSquares(tr: Transform, due: (id: string) => boolean): number {
+  const hits: { pos: number; node: PMNode; got?: Pending }[] = [];
+  tr.doc.descendants((node, pos) => {
+    const id = squareId(node);
+    if (id && due(id)) hits.push({ pos, node, got: pending.get(id) });
   });
-  if (!hits.length) return notify(more);
-  const tr = view.state.tr.setMeta('addToHistory', false).setMeta(RECORDING, true);
   let failed = 0;
   // Last first, so an earlier position still holds after a removal.
   for (const { pos, node, got } of hits.reverse()) {
-    const { width, height } = got;
-    const alt = String(node.attrs.alt ?? '');
-    if (got.data && got.size) {
+    const alt = String(node.attrs.alt ?? '').trim();
+    if (got?.data && got.size) {
+      const { width, height } = got;
       const ratio = got.size.height / got.size.width;
       const size = width && height ? { width, height }
         : width ? { width, height: Math.round(width * ratio) }
@@ -144,14 +160,78 @@ export function fillPastedPictures(view: EditorView | null, more = 0): void {
       tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...size, src: got.data });
       continue;
     }
-    failed++;
-    if (alt.trim()) tr.replaceWith(pos, pos + 1, view.state.schema.text(alt.trim(), node.marks));
+    // A fetch still running counts nowhere: only a file is settled before it ends.
+    if (!got || (got.data === null && !got.told)) failed++;
+    if (got?.data === null) got.told = true;
+    if (alt) tr.replaceWith(pos, pos + 1, node.type.schema.text(alt, node.marks));
     else { const { from, to } = emptiedRange(tr.doc, pos); tr.delete(from, to); }
   }
-  for (const { node } of hits) pending.delete(pendingId(node.attrs.src)!);
-  view.dispatch(tr);
-  notify(more + failed);
+  return failed;
 }
+
+// A square no client present will fill: none here fetches it, and its owner is not in the session.
+const orphaned = (gone?: Set<string>) => (id: string) => !pending.has(id)
+  && (gone ? gone.has(ownerOf(id)) : !present().includes(ownerOf(id)));
+
+/**
+ * Settles the squares whose picture nobody will bring, as a failed fetch: on loading a
+ * document, or for the owners `gone` from a session. Off the undo stack, unrecorded.
+ */
+export function dropOrphanPictures(view: EditorView | null, gone?: Iterable<string>): void {
+  if (!view || view.isDestroyed) return;
+  const tr = view.state.tr;
+  const failed = settleSquares(tr, orphaned(gone && new Set(gone)));
+  if (tr.docChanged) view.dispatch(tr.setMeta('addToHistory', false).setMeta(RECORDING, true));
+  if (!gone) notify(failed);
+}
+
+/**
+ * `value` with the squares settled in every document it holds (`type: 'doc'`): all of them
+ * for a file, which never shows one; with `orphans`, those no client present will fill.
+ */
+export function withoutPictureSquares<T>(value: T, schema: Schema, orphans = false): T {
+  // Only arrays and plain objects are walked: a font's bytes are no document.
+  const plain = (v: unknown): v is object => !!v && typeof v === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(v));
+  const holds = (v: unknown): boolean => (Array.isArray(v) ? v.some(holds) : plain(v)
+    && (pendingId((v as { attrs?: { src?: unknown } }).attrs?.src) !== null || Object.values(v).some(holds)));
+  if (!holds(value)) return value;
+  const walk = (v: unknown): unknown => {
+    if (!holds(v)) return v;
+    if (Array.isArray(v)) return v.map(walk);
+    if ((v as { type?: unknown }).type !== 'doc') return Object.fromEntries(Object.entries(v as object).map(([k, x]) => [k, walk(x)]));
+    const tr = new Transform(schema.nodeFromJSON(v));
+    settleSquares(tr, orphans ? orphaned() : () => true);
+    return tr.doc.toJSON();
+  };
+  return walk(value) as T;
+}
+
+/** A copy leaves the editor without grey squares: each is its alt text, else nothing. */
+export function copiedWithoutSquares(slice: Slice): Slice {
+  let found = false;
+  const clean = (fragment: Fragment): Fragment => {
+    const nodes: PMNode[] = [];
+    fragment.forEach((node) => {
+      if (squareId(node)) {
+        found = true;
+        const alt = String(node.attrs.alt ?? '').trim();
+        if (alt) nodes.push(node.type.schema.text(alt, node.marks));
+        return;
+      }
+      nodes.push(node.content.size ? node.copy(clean(node.content)) : node);
+    });
+    return Fragment.fromArray(nodes);
+  };
+  const content = clean(slice.content);
+  return found ? new Slice(content, slice.openStart, slice.openEnd) : slice;
+}
+
+/** Whether `doc` still holds a square whose picture is on its way. */
+export const holdsPictureSquare = (doc: PMNode): boolean => {
+  let found = false;
+  doc.descendants((node) => { found ||= squareId(node) !== null; return !found; });
+  return found;
+};
 
 /**
  * Clipboard HTML ready for the schema. A web picture becomes a grey square while `target`'s
@@ -169,7 +249,7 @@ export function localPastedHtml(html: string, target?: PasteTarget): string {
     if (LOCAL_IMAGE_SRC.test(src)) continue;
     const url = target ? webUrl(src, base) : null;
     if (url) {
-      const id = `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+      const id = `p${pasteOwner}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
       pending.set(id, { url, width: statedPx(img, 'width'), height: statedPx(img, 'height') });
       ids.push(id);
       const got = pending.get(id)!;
