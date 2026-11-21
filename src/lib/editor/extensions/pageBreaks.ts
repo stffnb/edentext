@@ -1360,7 +1360,16 @@ export const PageBreaks = Extension.create({
           // A block with fewer lines than orphan and widow control demand together has
           // no legal split point at all, so the pair needs room for the whole of it.
           const keep = lines.length < want * 2 ? lines.length : want;
-          return (lines[keep - 1].bottom - lines[0].top) / scale;
+          const next = lines[keep];
+          if (!next) return (lines[keep - 1].bottom - lines[0].top) / scale;
+          // To the next line's top, less a break already in between: the line box is what
+          // the split holds against the page end, and it ends below its glyphs.
+          let end = next.top;
+          for (const sp of el.querySelectorAll<HTMLElement>('[data-page-break-spacer]')) {
+            const r = sp.getBoundingClientRect();
+            if (r.top >= lines[0].top && r.top < next.top) end -= r.height;
+          }
+          return (end - lines[0].top) / scale;
         }
 
         function findLineSplit(
