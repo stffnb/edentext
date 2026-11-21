@@ -12,7 +12,7 @@
   import { TextSelection, type Transaction } from '@tiptap/pm/state';
   import { plainPastedSpaces, unwrapPastedBoxes } from '../editor/paste';
   import { readClickCaret } from '../editor/clickCaret';
-  import { hfIsEmpty, DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, NO_HF_FRAMES, type HfSetFrames, type HfFrame, type HfDoc, type HfZone, type HfVariant, type HfDistances, type HfSet, type HfZoneKey } from '../storage/headerFooter';
+  import { hfIsEmpty, DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, NO_HF_FRAMES, type HfSetFrames, type HfFrame, type HfDoc, type HfZone, type HfVariant, type HfDistances, type HfSet, type HfZoneKey, type PageZones } from '../storage/headerFooter';
   import { cmToPx, PX_PER_CM, type PageMargins } from '../storage/pageMargins';
   import { type Orientation } from '../storage/pageOrientation';
   import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
@@ -55,6 +55,7 @@
     pageNumbering = DEFAULT_PAGE_NUMBERING,
     zoneHeights = $bindable([]),
     zoneIntrusions = $bindable([]),
+    pageZones = $bindable([]),
     interactive = true,
     onlyPage = 0,
     bodyEditor = null,
@@ -96,6 +97,8 @@
      *  (px, same layout) — a letterhead block the body wraps below; for a footer, how far
      *  its frames' gaps reach above its text. */
     zoneIntrusions?: number[][];
+    /** The pages a field's text makes a zone taller or shorter on than `zoneHeights` says. */
+    pageZones?: PageZones[];
     /** False in a split view's second pane: it draws the zones, it does not edit them. */
     interactive?: boolean;
     /** A page-grid cell's page: the cell clips every other, so only its zones are drawn. */
@@ -318,11 +321,20 @@
     const root = measureRoot;
     if (!root) return;
     void sourceVersion; // a frame past the zone changes no box size
-    const boxes = Array.from(root.querySelectorAll<HTMLElement>('.hf-measure-box'));
+    void filledKeys;
+    const version = `${sourceVersion}:${fontVersion}`;
+    const boxes = Array.from(root.querySelectorAll<HTMLElement>('.hf-measure-box:not([data-filled])'));
+    const filled = Array.from(root.querySelectorAll<HTMLElement>('.hf-measure-box[data-filled]'));
     const n = HF_ZONE_KEYS.length;
     const read = () => {
       const next = setSig.map((_, i) => HF_ZONE_KEYS.map((_, k) => boxes[i * n + k]?.offsetHeight ?? 0));
-      if (String(next) !== String(untrack(() => renderedHeights))) renderedHeights = next;
+      if (String(next) !== String(untrack(() => sourceHeights))) sourceHeights = next;
+      // A copy no longer shown keeps its height while the zone and the fonts stay as they
+      // are: a page count going back and forth must not fall back to the unfilled height.
+      const own = version === filledVersion ? { ...untrack(() => filledHeights) } : {};
+      filledVersion = version;
+      for (const el of filled) if (el.offsetHeight) own[el.dataset.filled!] = el.offsetHeight;
+      if (JSON.stringify(own) !== JSON.stringify(untrack(() => filledHeights))) filledHeights = own;
       const past = setSig.map((_, i) => HF_ZONE_KEYS.map((key, k) => (key.startsWith('header') ? intrusion(boxes[i * n + k]) : rise(boxes[i * n + k]))));
       if (String(past) !== String(untrack(() => zoneIntrusions))) zoneIntrusions = past;
     };
@@ -330,15 +342,118 @@
     // so the height is observed rather than read once. The first report comes after the
     // frame's own layout: a read here would force one, ~0.4 s on a long document in WebKit.
     const ro = new ResizeObserver(read);
-    for (const el of boxes) ro.observe(el);
+    for (const el of [...boxes, ...filled]) ro.observe(el);
     return () => ro.disconnect();
   });
+
+  // A zone with page fields is as tall as their text makes it on each page: a longer
+  // number wraps a line, and the body has to clear the zone the page really shows. Pages
+  // whose fields are equally wide share one filled copy, so a long document measures few.
+  const FIELD_NODES = ['"pageNumber"', '"pageCount"', '"chapterField"'];
+  type Filled = { key: string; id: string; index: number; zoneKey: HfZoneKey; zone: HfZone; page: number; pages: number };
+  let fontVersion = $state(0);
+  $effect(() => {
+    const fonts = document.fonts;
+    const arrived = () => { advances.clear(); fontVersion++; };
+    fonts?.addEventListener?.('loadingdone', arrived);
+    return () => fonts?.removeEventListener?.('loadingdone', arrived);
+  });
+  let ruler: CanvasRenderingContext2D | null | undefined;
+  const advances = new Map<string, string>();
+  // What tells two texts of a field apart in layout: a number or letters cannot break, so
+  // only their length and width count; anything else is compared as the text it is.
+  type FieldFont = { el: Element; font: string; transform: string };
+  function fieldFont(el: Element): FieldFont {
+    const cs = getComputedStyle(el);
+    const font = `${cs.fontStyle} ${cs.fontVariantCaps === 'small-caps' ? 'small-caps ' : ''}${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    return { el, font, transform: cs.textTransform };
+  }
+  function fieldShape({ font, transform }: FieldFont, text: string): string {
+    if (!/^[\p{Nd}A-Za-z]+$/u.test(text)) return text;
+    if (ruler === undefined) {
+      try { ruler = document.createElement('canvas').getContext('2d'); } catch { ruler = null; }
+    }
+    if (!ruler) return text;
+    const shown = transform === 'uppercase' ? text.toUpperCase() : transform === 'lowercase' ? text.toLowerCase() : text;
+    const id = `${font}\n${shown}`;
+    let shape = advances.get(id);
+    if (shape === undefined) {
+      ruler.font = font;
+      advances.set(id, shape = `${shown.length}:${Math.round(ruler.measureText(shown).width * 64)}`);
+    }
+    return shape;
+  }
+  let filledZones = $derived.by(() => {
+    void sourceVersion;
+    void fontVersion;
+    const list = new Map<string, Filled>();
+    // Per page: its set, its header's place in HF_ZONE_KEYS and the copies its zones match.
+    const ofPage: ([number, number, string, string] | undefined)[] = [];
+    const fields = new Map<string, FieldFont[]>();
+    // Every pane measures all pages, a page-grid cell too: they report into one state.
+    for (let page = 1; page <= numPages; page++) {
+      if (blankPages.includes(page)) continue;
+      const index = Math.min(sectionOf(page), setSig.length - 1);
+      const variant = variantFor(page, index);
+      const keys = (['header', 'footer'] as const).map((zone) => {
+        const zk = zoneKey(zone, variant), id = `${index}:${zk}`, sig = setSig[index][zk];
+        const src = sig && FIELD_NODES.some((f) => sig.includes(f)) ? sources[id] : undefined;
+        if (!src) return '';
+        let els = fields.get(id);
+        if (!els) fields.set(id, els = Array.from(src.querySelectorAll('[data-page-field]'), fieldFont));
+        const total = sig.includes('"pageCount"') ? numPages : 0;
+        const key = `${id}|${contentWidthOf(page)}|${els.map((f) => fieldShape(f, fieldText(f.el, page, total, zone))).join('|')}`;
+        const known = list.get(key);
+        if (known) known.pages++;
+        else list.set(key, { key, id, index, zoneKey: zk, zone, page, pages: 1 });
+        return key;
+      });
+      if (keys[0] || keys[1]) ofPage[page - 1] = [index, HF_ZONE_KEYS.indexOf(zoneKey('header', variant)), keys[0], keys[1]];
+    }
+    // The copy most pages of a zone match stands for the zone; the others are exceptions.
+    const usual: Record<string, Filled> = {};
+    for (const f of list.values()) if (!usual[f.id] || f.pages > usual[f.id].pages) usual[f.id] = f;
+    return { list: [...list.values()], ofPage, usual };
+  });
+  let filledKeys = $derived(filledZones.list.map((f) => f.key).join('\n'));
+  let filledHeights = $state<Record<string, number>>({});
+  let filledVersion = '';
+  let sourceHeights = $state<number[][]>([]);
+  // Each zone's height: with fields, the one most of its pages show.
+  let renderedHeights = $derived(sourceHeights.map((row, i) => row.map((px, k) =>
+    filledHeights[filledZones.usual[`${i}:${HF_ZONE_KEYS[k]}`]?.key] || px)));
+  // The pages whose zones differ from that, raw and fitted to their share of the page.
+  let ownBands = $derived.by(() => {
+    const out = new Map<number, { k: number; raw: [number, number]; fitted: [number, number] }>();
+    filledZones.ofPage.forEach((entry, at) => {
+      if (!entry) return;
+      const [index, k, header, footer] = entry;
+      const usual = [renderedHeights[index]?.[k] ?? 0, renderedHeights[index]?.[k + 1] ?? 0];
+      const raw: [number, number] = [filledHeights[header] || usual[0], filledHeights[footer] || usual[1]];
+      if (raw[0] === usual[0] && raw[1] === usual[1]) return;
+      out.set(at + 1, { k, raw, fitted: fit(index, at + 1 === sectionFirstPage(index), raw[0], raw[1]) });
+    });
+    return out;
+  });
+  $effect(() => {
+    const next = Array.from(ownBands, ([page, b]): PageZones => ({
+      page, header: HF_ZONE_KEYS[b.k], footer: HF_ZONE_KEYS[b.k + 1], headerPx: b.fitted[0], footerPx: b.fitted[1],
+    }));
+    if (JSON.stringify(next) !== JSON.stringify(untrack(() => pageZones))) pageZones = next;
+  });
+  // A page's zone as measured and as cut to its band.
+  function bandOf(zone: HfZone, page: number): { raw: number; fitted: number } {
+    const own = ownBands.get(page), z = zone === 'header' ? 0 : 1;
+    if (own) return { raw: own.raw[z], fitted: own.fitted[z] };
+    const index = Math.min(sectionOf(page), setSig.length - 1);
+    const k = HF_ZONE_KEYS.indexOf(zoneKey(zone, variantFor(page, index)));
+    return { raw: renderedHeights[index]?.[k] ?? 0, fitted: zoneHeights[index]?.[k] ?? 0 };
+  }
 
   // LibreOffice gives a page's header and footer together at most 80% of the room between
   // the edges they start from, the footer first, and clips what runs past (probed): the
   // body keeps the rest, so a zone taller than the page cannot push it off.
   const HF_MAX_SHARE = 0.8;
-  let renderedHeights = $state<number[][]>([]);
   $effect(() => {
     const next = renderedHeights.map((row, i) => row.map((_, k) => fittedPx(i, row, k)));
     if (String(next) !== String(untrack(() => zoneHeights))) zoneHeights = next;
@@ -346,10 +461,12 @@
   // Zone k's band within the cap; HF_ZONE_KEYS pairs each header with its footer (k ^ 1).
   // A clipped zone keeps a line, since a band of 0 reads as one not yet measured.
   function fittedPx(i: number, row: number[], k: number): number {
-    const header = row[k & ~1], footer = row[k | 1];
     if (!row[k]) return row[k] ?? 0;
+    return fit(i, HF_ZONE_KEYS[k].endsWith('First'), row[k & ~1], row[k | 1])[k & 1];
+  }
+  // A header and its footer within the cap, on a set's first page or its others.
+  function fit(i: number, first: boolean, header: number, footer: number): [number, number] {
     const s = sets[i];
-    const first = HF_ZONE_KEYS[k].endsWith('First');
     const restM = s?.margins ?? pageMargins;
     const m = first ? s?.marginsFirst ?? restM : restM;
     const d = (first ? s?.distancesFirst ?? s?.distances : s?.distances) ?? hfDistances;
@@ -358,14 +475,12 @@
     const room = HF_MAX_SHARE * (boxOf(sectionFirstPage(i)).height - top - bottom);
     // Cut to its share but never below a line, and never grown past its content.
     const foot = footer && Math.min(footer, Math.max(MIN_ZONE_PX, room - (header ? MIN_ZONE_PX : 0)));
-    return k & 1 ? foot : Math.min(header, Math.max(MIN_ZONE_PX, room - foot));
+    return [header && Math.min(header, Math.max(MIN_ZONE_PX, room - foot)), foot];
   }
   // The band a page's zone is cut to, or null where its content fits.
   function clipOf(zone: HfZone, page: number): number | null {
-    const index = Math.min(sectionOf(page), setSig.length - 1);
-    const k = HF_ZONE_KEYS.indexOf(zoneKey(zone, variantFor(page, index)));
-    const fitted = zoneHeights[index]?.[k] ?? 0;
-    return fitted < (renderedHeights[index]?.[k] ?? 0) ? fitted : null;
+    const { raw, fitted } = bandOf(zone, page);
+    return fitted < raw ? fitted : null;
   }
 
   // The body text a header's frames set against it keep clear: down to the frame's
@@ -407,7 +522,7 @@
   function bodyTopOf(page: number): number {
     const index = Math.min(sectionOf(page), setSig.length - 1);
     const key = zoneKey('header', variantFor(page, index));
-    const band = setSig[index]?.[key] ? zoneHeights[index]?.[HF_ZONE_KEYS.indexOf(key)] ?? 0 : 0;
+    const band = setSig[index]?.[key] ? bandOf('header', page).fitted : 0;
     return Math.max(cmToPx(marginsOf(page).top), band ? distancesOf(page).header + band : 0);
   }
 
@@ -499,6 +614,14 @@
     return formatOrdinal(pageNumberAt(page), sets[sectionOf(page)]?.pageNumberFormat ?? pageNumbering.format);
   }
 
+  // What a field shows on a page: the chapter there, the page count or the page's label.
+  // The count stays decimal, as the field LibreOffice and Word write does.
+  function fieldText(el: Element, page: number, total: number, zone: HfZone): string {
+    const kind = el.getAttribute('data-page-field');
+    return kind === 'chapter' ? chapterOn(chapterStarts, page, Number(el.getAttribute('data-level')) || 1, zone)
+      : kind === 'count' ? String(total) : pageLabel(page);
+  }
+
   // Clone the zone's source, replace the placeholder text in every page-field span with
   // the real value (current page number, or the total page count), then lay out its tabs.
   // A zone that only moves to another page keeps its clone and has its fields' text
@@ -513,10 +636,7 @@
         made = [src, version];
       }
       for (const el of Array.from(node.querySelectorAll('[data-page-field]'))) {
-        const kind = el.getAttribute('data-page-field');
-        const text = kind === 'chapter' ? chapterOn(chapterStarts, page, Number(el.getAttribute('data-level')) || 1, zone)
-          // The count stays decimal, as the field LibreOffice and Word write does.
-          : kind === 'count' ? String(total) : pageLabel(page);
+        const text = fieldText(el, page, total, zone);
         const only = el.firstChild;
         if (only instanceof Text && !only.nextSibling) {
           if (only.data !== text) { only.data = text; changed = true; }
@@ -795,6 +915,16 @@
         {/if}
       </div>
     {/each}
+  {/each}
+  {#each filledZones.list as f (f.key)}
+    {@const sig = setSig[f.index]?.[f.zoneKey] ?? ''}
+    <div
+      class="hf-zone hf-measure-box"
+      data-filled={f.key}
+      use:pageDir={pageRtl}
+      style="width: {contentWidthOf(f.page)}px;{frameVars(frameOf(f.index, f.zoneKey), f.zone === 'header')}"
+      use:fillZone={[f.page, sig.includes('"pageCount"') ? numPages : 0, sources[f.id], sig.includes('"chapterField"') ? chapterStarts : null, f.zone, pageLabel(f.page), sourceVersion]}
+    ></div>
   {/each}
 </div>
 
