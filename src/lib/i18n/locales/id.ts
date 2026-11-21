@@ -44,7 +44,7 @@ const id: Messages = {
     spellLanguageHint: 'Untuk seluruh dokumen; disimpan bersama file',
     autoCorrectHint: 'Tanda kutip, tanda pisah, huruf kapital, dan tabel penggantian',
     open: 'Buka…',
-    rulerHint: 'Inden dan penghentian tab di atas halaman',
+    rulerHint: 'Inden dan penghentian tab di atas halaman, margin di sampingnya',
     formattingMarksHint: 'Tanda paragraf, spasi, dan tab di layar',
     pageLabels: 'Nomor halaman di samping halaman',
     pageLabelsHint: 'Nomor lembar di kanan bawah setiap halaman; tidak dicetak',
@@ -811,6 +811,8 @@ const id: Messages = {
     firstLineIndent: 'Inden baris pertama',
     leftIndent: 'Inden kiri',
     rightIndent: 'Inden kanan',
+    topMargin: 'Margin atas',
+    bottomMargin: 'Margin bawah',
     tabType: {
       left: 'Tab kiri',
       center: 'Tab tengah',

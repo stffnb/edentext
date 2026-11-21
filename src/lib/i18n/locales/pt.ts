@@ -44,7 +44,7 @@ const pt: Messages = {
     spellLanguageHint: 'Para todo o documento; guardado com o ficheiro',
     autoCorrectHint: 'Aspas, travessões, maiúsculas e a tabela de substituições',
     open: 'Abrir…',
-    rulerHint: 'Avanços e tabulações acima da página',
+    rulerHint: 'Avanços e tabulações acima da página, margens ao lado',
     formattingMarksHint: 'Marcas de parágrafo, espaços e tabulações no ecrã',
     pageLabels: 'Números de página ao lado da página',
     pageLabelsHint: 'O número da folha no canto inferior direito de cada página; não é impresso',
@@ -812,6 +812,8 @@ const pt: Messages = {
     firstLineIndent: 'Avanço da primeira linha',
     leftIndent: 'Avanço à esquerda',
     rightIndent: 'Avanço à direita',
+    topMargin: 'Margem superior',
+    bottomMargin: 'Margem inferior',
     tabType: {
       left: 'Tabulação à esquerda',
       center: 'Tabulação centrada',

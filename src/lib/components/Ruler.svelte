@@ -3,6 +3,7 @@
   import { PX_PER_CM, type PageMargins } from '../storage/pageMargins';
   import { activeTabStops, OPEN_TABS_DIALOG_EVENT, type TabAlign, type TabStop } from '../editor/extensions/tabStops';
   import { t } from '../i18n/i18n.svelte';
+  import { scaleMarks, snapCm } from './rulerScale';
 
   // Horizontal ruler: the tab stops and indents of the block the cursor is in.
   // Positions are cm from the text margin the block starts at, the attr's own origin:
@@ -20,10 +21,7 @@
   } = $props();
 
   const TYPES: TabAlign[] = ['left', 'center', 'right', 'decimal'];
-  const SNAP_CM = 0.05;
   const DRAG_OFF_PX = 18; // pulled this far off the ruler = drop the stop
-  const SUB_TICK_GAP_PX = 8; // quarter/half marks need this spacing, which also clears a label
-  const LABEL_GAP_PX = 16; // a two-digit label plus air
 
   let type = $state<TabAlign>('left');
   let strip: HTMLDivElement;
@@ -48,18 +46,12 @@
   // cm from the starting text margin → px within the strip, and back.
   const px = (cm: number) => (originCm + sign * cm) * PX_PER_CM * scale;
   const cmAt = (clientX: number) =>
-    Math.round((sign * ((clientX - strip.getBoundingClientRect().left) / scale / PX_PER_CM - originCm)) / SNAP_CM) * SNAP_CM;
+    snapCm(sign * ((clientX - strip.getBoundingClientRect().left) / scale / PX_PER_CM - originCm));
   // Marks stay on the page; the sheet beside a narrower page is shaded as margin.
   const onPage = (cm: number) => cm >= -startMargin && cm <= pageCm - startMargin;
 
   const textCm = $derived(Math.max(0, pageCm - margins.left - margins.right));
-  const ticks = $derived(Array.from({ length: Math.ceil(pageCm) + 1 }, (_, i) => i - Math.floor(startMargin)));
-  // Between the cm marks: quarters, else halves, else none, whichever the zoom leaves room for.
-  const subStep = $derived([0.25, 0.5].find((step) => step * PX_PER_CM * scale >= SUB_TICK_GAP_PX) ?? 0);
-  const subTicks = $derived(subStep ? ticks.flatMap((cm) =>
-    Array.from({ length: 1 / subStep - 1 }, (_, i) => cm + (i + 1) * subStep)) : []);
-  // Zoomed far out, only every 2nd or 5th cm keeps its number.
-  const labelEvery = $derived([1, 2, 5].find((n) => n * PX_PER_CM * scale >= LABEL_GAP_PX) ?? 10);
+  const { ticks, subTicks, labelEvery } = $derived(scaleMarks(startMargin, pageCm, scale));
 
   // Marker glyphs in a shared 10×10 box: L / ⊥ / ⅃, plus ⊥ with a dot for decimal. The
   // stem is the stop's own position, so it stays centred in the box and the foot's
@@ -128,7 +120,7 @@
     } else if (target.kind === 'indentRight') {
       // Measured from the right text edge inwards, mirroring the left indent. Snapped
       // again: the pointer's own snap doesn't survive the subtraction from textCm.
-      const snapped = Math.round(Math.max(0, textCm - cm) / SNAP_CM) * SNAP_CM;
+      const snapped = snapCm(Math.max(0, textCm - cm));
       editor?.chain().focus().setIndentRight(snapped).run();
     } else {
       editor?.chain().focus().setIndentFirst(cm - info.indent).run();

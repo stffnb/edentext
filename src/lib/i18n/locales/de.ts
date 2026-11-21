@@ -44,7 +44,7 @@ const de: Messages = {
     spellLanguageHint: 'Für das ganze Dokument; wird mit der Datei gespeichert',
     autoCorrectHint: 'Anführungszeichen, Striche, Großschreibung und die Ersetzungstabelle',
     open: 'Öffnen…',
-    rulerHint: 'Einzüge und Tabstopps über der Seite',
+    rulerHint: 'Einzüge und Tabstopps über der Seite, Ränder daneben',
     formattingMarksHint: 'Absatzmarken, Leerzeichen und Tabulatoren am Bildschirm',
     pageLabels: 'Seitenzahlen neben der Seite',
     pageLabelsHint: 'Die Blattnummer rechts unten neben jeder Seite; wird nicht gedruckt',
@@ -814,6 +814,8 @@ const de: Messages = {
     firstLineIndent: 'Erstzeileneinzug',
     leftIndent: 'Linker Einzug',
     rightIndent: 'Rechter Einzug',
+    topMargin: 'Oberer Seitenrand',
+    bottomMargin: 'Unterer Seitenrand',
     tabType: {
       left: 'Linker Tabstopp',
       center: 'Zentrierter Tabstopp',

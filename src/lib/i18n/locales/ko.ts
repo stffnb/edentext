@@ -46,7 +46,7 @@ const ko: Messages = {
     spellLanguageHint: '문서 전체에 적용되며 파일과 함께 저장됩니다',
     autoCorrectHint: '따옴표, 대시, 대문자 및 바꾸기 목록',
     open: '열기…',
-    rulerHint: '페이지 위의 들여쓰기와 탭 위치',
+    rulerHint: '페이지 위에는 들여쓰기와 탭 위치, 옆에는 여백',
     formattingMarksHint: '화면에 단락 기호, 공백 및 탭 표시',
     pageLabels: '페이지 옆에 페이지 번호 표시',
     pageLabelsHint: '각 페이지 오른쪽 아래의 일련번호이며 인쇄되지 않습니다',
@@ -816,6 +816,8 @@ const ko: Messages = {
     firstLineIndent: '첫 줄 들여쓰기',
     leftIndent: '왼쪽 들여쓰기',
     rightIndent: '오른쪽 들여쓰기',
+    topMargin: '위쪽 여백',
+    bottomMargin: '아래쪽 여백',
     tabType: {
       left: '왼쪽 탭',
       center: '가운데 탭',
