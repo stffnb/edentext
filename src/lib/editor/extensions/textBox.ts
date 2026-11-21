@@ -1008,7 +1008,8 @@ class TextBoxView {
     if (a.wrap !== 'through' && this.pastZone()) {
       applyRunThrough(d, this.offX(), this.offY(), true, a.wrapFromPage, a.wrapFromBody, a.zIndex);
     } else if (a.wrap !== 'through' && this.inZone()) {
-      runInZone(this.view, d, a.wrap, this.offX(), this.offY(), a.wrapDist, a.zIndex);
+      const edge = a.wrap === 'right' || (a.wrap === 'topBottom' && a.wrapAlign === 'right') ? 'right' : a.wrap === 'topBottom' && a.wrapAlign === 'center' ? 'center' : 'left';
+      runInZone(this.view, d, edge, this.offX(), this.offY(), a.wrapDist, a.zIndex);
     } else if (a.wrap === 'left' || a.wrap === 'right') {
       d.style.float = a.wrap;
       d.style.margin = frameMargins(a.wrap, a.wrapOffset, this.wrapperWidth(), null, a.wrapDist);
