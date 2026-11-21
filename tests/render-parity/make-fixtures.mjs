@@ -496,6 +496,21 @@ await write('23-formula-rows.docx', [{
   ],
 }]);
 
+// 24. An index under a heading, mid-page and longer than the rest of the page: its rows
+// are paragraphs, so heading and index start there and the index breaks between rows.
+await write('24-index-under-heading.docx', [{
+  properties: { page },
+  children: [
+    para(LOREM), para(LOREM), para(LOREM), para(LOREM), para(LOREM),
+    para('Overview', { run: { bold: true }, p: { keepNext: true } }),
+    new TableOfContents('Contents', { hyperlink: true, headingStyleRange: '1-3' }),
+    ...Array.from({ length: 45 }, (_, i) => [
+      new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(`Topic ${i + 1}`)] }),
+      para(`Text of topic ${i + 1}.`),
+    ]).flat(),
+  ],
+}], undefined, { features: { updateFields: true } });
+
 // ODT twins, written by LibreOffice itself — the dominant ODT producer, so they carry
 // its own conventions (percentage font sizes, Text Body, list styles) and exercise the
 // foreign-document path our own exporter never produces.
