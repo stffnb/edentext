@@ -431,7 +431,9 @@ class TocView {
       if (top + boxes[i][1] <= vm.grid.contentBottomOf(page)) return;
       const gap = vm.grid.contentTopOf(page + 1) - top;
       if (gap <= 0) return;
-      breaks.push({ at: i, gap, height: 0 });
+      // The margin replaces the row's own space above, which its natural top included.
+      const above = i > 0 ? Math.max(0, boxes[i][0] - boxes[i - 1][0] - boxes[i - 1][1]) : parseFloat(getComputedStyle(rows[0]).marginTop) || 0;
+      breaks.push({ at: i, gap: gap + above, height: 0 });
       shift += gap;
     });
     return breaks;

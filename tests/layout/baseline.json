@@ -832,6 +832,30 @@
     "Row 46"
    ]
   },
+  "tests/corpus/24-index-under-heading.docx": {
+   "pages": 5,
+   "lines": 251,
+   "ms": 4400,
+   "starts": [
+    "Lorem ipsum dolor sit amet, consectetur ",
+    "Topic 28 ...............................",
+    "Topic 9",
+    "Text of topic 24.",
+    "Topic 40"
+   ]
+  },
+  "tests/corpus/24-index-under-heading.odt": {
+   "pages": 5,
+   "lines": 251,
+   "ms": 1000,
+   "starts": [
+    "Lorem ipsum dolor sit amet, consectetur ",
+    "Topic 28 ...............................",
+    "Text of topic 8.",
+    "Topic 24",
+    "Text of topic 39."
+   ]
+  },
   "tests/corpus/word/01-flow.docx": {
    "pages": 2,
    "lines": 120,
