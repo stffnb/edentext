@@ -48,7 +48,7 @@ const fr: Messages = {
     spellLanguageHint: 'Pour tout le document ; enregistrée avec le fichier',
     autoCorrectHint: 'Guillemets, tirets, majuscules et table de remplacement',
     open: 'Ouvrir…',
-    rulerHint: 'Retraits et tabulations au-dessus de la page',
+    rulerHint: 'Retraits et tabulations au-dessus de la page, marges sur le côté',
     formattingMarksHint: 'Marques de paragraphe, espaces et tabulations à l’écran',
     pageLabels: 'Numéros de page à côté de la page',
     pageLabelsHint: 'Le numéro de feuille en bas à droite de chaque page ; non imprimé',
@@ -822,6 +822,8 @@ const fr: Messages = {
     firstLineIndent: 'Retrait de première ligne',
     leftIndent: 'Retrait à gauche',
     rightIndent: 'Retrait à droite',
+    topMargin: 'Marge du haut',
+    bottomMargin: 'Marge du bas',
     tabType: {
       left: 'Tabulation gauche',
       center: 'Tabulation centrée',

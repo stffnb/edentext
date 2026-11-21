@@ -45,7 +45,7 @@ const en = {
     spellLanguageHint: 'For the whole document; saved with the file',
     autoCorrectHint: 'Quotes, dashes, capitals and the replacement table',
     open: 'Open…',
-    rulerHint: 'Indents and tab stops above the page',
+    rulerHint: 'Indents and tab stops above the page, margins beside it',
     formattingMarksHint: 'Paragraph marks, spaces and tabs on screen',
     pageLabels: 'Page numbers beside the page',
     pageLabelsHint: 'The sheet number at the bottom right of each page; not printed',
@@ -822,6 +822,8 @@ const en = {
     firstLineIndent: 'First line indent',
     leftIndent: 'Left indent',
     rightIndent: 'Right indent',
+    topMargin: 'Top margin',
+    bottomMargin: 'Bottom margin',
     tabType: {
       left: 'Left tab',
       center: 'Center tab',

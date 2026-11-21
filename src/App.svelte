@@ -2466,6 +2466,7 @@
     bind:extraHfSections
     {zoom}
     onZoom={setZoom}
+    onPageMargins={(m) => (layout.pageMargins = m)}
     {showFormattingMarks}
     {showFieldShading}
     {showPageLabels}

@@ -45,7 +45,7 @@ const zhHans: Messages = {
     spellLanguageHint: '适用于整个文档，随文件一起保存',
     autoCorrectHint: '引号、破折号、大写和替换表',
     open: '打开…',
-    rulerHint: '页面上方的缩进和制表位',
+    rulerHint: '页面上方显示缩进和制表位，侧边显示页边距',
     formattingMarksHint: '屏幕上的段落标记、空格和制表符',
     pageLabels: '页面旁的页码',
     pageLabelsHint: '每页右下角旁显示的页序号，不会打印',
@@ -813,6 +813,8 @@ const zhHans: Messages = {
     firstLineIndent: '首行缩进',
     leftIndent: '左缩进',
     rightIndent: '右缩进',
+    topMargin: '上边距',
+    bottomMargin: '下边距',
     tabType: {
       left: '左对齐制表位',
       center: '居中制表位',

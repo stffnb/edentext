@@ -46,7 +46,7 @@ const zhHant: Messages = {
     spellLanguageHint: '套用於整份文件，隨檔案一併儲存',
     autoCorrectHint: '引號、破折號、大寫和取代表',
     open: '開啟…',
-    rulerHint: '頁面上方的縮排和定位點',
+    rulerHint: '頁面上方顯示縮排和定位點，側邊顯示邊界',
     formattingMarksHint: '螢幕上的段落標記、空格和定位字元',
     pageLabels: '頁面旁的頁碼',
     pageLabelsHint: '每頁右下角旁顯示的頁序號，不會列印',
@@ -814,6 +814,8 @@ const zhHant: Messages = {
     firstLineIndent: '第一行縮排',
     leftIndent: '左邊縮排',
     rightIndent: '右邊縮排',
+    topMargin: '上邊界',
+    bottomMargin: '下邊界',
     tabType: {
       left: '靠左定位點',
       center: '置中定位點',

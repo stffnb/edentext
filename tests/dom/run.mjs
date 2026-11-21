@@ -715,6 +715,69 @@ try {
     `the ruler takes the caret's page and section margins: landscape, portrait, a landscape page's header (${rulers.join(' ')} cm)`);
   await page.evaluate(() => ['edentext-footer', 'edentext-hf-sections', 'edentext-page-margins'].forEach((k) => localStorage.removeItem(k)));
 
+  // The vertical ruler spans the caret's page at any zoom and shows its header's band;
+  // dragging its top margin moves the text, an undo puts it back, and the horizontal
+  // ruler keeps its place over the page. The Ruler switch takes both away.
+  {
+    await page.evaluate((d) => {
+      localStorage.setItem('edentext-doc', JSON.stringify(d));
+      localStorage.setItem('edentext-header', JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Head' }] }] }));
+    }, { type: 'doc', content: [block(words('first line')), block(words('second line'))] });
+    const geo = () => page.evaluate(() => {
+      const r = (e) => e?.getBoundingClientRect();
+      const strip = r(document.querySelector('.vruler .strip'));
+      const sheet = r(document.querySelector('.page-sheet'));
+      const line = r(document.querySelector('.tiptap-host .tiptap > p'));
+      const tick = r(document.querySelector('.ruler .tick'));
+      return { strip, sheet, line: line?.top, tick: tick && tick.left - sheet.left, zones: document.querySelectorAll('.vruler .zone').length,
+        ruler: !!document.querySelector('.ruler'), margins: getComputedStyle(document.documentElement).getPropertyValue('--user-margin-top') };
+    });
+    const spans = [];
+    for (const zoom of ['75', '100']) {
+      await page.evaluate((z) => localStorage.setItem('edentext-zoom', z), zoom);
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForSelector('.vruler .strip', { timeout: 15_000 });
+      await settle(page, true);
+      const g = await geo();
+      spans.push(Math.abs(g.strip.top - g.sheet.top) < 1.5 && Math.abs(g.strip.height - g.sheet.height) < 1.5 && g.strip.right <= g.sheet.left);
+    }
+    const before = await geo();
+    check(spans.every(Boolean) && before.zones === 1, `the vertical ruler spans its page beside it at 75% and 100%, the header as a band (${spans}, ${before.zones} band)`);
+    await page.click('.tiptap-host .tiptap > p');
+    const handle = page.locator('.vruler .handle').first();
+    const h = await handle.boundingBox();
+    await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2 + 2 * 96 / 2.54, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(1200);
+    const dragged = await geo();
+    const label = await handle.getAttribute('aria-valuetext');
+    await page.evaluate(() => document.querySelector('.tiptap').editor.commands.undo());
+    await page.waitForTimeout(800);
+    const undone = await geo();
+    const moved = dragged.line - before.line;
+    check(Math.abs(moved - 2 * 96 / 2.54) < 3 && label === '4 cm' && Math.abs(undone.line - before.line) < 1 && Math.abs(dragged.tick - before.tick) < 0.5,
+      `dragging the top margin 2 cm moves the text (${moved.toFixed(1)}px, ${label}), an undo puts it back (${(undone.line - before.line).toFixed(1)}px) and the horizontal ruler stays over the page`);
+    await page.locator('.ribbon-tab', { hasText: /^View$/ }).first().click();
+    await page.locator('[data-cmd="ruler"]').first().click();
+    await page.waitForTimeout(300);
+    const off = await geo();
+    check(!off.strip && !off.ruler && Math.abs(off.sheet.left - before.sheet.left) < 30, `the Ruler switch takes both rulers away (${!!off.strip}, ${off.ruler})`);
+    await page.locator('[data-cmd="ruler"]').first().click();
+    await page.locator('.ribbon-tab', { hasText: 'Home' }).first().click();
+
+    // A right-to-left interface puts the strip on the page's other side.
+    await page.evaluate(() => localStorage.setItem('edentext-app-language', 'ar'));
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('.vruler .strip', { timeout: 15_000 });
+    const rtl = await geo();
+    const pane = await page.evaluate(() => document.querySelector('.editor').getBoundingClientRect().toJSON());
+    const centred = Math.abs((rtl.sheet.left - pane.left) - (pane.right - rtl.sheet.right)) < 60;
+    check(rtl.strip.left >= rtl.sheet.right && centred, `under a right-to-left interface the vertical ruler stands right of the page, which stays centred`);
+    await page.evaluate(() => ['edentext-app-language', 'edentext-header', 'edentext-zoom'].forEach((k) => localStorage.removeItem(k)));
+  }
+
   // A row that may not break and is taller than a page starts on a fresh one.
   await page.evaluate((d) => localStorage.setItem('edentext-doc', JSON.stringify(d)), { type: 'doc', content: [
     ...Array.from({ length: 5 }, (_, i) => block(words(`before ${i + 1}`))),

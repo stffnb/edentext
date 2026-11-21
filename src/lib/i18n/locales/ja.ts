@@ -46,7 +46,7 @@ const ja: Messages = {
     spellLanguageHint: '文書全体に適用され、ファイルと一緒に保存されます',
     autoCorrectHint: '引用符、ダッシュ、大文字、置換テーブル',
     open: '開く…',
-    rulerHint: 'ページ上部のインデントとタブ位置',
+    rulerHint: 'ページの上にインデントとタブ位置、横に余白',
     formattingMarksHint: '画面上の段落記号、スペース、タブ',
     pageLabels: 'ページの横にページ番号',
     pageLabelsHint: '各ページの右下に表示される通し番号 (印刷されません)',
@@ -815,6 +815,8 @@ const ja: Messages = {
     firstLineIndent: '1 行目のインデント',
     leftIndent: '左インデント',
     rightIndent: '右インデント',
+    topMargin: '上余白',
+    bottomMargin: '下余白',
     tabType: {
       left: '左揃えタブ',
       center: '中央揃えタブ',

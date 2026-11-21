@@ -411,6 +411,22 @@
     return Math.max(cmToPx(marginsOf(page).top), band ? distancesOf(page).header + band : 0);
   }
 
+  /** A page's header and footer bands for the vertical ruler, px from the page top: null
+   *  where the page shows none; the open zone grows with its content. */
+  export function rulerBands(page: number) {
+    const index = Math.min(sectionOf(page), setSig.length - 1);
+    const dist = distancesOf(page);
+    const band = (zone: HfZone) => {
+      const key = zoneKey(zone, variantFor(page, index));
+      const open = interactive && hfActive === zone && editingPage === page;
+      if (!setSig[index]?.[key] && !open) return null;
+      const measured = zoneHeights[index]?.[HF_ZONE_KEYS.indexOf(key)] ?? 0;
+      const height = Math.max(measured, open ? activeContentPx - activeTrailingPx : 0, open ? MIN_ZONE_PX : 0);
+      return { top: zone === 'header' ? dist.header : boxOf(page).height - dist.footer - height, height };
+    };
+    return { header: band('header'), footer: band('footer') };
+  }
+
   // Which section a page belongs to: the count of section starts at or before it,
   // clamped to what the document actually carries.
   function sectionOf(page: number): number {
