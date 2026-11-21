@@ -53,6 +53,23 @@ describe('ODF paragraph property inheritance', () => {
       .toMatchObject({ spaceBefore: 20, spaceAfter: 12 });
   });
 
+  it('renders an unnamed block by the file\'s default style, defined or not', () => {
+    // A list item names no style, so what it leaves implicit has to be in the sheet's.
+    const file = (standard: string) => zipSync({
+      'styles.xml': strToU8(`<?xml version="1.0"?><office:document-styles ${NS}><office:styles>
+       <style:default-style style:family="paragraph"><style:text-properties fo:font-family="Example Sans"/></style:default-style>
+       ${standard}</office:styles></office:document-styles>`),
+      'content.xml': strToU8(`<?xml version="1.0"?><office:document-content ${NS}><office:body><office:text>
+       <text:list><text:list-item><text:p>Punkt</text:p></text:list-item></text:list>
+      </office:text></office:body></office:document-content>`),
+    });
+    for (const standard of ['', '<style:style style:name="Standard" style:family="paragraph"/>']) {
+      const res = importOdt(file(standard));
+      expect(JSON.stringify(res.content)).not.toContain('Example Sans');
+      expect(res.styles.paragraph['Standard']?.text.fontFamily).toBe('Example Sans');
+    }
+  });
+
   it('reads a line spacing as the ODF percentage, against the style it overrides', () => {
     expect(importOdt(odt('fo:text-align="center"')).styles.paragraph['Normal']?.para.lineHeight).toBe('1.15');
     // 100% under a 115% style is direct formatting, not the editor's implicit default.
