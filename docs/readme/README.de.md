@@ -141,6 +141,9 @@ sorgfältig weitergeben wie das Dokument selbst.
 veröffentlicht wird. Der Befehl „Zusammenarbeiten“ erscheint nur, wo die App eines findet:
 
 - **Kubernetes:** Das [Helm-Chart](../../charts/edentext) bringt das Relay standardmäßig mit.
+- **Docker:** Das Relay-Image neben dem Container-Image der App starten und im App-Container
+  `EDENTEXT_RELAY_UPSTREAM=http://relay:4390` setzen; dann leitet die App `/relay` selbst weiter.
+  Ein Compose-Beispiel steht in [`docs/self-hosting.md#collaboration`](../self-hosting.md#collaboration) (englisch).
 - **Eigener Server:** Das Relay-Image starten (Port 4390) und den vorgeschalteten Webserver
   `/relay` auf dem Host der App als WebSocket dorthin weiterleiten lassen. Das Container-Image
   der App sucht das Relay dort; ein eigener Build tut das mit
@@ -150,8 +153,8 @@ veröffentlicht wird. Der Befehl „Zusammenarbeiten“ erscheint nur, wo die Ap
   [`relay/CLAUDE.md`](../../relay/CLAUDE.md) (englisch).
 - **Entwicklung:** `npm run relay` neben `npm run dev`.
 
-Das Container-Image der App ohne ein solches Relay, das Release-Archiv und
-[edentext.app](https://edentext.app) bieten keine Sitzungen an.
+Das Container-Image der App ohne `EDENTEXT_RELAY_UPSTREAM` oder einen eigenen Proxy, das Release-Archiv
+und [edentext.app](https://edentext.app) bieten keine Sitzungen an.
 
 ## Desktop-App
 

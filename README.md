@@ -137,6 +137,9 @@ published as `ghcr.io/stffnb/edentext-relay` with each release. The Collaborate 
 only appears where the app finds one:
 
 - **Kubernetes:** the [Helm chart](charts/edentext) runs the relay by default.
+- **Docker:** run the relay image beside the app image and set
+  `EDENTEXT_RELAY_UPSTREAM=http://relay:4390` on the app container, which then forwards
+  `/relay` to it; the compose example is in [`docs/self-hosting.md#collaboration`](docs/self-hosting.md#collaboration).
 - **Your own server:** run the relay image (port 4390) and let the web server in front pass
   `/relay` on the app’s host to it, as a WebSocket. The app image looks for the relay there;
   a build of your own does with `VITE_COLLAB_RELAY=same-origin npm run build`, and
@@ -144,7 +147,7 @@ only appears where the app finds one:
   relay’s limits are environment variables, listed in [`relay/CLAUDE.md`](relay/CLAUDE.md).
 - **Development:** `npm run relay` beside `npm run dev`.
 
-The app image without such a relay, the release archive and
+The app image without `EDENTEXT_RELAY_UPSTREAM` or a proxy of your own, the release archive and
 [edentext.app](https://edentext.app) do not offer sessions.
 
 ## Desktop app

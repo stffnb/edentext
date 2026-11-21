@@ -140,6 +140,9 @@ servidor em [`relay/`](../../relay) publicado com cada versão como
 `ghcr.io/stffnb/edentext-relay`. O comando «Colaborar» só aparece onde a aplicação encontra um:
 
 - **Kubernetes:** o [chart Helm](../../charts/edentext) executa o relay por predefinição.
+- **Docker:** execute a imagem do relay ao lado da imagem da aplicação e defina
+  `EDENTEXT_RELAY_UPSTREAM=http://relay:4390` no contentor da aplicação, que passa então a encaminhar
+  `/relay` por si. Há um exemplo de compose em [`docs/self-hosting.md#collaboration`](../self-hosting.md#collaboration) (em inglês).
 - **Servidor próprio:** execute a imagem do relay (porta 4390) e configure o servidor web que
   está à frente para lhe encaminhar `/relay` no host da aplicação, como WebSocket. A imagem de
   contentor da aplicação procura o relay aí; uma compilação própria faz o mesmo com
@@ -149,8 +152,8 @@ servidor em [`relay/`](../../relay) publicado com cada versão como
   (em inglês).
 - **Desenvolvimento:** `npm run relay` ao lado de `npm run dev`.
 
-A imagem de contentor da aplicação sem esse relay, o arquivo zip da versão e
-[edentext.app](https://edentext.app) não oferecem sessões.
+A imagem de contentor da aplicação sem `EDENTEXT_RELAY_UPSTREAM` nem um proxy próprio, o arquivo zip da
+versão e [edentext.app](https://edentext.app) não oferecem sessões.
 
 ## Aplicação para computador
 

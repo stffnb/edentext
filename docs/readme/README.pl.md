@@ -140,6 +140,9 @@ może zmieniać dokument, dlatego należy przekazywać go równie ostrożnie jak
 Polecenie „Współpraca” pojawia się tylko tam, gdzie aplikacja go znajdzie:
 
 - **Kubernetes:** [chart Helm](../../charts/edentext) domyślnie uruchamia też serwer relay.
+- **Docker:** należy uruchomić obraz serwera relay obok obrazu aplikacji i ustawić w kontenerze
+  aplikacji `EDENTEXT_RELAY_UPSTREAM=http://relay:4390`; kontener sam przekazuje wtedy `/relay` do
+  serwera relay. Przykład dla compose jest w [`docs/self-hosting.md#collaboration`](../self-hosting.md#collaboration) (po angielsku).
 - **Własny serwer:** należy uruchomić obraz serwera relay (port 4390) i skonfigurować
   stojący przed nim serwer WWW tak, by przekazywał mu `/relay` na hoście aplikacji jako
   WebSocket. Obraz kontenera aplikacji szuka serwera relay właśnie tam; własna kompilacja
@@ -149,8 +152,8 @@ Polecenie „Współpraca” pojawia się tylko tam, gdzie aplikacja go znajdzie
   [`relay/CLAUDE.md`](../../relay/CLAUDE.md) (po angielsku).
 - **Rozwój:** `npm run relay` obok `npm run dev`.
 
-Obraz kontenera aplikacji bez takiego serwera relay, archiwum z wydania i
-[edentext.app](https://edentext.app) nie oferują sesji.
+Obraz kontenera aplikacji bez `EDENTEXT_RELAY_UPSTREAM` i bez własnego serwera proxy, archiwum z wydania
+i [edentext.app](https://edentext.app) nie oferują sesji.
 
 ## Aplikacja desktopowa
 

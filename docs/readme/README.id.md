@@ -142,6 +142,9 @@ yang diterbitkan bersama setiap rilis sebagai `ghcr.io/stffnb/edentext-relay`. P
 “Kolaborasi” hanya muncul jika aplikasi menemukan relay:
 
 - **Kubernetes:** [Helm chart](../../charts/edentext) menjalankan relay secara default.
+- **Docker:** jalankan image relay di samping image aplikasi dan setel
+  `EDENTEXT_RELAY_UPSTREAM=http://relay:4390` pada container aplikasi; container itu lalu meneruskan
+  `/relay` sendiri. Contoh compose ada di [`docs/self-hosting.md#collaboration`](../self-hosting.md#collaboration) (dalam bahasa Inggris).
 - **Server sendiri:** jalankan image relay (port 4390) dan atur server web di depannya agar
   meneruskan `/relay` pada host aplikasi ke relay tersebut sebagai WebSocket. Image container
   aplikasi mencari relay di sana; build sendiri melakukan hal yang sama dengan
@@ -151,7 +154,7 @@ yang diterbitkan bersama setiap rilis sebagai `ghcr.io/stffnb/edentext-relay`. P
   (dalam bahasa Inggris).
 - **Pengembangan:** `npm run relay` di samping `npm run dev`.
 
-Image container aplikasi tanpa relay seperti itu, arsip rilis, dan
+Image container aplikasi tanpa `EDENTEXT_RELAY_UPSTREAM` atau proxy sendiri, arsip rilis, dan
 [edentext.app](https://edentext.app) tidak menyediakan sesi.
 
 ## Aplikasi desktop

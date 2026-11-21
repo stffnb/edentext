@@ -145,6 +145,9 @@ Carroll, και τα δύο κοινό κτήμα.
 Η εντολή «Συνεργασία» εμφανίζεται μόνο όπου η εφαρμογή βρίσκει αναμεταδότη:
 
 - **Kubernetes:** το [Helm chart](../../charts/edentext) εκτελεί από προεπιλογή και τον αναμεταδότη.
+- **Docker:** εκτελέστε το image του αναμεταδότη δίπλα στο container image της εφαρμογής και
+  ορίστε `EDENTEXT_RELAY_UPSTREAM=http://relay:4390` στο container της εφαρμογής, που τότε προωθεί
+  μόνο του τη διαδρομή `/relay`. Παράδειγμα compose θα βρείτε στο [`docs/self-hosting.md#collaboration`](../self-hosting.md#collaboration) (στα αγγλικά).
 - **Δικός σας διακομιστής:** εκτελέστε το image του αναμεταδότη (θύρα 4390) και ρυθμίστε τον
   διακομιστή web που βρίσκεται μπροστά του να του προωθεί τη διαδρομή `/relay` στον host της
   εφαρμογής, ως WebSocket. Το container image της εφαρμογής αναζητά τον αναμεταδότη εκεί· ένα
@@ -154,8 +157,8 @@ Carroll, και τα δύο κοινό κτήμα.
   [`relay/CLAUDE.md`](../../relay/CLAUDE.md) (στα αγγλικά).
 - **Ανάπτυξη:** `npm run relay` δίπλα στο `npm run dev`.
 
-Το container image της εφαρμογής χωρίς τέτοιον αναμεταδότη, το αρχείο zip της έκδοσης και το
-[edentext.app](https://edentext.app) δεν προσφέρουν συνεδρίες.
+Το container image της εφαρμογής χωρίς `EDENTEXT_RELAY_UPSTREAM` ή δικό σας διακομιστή μεσολάβησης, το
+αρχείο zip της έκδοσης και το [edentext.app](https://edentext.app) δεν προσφέρουν συνεδρίες.
 
 ## Εφαρμογή για υπολογιστή
 

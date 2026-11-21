@@ -121,6 +121,9 @@ EdenText 是一款基于网页、功能强大的文字处理软件，从随手�
 都会以 `ghcr.io/stffnb/edentext-relay` 发布。只有在应用找到中继服务器时，才会出现“协作”命令：
 
 - **Kubernetes**：[Helm chart](../../charts/edentext) 默认会一并运行中继服务器。
+- **Docker**：与应用镜像一起运行中继服务器的镜像，并在应用容器上设置
+  `EDENTEXT_RELAY_UPSTREAM=http://relay:4390`，应用容器便会自行把 `/relay` 转发给它。compose 示例见
+  [`docs/self-hosting.md#collaboration`](../self-hosting.md#collaboration)（英文）。
 - **自己的服务器**：运行中继服务器的镜像（端口 4390），并让前面的 Web 服务器把应用所在主机上的
   `/relay` 以 WebSocket 方式转发给它。应用的容器镜像会在那里查找中继服务器；自行构建时，使用
   `VITE_COLLAB_RELAY=same-origin npm run build` 也会如此，而
@@ -128,8 +131,8 @@ EdenText 是一款基于网页、功能强大的文字处理软件，从随手�
   限制通过环境变量设置，详见 [`relay/CLAUDE.md`](../../relay/CLAUDE.md)（英文）。
 - **开发**：在 `npm run dev` 之外再运行 `npm run relay`。
 
-没有这类中继服务器的应用容器镜像、发行版压缩包以及 [edentext.app](https://edentext.app)
-都不提供会话功能。
+未设置 `EDENTEXT_RELAY_UPSTREAM`、也没有自己的代理服务器的应用容器镜像、发行版压缩包以及
+[edentext.app](https://edentext.app) 都不提供会话功能。
 
 ## 桌面应用
 
