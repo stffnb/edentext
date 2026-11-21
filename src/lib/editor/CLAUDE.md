@@ -7,6 +7,8 @@ editor's `transformPasted` in `Editor.svelte`, the first also from the zone's in
 `HeaderFooterLayer.svelte`). Both also run `plainPastedSpaces`: a block pasted with
 no-break spaces and no ordinary one (a web editor's copy) gets plain spaces back. Per-extension notes live in `extensions/CLAUDE.md`.
 
+A pasted or dropped picture arrives only as data (`data:`, a session's `idb:`, or the clipboard's file): the editor requests no other host, by decision, and `image.ts` parses no other `src`. `localPastedHtml` (both editors' `transformPastedHTML`) puts the alt text where a web picture stood, removes the wrappers it emptied (never a table cell), reads a block's `align` attribute, and reports the count as `PASTE_NOTICE_EVENT`, which `App.svelte` shows in `SaveNotice.svelte`.
+
 `package.json` pins `prosemirror-transform` to 1.12.2 via `overrides`: from 1.12.3 `removeMark` skips inline nodes with content (`textBox`, notes) that `addMark` still marks, so accepting a recorded box left its insertion mark.
 
 `authorColors.ts` hands each reviewer one colour of LibreOffice's author palette, in order of first appearance over revisions, comments and their answers alike, as LibreOffice shares one author table between them; every review view and the print path colour by it.

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { getSchema } from '@tiptap/core';
-import { Fragment, Slice } from '@tiptap/pm/model';
+import { DOMParser as PMDOMParser, Fragment, Slice } from '@tiptap/pm/model';
 import { extensions } from '../../src/lib/editor/extensions';
-import { dropRemoteImages, unwrapPastedBoxes, flattenToInline, plainPastedSpaces } from '../../src/lib/editor/paste';
+import { dropRemoteImages, localPastedHtml, PASTE_NOTICE_EVENT, unwrapPastedBoxes, flattenToInline, plainPastedSpaces } from '../../src/lib/editor/paste';
 
 const schema = getSchema(extensions);
 const para = (text: string) => schema.nodes.paragraph.create(null, schema.text(text));
@@ -43,6 +43,39 @@ describe('dropRemoteImages', () => {
     expect(out.content.firstChild!.childCount).toBe(2);
     expect(out.content.firstChild!.child(0).attrs.src).toMatch(/^data:/);
     expect(out.content.firstChild!.child(1).attrs.src).toMatch(/^idb:/);
+  });
+});
+
+describe('localPastedHtml', () => {
+  const blocks = (html: string) => {
+    const body = new DOMParser().parseFromString(localPastedHtml(html), 'text/html').body;
+    const out: string[] = [];
+    PMDOMParser.fromSchema(schema).parse(body).forEach(n => {
+      let image = '';
+      n.descendants(d => { if (d.type.name === 'image') image = 'image'; });
+      out.push(`${n.type.name}:${n.textContent}${image}`);
+    });
+    return out;
+  };
+  const web = 'https://tracker.invalid';
+  const data = 'data:image/png;base64,AA==';
+
+  it('leaves the alt text of a web picture and no block it emptied, and reports the count', () => {
+    let reported = 0;
+    const note = (e: Event) => { reported += (e as CustomEvent).detail.images; };
+    window.addEventListener(PASTE_NOTICE_EVENT, note);
+    const out = blocks(`<p align="center"><a href="${web}"><picture><source srcset="${web}/a.webp"><img src="${web}/a.png" alt="Logo"></picture></a></p>`
+      + `<h1><img src="${web}/b.svg" alt="Title"></h1><p><img src="/relative.png"></p><div><p><a href="${web}"><img src="//tracker.invalid/c.png"></a></p></div>`
+      + `<ul><li><img src="blob:${web}/1"></li><li>item</li></ul><table><tr><td><img src="${web}/d.png"></td><td>x</td></tr></table><p>text</p>`);
+    window.removeEventListener(PASTE_NOTICE_EVENT, note);
+    expect(out).toEqual(['paragraph:Logo', 'heading:Title', 'bulletList:item', 'table:x', 'paragraph:text']);
+    expect(reported).toBe(6);
+  });
+
+  it('keeps a picture carried as data wherever it stands, and HTML without one untouched', () => {
+    const html = `<h1><img src="${data}"></h1><p><a href="${web}"><picture><source srcset="${web}/a.webp"><img src="${data}"></picture></a></p><ul><li><img src="${data}"></li></ul>`;
+    expect(localPastedHtml(html)).toBe(html);
+    expect(blocks(html)).toEqual(['heading:image', 'paragraph:image', 'bulletList:image']);
   });
 });
 
