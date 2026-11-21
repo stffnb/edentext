@@ -59,7 +59,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   import { RESYNC_NOTES } from '../editor/extensions/notes';
   import { applyPageSizeVars, pageDimsCm, type PageFormat } from '../storage/pageFormat';
   import { MAX_PAGE_COLUMNS } from '../storage/theme';
-  import { DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, NO_HF_FRAMES, hfIsEmpty, hfUsesChapterField, spreadMargins, type HfSetFrames, type HfDoc, type HfZone, type HfDistances, type HfSet, type HfZoneKey } from '../storage/headerFooter';
+  import { DEFAULT_HF_DISTANCES, HF_ZONE_KEYS, NO_HF_FRAMES, hfIsEmpty, hfUsesChapterField, spreadMargins, type HfSetFrames, type HfDoc, type HfZone, type HfDistances, type HfSet, type HfZoneKey, type PageZones } from '../storage/headerFooter';
   import { pageStartBlock, type PageBox } from '../utils/pageStrip';
   import { FORCE_PAGE_RECALC, PAGE_GAP, pageOfElement, readVerticalMargins, topInEditor, type TableBreakBand } from '../editor/extensions/pageBreaks';
   import { SHEET_CHANGED } from '../editor/extensions/listMarker';
@@ -202,6 +202,8 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   // How far a header's frames set against the body push its text down, and how far a
   // footer's frames reach above its text (HeaderFooterLayer).
   let hfZoneIntrusions = $state<number[][]>([]);
+  // The pages whose zones are another height than their set's once their fields are filled.
+  let hfPageZones = $state<PageZones[]>([]);
   const pushed = (top: number, section: number, key: HfZoneKey): number =>
     top + (hfZoneIntrusions[section]?.[HF_ZONE_KEYS.indexOf(key)] ?? 0);
   function hfReachPx(doc: HfDoc, distPx: number, footer = false, measuredPx = 0): number {
@@ -400,6 +402,21 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     return (page === first ? s?.marginsFirst ?? s?.margins : s?.margins) ?? pageMargins;
   });
 
+  // What those pages' body text has to clear, "page|top|bottom", where it is not what
+  // the page's section reserves anyway: its margin, or its own zone where that reaches further.
+  let pageReach = $derived(hfPageZones.map((z) => {
+    const i = pageBoxes[z.page - 1]?.section ?? 0;
+    const s = i > 0 ? extraHfSections[i - 1] : null;
+    const first = z.page === (i === 0 ? 1 : sectionStartPages[i - 1] ?? 1);
+    const m = marginsAt(z.page);
+    const d = (first ? s?.distancesFirst ?? s?.distances : s?.distances) ?? hfDistances ?? DEFAULT_HF_DISTANCES;
+    const top = pushed(Math.max(cmToPx(m.top), z.headerPx ? cmToPx(d.header) + z.headerPx : 0), i, z.header);
+    const bottom = Math.max(cmToPx(m.bottom), z.footerPx ? pushed(cmToPx(d.footer) + z.footerPx, i, z.footer) : 0);
+    const band = sectionReaches[Math.min(i, sectionReaches.length - 1)];
+    const own = [Math.round(top), Math.round(bottom)];
+    return own[0] === band[first ? 0 : 1] && own[1] === band[first ? 2 : 3] ? '' : [z.page, ...own].join('|');
+  }).filter(Boolean).join(','));
+
   // The page the rulers measure: the edited zone's, else the caret's, wherever the view
   // has scrolled to, so they change only when the caret moves to another page.
   let hfEditingPage = $state(1);
@@ -462,6 +479,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     s.setProperty('--pb-content-bottom-rest', `${effBottomRest}px`);
     s.setProperty('--pb-content-bottom-first', `${effBottomFirst}px`);
     s.setProperty('--pb-section-reach', sectionReach);
+    s.setProperty('--pb-page-reach', pageReach);
   });
 
   // Nudge the pageBreaks plugin to recompute with the new content area. The dispatch
@@ -487,6 +505,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     void (effTopRest + effTopFirst + effBottomRest + effBottomFirst);
     void sectionReach;
     void sectionReaches;
+    void pageReach;
     void sectionInset;
     const ed = editor;
     if (!ed) return;
@@ -2027,6 +2046,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         bind:this={hfLayers[i]}
         bind:zoneHeights={hfZoneHeights}
         bind:zoneIntrusions={hfZoneIntrusions}
+        bind:pageZones={hfPageZones}
         interactive={i === 0}
         onlyPage={multiPage ? pageOfPane(i) : 0}
       />

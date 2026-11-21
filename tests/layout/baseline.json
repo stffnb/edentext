@@ -856,6 +856,44 @@
     "Text of topic 39."
    ]
   },
+  "tests/corpus/25-hf-fields.docx": {
+   "pages": 12,
+   "lines": 974,
+   "ms": 300,
+   "starts": [
+    "1. Lorem ipsum dolor sit amet, consectet",
+    "18. Lorem ipsum dolor sit amet, consecte",
+    "35. Lorem ipsum dolor sit amet, consecte",
+    "52. Lorem ipsum dolor sit amet, consecte",
+    "69. Lorem ipsum dolor sit amet, consecte",
+    "86. Lorem ipsum dolor sit amet, consecte",
+    "103. Lorem ipsum dolor sit amet, consect",
+    "120. Lorem ipsum dolor sit amet, consect",
+    "137. Lorem ipsum dolor sit amet, consect",
+    "154. Lorem ipsum dolor sit amet, consect",
+    "170. Lorem ipsum dolor sit amet, consect",
+    "186. Lorem ipsum dolor sit amet, consect"
+   ]
+  },
+  "tests/corpus/25-hf-fields.odt": {
+   "pages": 12,
+   "lines": 974,
+   "ms": 200,
+   "starts": [
+    "1. Lorem ipsum dolor sit amet, consectet",
+    "18. Lorem ipsum dolor sit amet, consecte",
+    "35. Lorem ipsum dolor sit amet, consecte",
+    "52. Lorem ipsum dolor sit amet, consecte",
+    "69. Lorem ipsum dolor sit amet, consecte",
+    "86. Lorem ipsum dolor sit amet, consecte",
+    "103. Lorem ipsum dolor sit amet, consect",
+    "120. Lorem ipsum dolor sit amet, consect",
+    "137. Lorem ipsum dolor sit amet, consect",
+    "154. Lorem ipsum dolor sit amet, consect",
+    "170. Lorem ipsum dolor sit amet, consect",
+    "186. Lorem ipsum dolor sit amet, consect"
+   ]
+  },
   "tests/corpus/word/01-flow.docx": {
    "pages": 2,
    "lines": 120,

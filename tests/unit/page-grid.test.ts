@@ -77,6 +77,15 @@ describe('PageGrid', () => {
     expect(g.contentBottomOf(3)).toBe(2 * (P + GAP) + P - 131);
   });
 
+  it("lets a page's own reach win over its section's", () => {
+    // A page number a digit longer wraps the footer on that page alone.
+    const g = gridFromRuns(`1|${P}|0|76|76|76|76`, P, BASE, '3|90|131');
+    expect(g.contentBottomOf(2)).toBe(P + GAP + P - 76);
+    expect(g.contentTopOf(3)).toBe(2 * (P + GAP) + 90);
+    expect(g.contentBottomOf(3)).toBe(2 * (P + GAP) + P - 131);
+    expect(g.contentBottomOf(4)).toBe(3 * (P + GAP) + P - 76);
+  });
+
   it('falls back to the document band where a run carries none', () => {
     // An older run string, and the uniform document that writes no runs at all.
     expect(gridFromRuns(`2|${L}`, P, BASE).contentBottomOf(2)).toBe(P + GAP + L - 76);

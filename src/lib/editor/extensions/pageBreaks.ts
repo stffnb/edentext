@@ -198,7 +198,7 @@ export function readVerticalMargins(dom: HTMLElement): VMargins {
     contentHeight: pageHeight - mt - mb,
     pageHeight,
     cycle: pageHeight + PAGE_GAP,
-    grid: gridFromRuns(cs.getPropertyValue('--pb-page-runs'), pageHeight, base),
+    grid: gridFromRuns(cs.getPropertyValue('--pb-page-runs'), pageHeight, base, cs.getPropertyValue('--pb-page-reach')),
   };
 }
 
@@ -244,8 +244,9 @@ export function rowSpanGroups(
 // sheet .paper reserves, which is the widest section's: a narrower page is centred in
 // it, so anything placed from a page corner has to start there rather than at the sheet
 // edge. The four reaches are the section's own; a run without them takes `base`.
-export function gridFromRuns(raw: string, pageHeight: number, base: Band = DEFAULT_BAND): PageGrid {
+export function gridFromRuns(raw: string, pageHeight: number, base: Band = DEFAULT_BAND, own = ''): PageGrid {
   const grid = new PageGrid(pageHeight, 0, base);
+  for (const [page, reach] of pageReaches(own)) grid.setReach(page, reach);
   for (const part of raw.split(',')) {
     const [from, height, left, ...reach] = part.split('|').map(Number);
     if (Number.isFinite(from) && Number.isFinite(height) && from >= 1 && height > 0) {
@@ -254,6 +255,17 @@ export function gridFromRuns(raw: string, pageHeight: number, base: Band = DEFAU
     }
   }
   return grid;
+}
+
+// "page|top|bottom,…": the pages whose own zones reach further or less far than their
+// section's, since a page field's text makes a zone a line taller or shorter there.
+function pageReaches(raw: string): Map<number, [number, number]> {
+  const out = new Map<number, [number, number]>();
+  for (const part of raw.split(',')) {
+    const [page, top, bottom] = part.split('|').map(Number);
+    if (page >= 1 && Number.isFinite(top) && Number.isFinite(bottom)) out.set(page, [top, bottom]);
+  }
+  return out;
 }
 
 // The rendered page grid. A page's top is the sum of the pages above it, so a section
@@ -272,6 +284,7 @@ function tableDrawsBorders(el: HTMLElement): boolean {
 
 export class PageGrid {
   private runs: { from: number; height: number; left: number; band: Band }[];
+  private own = new Map<number, [number, number]>();
 
   constructor(baseHeight: number, baseLeft = 0, baseBand: Band = DEFAULT_BAND) {
     this.runs = [{ from: 1, height: baseHeight, left: baseLeft, band: baseBand }];
@@ -285,6 +298,17 @@ export class PageGrid {
     else if (last.height !== height || last.left !== left || last.band.some((v, i) => v !== band[i])) {
       this.runs.push({ from: Math.max(1, page), height, left, band });
     }
+  }
+
+  /** `page`'s own top and bottom reach, where they differ from its section's. */
+  setReach(page: number, reach: [number, number]): void {
+    this.own.set(page, reach);
+  }
+
+  /** How far the zones reach into `page` from its top and its bottom edge. */
+  reachOf(page: number): [number, number] {
+    const run = this.runAt(page);
+    return this.own.get(page) ?? [run.band[page === run.from ? 0 : 1], run.band[page === run.from ? 2 : 3]];
   }
 
   /** The run governing `page` — its section's paper and reaches. */
@@ -306,14 +330,12 @@ export class PageGrid {
   /** Where body text may start on `page`: a run's first page keeps its section's "first"
    *  reach, every later one the "rest" reach — so a taller header shortens its own pages. */
   contentTopOf(page: number): number {
-    const run = this.runAt(page);
-    return this.topOf(page) + run.band[page === run.from ? 0 : 1];
+    return this.topOf(page) + this.reachOf(page)[0];
   }
 
   /** Where it must end, above the footer's own reach. */
   contentBottomOf(page: number): number {
-    const run = this.runAt(page);
-    return this.topOf(page) + run.height - run.band[page === run.from ? 2 : 3];
+    return this.topOf(page) + this.heightOf(page) - this.reachOf(page)[1];
   }
 
   /** Top of `page` in document px — the pages above it plus a gap each. */
@@ -1888,6 +1910,9 @@ export const PageBreaks = Extension.create({
             .filter((g): g is Band => g.length === 4 && g.every(Number.isFinite));
           const reachAt = (i: number): Band => reach[Math.min(i, reach.length - 1)]
             ?? [effTopFirst, vm.top, effBottomFirst, vm.bottom];
+          // The pages whose own zones reach elsewhere (Editor.svelte), as the last pass's
+          // numbering filled their fields.
+          const ownReach = pageReaches(csRoot.getPropertyValue('--pb-page-reach'));
           // Its side margins, as a delta on the document's: .tiptap's padding draws only
           // one pair, so a section wanting others insets its own blocks by the difference.
           const inset = csRoot.getPropertyValue('--pb-section-inset').split(',')
@@ -1952,6 +1977,7 @@ export const PageBreaks = Extension.create({
             // page becomes known, with its reaches. Built here, not read back, so a pass
             // never measures its own last answer.
             const grid = new PageGrid(paperAt(0), 0, reachAt(0));
+            for (const [pg, own] of ownReach) grid.setReach(pg, own);
             const placements: {
               docPos: number;
               height: number;
@@ -2060,7 +2086,7 @@ export const PageBreaks = Extension.create({
               if (leaf.sectionStart) {
                 // Where the section really begins: a forced break moves its first block to
                 // the next page, and that page is the one its "first" zones belong to.
-                const prevStart = grid.topOf(page) + reachAt(sectionIndex)[1];
+                const prevStart = grid.topOf(page) + (ownReach.get(page)?.[0] ?? reachAt(sectionIndex)[1]);
                 const pushed = !!leaf.forceBreakBefore && i > 0 && effectiveTop - kept > prevStart + 0.5;
                 sectionIndex++;
                 sectionFirstPage = pushed ? page + 1 : page;
@@ -2083,8 +2109,10 @@ export const PageBreaks = Extension.create({
               const [topFirst, topRest, bottomFirst, bottomRest] = reachAt(sectionIndex);
               const onFirst = page === sectionFirstPage;
               const pageTop = grid.topOf(page);
-              const contentStart = pageTop + (onFirst ? topFirst : topRest);
-              const contentEnd = pageTop + grid.heightOf(page) - (onFirst ? bottomFirst : bottomRest)
+              // A page's own reach wins over its section's.
+              const topAt = (pg: number) => ownReach.get(pg)?.[0] ?? (pg === sectionFirstPage ? topFirst : topRest);
+              const contentStart = pageTop + topAt(page);
+              const contentEnd = pageTop + grid.heightOf(page) - (ownReach.get(page)?.[1] ?? (onFirst ? bottomFirst : bottomRest))
                 - (reservedByPage.get(page) ?? 0);
 
 
@@ -2179,8 +2207,7 @@ export const PageBreaks = Extension.create({
                 // The target page's own content start: a section beginning there brings
                 // its first-page header with it.
                 const targetPage = skipTo || page + 1;
-                const nextTop = targetPage === sectionFirstPage ? topFirst : topRest;
-                const target = pageContentStart(targetPage, nextTop, grid);
+                const target = pageContentStart(targetPage, topAt(targetPage), grid);
                 const { docPos, row } = leafSpacer(leaf);
                 breaks.push({
                   height: target + kept - effectiveTop,
@@ -2204,7 +2231,7 @@ export const PageBreaks = Extension.create({
                   naturalY: 0,
                 });
               } else if (effectiveTop >= contentEnd) {
-                const target = pageContentStart(page + 1, topRest, grid);
+                const target = pageContentStart(page + 1, topAt(page + 1), grid);
                 const { docPos, row } = leafSpacer(leaf);
                 breaks.push({
                   height: target - effectiveTop,
@@ -2241,7 +2268,7 @@ export const PageBreaks = Extension.create({
                   } else if (leaf.naturalHeight <= CONTENT_HEIGHT || cf || leaf.indexHead !== undefined) {
                     // A columns fragment may be pushed even when taller than a page:
                     // the flow splits it again once it sits at the next page top.
-                    const target = pageContentStart(page + 1, topRest, grid);
+                    const target = pageContentStart(page + 1, topAt(page + 1), grid);
                     const { docPos, row } = leafSpacer(leaf);
                     breaks.push({
                       height: target - effectiveTop,
@@ -2270,7 +2297,7 @@ export const PageBreaks = Extension.create({
                   while (boundaryNatural + hang < leaf.naturalHeight) {
                     const split = findLineSplit(leaf.el, boundaryNatural + hang, scale, minLines);
                     if (split === null) break;
-                    const target = pageContentStart(targetPage, topRest, grid);
+                    const target = pageContentStart(targetPage, topAt(targetPage), grid);
                     const h = target - (effectiveTop + extraShift + split.naturalLineTop);
                     if (h <= 0) break;
                     breaks.push({
@@ -2290,7 +2317,7 @@ export const PageBreaks = Extension.create({
                     if (pageOpener) {
                       noPushReason = 'page-opener-no-push';
                     } else if (leaf.naturalHeight <= CONTENT_HEIGHT) {
-                      const target = pageContentStart(page + 1, topRest, grid);
+                      const target = pageContentStart(page + 1, topAt(page + 1), grid);
                       breaks.push({
                         height: target - effectiveTop,
                         docPos: preLeafDocPos(leaf.el),
@@ -2332,7 +2359,7 @@ export const PageBreaks = Extension.create({
                 let needed = needs(last);
                 if (last > i + 1 && effectiveBottom - effectiveTop + (leaf.spaceAfter ?? 0) + needed > contentEnd - contentStart) needed = needs(i + 1);
                 if (effectiveBottom + (leaf.spaceAfter ?? 0) + needed > contentEnd) {
-                  const target = pageContentStart(page + 1, topRest, grid);
+                  const target = pageContentStart(page + 1, topAt(page + 1), grid);
                   const { docPos, row } = leafSpacer(leaf);
                   breaks.push({
                     height: target - effectiveTop,
