@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { compare, summarize, diffCauses, ROOTS, toLines } from './compare.mjs';
 import { devServer, settle, extractLayout } from '../browser.mjs';
+import { LOCAL_DOCS } from '../localDocs.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
@@ -137,7 +138,7 @@ function corpus(args) {
   const pattern = args.filter((a) => !paths.includes(a));
   const only = pattern.length ? new RegExp(pattern.join('|')) : null;
   const out = [];
-  for (const p of paths.length ? paths : [join(HERE, '..', 'corpus'), join(HERE, 'fixtures')]) {
+  for (const p of paths.length ? paths : [join(HERE, '..', 'corpus'), LOCAL_DOCS]) {
     const abs = resolve(p);
     if (!existsSync(abs)) continue;
     try {

@@ -167,8 +167,9 @@ against itself — and converts each document to its ODT twin with LibreOffice. 
 writes them to **`tests/corpus/`, which is committed**: `tests/corpus.test.ts` reads
 them at the model level (import → our own export → import) on every `npm test`, so
 CI runs against documents this editor did not write. A run with no argument compares
-that corpus *and* `fixtures/`, which stays gitignored — keep whatever real-world
-files you test against there and local.
+that corpus *and* the local documents: `edentext-testdocs/` beside the main checkout
+(`tests/localDocs.mjs`; `EDENTEXT_TESTDOCS` names another folder), which every worktree
+finds and no commit can pick up — keep whatever real-world files you test against there.
 
 ## Names stay local
 
@@ -176,8 +177,8 @@ A real-world document's name goes in no file, and a commit message names no docu
 all — write the rule that changed and what it measured. `FINDINGS.md` is gitignored for
 that reason.
 
-Only this harness reads `fixtures/`. The directory is gitignored, so a `tests/unit/` test
-reading it fails with `ENOENT` on a fresh clone; it zips its own document instead
+Only this harness and the layout run read the local documents. No clone has them, so a `tests/unit/` test
+reading them fails with `ENOENT` on a fresh clone; it zips its own document instead
 (`docx-onoff.test.ts` — both importers take a `Uint8Array`, not a path), or reads
 `tests/corpus/`, which is committed. CI greps for the read.
 

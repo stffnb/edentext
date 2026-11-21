@@ -7,10 +7,12 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { tmpdir } from 'node:os';
 import { join, dirname, basename, extname, relative } from 'node:path';
 import { ROOT, checker, devServer, openApp, settle } from '../browser.mjs';
+import { LOCAL_DOCS, localDocs, coreSet } from '../localDocs.mjs';
 
 // `[regex]` limits the run by file name, `--no-cache` re-converts every document;
 // LAYOUT_UPDATE=1 records the baseline for this engine and platform instead of holding
-// the run against it.
+// the run against it. LAYOUT_LOCAL=all|0 runs every local document (tests/localDocs.mjs)
+// or none in place of their core set; `--plan` prints that choice and stops.
 const PORT = +(process.env.LAYOUT_PORT ?? 4188);
 const SEEDS = +(process.env.LAYOUT_SEEDS ?? 10);
 const UPDATE = process.env.LAYOUT_UPDATE === '1';
@@ -27,7 +29,7 @@ const KEY = `${process.env.BROWSER ?? 'chromium'}/${process.platform}`;
 const baseline = existsSync(BASE) ? JSON.parse(readFileSync(BASE, 'utf8')) : {};
 // Page counts by the document's hash: a fresh soffice batch costs minutes, and a run
 // after an editor change has nothing new for it to convert.
-const COUNTS = process.env.LAYOUT_COUNTS ?? join(ROOT, 'node_modules/.cache/layout-pages.json');
+const COUNTS = process.env.LAYOUT_COUNTS ?? (existsSync(LOCAL_DOCS) ? join(LOCAL_DOCS, 'lo-pages.json') : join(ROOT, 'node_modules/.cache/layout-pages.json'));
 const counts = (() => { try { return JSON.parse(readFileSync(COUNTS, 'utf8')); } catch { return {}; } })();
 const known = baseline[KEY] ?? {};
 const fresh = {};
@@ -36,6 +38,35 @@ const files = (dir) => (existsSync(dir)
   ? readdirSync(dir).filter((f) => /\.(odt|docx)$/.test(f) && !f.startsWith('~$')).sort().map((f) => join(dir, f))
   : []);
 const docs = [...files(join(ROOT, 'tests/corpus')), ...files(join(ROOT, 'tests/corpus/word')), ...files(join(ROOT, 'docs/showcase'))];
+// Local documents keep their record beside them. A run takes the new ones and the core
+// set: the fewest, by load time, that still show every trait the folder holds.
+const LOCAL_BASE = join(LOCAL_DOCS, 'layout-baseline.json');
+const localAll = (() => { try { return JSON.parse(readFileSync(LOCAL_BASE, 'utf8')); } catch { return {}; } })();
+const localKnown = localAll[KEY] ?? {};
+const localFresh = {};
+const sha = (p) => createHash('sha1').update(readFileSync(p)).digest('hex').slice(0, 16);
+const isLocal = (file) => file.startsWith(LOCAL_DOCS);
+const nameOf = (file) => (isLocal(file) ? `local/${basename(file)}` : file.startsWith(ROOT) ? relative(ROOT, file) : `fuzz/${basename(file)}`);
+const MODE = process.env.LAYOUT_LOCAL ?? 'core';
+{
+  const all = MODE === '0' ? [] : localDocs();
+  // A changed file is a new document: what was recorded describes another one.
+  const rec = (f) => { const e = localKnown[nameOf(f)]; return e && e.hash === sha(f) ? e : null; };
+  const fresh = all.filter((f) => !rec(f));
+  const core = coreSet(all.filter(rec).map((f) => ({ name: f, ms: rec(f).ms, traits: rec(f).traits ?? [] })));
+  const take = MODE === 'all' || only ? all : [...fresh, ...core.map((c) => c.name)];
+  docs.push(...take);
+  if (all.length) {
+    const secs = Math.round(core.reduce((t, c) => t + c.ms, 0) / 1000);
+    console.log(`local documents (${LOCAL_DOCS}): ${all.length}, of them ${fresh.length} new, ${core.length} the core set (~${secs}s)`
+      + (MODE === 'all' || only ? '; all of them run' : `; LAYOUT_LOCAL=all runs the other ${all.length - take.length}`));
+  }
+  if (args.includes('--plan')) {
+    for (const c of core) console.log(`  ${String(c.ms).padStart(6)}ms  ${basename(c.name)}  +${c.adds.length}: ${c.adds.slice(0, 6).join(' ')}${c.adds.length > 6 ? ' …' : ''}`);
+    for (const f of fresh) console.log(`     new     ${basename(f)}`);
+    process.exit(0);
+  }
+}
 const work = mkdtempSync(join(tmpdir(), 'layout-'));
 const server = await devServer(PORT);
 const { browser, page, pageErrors } = await openApp(PORT);
@@ -45,7 +76,7 @@ if (!LO) console.log('soffice/pdfinfo missing: page counts are not held against 
 // editor keeps them; one soffice call for the whole batch, under unique names. A count
 // is the file's, never our code's, so only what the cache misses is converted.
 function loPages(paths) {
-  const key = (p) => createHash('sha1').update(readFileSync(p)).digest('hex').slice(0, 16);
+  const key = sha;
   const keys = new Map(paths.map((p) => [p, key(p)]));
   const pages = new Map();
   const todo = paths.filter((p) => {
@@ -205,7 +236,8 @@ try {
   const lo = LO ? loPages(todo) : new Map();
 
   for (const file of todo) {
-    const name = file.startsWith(ROOT) ? relative(ROOT, file) : `fuzz/${basename(file)}`;
+    const name = nameOf(file);
+    const local = isLocal(file);
     try {
     // A fresh editor for each document, so its settle cannot be the previous one's.
     await page.evaluate(() => localStorage.clear());
@@ -251,13 +283,35 @@ try {
       }
       return out.sort();
     });
+    // What a local document shows, by format: the choice of the core set rests on it.
+    const traits = !local ? null : await page.evaluate(({ ext, zoneFrames }) => {
+      const out = new Set();
+      for (const el of document.querySelectorAll('.tiptap')) {
+        const pre = el.closest('.hf-layer') ? 'zone-' : '';
+        el.editor?.state.doc.descendants((n) => { out.add(pre + n.type.name); n.marks.forEach((m) => out.add(pre + m.type.name)); });
+      }
+      const sheets = Array.from(document.querySelectorAll('.page-sheet'), (s) => s.offsetWidth);
+      if (getComputedStyle(document.documentElement).getPropertyValue('--pb-section-page').includes(',')) out.add('sections');
+      if (new Set(sheets).size > 1) out.add('mixed-pages');
+      if (zoneFrames) out.add('zone-frames');
+      if (document.querySelector('.hf-zone table')) out.add('zone-table');
+      for (const n of [20, 100]) if (sheets.length > n) out.add(`over-${n}-pages`);
+      return [...out].sort().map((t) => `${ext}:${t}`);
+    }, { ext: extname(file).slice(1).toLowerCase(), zoneFrames: frames.length });
     const ref = lo.get(file);
     const off = ref == null ? 0 : r.pages - ref;
     // A page or a tenth either way is the slack two layout engines take.
     const pagesOk = Math.abs(off) <= Math.max(1, Math.round((ref ?? 0) / 10));
     // What the baseline holds: where each page starts, and what the load cost.
-    const prev = known[name];
-    fresh[name] = { pages: r.pages, lines: r.lines, ms, starts: r.starts, ...(frames.length ? { frames } : {}) };
+    const hash = local ? sha(file) : null;
+    const prev = local ? (localKnown[name]?.hash === hash ? localKnown[name] : undefined) : known[name];
+    const entry = { pages: r.pages, lines: r.lines, ms, starts: r.starts, ...(frames.length ? { frames } : {}) };
+    // A local document is recorded the first time it runs; its traits are kept current.
+    if (!local) fresh[name] = entry;
+    else localFresh[name] = { ...(prev && !UPDATE ? prev : entry), hash, traits, issues: UPDATE ? r.issues.length : prev?.issues ?? r.issues.length };
+    // A local document's findings are recorded with it and held as a ceiling: a real-world
+    // file rarely has none, and the run asks only that a change adds no more.
+    const allowed = local ? localFresh[name].issues : 0;
     // Compared without its spaces: a decoration splits the text node it covers, and the
     // pieces are rejoined with one space whether the file had one there or not.
     const bare = (t) => String(t).replace(/\s+/g, '');
@@ -270,23 +324,28 @@ try {
     // ponytail: wall clock read through a 500ms poll, so only three times the recorded
     // load plus a second of slack counts as a regression.
     const slow = prev && ms > prev.ms * 3 + 1000 ? `${ms}ms against ${prev.ms}ms` : null;
-    const label = `${name}  editor ${r.pages}p${ref != null ? ` / LO ${ref}p` : ''}${off && pagesOk ? ' (~)' : ''}  ${r.issues.length} issue(s)${prev ? '' : ' (new)'}`;
-    check(pagesOk && !r.issues.length && (UPDATE || (!moved.length && !slow && !shifted.length)), label);
+    const label = `${name}  editor ${r.pages}p${ref != null ? ` / LO ${ref}p` : ''}${off && pagesOk ? ' (~)' : ''}  ${r.issues.length} issue(s)${allowed ? `, ${allowed} known` : ''}${prev ? '' : ' (new)'}`;
+    check(pagesOk && r.issues.length <= allowed && (UPDATE || (!moved.length && !slow && !shifted.length)), label);
     for (const [now, old] of shifted.slice(0, 5)) console.log(`    header/footer frame "${now}", the baseline has "${old}"`);
     if (slow) console.log(`    slower than the baseline: ${slow}`);
     for (const [pg, now, was] of moved.slice(0, 5)) console.log(`    p${pg} starts "${now}", the baseline has "${was}"`);
     if (moved.length > 5) console.log(`    … ${moved.length - 5} page start(s) more`);
-    for (const i of r.issues.slice(0, 8)) {
+    for (const i of r.issues.length > allowed || !prev ? r.issues.slice(0, 8) : []) {
       const where = i.other ? ` × ${i.otherKind} "${i.other}" @${i.otherAt}` : i.body ? ` (body ${i.body})` : i.sheet ? ` (sheet ${i.sheet})` : '';
       console.log(`    p${i.page} ${i.kind}: "${i.text}"${i.at ? ` @${i.at}` : ''}${where}`);
     }
-    if (r.issues.length > 8) console.log(`    … ${r.issues.length - 8} more`);
+    if (r.issues.length > 8 && (r.issues.length > allowed || !prev)) console.log(`    … ${r.issues.length - 8} more`);
     } catch (err) {
       // A layout that never settles is a finding of its own, not the end of the run; a
       // page torn down under the probe (the app's own reload) gets one more go.
       if (/Execution context was destroyed/.test(err.message) && !retried.has(file)) { retried.add(file); todo.push(file); continue; }
       check(false, `${name}: ${err.message.split('\n')[0]}`);
     }
+  }
+  if (Object.keys(localFresh).length) {
+    const here = new Set(localDocs().map(nameOf));
+    const kept = Object.entries({ ...localKnown, ...localFresh }).filter(([n]) => here.has(n)).sort();
+    writeFileSync(LOCAL_BASE, JSON.stringify({ ...localAll, [KEY]: Object.fromEntries(kept) }, null, 1) + '\n');
   }
   if (UPDATE) {
     const merged = Object.fromEntries(Object.entries({ ...known, ...fresh }).sort());
