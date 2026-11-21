@@ -10,12 +10,14 @@
 // a reload, and a link to an empty room says so. A reader by the read link follows and changes
 // nothing, nor do its forged or replayed frames, nor its floods past each writer's limits; readers count toward the room's limit, alone
 // give a newcomer nothing, and may keep a copy. The session chat reaches everyone here and
-// nothing else, nor can a patched reader abuse it.
+// nothing else, nor can a patched reader abuse it. A pasted web picture is fetched by the
+// paster alone, undoes and records as one with its paste, and outlives no paster.
 // Any engine (BROWSER).
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createServer as tcpServer, connect as tcpConnect } from 'node:net';
+import { createServer as httpServer } from 'node:http';
 import { MOD, ROOT, checker, collectErrors, devServer, openApp } from '../browser.mjs';
 import { startRelay } from '../../relay/server.mjs';
 import { strFromU8, unzipSync } from 'fflate';
@@ -1554,6 +1556,116 @@ try {
   check(same(srcless(keptR), srcless(shared4)) && mine.editable && mine.text.endsWith('Mine') && !mine.hash && !mine.reading && !mine.ai && !mine.bar && mine.controls && mine.squiggles > 0,
     `a reader keeping its copy reloads into an editable document of its own, its controls and squiggles back (${brief(keptR)}; ${JSON.stringify({ ...mine, text: mine.text.slice(-12) })})`);
 
+
+  // A pasted web picture: only the pasting client fetches it, from a local host that allows
+  // it (CORS); the other gets the picture as data. An undo takes the paste back on both, a
+  // recorded paste covers the picture, and a paster gone mid-fetch leaves its alt text.
+  {
+    const PIC_PORT = RELAY_PORT + 9;
+    const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    const picHost = httpServer((req, res) => {
+      const wait = +(new URL(req.url, 'http://x').searchParams.get('d') ?? 0);
+      setTimeout(() => res.writeHead(200, { 'content-type': 'image/png', 'access-control-allow-origin': '*' }).end(PNG), wait);
+    }).listen(PIC_PORT, '127.0.0.1');
+    const host = `http://127.0.0.1:${PIC_PORT}`;
+    const ED = '.tiptap-host .tiptap';
+    const ps = await client('Pia'), pa = await client('Paul');
+    const asked = new Map([[ps, 0], [pa, 0]]);
+    for (const p of [ps, pa]) p.on('request', (r) => { if (r.url().startsWith(host)) asked.set(p, asked.get(p) + 1); });
+    await ps.goto(URL0, { waitUntil: 'load' });
+    await ready(ps);
+    await ps.evaluate((q) => document.querySelector(q).editor.commands.setContent('<p>Before the paste.</p>'), ED);
+    await ps.waitForTimeout(800);
+    await joinLink(pa, await start(ps));
+    const pics = (page) => page.evaluate((q) => {
+      const out = [];
+      document.querySelector(q).editor.state.doc.descendants((n) => {
+        if (n.type.name === 'image') out.push({ src: n.attrs.src.slice(0, 40), square: n.attrs.src.startsWith('data:image/svg+xml'), w: n.attrs.width, h: n.attrs.height, marks: n.marks.map((m) => m.type.name).join() });
+      });
+      return out;
+    }, ED);
+    const textOf = (page) => page.evaluate((q) => document.querySelector(q).editor.state.doc.textContent, ED);
+    const jsonOf = (page) => page.evaluate((q) => JSON.stringify(document.querySelector(q).editor.state.doc.toJSON()), ED);
+    const paste = (page, html) => page.evaluate(([q, h]) => { const ed = document.querySelector(q).editor; ed.commands.focus('end'); ed.view.pasteHTML(h); }, [ED, html]);
+    const filled = (page, n) => page.waitForFunction(([q, n]) => {
+      let got = 0;
+      document.querySelector(q).editor.state.doc.descendants((x) => { if (x.type.name === 'image' && x.attrs.src.startsWith('data:image/png')) got++; });
+      return got === n;
+    }, [ED, n], { timeout: 15_000 }).then(() => true, () => false);
+    const squared = (page) => page.evaluate((q) => {
+      let sq = false;
+      document.querySelector(q).editor.state.doc.descendants((x) => { sq ||= x.type.name === 'image' && x.attrs.src.startsWith('data:image/svg+xml'); });
+      return sq;
+    }, ED);
+
+    await paste(pa, `<p>Pasted <img src="${host}/pic.png" alt="Chart" width="40" height="30"> picture.</p>`);
+    const arrived = await filled(ps, 1) && await filled(pa, 1);
+    await settle(ps);
+    const [mineP, theirsP] = [await pics(pa), await pics(ps)];
+    check(arrived && asked.get(pa) === 1 && asked.get(ps) === 0 && JSON.stringify(mineP) === JSON.stringify(theirsP) && mineP[0]?.w === 40 && (await jsonOf(pa)) === (await jsonOf(ps)),
+      `a pasted web picture is fetched once by the paster alone and reaches the other as the same data (${asked.get(pa)}/${asked.get(ps)} requests; ${JSON.stringify(theirsP)})`);
+    await body(pa).click();
+    await pa.keyboard.press(`${MOD}+z`);
+    await settle(pa);
+    await settle(ps);
+    const undone = [await textOf(pa), await textOf(ps), (await pics(pa)).length, (await pics(ps)).length];
+    await pa.keyboard.press(`${MOD}+Shift+z`);
+    await settle(pa);
+    await settle(ps);
+    const redone = [await pics(pa), await pics(ps)];
+    check(undone[0] === 'Before the paste.' && undone[1] === undone[0] && !undone[2] && !undone[3],
+      `an undo on the paster takes the paste and its fetched picture back on both (${JSON.stringify(undone)})`);
+    check(redone.every((r) => r.length === 1 && !r[0].square) && JSON.stringify(redone[0]) === JSON.stringify(redone[1]),
+      `a redo brings the picture back, never the grey square (${JSON.stringify(redone)})`);
+
+    // Recording: the picture lands inside the recorded insertion; accepting or rejecting keeps no square.
+    await pa.evaluate(async () => (await import('/src/lib/storage/trackChanges.svelte.ts')).setRecordChanges(true));
+    const before = (await pics(ps)).length;
+    await paste(pa, `<p>Recorded <img src="${host}/pic.png" alt="Graph"></p>`);
+    const recorded = await filled(ps, before + 1);
+    await settle(ps);
+    const recPics = await pics(ps);
+    await ps.evaluate((q) => document.querySelector(q).editor.commands.acceptRevisions(true), ED);
+    await settle(ps);
+    await settle(pa);
+    const accepted = [await pics(pa), await pics(ps)];
+    await paste(pa, `<p>Rejected <img src="${host}/pic.png" alt="Bars"></p>`);
+    const recorded2 = await filled(ps, before + 2);
+    await settle(ps);
+    await ps.evaluate((q) => document.querySelector(q).editor.commands.rejectRevisions(true), ED);
+    await settle(ps);
+    await settle(pa);
+    const rejected = [await pics(pa), await pics(ps), await textOf(pa)];
+    check(recorded && recPics.at(-1)?.marks.includes('insertion') && !recPics.at(-1)?.square,
+      `a recorded paste's fetched picture is part of the recorded insertion (${JSON.stringify(recPics.at(-1))})`);
+    check(recorded2 && accepted.every((r) => r.length === before + 1 && r.every((x) => !x.square && !x.marks.includes('insertion')))
+      && rejected.slice(0, 2).every((r) => r.length === before + 1 && r.every((x) => !x.square)) && !rejected[2].includes('Rejected'),
+      `accepting keeps the picture, rejecting takes it away, on both, neither leaving a square (${JSON.stringify(rejected.slice(0, 2).map((r) => r.length))}, "${rejected[2].slice(-40)}")`);
+
+    // The paster goes while its fetch is under way: the one left turns the square into its alt text.
+    await paste(pa, `<p>Late <img src="${host}/pic.png?d=8000" alt="Late chart"></p>`);
+    let squareSeen = false;
+    for (let i = 0; i < 40 && !squareSeen; i++) { squareSeen = await squared(ps); if (!squareSeen) await ps.waitForTimeout(250); }
+    await pa.context().close();
+    const resolved = await ps.waitForFunction((q) => {
+      const ed = document.querySelector(q).editor;
+      let sq = false;
+      ed.state.doc.descendants((x) => { sq ||= x.type.name === 'image' && x.attrs.src.startsWith('data:image/svg+xml'); });
+      return !sq && ed.state.doc.textContent.includes('Late chart');
+    }, ED, { timeout: 15_000 }).then(() => true, () => false);
+    const marked = await ps.evaluate((q) => {
+      let m = '';
+      document.querySelector(q).editor.state.doc.descendants((x) => { if (x.isText && x.text.includes('Late chart')) m = x.marks.map((k) => k.type.name).join(); });
+      return m;
+    }, ED);
+    check(squareSeen && resolved && marked.includes('insertion') && asked.get(ps) === 0,
+      `a paster leaving mid-fetch leaves the other its alt text, still recorded, not a grey square (${squareSeen}, ${resolved}, "${marked}")`);
+    await ps.evaluate((q) => document.querySelector(q).editor.commands.rejectRevisions(true), ED);
+    await settle(ps);
+    check(!(await textOf(ps)).includes('Late') && !(await squared(ps)), 'rejecting the settled paste leaves neither text nor square');
+    await ps.context().close();
+    picHost.close();
+  }
   check(!pageErrors.length, `no uncaught page errors ${pageErrors.join(' | ')}`);
 } catch (err) {
   check(false, `collab session run threw: ${err}`);
