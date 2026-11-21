@@ -344,6 +344,9 @@
    where `align-items: last baseline` puts it — a word processor never truncates one. */
 .paper .tiptap .toc-text {
   flex: 0 1 auto;
+  /* A flex item is otherwise no narrower than its longest word, so a word longer than
+     the row (a URL in a bibliography) ran past the margin instead of breaking. */
+  min-width: 0;
   /* A tab after the number reaches the next grid stop from the row's indent, which is
      the hanging indent of a level style that hangs its number. */
   white-space: pre-wrap;
