@@ -1634,6 +1634,60 @@ try {
   await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.chain().selectAll()
     .setMark('textStyle', { textOutline: null, textShadow: null, outline: true }).setTextSelection(1).run());
   const hollowInk = await wordInk();
+  // An effect paints the same with and without the squiggle over it, and the squiggle beside
+  // it no heavier than beside plain text: no engine's shadows land twice or round the wave.
+  const squiggleInk = async () => {
+    await page.waitForTimeout(600);
+    const box = await page.waitForFunction(() => {
+      const host = document.querySelector('.tiptap-host .tiptap');
+      const marked = [...CSS.highlights.get('spell-error') ?? []].some((r) => host.contains(r.startContainer) && r.startContainer.isConnected)
+        || document.querySelector('.pm-highlight-cover[data-highlight="spell-error"]');
+      const text = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = text.nextNode()) && !node.data.includes('mispeled'));
+      if (!marked || !node) return null;
+      node.parentElement.scrollIntoView({ block: 'center' });
+      const range = document.createRange();
+      range.setStart(node, node.data.indexOf('mispeled'));
+      range.setEnd(node, node.data.indexOf('mispeled') + 8);
+      const r = range.getBoundingClientRect();
+      return { x: r.x - 12, y: r.y - 12, width: r.width + 24, height: r.height + 24 };
+    }, null, { timeout: 30_000 }).then((h) => h.jsonValue(), () => null);
+    if (!box) return null;
+    const ink = async () => page.evaluate(async (png) => {
+      const img = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+      const ctx = Object.assign(document.createElement('canvas'), { width: img.width, height: img.height }).getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const d = ctx.getImageData(0, 0, img.width, img.height).data, half = img.width * 4 * Math.floor(img.height / 2);
+      const sum = (from, to) => { let s = 0; for (let i = from; i < to; i += 4) s += 765 - d[i] - d[i + 1] - d[i + 2]; return s; };
+      return { upper: sum(0, half), lower: sum(half, d.length) };
+    }, (await page.screenshot({ clip: box })).toString('base64'));
+    const on = await ink();
+    await page.addStyleTag({ content: '.pm-highlight-cover { visibility: hidden !important; } ::highlight(spell-error) { text-decoration: none !important; }' });
+    await page.evaluate(() => { window.__spell = CSS.highlights.get('spell-error'); CSS.highlights.delete('spell-error'); });
+    const off = await ink();
+    await page.evaluate(() => {
+      CSS.highlights.set('spell-error', window.__spell);
+      document.head.lastElementChild.remove();
+    });
+    return { upper: +(on.upper / Math.max(1, off.upper)).toFixed(3), wave: on.lower - off.lower };
+  };
+  const overlaid = {};
+  for (const [fx, attrs] of Object.entries({
+    plain: {},
+    glow: { textGlow: { color: '#FFC000', alpha: 0.6, radiusPt: 8 } },
+    shadow: { textShadow: { color: '#000000', alpha: 0.4, dxPt: 2, dyPt: 2, blurPt: 4 } },
+    outline: { textOutline: { color: '#4472C4', widthPt: 1 } },
+  })) {
+    await page.evaluate((attrs) => document.querySelector('.tiptap-host .tiptap').editor.chain().selectAll()
+      .setMark('textStyle', { color: null, textOutline: null, textShadow: null, textGlow: null, outline: null, fontSize: '28pt', ...attrs })
+      .setTextSelection(1).run(), attrs);
+    overlaid[fx] = await squiggleInk();
+  }
+  const waveOf = overlaid.plain?.wave ?? 0;
+  check(waveOf > 0 && Object.values(overlaid).every((o) => o && Math.abs(o.upper - 1) < 0.03 && o.wave > 0 && o.wave < waveOf * 1.3),
+    `a text effect paints the same under the squiggle, which is drawn no heavier than beside plain text (${JSON.stringify(overlaid)})`);
+  await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.setContent('<p lang="en-US">Some mispeled words.</p>'));
   await page.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.selectAll());
   // A custom colour from the panel's own page, and a typed weight clamped to the model's limit.
   await page.click('[data-cmd="textEffects"]');
