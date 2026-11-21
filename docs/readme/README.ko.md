@@ -134,6 +134,9 @@ EdenText는 간단한 메모부터 책 한 권 분량의 원고까지 쓸 수 �
 앱이 릴레이 서버를 찾은 경우에만 나타납니다.
 
 - **Kubernetes**: [Helm 차트](../../charts/edentext)는 기본적으로 릴레이 서버도 실행합니다.
+- **Docker**: 앱 이미지와 함께 릴레이 서버 이미지를 실행하고, 앱 컨테이너에
+  `EDENTEXT_RELAY_UPSTREAM=http://relay:4390`을 설정하십시오. 그러면 앱 컨테이너가 `/relay`를 직접 릴레이
+  서버에 전달합니다. compose 예시는 [`docs/self-hosting.md#collaboration`](../self-hosting.md#collaboration)(영어)에 있습니다.
 - **직접 운영하는 서버**: 릴레이 서버 이미지(포트 4390)를 실행하고, 앞단의 웹 서버가 앱 호스트의
   `/relay`를 WebSocket으로 릴레이 서버에 전달하도록 설정하십시오. 앱의 컨테이너 이미지는
   그곳에서 릴레이 서버를 찾습니다. 직접 빌드하는 경우 `VITE_COLLAB_RELAY=same-origin npm run build`로
@@ -142,7 +145,7 @@ EdenText는 간단한 메모부터 책 한 권 분량의 원고까지 쓸 수 �
   목록은 [`relay/CLAUDE.md`](../../relay/CLAUDE.md)(영어)에 있습니다.
 - **개발**: `npm run dev`와 함께 `npm run relay`를 실행합니다.
 
-릴레이 서버가 없는 앱 컨테이너 이미지, 릴리스 압축 파일,
+`EDENTEXT_RELAY_UPSTREAM`도, 직접 운영하는 프록시도 없는 앱 컨테이너 이미지, 릴리스 압축 파일,
 [edentext.app](https://edentext.app)에서는 세션을 사용할 수 없습니다.
 
 ## 데스크톱 앱

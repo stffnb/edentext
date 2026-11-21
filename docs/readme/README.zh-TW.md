@@ -123,6 +123,9 @@ EdenText 是在瀏覽器中執行、功能強大的文書處理軟體，從隨�
 出現「共同編輯」命令：
 
 - **Kubernetes**：[Helm chart](../../charts/edentext) 預設會一併執行中繼伺服器。
+- **Docker**：與應用程式的映像檔一起執行中繼伺服器的映像檔，並在應用程式容器上設定
+  `EDENTEXT_RELAY_UPSTREAM=http://relay:4390`，應用程式容器就會自行將 `/relay` 轉送給它。compose 範例
+  請見 [`docs/self-hosting.md#collaboration`](../self-hosting.md#collaboration)（英文）。
 - **自己的伺服器**：執行中繼伺服器的映像檔（連接埠 4390），並讓前端的 Web 伺服器將應用程式
   主機上的 `/relay` 以 WebSocket 方式轉送給它。應用程式的容器映像檔會在那裡尋找中繼伺服器；
   自行建置時，使用 `VITE_COLLAB_RELAY=same-origin npm run build` 也會如此，而
@@ -130,8 +133,8 @@ EdenText 是在瀏覽器中執行、功能強大的文書處理軟體，從隨�
   伺服器的限制以環境變數設定，詳見 [`relay/CLAUDE.md`](../../relay/CLAUDE.md)（英文）。
 - **開發**：在 `npm run dev` 之外再執行 `npm run relay`。
 
-沒有這類中繼伺服器的應用程式容器映像檔、版本壓縮檔以及 [edentext.app](https://edentext.app)
-都不提供工作階段。
+未設定 `EDENTEXT_RELAY_UPSTREAM`、也沒有自己的代理伺服器的應用程式容器映像檔、版本壓縮檔以及
+[edentext.app](https://edentext.app) 都不提供工作階段。
 
 ## 桌面應用程式
 

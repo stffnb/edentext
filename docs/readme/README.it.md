@@ -139,6 +139,9 @@ pubblicato con ogni release come `ghcr.io/stffnb/edentext-relay`. Il comando Col
 compare solo dove l'app ne trova uno:
 
 - **Kubernetes:** il [chart Helm](../../charts/edentext) avvia il relay per impostazione predefinita.
+- **Docker:** avvia l'immagine del relay accanto a quella dell'app e imposta
+  `EDENTEXT_RELAY_UPSTREAM=http://relay:4390` nel container dell'app, che poi inoltra da sé `/relay`
+  al relay. Un esempio di compose è in [`docs/self-hosting.md#collaboration`](../self-hosting.md#collaboration) (in inglese).
 - **Server proprio:** avvia l'immagine del relay (porta 4390) e configura il web server che
   sta davanti perché gli inoltri `/relay` sull'host dell'app, come WebSocket. L'immagine
   container dell'app cerca il relay lì; una build propria fa lo stesso con
@@ -148,8 +151,8 @@ compare solo dove l'app ne trova uno:
   (in inglese).
 - **Sviluppo:** `npm run relay` accanto a `npm run dev`.
 
-L'immagine container dell'app senza un relay del genere, l'archivio della release e
-[edentext.app](https://edentext.app) non offrono sessioni.
+L'immagine container dell'app senza `EDENTEXT_RELAY_UPSTREAM` né un proxy proprio, l'archivio della release
+e [edentext.app](https://edentext.app) non offrono sessioni.
 
 ## App desktop
 

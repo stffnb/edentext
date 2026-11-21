@@ -137,6 +137,9 @@ EdenText はブラウザーで動く高機能なワープロです。ちょっ�
 います。「共同編集」コマンドは、アプリがリレーサーバーを見つけた場合にのみ表示されます。
 
 - **Kubernetes**：[Helm チャート](../../charts/edentext)は既定でリレーサーバーも起動します。
+- **Docker**：アプリのイメージと並べてリレーサーバーのイメージを起動し、アプリのコンテナに
+  `EDENTEXT_RELAY_UPSTREAM=http://relay:4390` を設定します。するとアプリのコンテナが `/relay` を自らリレー
+  サーバーへ転送します。compose の例は [`docs/self-hosting.md#collaboration`](../self-hosting.md#collaboration)（英語）にあります。
 - **独自のサーバー**：リレーサーバーのイメージ（ポート 4390）を起動し、手前の Web サーバー
   で、アプリのホスト上の `/relay` を WebSocket としてリレーサーバーに転送します。アプリの
   コンテナイメージはそこでリレーサーバーを探します。独自にビルドする場合は
@@ -146,7 +149,7 @@ EdenText はブラウザーで動く高機能なワープロです。ちょっ�
   [`relay/CLAUDE.md`](../../relay/CLAUDE.md)（英語）にあります。
 - **開発**：`npm run dev` と並行して `npm run relay` を実行します。
 
-リレーサーバーのないアプリのコンテナイメージ、リリースの zip アーカイブ、
+`EDENTEXT_RELAY_UPSTREAM` も独自のプロキシもないアプリのコンテナイメージ、リリースの zip アーカイブ、
 [edentext.app](https://edentext.app) ではセッションを利用できません。
 
 ## デスクトップアプリ

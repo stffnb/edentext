@@ -140,6 +140,9 @@ La orden «Colaborar» solo aparece donde la app encuentra uno:
 
 - **Kubernetes:** el [chart de Helm](../../charts/edentext) ejecuta el relay de forma
   predeterminada.
+- **Docker:** ejecuta la imagen del relay junto a la de la app y define
+  `EDENTEXT_RELAY_UPSTREAM=http://relay:4390` en el contenedor de la app, que entonces le pasa
+  `/relay` por su cuenta. Hay un ejemplo de compose en [`docs/self-hosting.md#collaboration`](../self-hosting.md#collaboration) (en inglés).
 - **Servidor propio:** ejecuta la imagen del relay (puerto 4390) y haz que el servidor web que
   tiene delante le pase `/relay` en el host de la app, como WebSocket. La imagen de contenedor
   de la app busca ahí el relay; una compilación propia lo hace con
@@ -149,8 +152,8 @@ La orden «Colaborar» solo aparece donde la app encuentra uno:
   (en inglés).
 - **Desarrollo:** `npm run relay` junto a `npm run dev`.
 
-La imagen de contenedor de la app sin ese relay, el archivo zip de cada versión y
-[edentext.app](https://edentext.app) no ofrecen sesiones.
+La imagen de contenedor de la app sin `EDENTEXT_RELAY_UPSTREAM` ni un proxy propio, el archivo zip de cada
+versión y [edentext.app](https://edentext.app) no ofrecen sesiones.
 
 ## Aplicación de escritorio
 

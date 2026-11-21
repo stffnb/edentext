@@ -147,6 +147,9 @@ donc avec autant de soin que le document lui-même.
 La commande « Collaborer » n’apparaît que là où l’application en trouve un :
 
 - **Kubernetes :** le [chart Helm](../../charts/edentext) fait tourner le relais par défaut.
+- **Docker :** lancez l’image du relais à côté de celle de l’application et définissez
+  `EDENTEXT_RELAY_UPSTREAM=http://relay:4390` dans le conteneur de l’application, qui lui transmet
+  alors lui-même `/relay`. Un exemple compose se trouve dans [`docs/self-hosting.md#collaboration`](../self-hosting.md#collaboration) (en anglais).
 - **Votre propre serveur :** lancez l’image du relais (port 4390) et configurez le serveur web
   placé devant pour qu’il lui transmette `/relay` sur l’hôte de l’application, en WebSocket.
   L’image de conteneur de l’application cherche le relais à cet endroit ; une version compilée
@@ -156,8 +159,8 @@ La commande « Collaborer » n’apparaît que là où l’application en trouve
   [`relay/CLAUDE.md`](../../relay/CLAUDE.md) (en anglais).
 - **Développement :** `npm run relay` à côté de `npm run dev`.
 
-L’image de conteneur de l’application sans ce relais, l’archive de version et
-[edentext.app](https://edentext.app) ne proposent pas de sessions.
+L’image de conteneur de l’application sans `EDENTEXT_RELAY_UPSTREAM` ni votre propre proxy, l’archive de
+version et [edentext.app](https://edentext.app) ne proposent pas de sessions.
 
 ## Application de bureau
 
