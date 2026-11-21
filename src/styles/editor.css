@@ -500,8 +500,9 @@
 }
 /* ProseMirror's caret shim after a paragraph-ending image: an image wider than the line
    leaves it no room, and it wrapped onto an empty line of its own that neither word
-   processor sets. Out of flow it takes none. */
-.paper .tiptap .image-node.image-line + img.ProseMirror-separator {
+   processor sets. Out of flow it takes none. A display formula is a block, so its too. */
+.paper .tiptap .image-node.image-line + img.ProseMirror-separator,
+.paper .tiptap span.formula[data-display='true'] + img.ProseMirror-separator {
   position: absolute;
 }
 /* The shim ProseMirror puts before an inline atom opening a block or following another

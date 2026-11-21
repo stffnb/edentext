@@ -478,6 +478,24 @@ await write('22-hf-frames.docx', [{
   children: Array.from({ length: 14 }, (_, i) => para(`${i + 1}. ${LOREM}`)),
 }]);
 
+// 23. A table under a heading whose rows each hold a formula alone in its cell: a
+// formula owning its paragraph makes one line, so the row is as tall as a text row.
+const formulaRow = (i) => new TableRow({ children: [
+  new TableCell({ children: [para(`Row ${i + 1}`)] }),
+  new TableCell({ children: [new Paragraph({ children: [new DocxMath({ children: [
+    new MathRun(`${i + 1}x`),
+  ] })] })] }),
+] });
+await write('23-formula-rows.docx', [{
+  properties: { page },
+  children: [
+    para(LOREM),
+    new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Formulas')] }),
+    new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: Array.from({ length: 70 }, (_, i) => formulaRow(i)) }),
+    para(LOREM),
+  ],
+}]);
+
 // ODT twins, written by LibreOffice itself — the dominant ODT producer, so they carry
 // its own conventions (percentage font sizes, Text Body, list styles) and exercise the
 // foreign-document path our own exporter never produces.
