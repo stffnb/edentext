@@ -17,7 +17,7 @@ export class EdenTextFrame {
 
   /**
    * @param {HTMLElement} container where the iframe goes
-   * @param {{ url?: string, user?: string, locale?: string, theme?: string, chrome?: string, name?: string, accent?: string, ai?: boolean | object, dictation?: boolean | object }} [options]
+   * @param {{ url?: string, user?: string, locale?: string, theme?: string, chrome?: string, name?: string, accent?: string, ai?: boolean | object, dictation?: boolean | object, templates?: boolean | object }} [options]
    *   `url`: the EdenText instance, by default the one serving this file. Types: embed.d.ts.
    */
   constructor(container, { url, ...settings } = {}) {
@@ -71,7 +71,8 @@ export class EdenTextFrame {
 
   /**
    * Change user, locale, theme ('light'|'dark'|'allBlack'|'auto'), chrome ('ribbon'|'modern'),
-   * name, accent (a preset name or '#rrggbb') ai or dictation (false hides it, an object presets its server).
+   * name, accent (a preset name or '#rrggbb') ai or dictation (false hides it, an object presets its server),
+   * templates (an object with items or builtIn: true offers New from Template).
    */
   async configure(settings) {
     await this.#send('configure', settings);
@@ -111,7 +112,8 @@ export class EdenTextFrame {
   }
 
   /**
-   * 'dirty' ({dirty}), 'saveRequest' (the reader pressed Save or Ctrl+S), 'warning' ({warnings}).
+   * 'dirty' ({dirty}), 'saveRequest' (the reader pressed Save or Ctrl+S), 'warning' ({warnings}),
+   * 'template' ({template, name}: the reader started a new document from a template).
    * @returns {() => void} unsubscribe
    */
   on(type, fn) {

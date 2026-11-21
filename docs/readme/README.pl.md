@@ -152,7 +152,7 @@ Każde wydanie zawiera też plik `edentext-<tag>.zip` z gotową aplikacją, a
 `npm run build` tworzy te same pliki w `dist/`. Ten folder można udostępnić z dowolnego serwera WWW.
 Obraz kontenera można też zbudować lokalnie poleceniem `docker build -t edentext .`.
 Utrzymywany przez społeczność chart Helm dla Kubernetesa znajduje się w [`charts/edentext`](../../charts/edentext).
-Jak skonfigurować asystenta AI i dyktowanie dla wszystkich użytkowników, opisuje [`docs/self-hosting.md`](../self-hosting.md) (po angielsku).
+Jak skonfigurować asystenta AI, dyktowanie i szablony dokumentów dla wszystkich użytkowników, opisuje [`docs/self-hosting.md`](../self-hosting.md) (po angielsku).
 
 Przy aktualizacji należy skopiować nowe pliki na stare zamiast najpierw opróżniać folder.
 Karty otwarte przed aktualizacją wczytują pliki swojej wersji, dopóki nie zostaną

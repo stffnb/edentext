@@ -1160,6 +1160,7 @@ const zhHant: Messages = {
   },
   templates: {
     title: '從範本新增',
+    loadFailed: '無法載入範本。目前開啟的文件未變更。',
     din5008b: {
       name: 'DIN 5008 商務信函（B 式）',
       description: '德國標準商務信函，含完整信頭：45 公釐起的開窗信封地址欄、資訊欄與摺線標記。',

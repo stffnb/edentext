@@ -12,6 +12,8 @@ export interface EdenTextProps extends EdenTextSettings, Omit<HTMLAttributes<HTM
   onSaveRequest?: () => void;
   /** What an import could not keep. */
   onWarning?: (warnings: string[]) => void;
+  /** The reader started a new document from a template, which has no file of yours yet. */
+  onTemplate?: (template: string, name: string) => void;
   /** The editor turned the page away or speaks another protocol. */
   onError?: (error: Error) => void;
 }

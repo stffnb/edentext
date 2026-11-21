@@ -20,6 +20,7 @@ export interface EdenTextElementEventMap extends HTMLElementEventMap {
   dirty: CustomEvent<EdenTextEvents['dirty']>;
   saveRequest: CustomEvent<EdenTextEvents['saveRequest']>;
   warning: CustomEvent<EdenTextEvents['warning']>;
+  template: CustomEvent<EdenTextEvents['template']>;
   ready: CustomEvent<{ version?: string }>;
   error: CustomEvent<{ error: Error }>;
 }

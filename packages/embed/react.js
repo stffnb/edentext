@@ -5,10 +5,10 @@
 import { createElement, forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { EdenTextFrame } from './index.js';
 
-const SETTINGS = ['user', 'locale', 'theme', 'chrome', 'name', 'accent', 'ai'];
+const SETTINGS = ['user', 'locale', 'theme', 'chrome', 'name', 'accent', 'ai', 'dictation', 'templates'];
 
 export const EdenText = forwardRef(function EdenText(props, ref) {
-  const { url, onReady, onDirty, onSaveRequest, onWarning, onError, ...rest } = props;
+  const { url, onReady, onDirty, onSaveRequest, onWarning, onTemplate, onError, ...rest } = props;
   const settings = {};
   const attrs = {};
   for (const [k, v] of Object.entries(rest)) {
@@ -18,7 +18,7 @@ export const EdenText = forwardRef(function EdenText(props, ref) {
   const box = useRef(null);
   const frame = useRef(null);
   const latest = useRef({});
-  latest.current = { settings, key, onReady, onDirty, onSaveRequest, onWarning, onError };
+  latest.current = { settings, key, onReady, onDirty, onSaveRequest, onWarning, onTemplate, onError };
 
   // One iframe per url. Strict Mode's second mount builds a fresh one after the first is gone.
   useEffect(() => {
@@ -29,6 +29,7 @@ export const EdenText = forwardRef(function EdenText(props, ref) {
     ed.on('dirty', (m) => live() && latest.current.onDirty?.(m.dirty));
     ed.on('saveRequest', () => live() && latest.current.onSaveRequest?.());
     ed.on('warning', (m) => live() && latest.current.onWarning?.(m.warnings));
+    ed.on('template', (m) => live() && latest.current.onTemplate?.(m.template, m.name));
     ed.ready.then(() => live() && latest.current.onReady?.(ed), (err) => live() && latest.current.onError?.(err));
     return () => {
       if (live()) frame.current = null;

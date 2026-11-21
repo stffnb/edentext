@@ -25,6 +25,7 @@ A self-hoster presets the provider in `edentext.config.json` next to `index.html
 locked }`, every field optional. It is fetched once at start (2 s limit, `no-cache`, the
 service worker passes it through), never stored and checked strictly: unknown keys and
 wrong types are dropped. A 404 presets nothing; the desktop app does not look for it.
+Its `templates` section (the gallery's entries) is described in `docs/self-hosting.md`.
 
 - **Order:** an embed option's object, then the file, then the user. `enabled: false`
   switches the assistant off like `ai: false`.

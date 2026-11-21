@@ -155,7 +155,7 @@ di-build, dan `npm run build` menghasilkan file yang sama di `dist/`. Folder ini
 di-host oleh server web apa pun. Image container juga dapat di-build secara lokal dengan
 `docker build -t edentext .`.
 Helm chart untuk Kubernetes yang dikelola komunitas tersedia di [`charts/edentext`](../../charts/edentext).
-Cara menyiapkan asisten AI dan dikte untuk semua pengguna dijelaskan di [`docs/self-hosting.md`](../self-hosting.md) (dalam bahasa Inggris).
+Cara menyiapkan asisten AI, dikte, dan templat dokumen untuk semua pengguna dijelaskan di [`docs/self-hosting.md`](../self-hosting.md) (dalam bahasa Inggris).
 
 Untuk memperbarui, salin file baru hingga menimpa file lama, alih-alih mengosongkan foldernya
 terlebih dahulu. Tab yang dibuka sebelum pembaruan tetap memuat file dari versinya sendiri hingga

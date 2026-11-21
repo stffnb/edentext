@@ -1160,6 +1160,7 @@ const es: Messages = {
   },
   templates: {
     title: 'Nuevo a partir de una plantilla',
+    loadFailed: 'No se ha podido cargar la plantilla. El documento abierto no ha cambiado.',
     din5008b: {
       name: 'Carta según DIN 5008 (forma B)',
       description: 'Carta comercial según la norma alemana, con membrete completo: campo de dirección para sobre con ventana desde 45 mm, bloque de datos, marcas de plegado.',

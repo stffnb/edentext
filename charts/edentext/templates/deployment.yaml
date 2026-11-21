@@ -115,6 +115,11 @@ spec:
               subPath: edentext.config.json
               readOnly: true
             {{- end }}
+            {{- if .Values.templates.volume }}
+            - name: templates
+              mountPath: /usr/share/nginx/html/templates
+              readOnly: true
+            {{- end }}
             - name: tmp
               mountPath: /tmp
       volumes:
@@ -128,6 +133,10 @@ spec:
         {{- end }}
         - name: tmp
           emptyDir: {}
+        {{- with .Values.templates.volume }}
+        - name: templates
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
