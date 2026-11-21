@@ -651,6 +651,8 @@ const id: Messages = {
     citationNotInHf: 'Kutipan tidak tersedia di header/footer',
     bookmarkNotInHf: 'Bookmark tidak tersedia di header/footer',
     clearFormatting: 'Hapus pemformatan',
+    formatPainter: 'Pewarna Format',
+    formatPainterHint: 'Klik dua kali untuk menerapkannya di beberapa tempat',
   },
   image: {
     wrapToolbar: 'Pembungkusan teks gambar',

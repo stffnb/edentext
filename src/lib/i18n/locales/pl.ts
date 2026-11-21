@@ -668,6 +668,8 @@ const pl: Messages = {
     citationNotInHf: 'Cytaty nie są dostępne w nagłówkach ani stopkach',
     bookmarkNotInHf: 'Zakładki nie są dostępne w nagłówkach ani stopkach',
     clearFormatting: 'Wyczyść formatowanie',
+    formatPainter: 'Malarz formatów',
+    formatPainterHint: 'Kliknij dwukrotnie, aby zastosować w kilku miejscach',
   },
   image: {
     wrapToolbar: 'Zawijanie tekstu wokół obrazu',

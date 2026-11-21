@@ -117,3 +117,37 @@ Shift extending the cell selection the same way. Tab, sort and "first column" ar
   against its page and on every nested table: LibreOffice ran an unmarked left-to-right table
   in a left-to-right one right to left on a right-to-left page (probed). Read back against the page. LibreOffice sets a right-to-left paragraph in such a
   cell against the swapped paddings (probed, a left-to-right one against the drawn ones).
+
+## Format painter
+
+Home ▸ Clipboard (`formatPainter`, both chromes): a click picks the format at the caret or
+where the selection starts, the next mouse selection takes it and the brush goes off; a double
+click keeps it on until Escape, another click on the button or any other edit of the user's.
+
+- **State** is one brush for the app (`editor/formatPainter.svelte.ts`): the picked format as
+  plain JSON, so it crosses from the body into a header, footer, note, text box or cell and
+  between the body's and a zone's schema. It is local: nothing reaches the document, the
+  undo stack or a shared session, and a reader has no button (`ReadGate`).
+- **What is format** comes from the schema (`utils/formatPainter.ts`): every mark but
+  `UNFORMATTED_MARKS` (link, bookmark, comment, the three review marks) and every attr of the
+  source's paragraph or heading but `UNFORMATTED_ATTRS` and `breakBefore`. A new mark or
+  paragraph attr is carried without being named. The node type rides along between paragraph
+  and heading, as `setParagraphStyle` switches it; a note keeps its node and takes the attrs
+  it shares. Lists, tables and frames are containers, not paragraph attrs, so they stay.
+- **Painting** (`paintFormat`) is one transaction and one undo step (`closeGroup`): selected
+  text loses every format mark and takes the picked ones; each paragraph the selection covers
+  whole takes the paragraph format. A bare caret paints the word under it (`wordRangeAt`) and
+  its paragraph. The picked values are copied as they stand, so no default becomes direct
+  formatting. Recording sees ordinary mark and markup steps (`formatChange`, `revFormat`).
+- **Trigger** (`extensions/formatPainter.ts`, body and zones): the mouse button coming up
+  after a press in a view, wherever it comes up, never a selection change, so the keyboard
+  moves the caret without painting. Ctrl or Cmd held then also paints every paragraph the
+  selection reaches into, with Shift those paragraphs and no character format: the keys
+  LibreOffice's help names for adding the paragraph format and for painting it alone.
+- **Differences**: LibreOffice (26.2 help) picks at the end of a selection and paints the
+  paragraph format only with Ctrl held; here the start is picked, as in Word, and a clicked
+  or wholly selected paragraph is painted without a key. Word carries a list along, this
+  does not. The run's language is part of the `textStyle` mark and travels, as LibreOffice's
+  character attributes do. No shortcut: Word's Ctrl+Shift+C is record changes here.
+- **Touch**: a tap arrives as a mouse click and paints the word; a selection made with the
+  system's handles ends without a mouse event and paints nothing.

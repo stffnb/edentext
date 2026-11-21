@@ -12,7 +12,7 @@ These extensions are documented separately; read the document before changing th
 | `pageBreaks.ts`, `columns.ts`, `columnsFlow.ts` | `docs/architecture/pagination.md` |
 | `image.ts`, `textBox.ts` | `docs/architecture/frames.md` |
 | `table*.ts`, `tableStyle.ts` | `docs/architecture/tables.md` |
-| `textEffects.ts`, `indent.ts`, `tabStops.ts`, `listMarker.ts`, `paragraphBox.ts`, `dateTimeField.ts`, `bookmark.ts`, `crossReference.ts` | `docs/architecture/formatting.md` |
+| `textEffects.ts`, `indent.ts`, `tabStops.ts`, `listMarker.ts`, `paragraphBox.ts`, `dateTimeField.ts`, `bookmark.ts`, `crossReference.ts`, `formatPainter.ts` | `docs/architecture/formatting.md` |
 | `formula.ts` | `docs/architecture/formulas.md` |
 | `notes.ts` | `docs/architecture/notes.md` |
 | `paragraphStyle.ts`, `characterStyle.ts` | `src/lib/styles/CLAUDE.md` |

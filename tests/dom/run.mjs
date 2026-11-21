@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:http';
 import { chromium } from 'playwright-core';
 import { zipSync, strToU8 } from 'fflate';
-import { ROOT, MOD, checker, previewServer, openApp, settle } from '../browser.mjs';
+import { ROOT, MOD, checker, collectErrors, previewServer, openApp, settle } from '../browser.mjs';
 
 const PORT = +(process.env.DOM_PORT ?? 4185);
 const { check, failures } = checker();
@@ -2432,6 +2432,82 @@ try {
       await mic.close();
       speech.close();
     }
+  }
+
+  // The format painter: one click paints the next mouse selection and goes off, a double
+  // click stays on until Escape, and the brush crosses into a table cell and a header.
+  {
+    const fp = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
+    collectErrors(fp, pageErrors, 'painter: ');
+    await fp.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
+    await fp.waitForSelector('.tiptap-host .tiptap', { timeout: 15_000 });
+    await fp.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.setContent(
+      '<p style="text-align: center"><strong><em>Source</em></strong> paragraph</p><p>target one here</p><p>target two here</p>'
+      + '<table><tbody><tr><td><p>cell text</p></td><td><p>b</p></td></tr></tbody></table><p>end</p>'));
+    // A word's box on the page, and how it and its paragraph are drawn.
+    const word = (text, scope = '.tiptap-host') => fp.evaluate(([w, s]) => {
+      const walk = document.createTreeWalker(document.querySelector(s), NodeFilter.SHOW_TEXT);
+      for (let n; (n = walk.nextNode());) {
+        const i = n.data.indexOf(w);
+        if (i < 0) continue;
+        const r = document.createRange();
+        r.setStart(n, i); r.setEnd(n, i + w.length);
+        const b = r.getBoundingClientRect(), cs = getComputedStyle(n.parentElement);
+        return { x: b.x, y: b.y + b.height / 2, w: b.width, bold: +cs.fontWeight >= 600, italic: cs.fontStyle === 'italic', align: getComputedStyle(n.parentElement.closest('p')).textAlign };
+      }
+      return null;
+    }, [text, scope]);
+    const clickWord = async (text, scope) => { const b = await word(text, scope); await fp.mouse.click(b.x + b.w / 2, b.y); await fp.waitForTimeout(60); };
+    const brush = fp.locator('[data-cmd="formatPainter"]');
+    const on = () => fp.evaluate(() => document.querySelector('[data-cmd="formatPainter"]').getAttribute('aria-pressed') === 'true'
+      && /^url\(/.test(getComputedStyle(document.querySelector('.tiptap-host .tiptap p')).cursor));
+    const styled = (w) => w.bold && w.italic;
+
+    await clickWord('Source');
+    await brush.click();
+    check(await on(), 'a click on the format painter presses it and turns the pointer over the page into a brush');
+    const one = await word('one');
+    await fp.mouse.move(one.x + 0.5, one.y);
+    await fp.mouse.down();
+    await fp.mouse.move(one.x + one.w - 0.5, one.y, { steps: 5 });
+    await fp.mouse.up();
+    await fp.waitForTimeout(60);
+    const [painted, beside] = [await word('one'), await word('target')];
+    check(styled(painted) && !styled(beside) && painted.align !== 'center' && !(await on()),
+      `the selected word takes the picked character format, its paragraph stays, and the painter is off (${JSON.stringify(painted)})`);
+    await fp.keyboard.press(`${MOD}+z`);
+    check(!styled(await word('one')), 'one undo takes the stroke back');
+
+    await clickWord('Source');
+    await brush.dblclick();
+    await clickWord('two');
+    await clickWord('cell');
+    const [two, cell, rest] = [await word('two'), await word('cell'), await word('text')];
+    check(styled(two) && two.align === 'center' && styled(cell) && cell.align === 'center' && !styled(rest) && (await on()),
+      `a double click keeps the painter on: a clicked word and its paragraph are painted, in the text and in a table cell (${JSON.stringify({ two, cell, rest })})`);
+    await fp.keyboard.press('Escape');
+    check(!(await on()), 'Escape puts the painter down');
+
+    const zone = fp.locator('.hf-zone.hf-header').first();
+    const openZone = async () => {
+      await zone.dblclick({ timeout: 5000 }).catch(() => zone.dispatchEvent('dblclick'));
+      await fp.waitForSelector('.hf-active .tiptap', { timeout: 5000 });
+    };
+    await openZone();
+    await fp.keyboard.type('Running head');
+    await fp.keyboard.press('Escape');
+    await clickWord('Source');
+    await brush.click();
+    await openZone();
+    const still = await on();
+    await clickWord('Running', '.hf-active');
+    const [running, head] = [await word('Running', '.hf-active'), await word('head', '.hf-active')];
+    check(still && styled(running) && !styled(head) && running.align === 'center' && !(await on()),
+      `a format picked in the text paints a word of the header (${JSON.stringify({ still, running, head })})`);
+    await fp.keyboard.press(`${MOD}+z`);
+    await fp.waitForTimeout(150);
+    check(!styled(await word('Running', '.hf-active')), 'undo in the header takes that stroke back');
+    await fp.close();
   }
 
 } catch (err) {

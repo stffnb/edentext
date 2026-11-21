@@ -16,7 +16,7 @@
     disabled?: boolean;
     caret?: boolean;
     expanded?: boolean;
-    onclick?: () => void;
+    onclick?: (e: MouseEvent) => void;
   } = $props();
 </script>
 

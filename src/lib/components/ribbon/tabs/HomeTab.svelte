@@ -16,6 +16,7 @@
   import { stepFontSize } from '../../../editor/extensions/shortcuts';
 
   import { clipboardCommand, readClipboard } from '../../../editor/contextMenuItems';
+  import { painterClick, painting } from '../../../editor/formatPainter.svelte';
   import { LINE_STYLES, changeIndent as stepIndent, setLineStyle as applyLineStyle } from '../../formatCommands';
   import { BULLET_TYPES } from '../../../utils/bulletListTypes';
   import { formatOrdinal, orderedTypeDef, orderedTypesFor, sampleDir, type OrderedListType } from '../../../utils/orderedListTypes';
@@ -230,6 +231,7 @@
   <div class="rb-col">
     <ReadGate><RibbonButton variant="small" icon="cut" cmd="cut" label={t().contextMenu.cut} title={`${t().contextMenu.cut} (${withShortcut('Ctrl+X')})`} disabled={!hasSelection} onclick={() => editor && clipboardCommand(editor, 'cut')} /></ReadGate>
     <RibbonButton variant="small" icon="copy" cmd="copy" label={t().contextMenu.copy} title={`${t().contextMenu.copy} (${withShortcut('Ctrl+C')})`} disabled={!hasSelection} onclick={() => editor && clipboardCommand(editor, 'copy')} />
+    <ReadGate><RibbonButton variant="small" icon="formatPainter" cmd="formatPainter" label={t().toolbarExpanded.formatPainter} title={`${t().toolbarExpanded.formatPainter} – ${t().toolbarExpanded.formatPainterHint}`} disabled={!editor?.isEditable} active={painting()} pressed={painting()} onclick={(e) => painterClick(editor?.state, e)} /></ReadGate>
   </div>
 </RibbonGroup>
 

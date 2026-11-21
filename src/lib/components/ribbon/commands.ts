@@ -41,6 +41,7 @@ export const RIBBON_COMMANDS: RibbonCommand[] = [
   c('home', 'paste', (m) => m.contextMenu.paste),
   c('home', 'cut', (m) => m.contextMenu.cut),
   c('home', 'copy', (m) => m.contextMenu.copy),
+  c('home', 'formatPainter', (m) => m.toolbarExpanded.formatPainter),
   c('home', 'growFont', (m) => m.toolbarExpanded.growFont),
   c('home', 'shrinkFont', (m) => m.toolbarExpanded.shrinkFont),
   c('home', 'pastePlain', (m) => m.contextMenu.pasteWithoutFormatting, 'paste'),

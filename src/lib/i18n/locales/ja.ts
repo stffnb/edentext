@@ -655,6 +655,8 @@ const ja: Messages = {
     citationNotInHf: 'ヘッダー/フッターでは引用文献を使えません',
     bookmarkNotInHf: 'ヘッダー/フッターではブックマークを使えません',
     clearFormatting: '書式のクリア',
+    formatPainter: '書式のコピー/貼り付け',
+    formatPainterHint: 'ダブルクリックすると複数の箇所に続けて適用できます',
   },
   image: {
     wrapToolbar: '画像の文字列の折り返し',

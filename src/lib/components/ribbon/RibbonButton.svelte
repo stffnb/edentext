@@ -13,6 +13,7 @@
     title,
     variant = 'icon',
     active = false,
+    pressed,
     disabled = false,
     caret = false,
     caretTitle,
@@ -29,13 +30,15 @@
     title?: string;
     variant?: 'big' | 'small' | 'icon';
     active?: boolean;
+    // A mode the button switches: announced as a toggle, where `active` alone only paints.
+    pressed?: boolean;
     disabled?: boolean;
     caret?: boolean;
     caretTitle?: string;
     caretActive?: boolean;
     // The caret is the half of the control used most: it gets the bigger target.
     caretPrimary?: boolean;
-    onclick?: () => void;
+    onclick?: (e: MouseEvent) => void;
     onCaret?: () => void;
   } = $props();
 
@@ -83,6 +86,7 @@
     {disabled}
     {title}
     data-cmd={cmd}
+    aria-pressed={pressed}
     aria-haspopup={caret ? 'menu' : undefined}
     aria-expanded={caret ? active : undefined}
     {onclick}

@@ -662,6 +662,8 @@ const en = {
     citationNotInHf: 'Citations are not available in headers/footers',
     bookmarkNotInHf: 'Bookmarks are not available in headers/footers',
     clearFormatting: 'Clear formatting',
+    formatPainter: 'Format Painter',
+    formatPainterHint: 'Double-click to apply it to several places',
   },
   image: {
     wrapToolbar: 'Image text wrap',
