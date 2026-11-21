@@ -382,6 +382,22 @@ try {
   });
   check(head.height < 25 && Math.abs(head.gap) < 4,
     `two tabs in a running head stay on its line, the number on the right margin (height ${head.height.toFixed(1)}px, gap ${head.gap.toFixed(1)}px, stops ${head.stops})`);
+  // A zone's side frame without an x of its own stands at its side of the zone, not where
+  // its anchor paragraph's alignment puts the anchor.
+  const zoneSides = await page.evaluate(async () => {
+    const dom = document.querySelector('.hf-active .tiptap'), ed = dom.editor;
+    const src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"/>');
+    const pic = (wrap) => ({ type: 'image', attrs: { src, width: 40, height: 20, wrap } });
+    ed.chain().insertContentAt(1, [pic('left'), pic('right')]).setTextAlign('center').run();
+    await new Promise((done) => setTimeout(done, 600));
+    const zone = dom.getBoundingClientRect();
+    const at = (wrap) => dom.querySelector(`.image-node[data-wrap="${wrap}"]`)?.getBoundingClientRect();
+    const out = { left: at('left')?.left - zone.left, right: zone.right - at('right')?.right };
+    ed.chain().deleteRange({ from: 1, to: 3 }).unsetTextAlign().run();
+    return out;
+  });
+  check(Math.abs(zoneSides.left) < 2 && Math.abs(zoneSides.right) < 2,
+    `in a centred running head a left and a right frame stand at the zone's edges (${zoneSides.left?.toFixed(1)}px, ${zoneSides.right?.toFixed(1)}px off)`);
   await page.locator('.hf-bar-done').click();
   const hf = await page.evaluate(() => ({
     first: localStorage.getItem('edentext-hf-different-first'),

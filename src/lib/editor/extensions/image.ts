@@ -213,8 +213,12 @@ export function applyRunThrough(el: HTMLElement, offsetCm: unknown, offsetYCm: u
 // A header's or footer's text does not wrap around a frame anchored in it (probed in
 // LibreOffice: full-width and narrow, paragraph- and margin-relative): it runs through at its
 // anchor, and its gap above is kept for the footer's band (HeaderFooterLayer).
-export function runInZone(view: EditorView, el: HTMLElement, offsetCm: unknown, offsetYCm: unknown, dist: unknown, rank: unknown): void {
+export function runInZone(view: EditorView, el: HTMLElement, wrap: WrapMode, offsetCm: unknown, offsetYCm: unknown, dist: unknown, rank: unknown): void {
   applyRunThrough(el, offsetCm, offsetYCm, true, false, false, rank);
+  // Without an x of its own a side frame stands at its side of the column, as a float
+  // does, whichever way its anchor paragraph is aligned.
+  if (typeof offsetCm !== 'number' && wrap === 'left') el.dataset.columnX = '0';
+  if (typeof offsetCm !== 'number' && wrap === 'right') el.dataset.columnEnd = '';
   // How far its gap reaches above its paragraph's top.
   el.dataset.zoneGap = String(gapPx(wrapGap(dist).top) - (typeof offsetYCm === 'number' ? gapPx(offsetYCm) : 0));
   if (el.isConnected) placeInColumn(view, el);
@@ -306,6 +310,7 @@ export function clearPagePlace(el: HTMLElement): void {
   delete el.dataset.pageX;
   delete el.dataset.pageY;
   delete el.dataset.columnX;
+  delete el.dataset.columnEnd;
   el.style.removeProperty('--page-x');
   el.style.removeProperty('--page-y');
 }
@@ -924,7 +929,7 @@ class ImageView {
       return;
     }
     if (wrap !== 'through' && this.inZone()) {
-      runInZone(this.view, d, this.offX(), this.offY(), a.wrapDist, a.zIndex);
+      runInZone(this.view, d, wrap, this.offX(), this.offY(), a.wrapDist, a.zIndex);
       return;
     }
     if (wrap === 'through') {

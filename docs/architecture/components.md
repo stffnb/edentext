@@ -111,7 +111,7 @@ undo lands pending changes first (`flushPending`). A store set in the same task 
 outside the history. Document properties, the recording switch and embedded fonts stay out,
 as in both. A shared session swaps the stack for Yjs's (`editor/undo.ts`, `collab.md`).
 
-A frame anchored in a zone never moves its text (probed): it runs through (`runInZone`); a footer
+A frame anchored in a zone never moves its text (probed): it runs through (`runInZone`), a left or right one without an x of its own at that edge of the zone, however its paragraph is aligned; a footer
 frame as wide as the column keeps its gap above clear of the body (`rise`: a 2.54mm gap, 2.5mm). One placed against the page is placed by CSS from the zone box:
 `--page-x`/`--page-y` from the node view against the zone's `--hf-page-y`, so the zone's editor
 and that paragraph take no position of their own. One placed against the body's top
