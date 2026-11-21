@@ -23,7 +23,7 @@
   import { findTextBox, type ShapeKind, type TextVAlign } from '../editor/extensions/textBox';
   import { blockText } from '../editor/extensions/outline';
   import { catchUpIndexes } from '../editor/extensions/tableOfContents';
-  import { fitPastedSlice } from '../editor/paste';
+  import { fitPastedSlice, localPastedHtml } from '../editor/paste';
   import { readClickCaret } from '../editor/clickCaret';
   import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state';
   import { EditorView } from '@tiptap/pm/view';
@@ -1437,6 +1437,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
           },
         },
         // The direct prop wins over every plugin's, so the fitting fixes run here.
+        transformPastedHTML: localPastedHtml,
         transformPasted: (raw, view) => fitPastedSlice(raw, view.state),
       },
       onTransaction: ({ editor: e, transaction }) => {

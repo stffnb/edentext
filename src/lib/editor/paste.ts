@@ -24,6 +24,44 @@ export function dropRemoteImages(slice: Slice): Slice {
   return dropped ? Slice.maxOpen(content) : slice;
 }
 
+export const PASTE_NOTICE_EVENT = 'odf-paste-notice';
+
+const HOLDS_CONTENT = 'img, br, hr, table, svg, math, video, canvas, input';
+const ALIGNED = 'p[align], h1[align], h2[align], h3[align], h4[align], h5[align], h6[align]';
+
+/**
+ * Clipboard HTML with every picture the editor will not load (anything but its own data)
+ * replaced by its alt text, and the wrappers that held nothing else removed, so no empty
+ * paragraph or heading stands where it was. The count rides `PASTE_NOTICE_EVENT`.
+ */
+export function localPastedHtml(html: string): string {
+  if (!/<img\b|\balign=/i.test(html)) return html;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  let dropped = 0;
+  for (const img of Array.from(doc.querySelectorAll('img'))) {
+    if (LOCAL_IMAGE_SRC.test(img.getAttribute('src')?.trim() ?? '')) continue;
+    dropped++;
+    const alt = img.getAttribute('alt')?.trim();
+    if (alt) { img.replaceWith(doc.createTextNode(alt)); continue; }
+    let parent = img.parentElement;
+    img.remove();
+    // A cell stays: the table's grid counts on it.
+    while (parent && parent !== doc.body && !/^(?:TD|TH)$/.test(parent.tagName)
+      && !parent.textContent?.trim() && !parent.querySelector(HOLDS_CONTENT)) {
+      const up: HTMLElement | null = parent.parentElement;
+      parent.remove();
+      parent = up;
+    }
+  }
+  // The alignment attribute a web page still writes is the block's alignment.
+  const aligned = Array.from(doc.querySelectorAll<HTMLElement>(ALIGNED)).filter((el) => !el.style.textAlign
+    && /^(?:left|center|right|justify)$/i.test(el.getAttribute('align') ?? ''));
+  for (const el of aligned) el.style.textAlign = el.getAttribute('align')!.toLowerCase();
+  if (!dropped && !aligned.length) return html;
+  if (dropped) window.dispatchEvent(new CustomEvent(PASTE_NOTICE_EVENT, { detail: { images: dropped } }));
+  return doc.body.innerHTML;
+}
+
 // Fitting foreign HTML into this schema. ProseMirror's own fitting reaches for a text box
 // wherever blocks don't fit — it is the one inline node that holds them — and drops what
 // it cannot place at all; both are wrong for a paste from a web page.

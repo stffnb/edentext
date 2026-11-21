@@ -2710,6 +2710,38 @@ try {
     await fp.close();
   }
 
+  // A paste from a web page: a picture carried as data arrives at its place and size, one
+  // behind a URL is never requested and leaves its alt text, no empty block, and a notice.
+  {
+    const pp = await browser.newPage({ viewport: { width: 1400, height: 1000 }, locale: 'en-US', serviceWorkers: 'block' });
+    collectErrors(pp, pageErrors, 'paste: ');
+    const asked = [];
+    await pp.route(/remote\.invalid/, (r) => { asked.push(r.request().url()); return r.abort(); });
+    await pp.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
+    await pp.waitForSelector('.tiptap-host .tiptap', { timeout: 15_000 });
+    const got = await pp.evaluate(async () => {
+      const editor = document.querySelector('.tiptap-host .tiptap').editor, { view } = editor;
+      const canvas = Object.assign(document.createElement('canvas'), { width: 300, height: 120 });
+      canvas.getContext('2d').fillRect(0, 0, 300, 120);
+      const web = 'https://remote.invalid';
+      const html = `<p><a href="${web}/"><picture><source srcset="${web}/logo.webp"><img src="${web}/logo.png" alt="Logo" loading="lazy"></picture></a></p>`
+        + `<h1><img src="${web}/wordmark.svg" alt="Wordmark" height="40"></h1><p><img src="//remote.invalid/bare.png"></p>`
+        + `<h2><a href="${web}/"><img src="${canvas.toDataURL()}" width="150" height="60" alt="own"></a></h2><p>First line</p><p>Second line</p>`;
+      editor.commands.setContent('<p></p>');
+      editor.commands.focus('start');
+      view.pasteHTML(html);
+      await new Promise((r) => setTimeout(r, 300));
+      const blocks = [];
+      view.state.doc.forEach((n) => blocks.push(`${n.type.name}:${n.textContent}${n.firstChild?.type.name === 'image' ? `image ${n.firstChild.attrs.width}x${n.firstChild.attrs.height}` : ''}`));
+      const drawn = view.dom.querySelector('h2 img[src^="data:"]')?.getBoundingClientRect();
+      return { blocks, drawn: drawn ? `${Math.round(drawn.width)}x${Math.round(drawn.height)}` : null, notice: document.querySelector('.save-notice')?.textContent ?? '' };
+    });
+    check(got.blocks.join(' | ') === 'paragraph:Logo | heading:Wordmark | heading:image 150x60 | paragraph:First line | paragraph:Second line'
+      && got.drawn === '150x60' && /3 pictures/.test(got.notice) && !asked.length,
+      `a pasted web selection keeps its data picture, the alt text of the others and no empty block, asks no other host and says so (${JSON.stringify({ ...got, asked })})`);
+    await pp.close();
+  }
+
 } catch (err) {
   const at = (err.stack ?? '').split('\n').filter((l) => l.includes('dom/run.mjs')).map((l) => l.trim().replace(/^at /, '')).join(' ← ');
   check(false, `dom run threw: ${err.message ?? err}${at ? ` (at ${at})` : ''}`);

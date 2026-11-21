@@ -29,6 +29,7 @@
   import { convertUnsupportedImages } from './lib/import/imageFormats';
   import { repairContent, repairZones } from './lib/import/repairContent';
   import en from './lib/i18n/locales/en';
+  import { PASTE_NOTICE_EVENT } from './lib/editor/paste';
   import { getPageBreakDebug } from './lib/editor/extensions/pageBreaks';
   import { RECORDING, settledDoc } from './lib/editor/extensions/trackChanges';
   import { getColumnsFlowDebug } from './lib/editor/extensions/columnsFlow';
@@ -1288,6 +1289,13 @@
     const open = () => addComment();
     window.addEventListener(OPEN_COMMENT_EVENT, open);
     return () => window.removeEventListener(OPEN_COMMENT_EVENT, open);
+  });
+
+  // A paste or drop that left web pictures out says so once, without blocking (paste.ts).
+  $effect(() => {
+    const note = (e: Event) => (lossNotice = t().dialogs.remoteImagesDropped((e as CustomEvent<{ images: number }>).detail.images));
+    window.addEventListener(PASTE_NOTICE_EVENT, note);
+    return () => window.removeEventListener(PASTE_NOTICE_EVENT, note);
   });
 
   // The context menu and both chromes' Thesaurus entries open the one dialog here.
