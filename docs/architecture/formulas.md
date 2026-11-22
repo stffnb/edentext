@@ -65,10 +65,17 @@ a `<draw:frame text:anchor-type="as-char" draw:style-name="MthFr">` holding
 sub-document whose root *is* the MathML — and two manifest entries (`Formula{n}/` as
 `application/vnd.oasis.opendocument.formula`, its `content.xml` as `text/xml`).
 
-- **No `svg:width`/`svg:height` on the frame, on purpose.** With a size LibreOffice scales the
-  object to fill it (a frame measured at the dialog's preview font size magnified the formula
-  ~1.5×); without one it typesets at the natural size, matched to the body text. Verified by
-  rendering through `soffice`.
+- **The frame's box is kept, never minted.** LibreOffice lays a line out with the stored
+  `svg:width`/`svg:height` and never re-typesets a formula on load, so the import keeps them as
+  `width`/`height` (cm) plus `drop`, the box's bottom below the baseline (`from-top`: `svg:y` +
+  height; none: centred on the character area), and the node view reserves that box with the
+  formula centred in it (`formula-sized`). Measured on a 63-page guide: a fraction's frame is
+  35px where the browser's inline fraction is 23px, a 2×2 matrix 35px against 20px, and the pages
+  after such tables started up to three lines late. Centred, the box is one empty line padded by
+  half of what it is taller, so a box within the line leaves it alone (`23-formula-rows`). The
+  export writes the box back (`MthFrY` for a drop); editing the source drops it. A formula
+  without one gets none: LibreOffice scales the object to a frame's size (one measured at the
+  dialog's preview font magnified it ~1.5×) and typesets it at its natural size without.
 - `MthFr` carries `style:vertical-pos="middle" style:vertical-rel="text"`, what LibreOffice
   writes for its own formula frames. `bottom`/`baseline` was tried and drops the formula below
   the line.

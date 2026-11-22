@@ -364,14 +364,16 @@ describe('Leg 1a2b: formulas (embedded ODF formula objects)', () => {
     const doc: N = { type: 'doc', content: [
       P(null, T('Die Formel '), F(inline, false), T(' im Text.')),
       P(null, F(block, true)),
+      P(null, T('Mit Rahmen '), { type: 'formula', attrs: { latex: 'a+b', display: false, width: 1.2, height: 0.9, drop: 0.3 } }, T(' und '),
+        { type: 'formula', attrs: { latex: 'c', display: false, width: 0.5, height: 0.4 } }, T('.')),
     ] };
     const bytes = await buildOdt(doc, margins, 'portrait');
     const files = unzipSync(bytes);
     const content = strFromU8(files['content.xml']);
-    check('content.xml anchors both frames as-char', (content.match(/<draw:object xlink:href="\.\/Formula\d"/g) ?? []).length === 2, content.match(/<draw:frame[^>]*Formula[^>]*>/g));
+    check('content.xml anchors every frame as-char', (content.match(/<draw:object xlink:href="\.\/Formula\d"/g) ?? []).length === 4, content.match(/<draw:frame[^>]*Formula[^>]*>/g));
     // A sized frame makes LibreOffice scale the object to fit instead of typesetting
     // it at its natural size.
-    check('the frames carry no svg geometry', !/<draw:frame[^>]*Formula[^>]*svg:width/.test(content), content.match(/<draw:frame[^>]*Formula[^>]*>/g));
+    check('a frame without a stored box carries no svg geometry', !/<draw:frame[^>]*Formula[12]"[^>]*svg:width/.test(content), content.match(/<draw:frame[^>]*Formula[^>]*>/g));
     // The formula object is its own ODF sub-document; without the manifest entries
     // LibreOffice ignores it.
     const manifest = strFromU8(files['META-INF/manifest.xml']);
@@ -382,7 +384,10 @@ describe('Leg 1a2b: formulas (embedded ODF formula objects)', () => {
     const res = importOdt(bytes);
     const found: N[] = [];
     (function walk(n: N) { if (n.type === 'formula') found.push(n); for (const c of n.content ?? []) walk(c); })(res.content);
-    check('both formulas come back', found.length === 2, found.length);
+    check('every formula comes back', found.length === 4, found.length);
+    // The box a file stored for a formula is its layout there, so it survives; none is minted.
+    const boxOf = (f: N) => [f.attrs?.width ?? null, f.attrs?.height ?? null, f.attrs?.drop ?? null].join();
+    check('a stored box survives, and only where there was one', found.map(boxOf).join(' ') === ',, ,, 1.2,0.9,0.3 0.5,0.4,', found.map(boxOf));
     check('inline source is unchanged', found[0]?.attrs?.latex === inline, found[0]?.attrs?.latex);
     check('display source is unchanged', found[1]?.attrs?.latex === block, found[1]?.attrs?.latex);
     check('the display flag survives', found[0]?.attrs?.display === false && found[1]?.attrs?.display === true, found.map((f) => f.attrs?.display));

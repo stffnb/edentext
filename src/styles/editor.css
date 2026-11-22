@@ -476,6 +476,27 @@
   display: inline;
   display: inline math;
 }
+/* A formula with the box its file stores (formula.ts): the box sets the line, in a display
+   formula too, and the formula stands centred in it, out of the flow, so the box's bottom
+   is its baseline. */
+.paper .tiptap span.formula.formula-sized {
+  display: inline-block;
+  position: relative;
+}
+/* Centred on the character area: one empty line of the text's own, padded by half of
+   what the box is taller, so a box within the line leaves the line as it is. */
+.paper .tiptap span.formula.formula-mid {
+  padding-block: max(0px, (var(--fh) - 1lh) / 2);
+}
+.paper .tiptap span.formula.formula-mid::before {
+  content: '\200b';
+}
+.paper .tiptap span.formula.formula-sized math {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
 .paper .tiptap span.formula.selected {
   outline: 2px solid var(--color-primary, #52748b);
   outline-offset: 1px;

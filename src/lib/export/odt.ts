@@ -622,7 +622,7 @@ function replaceImages(node: TiptapNode, images: ImageExport[]): TiptapNode {
 
 // One formula, collected by replaceFormulas and emitted by applyFormulas as an
 // embedded ODF formula object (Formula{n}/content.xml) plus the frame referencing it.
-type FormulaExport = { latex: string; display: boolean };
+type FormulaExport = { latex: string; display: boolean; width: number | null; height: number | null; drop: number | null };
 
 // Replace every inline `formula` node with an MTH-sentinel text run (carrying the
 // node's marks) and collect its source; mirrors replaceImages so the sentinel rides
@@ -635,7 +635,9 @@ function replaceFormulas(node: TiptapNode, formulas: FormulaExport[]): TiptapNod
       const a = child.attrs ?? {};
       const latex = typeof a.latex === 'string' ? a.latex : '';
       if (!latex) continue;
-      formulas.push({ latex, display: a.display === true });
+      const cm = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      const sized = cm(a.width) != null && cm(a.height) != null;
+      formulas.push({ latex, display: a.display === true, width: sized ? cm(a.width) : null, height: sized ? cm(a.height) : null, drop: sized ? cm(a.drop) : null });
       content.push({ type: 'text', text: `${MTH}${formulas.length - 1}${MTH}`, marks: child.marks });
       continue;
     }
@@ -5249,11 +5251,13 @@ function applyFormulas(odtBytes: Uint8Array, formulas: FormulaExport[]): Uint8Ar
     const i = Number(idx);
     const f = formulas[i];
     if (!f) return '';
-    // No svg:width/height on purpose: with a size the consumer scales the object to
-    // fit it (LibreOffice magnifies a too-wide frame); without one it typesets the
-    // formula at its natural size, matched to the surrounding text.
+    // A size only where the file read brought one: the consumer scales the object to fit
+    // it (LibreOffice magnifies a too-wide frame), and without one typesets the formula
+    // at its natural size. `drop` is the box's bottom below the baseline, as `from-top`.
+    const box = f.width == null || f.height == null ? '' : ` svg:width="${f.width}cm" svg:height="${f.height}cm"`
+      + (f.drop == null ? '' : ` svg:y="${Math.round((f.drop - f.height) * 1000) / 1000}cm"`);
     return (
-      `<draw:frame draw:name="Formula${i + 1}" draw:style-name="MthFr" text:anchor-type="as-char" draw:z-index="${i}">` +
+      `<draw:frame draw:name="Formula${i + 1}" draw:style-name="${box && f.drop != null ? 'MthFrY' : 'MthFr'}" text:anchor-type="as-char"${box} draw:z-index="${i}">` +
       `<draw:object xlink:href="./Formula${i + 1}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>`
     );
   });
@@ -5262,7 +5266,10 @@ function applyFormulas(odtBytes: Uint8Array, formulas: FormulaExport[]): Uint8Ar
   content = injectAutomaticStyles(content,
     '<style:style style:name="MthFr" style:family="graphic">' +
     '<style:graphic-properties style:vertical-pos="middle" style:vertical-rel="text"' +
-    ' fo:padding="0cm" fo:border="none"/></style:style>');
+    ' fo:padding="0cm" fo:border="none"/></style:style>'
+    + (formulas.some((f) => f.width != null && f.drop != null)
+      ? '<style:style style:name="MthFrY" style:family="graphic"><style:graphic-properties'
+        + ' style:vertical-pos="from-top" fo:padding="0cm" fo:border="none"/></style:style>' : ''));
   files['content.xml'] = strToU8(content);
 
   for (const [i, f] of formulas.entries()) {
