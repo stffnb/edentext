@@ -1394,6 +1394,7 @@ export const PageBreaks = Extension.create({
           overflowDistance: number,
           scale: number,
           minLines: number,
+          tall = false,
         ): { naturalLineTop: number; docPos: number; hyphen: boolean } | null {
           const lines = getLineRects(el);
           if (lines.length === 0) return null;
@@ -1446,17 +1447,6 @@ export const PageBreaks = Extension.create({
           if (k <= 0) return null;
           // Widow: too few lines would carry over, so take one more down with them.
           if (lines.length - k < minLines) k = lines.length - minLines;
-          // Orphan: too few lines would stay behind — the caller pushes the whole
-          // block to the next page instead, which is what Word/LibreOffice do.
-          if (k < minLines) return null;
-
-          // The carried line's box top lands on the page start; LibreOffice puts the lift
-          // below the line instead — without it the rest of the block rides that high.
-          const naturalLineTop = toNatural(lines[k].top) - lift;
-          // Binary search runs in viewport space (coordsAtPos returns scaled
-          // viewport coords just like Range.getClientRects()), so the target
-          // stays unscaled-free here.
-          const targetViewportTop = lines[k].top;
 
           let startPos: number;
           let endPos: number;
@@ -1468,23 +1458,50 @@ export const PageBreaks = Extension.create({
             return null;
           }
 
-          let lo = startPos;
-          let hi = endPos;
-          while (lo < hi) {
-            const mid = (lo + hi) >> 1;
-            let midTop: number;
-            try {
-              midTop = coordsAt(editorView, mid).top;
-            } catch {
-              lo = mid + 1;
-              continue;
+          // The first position on line k. Binary search runs in viewport space
+          // (coordsAtPos returns scaled viewport coords just like getClientRects).
+          const firstPosOn = (targetViewportTop: number): number => {
+            let lo = startPos;
+            let hi = endPos;
+            while (lo < hi) {
+              const mid = (lo + hi) >> 1;
+              let midTop: number;
+              try {
+                midTop = coordsAt(editorView, mid).top;
+              } catch {
+                lo = mid + 1;
+                continue;
+              }
+              if (midTop >= targetViewportTop - 0.5) hi = mid;
+              else lo = mid + 1;
             }
-            if (midTop >= targetViewportTop - 0.5) {
-              hi = mid;
-            } else {
-              lo = mid + 1;
-            }
+            return lo;
+          };
+          // An inline atom wrapping across lines (a cross-reference's text) has no position
+          // at the start of its later lines: a spacer after it would keep that line here and
+          // break the next one apart, so the split moves up to the line the atom starts on.
+          let lo = firstPosOn(lines[k].top);
+          const [k0, lo0] = [k, lo];
+          for (;;) {
+            const before = lo > startPos ? editorView.state.doc.resolve(lo).nodeBefore : null;
+            const dom = before && !before.isText && before.isInline ? editorView.nodeDOM(lo - before.nodeSize) : null;
+            const rects = dom instanceof HTMLElement ? Array.from(dom.getClientRects()).filter((r) => r.height > 0) : [];
+            if (!rects.length || rects[rects.length - 1].bottom <= lines[k].top + 0.5) break;
+            const from = rects[0].top + 0.5;
+            const at = lines.findLastIndex((l) => l.top <= from);
+            if (at < 0 || at >= k) break;
+            k = at;
+            lo = firstPosOn(lines[k].top);
           }
+          // A block taller than the page splits anyway, where the atom left no line start.
+          if (k < minLines && tall && k0 >= minLines) [k, lo] = [k0, lo0];
+          // Orphan: too few lines would stay behind — the caller pushes the whole
+          // block to the next page instead, which is what Word/LibreOffice do.
+          if (k < minLines) return null;
+
+          // The carried line's box top lands on the page start; LibreOffice puts the lift
+          // below the line instead — without it the rest of the block rides that high.
+          const naturalLineTop = toNatural(lines[k].top) - lift;
           // Chromium reports the first letters after an automatic hyphen on the line above,
           // which lands the split inside the word ("pract|ice"). A hit test at the line's
           // edges finds its true start; the earlier edge wins, a right-to-left line's first.
@@ -2360,7 +2377,7 @@ export const PageBreaks = Extension.create({
                   const minLines = guarded ? MIN_KEPT_LINES : 1;
                   const hang = leaf.hang ?? 0;
                   while (boundaryNatural + hang < leaf.naturalHeight) {
-                    const split = findLineSplit(leaf.el, boundaryNatural + hang, scale, minLines);
+                    const split = findLineSplit(leaf.el, boundaryNatural + hang, scale, minLines, leaf.naturalHeight > CONTENT_HEIGHT);
                     if (split === null) break;
                     const target = pageContentStart(targetPage, topAt(targetPage), grid);
                     const h = target - (effectiveTop + extraShift + split.naturalLineTop);
