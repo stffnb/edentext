@@ -735,7 +735,14 @@ function textBoxNode(frame: Element, textBoxEl: Element, ctx: Ctx): Node {
   const gp = ctx.resolver.frameGraphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
   applyFrameRotationAndWrap(frame, attrs, gp, ctx.contentWidthCm, ctx.leftMarginCm, ctx);
   boxWrapAlign(gp, attrs);
-  boxPadding(gp, attrs);
+  // A frame whose styles name no padding has none (probed: its text starts at the frame's
+  // edge); LibreOffice's own "Frame" style writes its 0.15cm out.
+  const padCm = lengthToCm(gp['fo:padding'] ?? gp['fo:padding-left']) ?? 0;
+  if (Math.abs(padCm - TEXTBOX_PADDING_CM) > 0.01) attrs.paddingCm = Math.round(padCm * 1000) / 1000;
+  for (const [prop, key] of [['fo:padding-top', 'paddingTopCm'], ['fo:padding-bottom', 'paddingBottomCm']]) {
+    const cm = lengthToCm(gp[prop]);
+    if (cm != null && Math.abs(cm - padCm) > 0.01) attrs[key] = Math.round(cm * 1000) / 1000;
+  }
   shapeStyleAttrs(gp, attrs, false);
   // A text frame without a fill under a common style still covers what lies behind it —
   // LibreOffice paints its surroundings' background there — unless draw:opacity lets it show.
@@ -839,17 +846,6 @@ function loadObjectDoc(href: string | null, ctx: Ctx): Document | null {
   return doc.documentElement && !doc.getElementsByTagName('parsererror').length ? doc : null;
 }
 
-// A frame or shape whose styles name no padding has none (probed: its text starts at its
-// edge); a side's own padding beats a shorthand inherited from a common style like "Frame".
-function boxPadding(gp: PropMap, attrs: Record<string, unknown>): void {
-  const padCm = lengthToCm(gp['fo:padding-left'] ?? gp['fo:padding']) ?? 0;
-  if (Math.abs(padCm - TEXTBOX_PADDING_CM) > 0.01) attrs.paddingCm = Math.round(padCm * 1000) / 1000;
-  for (const [prop, key] of [['fo:padding-top', 'paddingTopCm'], ['fo:padding-bottom', 'paddingBottomCm']]) {
-    const cm = lengthToCm(gp[prop]);
-    if (cm != null && Math.abs(cm - padCm) > 0.01) attrs[key] = Math.round(cm * 1000) / 1000;
-  }
-}
-
 // draw:rect / draw:ellipse / draw:custom-shape (any preset `utils/shapes.ts` knows) → a
 // textBox with the matching shapeKind; the shape's text is its content. A preset we
 // can't draw (a connector, a freeform) is dropped with a warning.
@@ -898,7 +894,6 @@ function convertShape(el: Element, ctx: Ctx): Node | null {
   if (el.localName === 'rect' && hCm != null && gp['draw:auto-grow-height'] !== 'true') attrs.fixedHeight = true;
   applyFrameRotationAndWrap(el, attrs, gp, ctx.contentWidthCm, ctx.leftMarginCm, ctx);
   boxWrapAlign(gp, attrs);
-  boxPadding(gp, attrs);
   shapeStyleAttrs(gp, attrs, true);
   if (path) outlineHeads(gp, attrs);
   boxTextFlow(el, ctx, attrs);
