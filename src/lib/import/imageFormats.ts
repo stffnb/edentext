@@ -280,6 +280,10 @@ export function placeholderImage(label: string, widthPx: number, heightPx: numbe
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
+// What holds a place no drawn node can: a drawing group's box in its line, an empty shape
+// a text box cannot nest. A see-through picture of that size, which every format carries.
+export const SPACER_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII=';
+
 // Word reads no SVG — a vector picture goes into a .docx as pixels or not at all. The
 // browser is the only renderer at hand, so the export draws it onto a canvas; off the
 // main thread (the test suite) there is none and the caller keeps the vector.

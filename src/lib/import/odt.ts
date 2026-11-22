@@ -30,7 +30,7 @@ import {
 import { resolveGeometry, type ResolvedGeometry } from '../utils/enhancedGeometry';
 import { isPresetName, presetAdjust } from '../utils/shapePresets';
 import type { DrawingMlPreset } from '../utils/shapes';
-import { imageDataUrl, imageSizeCm, placeholderImage, unzipArchive, type ConvertedImages } from './imageFormats';
+import { imageDataUrl, imageSizeCm, placeholderImage, SPACER_IMAGE, unzipArchive, type ConvertedImages } from './imageFormats';
 import { boundedInt, IMPORT_LIMITS, parseImportXml } from './importLimits';
 import { astToLatex } from '../math/latex';
 import { parseMathml } from '../math/mathml';
@@ -675,17 +675,37 @@ function asOdfTable(el: Element): Element {
 
 // A box inside a box has nowhere to go — both word processors refuse one and the editor
 // bars it — so its blocks take its place in the outer box. Bottom-up, so one pass does.
+// One without text has no blocks: it leaves the place it took in the text, if any.
 export function unnestBoxes(blocks: Node[], ctx: { warnings: Set<string> }): Node[] {
   const out: Node[] = [];
   for (const block of blocks) {
-    const boxes = (block.content ?? []).filter(n => n.type === 'textBox');
-    if (!boxes.length) { out.push(block); continue; }
+    if (!block.content?.some(n => n.type === 'textBox')) { out.push(block); continue; }
     ctx.warnings.add(WARN.textBoxFlattened);
-    block.content = block.content!.filter(n => n.type !== 'textBox');
-    if (block.content.length) out.push(block);
-    for (const b of boxes) out.push(...(b.content ?? [{ type: 'paragraph' }]));
+    const kept: Node[] = [];
+    const spilled: Node[] = [];
+    for (const n of block.content) {
+      if (n.type !== 'textBox') kept.push(n);
+      else if (n.content?.some(b => b.type !== 'paragraph' || b.content?.length)) spilled.push(...n.content);
+      else kept.push(...boxPlace(n));
+    }
+    if (kept.length) block.content = kept; else delete block.content;
+    if (kept.length || !spilled.length) out.push(block);
+    out.push(...spilled);
   }
   return out;
+}
+
+const PLACEMENT_ATTRS = ['wrap', 'wrapOffset', 'wrapOffsetY', 'wrapFromPage', 'wrapFromBody', 'wrapAlign',
+  'wrapDist', 'inFront', 'anchorPage', 'vAlign', 'zIndex'];
+
+// The room a box takes from the text, as a see-through picture placed like it: its box
+// in the line, or what the text wraps around. One the text runs through takes none.
+function boxPlace(box: Node): Node[] {
+  const a = box.attrs ?? {};
+  if (a.wrap === 'through' || a.anchorPage || typeof a.width !== 'number' || typeof a.height !== 'number') return [];
+  const attrs: Record<string, unknown> = { src: SPACER_IMAGE, width: a.width, height: a.height };
+  for (const k of a.wrap ? [...PLACEMENT_ATTRS, 'rotation'] : ['vAlign', 'wrapOffsetY', 'rotation']) if (a[k] != null) attrs[k] = a[k];
+  return [{ type: 'image', attrs }];
 }
 
 // A <draw:frame><draw:text-box> → a textBox node. The height is the text-box's
@@ -997,12 +1017,9 @@ function placedAt(el: Element, axis: 'x' | 'y'): number | null {
   return drawBox(el)[axis];
 }
 
-const PLACEMENT_ATTRS = ['wrap', 'wrapOffset', 'wrapOffsetY', 'wrapFromPage', 'wrapFromBody', 'wrapAlign',
-  'wrapDist', 'inFront', 'anchorPage', 'vAlign', 'zIndex'];
-
-// A draw:g opens as its members, as a DOCX group does: they sit in the anchor's space,
-// the group's style places their bounding box, and the first member carries that
-// placement (an as-char group's place in the line) while the rest run through over it.
+// A draw:g opens as its members, as a DOCX group does: they sit in the anchor's space and
+// the group's style places their bounding box. In the line that box is the group's place:
+// the first member holds it where it fills it, else a spacer, and the rest run over it.
 function convertDrawGroup(g: Element, ctx: Ctx): Node[] {
   const leaves: Element[] = [];
   const collect = (el: Element) => {
@@ -1023,19 +1040,26 @@ function convertDrawGroup(g: Element, ctx: Ctx): Node[] {
 
   const minX = Math.min(...members.map((m) => m.box.x));
   const minY = Math.min(...members.map((m) => m.box.y));
+  const wCm = Math.max(...members.map((m) => m.box.x + m.box.w)) - minX;
+  const hCm = Math.max(...members.map((m) => m.box.y + m.box.h)) - minY;
   const bounds = g.cloneNode(false) as Element;
   bounds.setAttributeNS(NS.svg, 'svg:x', `${minX}cm`);
   bounds.setAttributeNS(NS.svg, 'svg:y', `${minY}cm`);
-  bounds.setAttributeNS(NS.svg, 'svg:width', `${Math.max(...members.map((m) => m.box.x + m.box.w)) - minX}cm`);
-  bounds.setAttributeNS(NS.svg, 'svg:height', `${Math.max(...members.map((m) => m.box.y + m.box.h)) - minY}cm`);
+  bounds.setAttributeNS(NS.svg, 'svg:width', `${wCm}cm`);
+  bounds.setAttributeNS(NS.svg, 'svg:height', `${hCm}cm`);
   const gp = ctx.resolver.graphicProps(g.getAttributeNS(NS.draw, 'style-name'));
   const place: Record<string, unknown> = {};
   applyFrameRotationAndWrap(bounds, place, gp, ctx.contentWidthCm, ctx.leftMarginCm, ctx);
   delete place.rotation;
 
+  const inLine = !place.wrap && !place.anchorPage;
+  const fills = (b: ReturnType<typeof drawBox>) => [b.x - minX, b.y - minY, b.w - wCm, b.h - hCm].every((d) => Math.abs(d) < 0.01);
+  const spacer = inLine && !fills(members[0].box);
   // Member offsets count from the group's own offset where it has one, else from the
-  // first member, which is where the line or the alignment puts it.
-  const [first, ...rest] = members;
+  // carrier, which is where the line or the alignment puts it.
+  const [first, ...rest] = spacer
+    ? [{ node: { type: 'image', attrs: { src: SPACER_IMAGE, width: framePx(cmToPx(wCm)), height: framePx(cmToPx(hCm)) } }, box: { x: minX, y: minY, w: wCm, h: hCm } }, ...members]
+    : members;
   const originX = place.wrap && place.wrapOffset != null ? (place.wrapOffset as number) - minX : -first.box.x;
   const originY = place.wrap && place.wrapOffsetY != null ? (place.wrapOffsetY as number) - minY : -first.box.y;
   const r = (n: number) => Math.round(n * 1000) / 1000;
@@ -1060,7 +1084,7 @@ function convertDrawGroup(g: Element, ctx: Ctx): Node[] {
   }));
   // An as-char carrier reserves the group's place in the line, and the frames over it
   // take their static position from the paragraph — so they precede it.
-  return place.wrap || place.anchorPage ? [carrier, ...over] : [...over, carrier];
+  return inLine ? [...over, carrier] : [carrier, ...over];
 }
 
 // Dispatch any draw:* element: an image stays inline; a text box / shape is a block
