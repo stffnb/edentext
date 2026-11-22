@@ -709,38 +709,37 @@ function textUnder(el: HTMLElement, x: number, y: number): boolean {
   return false;
 }
 
-// A line carrying nothing but an as-character image is as tall as the image or the
-// block's line height, whichever is more — no text descent hangs below it (probed
-// against LibreOffice). Whitespace beside the image adds none, which CSS cannot ask.
+// A line carrying nothing but as-character frames (pictures, boxes) is as tall as they are or
+// the block's line height, whichever is more — no text descent hangs below it (probed
+// against LibreOffice). Whitespace beside a frame adds none, which CSS cannot ask.
 const imageLineKey = new PluginKey('imageLine');
 
 // Hard breaks are the only line boundaries visible in the model, so a frame is taken
 // as alone on its line when nothing but whitespace shares its break-delimited run —
 // the image-plus-caption idiom. A soft wrap around it can't be seen from here.
 function blockImageLines(node: PMNode, pos: number, decos: Decoration[]): void {
-  let images: number[] = [];
+  let images: [number, number][] = [];
   let text = false;
   // 'true': a full-width float rides this block, so its successor clears the band;
   // 'anchored': every such float is page-anchored — the successor must not clear;
   // 'open': only full-width bands, so it runs in the room above one where it fits.
   let band: 'true' | 'anchored' | 'open' | null = null;
   let sideOrPair = false;
+  let lineless = true;
   const flush = () => {
-    if (!text) for (const at of images) decos.push(Decoration.node(at, at + 1, { class: 'image-line' }));
+    if (!text) for (const [at, size] of images) decos.push(Decoration.node(at, at + size, { class: 'image-line' }));
     images = [];
     text = false;
   };
   node.forEach((child, offset) => {
+    if ((child.attrs.wrap ?? 'inline') === 'inline' && (!child.isText || child.text?.trim())) lineless = false;
     if (child.type.name === 'hardBreak') flush();
     else if (child.type.name === 'image' || child.type.name === 'textBox') {
       const a = child.attrs, wrap = a.wrap ?? 'inline';
       if (wrap === 'left' || wrap === 'right' || a.wrapAlign) sideOrPair = true;
-      if (child.type.name === 'textBox') {
-        // A box in the line holds text; out of it it shares none, as a wrapping picture does not.
-        if (wrap === 'inline') text = true;
-        return;
-      }
-      if (wrap === 'inline') images.push(pos + 1 + offset);
+      // A box in the line is a frame like a picture: alone there it hangs no descent (probed).
+      if (wrap === 'inline') images.push([pos + 1 + offset, child.nodeSize]);
+      if (child.type.name === 'textBox') return;
       if (wrap === 'topBottom' && band !== 'true') band = a.anchorPage ? 'anchored' : 'true';
     } else if (child.isText ? child.text?.trim() : true) text = true;
   });
@@ -748,7 +747,8 @@ function blockImageLines(node: PMNode, pos: number, decos: Decoration[]): void {
   if (band === 'true' && !sideOrPair) band = 'open';
   // The attribute editor.css keys the clearing on — an attribute, since a `:has()`
   // there makes Chromium restyle the whole document on every insertion.
-  if (band) decos.push(Decoration.node(pos, pos + node.nodeSize, { 'data-wrap-band': band }));
+  // A block holding nothing but floats still has its one line, set below a band (probed).
+  if (band) decos.push(Decoration.node(pos, pos + node.nodeSize, { 'data-wrap-band': band, ...(lineless ? { 'data-band-lineless': '' } : {}) }));
 }
 
 // A textblock holding an as-character box holds that box's paragraphs too.

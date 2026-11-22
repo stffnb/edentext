@@ -5417,7 +5417,8 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
   // spelled out — the `Frame` parent hangs a frame that names none below the line,
   // where a style-less as-char frame (an image) stands on it (probed).
   const wrap = box.wrap === 'inline'
-    ? ' style:vertical-pos="top" style:vertical-rel="baseline"'
+    ? ' style:vertical-pos="top" style:vertical-rel="baseline"' + Object.entries(wrapGap(box.wrapDist))
+      .filter(([, v]) => v > 0).map(([k, v]) => ` fo:margin-${k}="${v}cm"`).join('')
     : ` ${imageWrapProps(box.wrap, box.wrapOffsetCm, box.wrapAlign, box.wrapDist, 'left')} style:number-wrapped-paragraphs="no-limit"`
       // Spelled out either way: under the `Frame` parent an absent one reads as foreground.
       + (box.wrap === 'through' ? ` style:run-through="${box.inFront ? 'foreground' : 'background'}"` : '') +
