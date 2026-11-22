@@ -150,6 +150,8 @@ type Ctx = {
   zone?: boolean;
   // The part is a footer, whose top is where the strip below the body starts.
   footer?: boolean;
+  // A footer's frames placed below that strip's top, which convertHfPart anchors at the footer's top.
+  footerTop?: Set<Record<string, unknown>>;
   // The body's open index field. Word may open one in the paragraph that ends a section
   // and fill it in the next, so it outlives the per-section walk.
   bodyField?: BodyField;
@@ -2951,6 +2953,27 @@ function setAnchorAttrs(attrs: Record<string, unknown>, anchor: Element, ctx: Ct
   if (wrap === 'through') attrs.inFront = anchor.getAttribute('behindDoc') !== '1';
   const rank = stackRank(anchor, null, 'relativeHeight');
   if (rank) attrs.zIndex = rank;
+  markFooterTop(attrs, anchor, ctx);
+}
+
+// A footer frame offset below the bottom margin's top, whichever paragraph anchors it.
+function markFooterTop(attrs: Record<string, unknown>, anchor: Element, ctx: Ctx): void {
+  const posV = anchor.getElementsByTagNameNS(WP, 'positionV')[0];
+  if (ctx.footerTop && posV?.getAttribute('relativeFrom') === 'bottomMargin'
+    && !posV.getElementsByTagNameNS(WP, 'align')[0]) ctx.footerTop.add(attrs);
+}
+
+// The frames `markFooterTop` found lead the footer's first paragraph, the footer's top
+// (probed: LibreOffice counts their offset from there, not from their own paragraph).
+function atFooterTop(blocks: Node[], frames: Set<Record<string, unknown>>): void {
+  const first = blocks[0];
+  if (!first || (first.type !== 'paragraph' && first.type !== 'heading')) return;
+  const moved: Node[] = [];
+  for (const block of blocks.slice(1)) {
+    if ((block.type !== 'paragraph' && block.type !== 'heading') || !block.content) continue;
+    block.content = block.content.filter((n) => !(n.attrs && frames.has(n.attrs) && moved.push(n)));
+  }
+  if (moved.length) first.content = [...moved, ...(first.content ?? [])];
 }
 
 // The blip's colour effect as a colour mode: Word's grayscale and black-and-white, and
@@ -3138,7 +3161,7 @@ function frameNode(src: string, box: { w: number; h: number }, label: string, an
 // top margin's strip starts there too) or of the page's body text (`margin`). The strip
 // below the body is left at the anchor: LibreOffice starts it where the body ends, which
 // a footer can move — nothing the editor places a frame against. In a footer that is the
-// footer's own top, so the offset counts from its paragraph (probed).
+// footer's own top, so the offset counts from its first paragraph (probed; `atFooterTop`).
 function anchorOffsetY(anchor: Element, ctx: Ctx): { cm: number | null; fromPage: boolean; fromBody: boolean } {
   const posV = anchor.getElementsByTagNameNS(WP, 'positionV')[0];
   const rel = posV?.getAttribute('relativeFrom');
@@ -3269,6 +3292,7 @@ function setBoxAnchorAttrs(attrs: Record<string, unknown>, root: Element, ctx: C
   if (wrap === 'through') attrs.inFront = root.getAttribute('behindDoc') !== '1';
   const rank = stackRank(root, null, 'relativeHeight');
   if (rank) attrs.zIndex = rank;
+  markFooterTop(attrs, root, ctx);
 }
 
 // A VML shape placed out of the line (`position:absolute`) as the wp:anchor DrawingML
@@ -4746,7 +4770,7 @@ function convertHfPart(relId: string | null, ctx: Ctx, sect: Element | null): Hf
   const root = doc.getElementsByTagNameNS(W, 'hdr')[0] ?? doc.getElementsByTagNameNS(W, 'ftr')[0];
   if (!root) return null;
   const zoneCtx: Ctx = {
-    ...ctx, zone: true, footer: root.localName === 'ftr', rels: parseRels(ctx.files[path.replace(/^word\/(.*)$/, 'word/_rels/$1.rels')]),
+    ...ctx, zone: true, footer: root.localName === 'ftr', footerTop: root.localName === 'ftr' ? new Set() : undefined, rels: parseRels(ctx.files[path.replace(/^word\/(.*)$/, 'word/_rels/$1.rels')]),
     openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentDefs: new Map(), moveNames: moveNames(root),
     listCounters: new Map(), listOverridden: new Set(), cellSpacing: {},
     contentWidthCm: sectionContentWidthCm(sect), leftMarginCm: twipToCm(intAttr(fc(sect, 'pgMar'), W, 'left') ?? 1440), rightMarginCm: twipToCm(intAttr(fc(sect, 'pgMar'), W, 'right') ?? 1440),
@@ -4754,6 +4778,7 @@ function convertHfPart(relId: string | null, ctx: Ctx, sect: Element | null): Hf
   };
   const zone: HfDoc = { type: 'doc', content: convertBlocks(Array.from(root.children), zoneCtx, 'zone') };
   if (hfIsEmpty(zone)) return null;
+  if (zoneCtx.footerTop?.size) atFooterTop(zone.content as Node[], zoneCtx.footerTop);
   zone.content?.forEach((block) => scopeRevisions(block as Node, target));
   return zone;
 }
