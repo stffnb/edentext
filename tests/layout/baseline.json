@@ -895,12 +895,13 @@
    ]
   },
   "tests/corpus/26-notes-rows.docx": {
-   "pages": 2,
+   "pages": 3,
    "lines": 225,
    "ms": 200,
    "starts": [
     "Row 1 Value 1",
-    "Row 39 5 Value 39"
+    "Row 39 5 Value 39",
+    "Row 59 15 Value 59"
    ]
   },
   "tests/corpus/26-notes-rows.odt": {
@@ -967,13 +968,25 @@
     "After paragraph 51."
    ]
   },
+  "tests/corpus/32-box-split.odt": {
+   "pages": 5,
+   "lines": 162,
+   "ms": 700,
+   "starts": [
+    "Line 1",
+    "and runs into the field The quick brown ",
+    "The quick brown fox jumps over the lazy",
+    "into the field The quick brown fox jumps",
+    "The quick brown fox jumps over the lazy"
+   ]
+  },
   "tests/corpus/33-band-keep.odt": {
    "pages": 2,
    "lines": 71,
    "ms": 800,
    "starts": [
     "Body line 1.",
-    "After line 6."
+    "After line 5."
    ]
   },
   "tests/corpus/word/01-flow.docx": {
