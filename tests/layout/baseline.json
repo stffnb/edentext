@@ -957,6 +957,16 @@
     "after17 text of a paragraph"
    ]
   },
+  "tests/corpus/30-band-gap.odt": {
+   "pages": 3,
+   "lines": 64,
+   "ms": 700,
+   "starts": [
+    "Anchor paragraph.",
+    "After paragraph 26.",
+    "After paragraph 51."
+   ]
+  },
   "tests/corpus/word/01-flow.docx": {
    "pages": 2,
    "lines": 120,
