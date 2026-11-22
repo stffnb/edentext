@@ -10,7 +10,7 @@ import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import { placeFrameSoon, placeInColumn, placeTogether, freeDragX } from './pageBreaks';
-import { HANDLES, MIN_SIZE_PX, wrapGap, wrapGapAttr, clamp, parsePx, frameMargins, parseWrapGap, BOX_WRAP_GAP, type WrapGap, unstackFloat, pageContentHeightPx, sinkToOffset, applyRunThrough, runInZone, clearPagePlace, startFreeMove, droppedFrameAttrs, type WrapMode } from './image';
+import { HANDLES, MIN_SIZE_PX, inlineMargin, clamp, parsePx, frameMargins, parseWrapGap, BOX_WRAP_GAP, type WrapGap, unstackFloat, pageContentHeightPx, sinkToOffset, applyRunThrough, runInZone, clearPagePlace, startFreeMove, droppedFrameAttrs, type WrapMode } from './image';
 import { SHAPES, shapePath, linePaths, pathHeadPaths, arrowHeadPx, isShapeKind, isLineKind, outlineLayers, shadeColor, asShapePreset, asTextArea, type PathHeads, type ShapeKind, type DrawingMlPreset, type TextArea } from '../../utils/shapes';
 import type { ResolvedGeometry } from '../../utils/enhancedGeometry';
 import { cmToPx } from '../../storage/pageMargins';
@@ -1038,8 +1038,7 @@ class TextBoxView {
       // margins taken into the line (probed). inline-block keeps ProseMirror's inline view
       // intact where a block box would not.
       d.style.display = 'inline-block';
-      const g = wrapGap(a.wrapDist);
-      if (wrapGapAttr(g)) d.style.margin = `${g.top}cm ${g.right}cm ${g.bottom}cm ${g.left}cm`;
+      d.style.margin = inlineMargin(a.wrapDist);
     }
   }
 

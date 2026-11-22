@@ -622,7 +622,7 @@ function replaceImages(node: TiptapNode, images: ImageExport[]): TiptapNode {
 
 // One formula, collected by replaceFormulas and emitted by applyFormulas as an
 // embedded ODF formula object (Formula{n}/content.xml) plus the frame referencing it.
-type FormulaExport = { latex: string; display: boolean; width: number | null; height: number | null; drop: number | null };
+type FormulaExport = { latex: string; display: boolean; width: number | null; height: number | null; drop: number | null; margins: string };
 
 // Replace every inline `formula` node with an MTH-sentinel text run (carrying the
 // node's marks) and collect its source; mirrors replaceImages so the sentinel rides
@@ -637,7 +637,10 @@ function replaceFormulas(node: TiptapNode, formulas: FormulaExport[]): TiptapNod
       if (!latex) continue;
       const cm = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
       const sized = cm(a.width) != null && cm(a.height) != null;
-      formulas.push({ latex, display: a.display === true, width: sized ? cm(a.width) : null, height: sized ? cm(a.height) : null, drop: sized ? cm(a.drop) : null });
+      // `drop` counts to the margin box's bottom, from-top's y to its top (probed).
+      const g = wrapGap(a.wrapDist);
+      const drop = sized ? cm(a.drop) : null;
+      formulas.push({ latex, display: a.display === true, width: sized ? cm(a.width) : null, height: sized ? cm(a.height) : null, drop: drop == null ? null : drop - g.top - g.bottom, margins: inlineMarginProps(a.wrapDist) });
       content.push({ type: 'text', text: `${MTH}${formulas.length - 1}${MTH}`, marks: child.marks });
       continue;
     }
@@ -5019,6 +5022,10 @@ function imageWrapProps(wrap: WrapMode, offset: number | null, align?: string | 
   return `style:wrap="none" style:horizontal-pos="${align ?? pos ?? noneAlign}"${wrap === 'topBottom' ? gap : ''}`;
 }
 
+// An as-char frame's margins, all four sides: the line makes room for each (probed).
+const inlineMarginProps = (dist: unknown) => Object.entries(wrapGap(dist))
+  .filter(([, v]) => v > 0).map(([k, v]) => ` fo:margin-${k}="${v}cm"`).join('');
+
 // The inverse of the importer's as-char alignment map (import/odt.ts): a frame with no
 // entry stands on the baseline, which is what a style-less as-char frame does anyway.
 const INLINE_VALIGN_ODF: Record<string, string> = {
@@ -5070,9 +5077,10 @@ function frameGraphicStyle(img: ImageExport, index: number): string {
   }
   if (img.wrap === 'inline') {
     const v = INLINE_VALIGN_ODF[img.vAlign ?? ''];
-    return v
+    const m = inlineMarginProps(img.wrapDist);
+    return v || m
       ? `<style:style style:name="ImgFr${index + 1}" style:family="graphic">` +
-        `<style:graphic-properties style:wrap="none" ${v}/></style:style>`
+        `<style:graphic-properties style:wrap="none"${v ? ` ${v}` : ''}${m}/></style:style>`
       : '';
   }
   return (
@@ -5099,7 +5107,7 @@ function imageFrameXml(img: ImageExport, index: number): string {
   const anchor = img.anchorPage != null
     ? ` text:anchor-type="page" text:anchor-page-number="${img.anchorPage}"`
     : ` text:anchor-type="${floats ? 'char' : 'as-char'}"`;
-  const named = floats || !!img.clip || !!img.colorMode || (img.vAlign != null && img.vAlign in INLINE_VALIGN_ODF);
+  const named = floats || !!img.clip || !!img.colorMode || (img.vAlign != null && img.vAlign in INLINE_VALIGN_ODF) || !!inlineMarginProps(img.wrapDist);
   const styleName = named ? ` draw:style-name="ImgFr${index + 1}"` : '';
   const xCm = img.wrapOffsetCm != null && floats && !img.wrapAlign ? img.wrapOffsetCm : null;
   // An as-char frame carries svg:y only for the offset alignment, which is what it means.
@@ -5276,20 +5284,22 @@ function applyFormulas(odtBytes: Uint8Array, formulas: FormulaExport[]): Uint8Ar
     // at its natural size. `drop` is the box's bottom below the baseline, as `from-top`.
     const box = f.width == null || f.height == null ? '' : ` svg:width="${f.width}cm" svg:height="${f.height}cm"`
       + (f.drop == null ? '' : ` svg:y="${Math.round((f.drop - f.height) * 1000) / 1000}cm"`);
+    const style = f.margins ? `MthG${i + 1}` : box && f.drop != null ? 'MthFrY' : 'MthFr';
     return (
-      `<draw:frame draw:name="Formula${i + 1}" draw:style-name="${box && f.drop != null ? 'MthFrY' : 'MthFr'}" text:anchor-type="as-char"${box} draw:z-index="${i}">` +
+      `<draw:frame draw:name="Formula${i + 1}" draw:style-name="${style}" text:anchor-type="as-char"${box} draw:z-index="${i}">` +
       `<draw:object xlink:href="./Formula${i + 1}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>`
     );
   });
   // One shared graphic style: an as-char formula sits on the text baseline, which is
-  // what LibreOffice writes for its own formula frames.
+  // what LibreOffice writes for its own formula frames. One with margins gets its own.
+  const mid = 'style:vertical-pos="middle" style:vertical-rel="text"';
+  const top = 'style:vertical-pos="from-top"';
   content = injectAutomaticStyles(content,
-    '<style:style style:name="MthFr" style:family="graphic">' +
-    '<style:graphic-properties style:vertical-pos="middle" style:vertical-rel="text"' +
-    ' fo:padding="0cm" fo:border="none"/></style:style>'
+    `<style:style style:name="MthFr" style:family="graphic"><style:graphic-properties ${mid} fo:padding="0cm" fo:border="none"/></style:style>`
     + (formulas.some((f) => f.width != null && f.drop != null)
-      ? '<style:style style:name="MthFrY" style:family="graphic"><style:graphic-properties'
-        + ' style:vertical-pos="from-top" fo:padding="0cm" fo:border="none"/></style:style>' : ''));
+      ? `<style:style style:name="MthFrY" style:family="graphic"><style:graphic-properties ${top} fo:padding="0cm" fo:border="none"/></style:style>` : '')
+    + formulas.map((f, i) => !f.margins ? '' : `<style:style style:name="MthG${i + 1}" style:family="graphic"><style:graphic-properties`
+      + ` ${f.width != null && f.height != null && f.drop != null ? top : mid} fo:padding="0cm" fo:border="none"${f.margins}/></style:style>`).join(''));
   files['content.xml'] = strToU8(content);
 
   for (const [i, f] of formulas.entries()) {
@@ -5417,8 +5427,7 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
   // spelled out — the `Frame` parent hangs a frame that names none below the line,
   // where a style-less as-char frame (an image) stands on it (probed).
   const wrap = box.wrap === 'inline'
-    ? ' style:vertical-pos="top" style:vertical-rel="baseline"' + Object.entries(wrapGap(box.wrapDist))
-      .filter(([, v]) => v > 0).map(([k, v]) => ` fo:margin-${k}="${v}cm"`).join('')
+    ? ' style:vertical-pos="top" style:vertical-rel="baseline"' + inlineMarginProps(box.wrapDist)
     : ` ${imageWrapProps(box.wrap, box.wrapOffsetCm, box.wrapAlign, box.wrapDist, 'left')} style:number-wrapped-paragraphs="no-limit"`
       // Spelled out either way: under the `Frame` parent an absent one reads as foreground.
       + (box.wrap === 'through' ? ` style:run-through="${box.inFront ? 'foreground' : 'background'}"` : '') +
