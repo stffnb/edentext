@@ -731,9 +731,28 @@ function convertFormulaFrame(frame: Element, ctx: Ctx): Node | null {
   const got = parseMathml(mathEl);
   const latex = got.latex ?? astToLatex(got.ast);
   if (!latex.trim()) return null;
-  // The frame's svg geometry is ignored: a formula is laid out from its own markup,
-  // so a stored box would only fight the renderer.
-  return { type: 'formula', attrs: { latex, display: aloneInParagraph(frame) } };
+  return { type: 'formula', attrs: { latex, display: aloneInParagraph(frame), ...formulaFrameBox(frame, ctx) } };
+}
+
+// The frame's stored box is what LibreOffice lays the line out with: it never re-typesets
+// a formula on load. `drop` is how far the box's bottom hangs below the text baseline;
+// none centres it on the character area (vertical-pos `middle` against the text).
+function formulaFrameBox(frame: Element, ctx: Ctx): Record<string, number> {
+  const width = lengthToCm(frame.getAttributeNS(NS.svg, 'width'));
+  const height = lengthToCm(frame.getAttributeNS(NS.svg, 'height'));
+  const gp = ctx.resolver.frameGraphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
+  const anchor = frame.getAttributeNS(NS.text, 'anchor-type') ?? gp['text:anchor-type'];
+  if (anchor !== 'as-char' || !width || !height || width <= 0 || height <= 0) return {};
+  const pos = gp['style:vertical-pos'];
+  const area = gp['style:vertical-rel'] === 'text' || gp['style:vertical-rel'] === 'line';
+  const y = lengthToCm(frame.getAttributeNS(NS.svg, 'y'));
+  const r = (v: number) => Math.round(v * 1000) / 1000;
+  const box = { width: r(width), height: r(height) };
+  if (pos === 'from-top') return y == null ? {} : { ...box, drop: r(y + height) };
+  if (pos === 'middle') return area ? box : { ...box, drop: r(height / 2) };
+  if (pos === 'bottom' && !area) return { ...box, drop: r(height) };
+  if (pos === 'top' && !area) return { ...box, drop: 0 };
+  return {};
 }
 
 // A <draw:frame> holding a chart object → an image node drawing it, at the frame's own

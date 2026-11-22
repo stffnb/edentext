@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { atomAttrTr } from './image';
+import { cmToPx } from '../../storage/pageMargins';
 import { parseLatex } from '../../math/latex';
 import { mathmlDocument } from '../../math/mathml';
 
@@ -16,6 +17,11 @@ export interface FormulaAttrs {
   latex: string;
   /** Display formula: its own line, at its paragraph's alignment, as Word's m:oMathPara. */
   display: boolean;
+  /** The box a file stores for the formula, in cm, and how far its bottom hangs below
+   *  the baseline (null: centred on the character area). Gone once the source changes. */
+  width?: number | null;
+  height?: number | null;
+  drop?: number | null;
 }
 
 declare module '@tiptap/core' {
@@ -52,6 +58,11 @@ export const Formula = Node.create({
         parseHTML: (el) => el.getAttribute('data-display') === 'true',
         renderHTML: (attrs) => ({ 'data-display': attrs.display ? 'true' : 'false' }),
       },
+      ...Object.fromEntries((['width', 'height', 'drop'] as const).map((name) => [name, {
+        default: null,
+        parseHTML: (el: HTMLElement) => { const v = parseFloat(el.getAttribute(`data-box-${name}`) ?? ''); return Number.isFinite(v) ? v : null; },
+        renderHTML: (attrs: Record<string, unknown>) => (attrs[name] == null ? {} : { [`data-box-${name}`]: String(attrs[name]) }),
+      }])),
     };
   },
 
@@ -88,7 +99,9 @@ export const Formula = Node.create({
         const node = state.doc.nodeAt(pos);
         if (!node || node.type.name !== this.name) return false;
         if (!dispatch) return true;
-        const tr = atomAttrTr(state, pos, { ...node.attrs, ...attrs }, node.marks);
+        // The stored box is the old source's: a changed formula is typeset at its own size.
+        const box = attrs.latex === node.attrs.latex ? {} : { width: null, height: null, drop: null };
+        const tr = atomAttrTr(state, pos, { ...node.attrs, ...box, ...attrs }, node.marks);
         const $pos = state.doc.resolve(pos);
         if (attrs.display && !node.attrs.display && $pos.depth > 0 && $pos.parent.childCount === 1 && 'textAlign' in $pos.parent.attrs) {
           tr.setNodeAttribute($pos.before(), 'textAlign', 'center');
@@ -126,11 +139,21 @@ class FormulaView {
 
   private render() {
     this.dom.innerHTML = formulaMathml(this.node.attrs.latex as string, !!this.node.attrs.display);
+    // A stored box sets the line as the file's own layout did; the formula is centred in it.
+    const { width, height, drop } = this.node.attrs as FormulaAttrs;
+    const sized = !!width && !!height;
+    this.dom.classList.toggle('formula-sized', sized);
+    this.dom.classList.toggle('formula-mid', sized && drop == null);
+    if (!sized) { this.dom.removeAttribute('style'); return; }
+    // Centred on the character area the box only adds what it is taller than the line
+    // (editor.css); with a drop its bottom hangs that far below the baseline.
+    this.dom.style.cssText = `width:${cmToPx(width!)}px;` + (drop == null ? `--fh:${cmToPx(height!)}px`
+      : `height:${cmToPx(height!)}px;vertical-align:${-cmToPx(drop)}px`);
   }
 
   update(node: PMNode) {
     if (node.type.name !== 'formula') return false;
-    if (node.attrs.latex !== this.node.attrs.latex || node.attrs.display !== this.node.attrs.display) {
+    if ((['latex', 'display', 'width', 'height', 'drop'] as const).some((k) => node.attrs[k] !== this.node.attrs[k])) {
       this.node = node;
       this.dom.setAttribute('data-formula', (node.attrs.latex as string) ?? '');
       if (node.attrs.display) this.dom.setAttribute('data-display', 'true');
