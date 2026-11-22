@@ -52,3 +52,11 @@ a long ODT manual (645 pages against LibreOffice's 632).
   the line box overflows or only the ink.
 - Page splits in documents with a header were not probed.
 - `tests/corpus/32-box-split.odt` has 5 pages in LibreOffice and 4 in the editor; not looked into.
+
+## Not layout: a browser test that depends on real time
+
+`npm run test:dom` in Chromium feeds a fake microphone a recording of three voiced bursts, played once in real
+time, and expects three phrases at the speech server. On a busy machine it failed twice with one or two phrases
+and passed on the next run of the same tree (load average about 2 to 3.5); the dictation code was unchanged.
+Not decided whether the recording starts before the session listens or the pause detector drops a burst under
+load; a real fault in the pause detector is not ruled out.
