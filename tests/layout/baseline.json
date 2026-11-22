@@ -1092,6 +1092,24 @@
    "starts": [
     "Inline in the sentence."
    ]
+  },
+  "tests/corpus/34-list-label-keep.odt": {
+   "pages": 2,
+   "lines": 53,
+   "ms": 800,
+   "starts": [
+    "the quick brown fox jumps over a lazy do",
+    "This lead-in keeps with the line below i"
+   ]
+  },
+  "tests/corpus/35-box-last-line.odt": {
+   "pages": 2,
+   "lines": 68,
+   "ms": 200,
+   "starts": [
+    "the quick brown fox jumps over a lazy do",
+    "Row 6:"
+   ]
   }
  }
 }
