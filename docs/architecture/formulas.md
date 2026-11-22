@@ -105,10 +105,11 @@ which is also where LibreOffice puts a formula alone in an ODF paragraph; insert
 empty paragraph, or switching one alone in its paragraph to display, centers the paragraph.
 Word stores no size for a formula, and neither do we.
 
-A display formula is a block, so the caret shim ProseMirror puts after a paragraph-ending atom
-would open a line of its own below it; `editor.css` takes the shim out of the flow, as for an
-image alone on its line. Measured without it: a table row holding only a formula 37.5px against
-LibreOffice's 19.1px, a 63-page guide at 67 pages (`23-formula-rows` in the corpus holds it).
+The caret shim ProseMirror puts after a paragraph-ending atom opens a line of its own below
+a formula that fills its line: a display one, a block, or one whose stored box is wider than its
+cell. `editor.css` takes the shim after every formula out of the flow, as for an image alone on
+its line. Measured without it: a table row holding only a formula 37.5px against LibreOffice's
+19.1px (`23-formula-rows` holds it), rows of one inline formula per cell 44px against 27px.
 
 ## A pasted formula is a picture, not a formula
 
