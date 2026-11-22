@@ -70,10 +70,11 @@ function textOf(node: N): string {
 }
 
 describe.skipIf(!files.length)('the authored corpus', () => {
-  it('has both formats of every document', () => {
+  // An ODT alone is hand-written for a rule only ODF states, a spacing model for one.
+  it('has an ODT twin of every DOCX', () => {
     const docx = files.filter((f) => f.endsWith('.docx')).map((f) => f.slice(0, -5));
     const odt = files.filter((f) => f.endsWith('.odt')).map((f) => f.slice(0, -4));
-    expect(odt).toEqual(docx);
+    expect(odt).toEqual(expect.arrayContaining(docx));
   });
 
   for (const f of files) {
@@ -159,6 +160,10 @@ describe.skipIf(!files.length)('the authored corpus', () => {
   // **own stylesheet** rides the cross legs, as it does when the app saves — chapter
   // numbering and a heading's own style live there and nowhere in the document tree, so
   // an export handed builtinStyleSheet() never carries either.
+  // OOXML has no place for the box an ODF formula frame stores, so DOCX reads back none.
+  const unboxed = (n: N): N => ({ ...n,
+    ...(n.type === 'formula' ? { attrs: { latex: n.attrs.latex, display: n.attrs.display } } : {}),
+    content: n.content?.map(unboxed) });
   for (const name of files.filter((f) => f.endsWith('.docx')).map((f) => f.slice(0, -5))) {
     it(`${name} reads the same out of either format`, async () => {
       const docx = readAny(`${name}.docx`, load(`${name}.docx`));
@@ -171,7 +176,7 @@ describe.skipIf(!files.length)('the authored corpus', () => {
       const asOdt = await buildOdt(docx.content, margins, 'portrait', hfOf(docx), undefined, undefined, docx.styles);
       expect(look(importOdt(asOdt).content)).toEqual(look(docx.content));
       const asDocx = await buildDocx(odt.content, margins, 'portrait', hfOf(odt), undefined, undefined, odt.styles);
-      expect(look(importDocx(asDocx).content)).toEqual(look(odt.content));
+      expect(look(importDocx(asDocx).content)).toEqual(look(unboxed(odt.content)));
     });
   }
 });
