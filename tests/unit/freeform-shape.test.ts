@@ -228,8 +228,12 @@ describe('an ODF shape group', () => {
       + '<draw:line draw:style-name="gr1" svg:x1="1cm" svg:y1="0.5cm" svg:x2="3cm" svg:y2="2cm"><text:p/></draw:line>'
       + '</draw:g></text:p>', group));
     const para = (r.content as N).content[0];
-    const [line, rect] = para.content.filter((n: N) => n.type === 'textBox');
-    expect(rect.attrs.wrap).toBeUndefined();
+    // The members' union box, 3cm by 2cm, is the group's place in the line: no member
+    // fills it, so a picture holds it and both run through over it from its corner.
+    const [rect, line] = para.content.filter((n: N) => n.type === 'textBox');
+    expect(rect.attrs).toMatchObject({ wrap: 'through', wrapOffset: 0, wrapOffsetY: 0 });
     expect(line.attrs).toMatchObject({ shapeKind: 'line', wrap: 'through', wrapOffset: 1, wrapOffsetY: 0.5 });
+    const held = para.content.filter((n: N) => n.type === 'image' && !n.attrs.wrap);
+    expect(held.map((n: N) => [Math.round(n.attrs.width / 37.8), Math.round(n.attrs.height / 37.8)])).toEqual([[3, 2]]);
   });
 });
