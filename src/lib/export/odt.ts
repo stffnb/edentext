@@ -3257,12 +3257,7 @@ function applyListMarkerFormats(odtBytes: Uint8Array, formats: (MarkerFormat | n
   const minted: string[] = [];
   const nameByProps = new Map<string, string>();
   const styleFor = (format: MarkerFormat): string => {
-    const color = format.color ? normalizeColor(format.color) : undefined;
-    const props = (format.fontFamily ? ` fo:font-family="${escapeXml(directFontName(format.fontFamily))}"` : '')
-      + (format.fontWeight ? ` fo:font-weight="${format.fontWeight}"` : '')
-      + (format.fontStyle ? ` fo:font-style="${format.fontStyle}"` : '')
-      + (format.fontSize ? ` fo:font-size="${format.fontSize}"` : '')
-      + (color ? ` fo:color="${color}"` : '');
+    const props = markerTextProps(format);
     let name = nameByProps.get(props);
     if (!name) {
       name = `MK${nameByProps.size + 1}`;
@@ -3278,18 +3273,13 @@ function applyListMarkerFormats(odtBytes: Uint8Array, formats: (MarkerFormat | n
     content = content.replace(re, (_m, open: string, body: string, close: string) =>
       open +
       body.replace(/<text:list-level-style-(number|bullet) text:level="(\d+)"([^>]*)/g, (match, kind: string, level: string, rest: string) => {
-        let format = levels[Number(level) - 1];
+        const format = levels[Number(level) - 1];
         if (!format) return match;
-        // A symbol font addresses the bullet by its private-use code; a label it has no
-        // glyph for is left in the text's font.
-        if (isSymbolFont(format.fontFamily)) {
-          const char = /text:bullet-char="([^"]*)"/.exec(rest)?.[1];
-          const code = kind === 'bullet' && char ? symbolFontChar(unescapeXml(char), format.fontFamily) : null;
-          if (code) rest = rest.replace(/text:bullet-char="[^"]*"/, `text:bullet-char="${code}"`);
-          else format = { ...format, fontFamily: null };
-          if (!Object.values(format).some(Boolean)) return match;
-        }
-        return `<text:list-level-style-${kind} text:level="${level}" text:style-name="${styleFor(format)}"${rest}`;
+        const char = /text:bullet-char="([^"]*)"/.exec(rest)?.[1];
+        const label = symbolLabel(format, kind === 'bullet' && char ? unescapeXml(char) : null);
+        if (!label) return match;
+        if (label.char) rest = rest.replace(/text:bullet-char="[^"]*"/, `text:bullet-char="${label.char}"`);
+        return `<text:list-level-style-${kind} text:level="${level}" text:style-name="${styleFor(label.format)}"${rest}`;
       }) +
       close,
     );
@@ -3464,11 +3454,40 @@ function applyListStyleNames(odtBytes: Uint8Array, names: (string | null)[]): Ui
   return rezipOdt(files);
 }
 
+// A label format as ODF text properties.
+function markerTextProps(format: Partial<MarkerFormat>): string {
+  const color = format.color ? normalizeColor(format.color) : undefined;
+  return (format.fontFamily ? ` fo:font-family="${escapeXml(directFontName(format.fontFamily))}"` : '')
+    + (format.fontWeight ? ` fo:font-weight="${format.fontWeight}"` : '')
+    + (format.fontStyle ? ` fo:font-style="${format.fontStyle}"` : '')
+    + (format.fontSize ? ` fo:font-size="${format.fontSize}"` : '')
+    + (color ? ` fo:color="${color}"` : '');
+}
+
+// A symbol font addresses a bullet by its private-use code (`char`, escaped); a label it
+// has no glyph for is left in the text's font. null: nothing left to format.
+function symbolLabel<F extends Partial<MarkerFormat>>(format: F, bullet: string | null): { format: F; char: string | null } | null {
+  if (!isSymbolFont(format.fontFamily)) return { format, char: null };
+  const code = bullet ? symbolFontChar(bullet, format.fontFamily) : null;
+  const out = code ? format : { ...format, fontFamily: null };
+  return Object.values(out).some(Boolean) ? { format: out, char: code } : null;
+}
+
 // The full 10-level definition of a named list style for styles.xml. Undefined levels
 // fall back to decimal, as LibreOffice fills them in (probed); a level without its own
-// hang takes the flat 0.635cm every list export uses.
+// hang takes the flat 0.635cm every list export uses. A level's label format goes into a
+// named text style beside it: LibreOffice ignores one that resolves to an automatic style.
 function buildNamedListStyleXml(style: ListStyle): string {
   let levels = '';
+  let labels = '';
+  const labelStyle = (level: number, bullet: string | null): { attr: string; char: string | null } => {
+    const marker = style.levels[level - 1]?.marker;
+    const label = marker ? symbolLabel(marker, bullet) : null;
+    if (!label) return { attr: '', char: null };
+    const name = `LMK_${odfStyleName(style.name)}_${level}`;
+    labels += `<style:style style:name="${escapeXml(name)}" style:family="text"><style:text-properties${markerTextProps(label.format)}/></style:style>`;
+    return { attr: ` text:style-name="${escapeXml(name)}"`, char: label.char };
+  };
   for (let level = 1; level <= MAX_LIST_LEVELS; level++) {
     const def = style.levels[level - 1];
     const margin = `${listStyleMarginCm(style, level).toFixed(3)}cm`;
@@ -3478,16 +3497,17 @@ function buildNamedListStyleXml(style: ListStyle): string {
     const indent = `${(-(def?.hanging ?? 0.635)).toFixed(3)}cm`;
     const labelAlign = `<style:list-level-properties text:list-level-position-and-space-mode="label-alignment"${right}><style:list-level-label-alignment text:label-followed-by="${follow}"${tab} fo:text-indent="${indent}" fo:margin-left="${margin}"/></style:list-level-properties>`;
     if (def?.kind === 'bullet') {
-      const ch = escapeXml(def.bulletChar ?? defaultBulletChar(level - 1));
-      levels += `<text:list-level-style-bullet text:level="${level}" text:bullet-char="${ch}">${labelAlign}</text:list-level-style-bullet>`;
+      const char = def.bulletChar ?? defaultBulletChar(level - 1);
+      const label = labelStyle(level, char);
+      levels += `<text:list-level-style-bullet text:level="${level}"${label.attr} text:bullet-char="${escapeXml(label.char ?? char)}">${labelAlign}</text:list-level-style-bullet>`;
     } else {
       const t = orderedTypeDef(style.multilevel ? 'decimal' : def?.numType ?? 'decimal');
       const disp = style.multilevel && level > 1 ? ` text:display-levels="${level}"` : '';
       const start = def?.startAt != null && def.startAt !== 1 ? ` text:start-value="${def.startAt}"` : '';
-      levels += `<text:list-level-style-number text:level="${level}" ${odfNumFormatAttrs(t.numFormat)} style:num-suffix="${t.numSuffix}"${disp}${start}>${labelAlign}</text:list-level-style-number>`;
+      levels += `<text:list-level-style-number text:level="${level}"${labelStyle(level, null).attr} ${odfNumFormatAttrs(t.numFormat)} style:num-suffix="${t.numSuffix}"${disp}${start}>${labelAlign}</text:list-level-style-number>`;
     }
   }
-  return `<text:list-style style:name="${escapeXml(odfStyleName(style.name))}" style:display-name="${escapeXml(style.name)}">${levels}</text:list-style>`;
+  return `${labels}<text:list-style style:name="${escapeXml(odfStyleName(style.name))}" style:display-name="${escapeXml(style.name)}">${levels}</text:list-style>`;
 }
 
 // Mirror odf-kit's buildListStyle (content.js) for the automatic list style our

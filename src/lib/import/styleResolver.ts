@@ -136,7 +136,7 @@ function resolvePercentSize(text: PropMap, inherited: string | undefined): void 
 
 // ---- resolver ----------------------------------------------------------------
 
-function collectProps(el: Element, propsLocalName: string, into: PropMap): void {
+export function collectProps(el: Element, propsLocalName: string, into: PropMap): void {
   for (const child of Array.from(el.children)) {
     if (child.namespaceURI !== NS.style || child.localName !== propsLocalName) continue;
     for (const attr of Array.from(child.attributes)) {
