@@ -190,10 +190,10 @@ An open outline is **stroked only**, whatever fill its style declares, as both p
   `draw:marker-*` on the style, DrawingML's `a:headEnd`/`a:tailEnd`, VML's
   `startarrow`/`endarrow`. The node view draws them like a line's, in real pixels along
   the path's first and last segment (`pathHeadPaths`); LibreOffice draws both exports'.
-- **Groups** have no node: a `draw:g` opens as its members, as a DOCX `wpg:wgp` does.
-  The members' coordinates are the anchor's (probed), the group's box is their union
-  and its style places that box; the first member carries the placement and the rest
-  run through over it (`convertDrawGroup`).
+- **Groups** have no node: a `draw:g` opens as its members, as a DOCX `wpg:wgp` does. The members' coordinates are the anchor's (probed), the group's box is their union and its style places that box; the first member carries the placement and the rest run through over it (`convertDrawGroup`, `convertGroup`).
+  **In the line** that box is the group's place (probed: the line is as tall as the union, whichever member comes first): a see-through picture (`SPACER_IMAGE`) holds it unless the first member fills it, and every member runs over it from the box's corner.
+  **A box nested in a box** leaves its blocks in the outer one; one without text leaves such a spacer where it took room from the text and nothing where the text ran through it (`unnestBoxes`).
+  A line of one picture and frames out of the flow carries no descent (`imageLine`); a frame out of the flow takes any offset below its anchor, a float at least 6px.
 - **Writing** goes back out as the shape's own geometry: ODF a `non-primitive`
   `<draw:enhanced-geometry>` in its 21600 viewBox (LibreOffice writes it back unchanged),
   DOCX an `<a:custGeom>` path list in its EMU extent; LibreOffice draws both as we do.

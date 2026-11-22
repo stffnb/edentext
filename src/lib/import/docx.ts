@@ -27,7 +27,7 @@ import { DATE_FORMATS, TIME_FORMATS, docxPicture, findFormat, toDateValue } from
 import { shapeFromPrst, isLineKind, lineKindFor, parseSvgPath, parseVmlPath, fitPath, pathHeadsFor, isOpenOutline, joinOutlineParts, shadeFromDrawingMl, asTextArea, type OutlinePart, type PathCmd, type DrawingMlPreset } from '../utils/shapes';
 import { drawingMlArc, drawingMlGuides, drawingMlValue, type ResolvedGeometry } from '../utils/enhancedGeometry';
 import { presetGeometry } from '../utils/shapePresets';
-import { imageDataUrl, placeholderImage, unzipArchive, type ConvertedImages } from './imageFormats';
+import { imageDataUrl, placeholderImage, SPACER_IMAGE, unzipArchive, type ConvertedImages } from './imageFormats';
 import { parseImportXml } from './importLimits';
 import { PX_PER_CM, cmToPx, fitMargins, type PageMargins } from '../storage/pageMargins';
 import type { Orientation } from '../storage/pageOrientation';
@@ -2977,8 +2977,8 @@ function vmlColorMode(data: Element): ColorMode | null {
 
 // A drawing group (wpg:wgp): the editor has no group node, so each child becomes a frame
 // of its own, mapped out of the group's child coordinate space (a:chOff/a:chExt). The
-// first keeps the group's own placement — that is what reserves an inline group's box —
-// and the rest ride over it as run-through frames at their place in it.
+// first keeps the group's own placement and the rest ride over it as run-through frames.
+// In the line the group's box is its place: a spacer holds it unless the first fills it.
 function convertGroup(wgp: Element, root: Element, anchor: Element | undefined, ctx: Ctx): Node[] {
   const xfrm = nsChild(nsChild(wgp, WPG, 'grpSpPr'), A, 'xfrm');
   const chOff = nsChild(xfrm, A, 'chOff');
@@ -3002,6 +3002,8 @@ function convertGroup(wgp: Element, root: Element, anchor: Element | undefined, 
 
   const carrier: Node[] = [];
   const over: Node[] = [];
+  const size = (axis: 'cx' | 'cy') => framePx(emuToPx(intAttr(nsChild(xfrm, A, 'ext'), '', axis) ?? 0));
+  const whole = { x: 0, y: 0, w: size('cx'), h: size('cy') };
   let first: { x: number; y: number; w: number; h: number } | null = null;
   for (const kid of Array.from(wgp.children)) {
     const isPic = kid.localName === 'pic';
@@ -3019,7 +3021,12 @@ function convertGroup(wgp: Element, root: Element, anchor: Element | undefined, 
     }
     if (!node) continue;
     const attrs = { ...node.attrs, width: box.w, height: box.h } as Record<string, unknown>;
-    if (!first) { first = box; carrier.push({ ...node, attrs }); continue; }
+    if (!first) {
+      const fills = [box.x, box.y, box.w - whole.w, box.h - whole.h].every((d) => Math.abs(d) < 0.5);
+      if (anchor || fills || !whole.w || !whole.h) { first = box; carrier.push({ ...node, attrs }); continue; }
+      first = whole;
+      carrier.push({ type: 'image', attrs: { src: SPACER_IMAGE, width: whole.w, height: whole.h } });
+    }
     // Every other child runs through the text over the first, offset by its place in
     // the group. An inline group's origin is its paragraph's corner, so a group that
     // shares its line (a centred one, text beside it) carries the rest there.

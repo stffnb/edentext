@@ -399,7 +399,8 @@ export function sinkToOffset(d: HTMLElement, y: unknown): number | null {
     d.style.marginTop = '0px';
     const box = p.getBoundingClientRect();
     const scale = box.width / p.offsetWidth || 1;
-    gap = clamp(Math.round(cmToPx(y) - (wrap ? bandRise(p) : 0) - (d.getBoundingClientRect().top - box.top) / scale), 6, pageContentHeightPx());
+    // A frame out of the flow has no line to stay clear of, so its offset may be any.
+    gap = clamp(Math.round(cmToPx(y) - (wrap ? bandRise(p) : 0) - (d.getBoundingClientRect().top - box.top) / scale), d.dataset.wrap === 'through' ? 0 : 6, pageContentHeightPx());
   }
   d.style.marginTop = `${gap}px`;
   return gap;
@@ -729,6 +730,8 @@ function blockImageLines(node: PMNode, pos: number, decos: Decoration[]): void {
       const wrap = child.attrs.wrap ?? 'inline';
       if (wrap === 'inline') images.push(pos + 1 + offset);
       if (wrap === 'topBottom' && band !== 'true') band = child.attrs.anchorPage ? 'anchored' : 'true';
+    } else if (child.type.name === 'textBox' && (child.attrs.wrap ?? 'inline') !== 'inline') {
+      // A box out of the line shares none, as a wrapping picture does not.
     } else if (child.isText ? child.text?.trim() : true) text = true;
   });
   flush();

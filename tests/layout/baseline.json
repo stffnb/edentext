@@ -945,6 +945,18 @@
     "TITLE8"
    ]
   },
+  "tests/corpus/29-group-box.odt": {
+   "pages": 5,
+   "lines": 46,
+   "ms": 800,
+   "starts": [
+    "before1 text of a paragraph",
+    "after5 text of a paragraph",
+    "after9 text of a paragraph",
+    "after13 text of a paragraph",
+    "after17 text of a paragraph"
+   ]
+  },
   "tests/corpus/word/01-flow.docx": {
    "pages": 2,
    "lines": 120,
