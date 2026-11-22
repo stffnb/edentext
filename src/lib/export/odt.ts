@@ -5425,12 +5425,11 @@ function textBoxGraphicStyle(box: TextBoxExport, index: number): string {
   const vertMode = box.textVertical && (isFrame || up) ? ` ${mode}` : '';
   const vertical = box.textVertical && !isFrame ? `<style:paragraph-properties ${mode}/>` : '';
   const parent = isFrame ? ' style:parent-style-name="Frame"' : '';
-  // Each side on its own: LibreOffice ignores a box's fo:padding shorthand here (probed).
   return (
     `<style:style style:name="TbxFr${index + 1}" style:family="graphic"${parent}>` +
-    `<style:graphic-properties ${fill} ${stroke}${arrows}` +
-    ` fo:padding-top="${box.paddingTopCm ?? box.paddingCm}cm" fo:padding-bottom="${box.paddingBottomCm ?? box.paddingCm}cm"` +
-    ` fo:padding-left="${box.paddingCm}cm" fo:padding-right="${box.paddingCm}cm"` +
+    `<style:graphic-properties ${fill} ${stroke}${arrows} fo:padding="${box.paddingCm}cm"` +
+    (box.paddingTopCm != null ? ` fo:padding-top="${box.paddingTopCm}cm"` : '') +
+    (box.paddingBottomCm != null ? ` fo:padding-bottom="${box.paddingBottomCm}cm"` : '') +
     `${grow} draw:textarea-vertical-align="${box.textVAlign}"${vertMode}${wrap}/>${vertical}` +
     `</style:style>`
   );
