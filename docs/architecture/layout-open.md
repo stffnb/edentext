@@ -13,7 +13,6 @@ Delete an item once it is fixed, and this file once it is empty.
 
 ## Page splits
 
-- Page splits in documents with a header were not probed.
 - An as-character **picture** (or formula) frame's margins are not read; a text box's are (`wrapDist`). Not probed
   whether LibreOffice widens a picture's place in the line by them as it does a box's.
 

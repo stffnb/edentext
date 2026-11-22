@@ -105,7 +105,7 @@ a page corner rather than in the flow (`image.ts`'s page-anchored frame), and
 page. Every rule that writes a top-level block's horizontal margin has to add
 `--sec-inset-left`/`-right` back in, or it draws that block at the sheet's edge instead
 of its page's — `:is(h1…h10)` and `.toc` in `editor.css` both reset `margin` and did.
-**An ODF footer's band** is max(`fo:min-height`, content + `fo:margin-top` + padding + border): the minimum height includes the gap (probed: min 2cm and gap 1cm put the body's end 2cm above the margin; min 0.5cm with gap 1cm under one 13.3pt line, 41.6pt, and 2.9pt more with a hairline and 0.1cm padding), which `masterPageHF` and the framed zone measure; the header is the mirror.
+**An ODF footer's band** is max(`fo:min-height`, content + `fo:margin-top` + padding + border): the minimum height includes the gap (probed: min 2cm and gap 1cm put the body's end 2cm above the margin; min 0.5cm with gap 1cm under one 13.3pt line, 41.6pt, and 2.9pt more with a hairline and 0.1cm padding), which `masterPageHF` and the framed zone measure; the header is the mirror. Page splits under a header match LibreOffice line for line (probed: 1- and 3-line headers, a 3cm minimum height with padding and border, dynamic spacing, a different first page in ODT; a header past the DOCX top margin, near the margin, and `titlePg`).
 
 **The content band.** A run carries its section's four reaches too
 (`fromPage|height|left|topFirst|topRest|bottomFirst|bottomRest`), so `PageGrid` answers

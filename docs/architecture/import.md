@@ -70,6 +70,10 @@ no footer otherwise set every later footer at the 1.25cm default, 8.5mm low. An 
 mirrored layout; distinguish it from a first-page hand-over. Naming the current master again
 opens a new section only where that restarts something — a hand-over to a successor, or a
 `page-usage` side demand — which is how a book reopens Chapter Intro for every chapter.
+A master with `style:header-first` but no `style:footer-first` (or the reverse) shows the running
+footer on page one: LibreOffice shares each zone with the first page separately (probed, 4-line first
+header under a 2-line footer: 44 lines on page 1, 45 when the footer was read as blank). DOCX `titlePg`
+without a first reference is a blank zone in both word processors.
 
 A negative left or right indent sets a paragraph out into the margin (a page-wide picture's) and is kept, in a table cell too, where LibreOffice runs the line past the cell's padding and edge by it and widens it as much (probed, fixed and autofit tables, both formats).
 
