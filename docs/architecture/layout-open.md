@@ -13,11 +13,6 @@ Delete an item once it is fixed, and this file once it is empty.
 
 ## Page splits
 
-- A text box as character at a page split: in one of 16 positions the line still reaches 0.7px into the footer
-  zone. `topWithin` adds up rounded `offsetTop` values, so the pass places the paragraph about 1.35px higher than
-  it renders; this is not specific to boxes.
-- An inline fraction: in one layout a denominator glyph sits 3.6-5px past the footer zone top. Not decided whether
-  the line box overflows or only the ink.
 - Page splits in documents with a header were not probed.
 - An as-character **picture** (or formula) frame's margins are not read; a text box's are (`wrapDist`). Not probed
   whether LibreOffice widens a picture's place in the line by them as it does a box's.

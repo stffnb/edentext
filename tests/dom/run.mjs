@@ -714,6 +714,28 @@ try {
   });
   check(noteFit.length === 0, `footnotes from a paragraph and a table cell sit on their anchors' pages above the footer${noteFit.length ? ` (${noteFit.join('; ')})` : ''}`);
 
+  // In-line text boxes at a page split under a footer, spaced at 115%: the leading below a
+  // line may hang past the page end, a box may not.
+  const spaced = (...content) => ({ type: 'paragraph', attrs: { spaceAfter: 7, lineHeight: '1.15' }, content });
+  const lead = Array.from({ length: 29 }, (_, i) => spaced(words(`filler ${i}`)));
+  await page.evaluate(([d, f]) => {
+    localStorage.setItem('edentext-doc', JSON.stringify(d));
+    localStorage.setItem('edentext-footer', JSON.stringify(f));
+  }, [{ type: 'doc', content: [...lead, spaced(...Array.from({ length: 40 }, (_, i) => [words(` The quick brown fox jumps over the lazy dog and runs into the field ${i} `),
+    { type: 'textBox', attrs: { width: 113, height: 45 }, content: [spaced(words('box'))] }]).flat()), ...lead] },
+  { type: 'doc', content: [spaced(words('footer line'))] }]);
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('.tiptap', { timeout: 15_000 });
+  await settle(page, true);
+  const boxPast = await page.evaluate(() => {
+    const sheets = Array.from(document.querySelectorAll('.page-sheet'), (s) => s.getBoundingClientRect());
+    const feet = Array.from(document.querySelectorAll('.hf-zone.hf-footer'), (z) => z.getBoundingClientRect());
+    const footOf = (r) => feet.find((z) => sheets.findIndex((s) => z.top >= s.top && z.top < s.bottom) === sheets.findIndex((s) => r.top >= s.top && r.top < s.bottom));
+    return Math.max(...Array.from(document.querySelectorAll('.tiptap-host .textbox-node'), (b) => b.getBoundingClientRect())
+      .map((r) => r.bottom - (footOf(r)?.top ?? Infinity)));
+  });
+  check(boxPast <= 0.5, `in-line text boxes split over pages at 115% spacing end above the footer (${boxPast.toFixed(2)}px past it)`);
+
   // The ruler measures the page holding the caret, body or zone: its text column is that
   // page's own sheet less its own section's margins, a portrait page's beside a landscape one.
   await page.evaluate((d) => {
