@@ -644,11 +644,31 @@ function firstWordAfter(block: HTMLElement, node: Node): DOMRect | null {
   return null;
 }
 
+// A band's offset counts from its block's top, the space above included. As padding that
+// is the block's box; a margin lies above it, less what collapses with the space below
+// the block before, so it is measured.
+export function bandRise(p: Element): number {
+  if (p.closest('.paper')?.getAttribute('data-spacing-model') !== 'max') return 0;
+  const prev = p.previousElementSibling;
+  const below = prev && !prev.hasAttribute('data-page-break-spacer') ? parseFloat(getComputedStyle(prev).marginBottom) || 0 : 0;
+  return Math.max(0, (parseFloat(getComputedStyle(p).marginTop) || 0) - below);
+}
+// A band leading its block rises into that space: by the margin, or by the padding
+// editor.css hands down (--frame-lift).
+export function liftBand(el: HTMLElement): void {
+  if (!el.parentElement) return;
+  const rise = bandRise(el.parentElement);
+  el.dataset.bandLift = String(rise);
+  el.style.marginTop = `calc(${(Number(el.dataset.bandY) || 0) - rise}px - var(--frame-lift, 0px))`;
+}
+
 // Pagination moves the page grid under those frames, so every pass re-places them.
 export function placePageFrames(view: EditorView, grid: PageGrid): void {
   for (const el of Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>('[data-sink-gap]'))) {
     sinkSideFloat(el);
   }
+  // A band's rise follows its block's margin, which a page top or a spacer changes.
+  for (const el of Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>('[data-band-lift]'))) liftBand(el);
   for (const el of Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>('[data-float-x]'))) shiftToOffset(el);
   placeFrames(Array.from((view.dom as HTMLElement).querySelectorAll<HTMLElement>(PLACED), (el) => [view, el]), grid);
 }
@@ -886,6 +906,8 @@ type Leaf = {
   // The block's space above (px), always the declared one: the leaf is measured as if
   // the page-top drop below had not been applied, so a pass can't read its own answer.
   spaceAbove?: number;
+  /** A leading band rose into the space above: the leaf is measured from the band's zero. */
+  lifted?: boolean;
   // The extra leading a spacing above single puts below the block's last line (px): it
   // may hang past the text area's bottom, which LibreOffice lets it (probed at 300%).
   hang?: number;
@@ -1815,13 +1837,23 @@ export const PageBreaks = Extension.create({
                 // The block's own space above, and how much of it the last pass took off at
                 // a page top. A cell's first block never carries any (LibreOffice adds none
                 // there), so missing padding is the document, not a decoration to add back.
-                const spaceAbove = parseFloat(cs.getPropertyValue('--space-before')) || 0;
+                // A leading band rises into that space, so a page top takes off only what
+                // reaches past the band's bottom; its block is measured from the band's
+                // zero, the margin it rose by (`rise`) included, as a padded one is.
+                const band = inTableCell ? undefined : floats.find((f) => f.parentElement === child && f.dataset.bandLift != null);
+                const rise = marginModel && band ? parseFloat(band.dataset.bandLift!) || 0 : 0;
+                const bandBelow = band ? (band.getBoundingClientRect().bottom - child.getBoundingClientRect().top) / scaleFactor
+                  + (parseFloat(band.style.marginBottom) || 0) + rise : 0;
+                const ownSpace = parseFloat(cs.getPropertyValue('--space-before')) || 0;
+                const padded = !marginModel || !!band;
+                const spaceAbove = !band ? ownSpace
+                  : Math.max(0, ownSpace - (marginModel ? leaves[leaves.length - 1]?.spaceAfter ?? 0 : 0) - bandBelow);
                 const dropped = spaceAbove > 0.5 && !inTableCell
                   && parseFloat(cs.paddingTop) < 0.5 && parseFloat(cs.marginTop) < 0.5
                   ? spaceAbove : 0;
                 // A dropped margin moved the box itself up, by what the space below the block
                 // before did not already cover; a dropped padding only made the box shorter.
-                const droppedAbove = marginModel && dropped
+                const droppedAbove = !padded && dropped
                   ? Math.max(0, dropped - (leaves[leaves.length - 1]?.spaceAfter ?? 0)) : 0;
                 // editor.css draws the block up by half its extra leading (`top`); a bottom
                 // padding or border holds the last line's leading inside the block.
@@ -1831,10 +1863,11 @@ export const PageBreaks = Extension.create({
                 leaves.push({
                   el: child,
                   kind: isAtomic ? 'atomic' : 'splittable',
-                  naturalTop: naturalTopOf(child, cs) + droppedAbove,
-                  naturalHeight: Math.max(child.offsetHeight, floatBottom) - intraSpacerHeight + (marginModel ? 0 : dropped),
+                  naturalTop: naturalTopOf(child, cs) + droppedAbove - rise,
+                  naturalHeight: Math.max(child.offsetHeight, floatBottom) - intraSpacerHeight + rise + (padded ? dropped : 0),
                   spaceAfter: inTableCell ? 0 : parseFloat(cs.marginBottom) || 0,
                   spaceAbove,
+                  lifted: !!band,
                   hang,
                   inTableCell,
                   // A manual page break is honored for top-level blocks only (not in
@@ -1848,7 +1881,7 @@ export const PageBreaks = Extension.create({
                   refs: refsWithin(child),
                 });
                 cumulativeSpacerHeight += intraSpacerHeight;
-                cumulativeDropped += marginModel ? droppedAbove : dropped;
+                cumulativeDropped += padded ? dropped : droppedAbove;
                 continue;
               }
               if (CONTAINER_TAGS.has(tag)) {
@@ -2085,7 +2118,7 @@ export const PageBreaks = Extension.create({
                 const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
                 if (from !== null && node) sectionTops.push({ from, to: from + node.nodeSize, px: Math.round(sectionTop) });
               }
-              const kept = keeps && !leaf.inTableCell ? Math.max(0,
+              const kept = keeps && !leaf.inTableCell && !leaf.lifted ? Math.max(0,
                 (parseFloat(getComputedStyle(leaf.el).marginTop) || 0) - (leaves[i - 1]?.spaceAfter ?? 0)) : 0;
               // A section's first page uses its "first" reaches, every other page its
               // "rest" ones — page 1 is section 1's first page.
@@ -2409,7 +2442,7 @@ export const PageBreaks = Extension.create({
                   pageTopBlocks.push({ from, to: from + node.nodeSize });
                   // The block is that much shorter from here on; the leaves below it were
                   // measured with the space still in place.
-                  if (!marginModel) droppedShift += leaf.spaceAbove ?? 0;
+                  if (!marginModel || leaf.lifted) droppedShift += leaf.spaceAbove ?? 0;
                   else {
                     // A margin is outside the box: dropping it lifts the box, so the push
                     // that brought the box top to the page start reaches that much further.
@@ -2704,7 +2737,7 @@ export const PageBreaks = Extension.create({
               decoArray.push(s.inline ? Decoration.inline(s.from, s.to, attrs, { inclusiveEnd: !!s.end }) : blockDeco(s.from, s.to, attrs));
             }
             for (const b of pageTopBlocks) {
-              decoArray.push(blockDeco(b.from, b.to, { style: 'padding-top:0;margin-top:0' }));
+              decoArray.push(blockDeco(b.from, b.to, { style: 'padding-top:0;margin-top:0;--frame-lift:0px' }));
             }
             // Each footnote to the foot of its anchor's page; the topmost of a page also
             // carries the separator (editor.css draws it above the box).

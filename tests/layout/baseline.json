@@ -913,6 +913,38 @@
     "Row 59 15 Value 59"
    ]
   },
+  "tests/corpus/27-band-space.odt": {
+   "pages": 9,
+   "lines": 99,
+   "ms": 700,
+   "starts": [
+    "before1",
+    "before2",
+    "TITLE3",
+    "before4",
+    "before5",
+    "before6",
+    "before7",
+    "TITLE7",
+    "TITLE8"
+   ]
+  },
+  "tests/corpus/28-band-space-max.odt": {
+   "pages": 9,
+   "lines": 99,
+   "ms": 600,
+   "starts": [
+    "before1",
+    "before2",
+    "TITLE3",
+    "before4",
+    "before5",
+    "before6",
+    "before7",
+    "TITLE7",
+    "TITLE8"
+   ]
+  },
   "tests/corpus/word/01-flow.docx": {
    "pages": 2,
    "lines": 120,
