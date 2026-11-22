@@ -154,3 +154,12 @@ the tests while browsers stay linear. A walk over a whole part copies it once (`
 
 `tests/roundtrip.test.ts` covers editor export-import. `tests/lo-roundtrip.test.ts` adds a
 LibreOffice re-save leg. Run `npm test` for importer changes and `npm run test:lo` for format I/O.
+
+## Frames in a figure paragraph (ODT)
+
+- A `draw:text-box` frame whose styles name no `fo:padding` has none: LibreOffice's own "Frame"
+  style writes its 0.15cm out, a document's own frame style often does not (probed: a caption
+  293px wide stands on one line in a 302px frame, starting at the frame's edge).
+- A picture alone in a paragraph *inside* an as-character box is an image line too
+  (`imageLinePlugin` descends into a textblock that holds a box); unmarked, a picture as wide as
+  the box wrapped the caret shim onto a line of its own, 47px on a figure box.

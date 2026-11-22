@@ -727,12 +727,18 @@ function blockImageLines(node: PMNode, pos: number, decos: Decoration[]): void {
   if (band) decos.push(Decoration.node(pos, pos + node.nodeSize, { 'data-wrap-band': band }));
 }
 
+// A textblock holding an as-character box holds that box's paragraphs too.
+const holdsBlocks = (block: PMNode): boolean => {
+  for (let i = 0; i < block.childCount; i++) if (!block.child(i).isLeaf) return true;
+  return false;
+};
+
 function imageLineDecorations(doc: PMNode): DecorationSet {
   const decos: Decoration[] = [];
   doc.descendants((node, pos) => {
     if (!node.isTextblock) return true;
     blockImageLines(node, pos, decos);
-    return false;
+    return holdsBlocks(node);
   });
   return DecorationSet.create(doc, decos);
 }
@@ -752,7 +758,7 @@ function mapImageLines(tr: Transaction, old: DecorationSet): DecorationSet {
     const end = pos + node.nodeSize;
     stale.push(...set.find(pos, end).filter((d) => d.from >= pos && d.to <= end));
     blockImageLines(node, pos, fresh);
-    return false;
+    return holdsBlocks(node);
   });
   return set.remove(stale).add(doc, fresh);
 }
