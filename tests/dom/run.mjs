@@ -663,8 +663,9 @@ try {
       const outside = [stripe, ...document.querySelectorAll('.table-break-band')].filter((e) => e).map((e) => e.getBoundingClientRect())
         .reduce((m, r) => Math.max(m, page.left - r.left, r.right - page.right), 0);
       const band = document.querySelector('.table-break-band')?.getBoundingClientRect();
+      // Within a pixel: block tops and spacers are whole pixels, a page's content top is not.
       const under = (sel) => Array.from(document.querySelectorAll(sel), (p) => p.getBoundingClientRect())
-        .filter((r) => band && r.bottom > band.top + 0.5 && r.top < band.bottom - 0.5).length;
+        .filter((r) => band && r.bottom > band.top + 1 && r.top < band.bottom - 1).length;
       // A note inside the table's frame, or painted over by the mask, is the table not closing
       // above it. The overlay takes no pointer events, which a hit test would look through.
       const layer = document.querySelector('.band-layer');
