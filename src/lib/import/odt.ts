@@ -702,11 +702,13 @@ function textBoxNode(frame: Element, textBoxEl: Element, ctx: Ctx): Node {
   const gp = ctx.resolver.frameGraphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
   applyFrameRotationAndWrap(frame, attrs, gp, ctx.contentWidthCm, ctx.leftMarginCm, ctx);
   boxWrapAlign(gp, attrs);
-  const padCm = lengthToCm(gp['fo:padding'] ?? gp['fo:padding-left']);
-  if (padCm != null && Math.abs(padCm - TEXTBOX_PADDING_CM) > 0.01) attrs.paddingCm = Math.round(padCm * 1000) / 1000;
+  // A frame whose styles name no padding has none (probed: its text starts at the frame's
+  // edge); LibreOffice's own "Frame" style writes its 0.15cm out.
+  const padCm = lengthToCm(gp['fo:padding'] ?? gp['fo:padding-left']) ?? 0;
+  if (Math.abs(padCm - TEXTBOX_PADDING_CM) > 0.01) attrs.paddingCm = Math.round(padCm * 1000) / 1000;
   for (const [prop, key] of [['fo:padding-top', 'paddingTopCm'], ['fo:padding-bottom', 'paddingBottomCm']]) {
     const cm = lengthToCm(gp[prop]);
-    if (cm != null && Math.abs(cm - (padCm ?? TEXTBOX_PADDING_CM)) > 0.01) attrs[key] = Math.round(cm * 1000) / 1000;
+    if (cm != null && Math.abs(cm - padCm) > 0.01) attrs[key] = Math.round(cm * 1000) / 1000;
   }
   shapeStyleAttrs(gp, attrs, false);
   // A text frame without a fill under a common style still covers what lies behind it —
