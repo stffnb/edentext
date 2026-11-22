@@ -86,6 +86,8 @@ function loNoise(node: N, fmt: Fmt): N {
   if (node.type === 'bibliographyEntry' && fmt === 'docx') node.attrs = {};
   // Word centres a display formula's paragraph; LibreOffice reads that as its alignment.
   if (fmt === 'docx' && node.type === 'paragraph' && node.content?.length === 1 && node.content[0].type === 'formula' && node.content[0].attrs?.display && a.textAlign === 'center') delete a.textAlign;
+  // LibreOffice typesets a formula on load and stores the box that took in its frame.
+  if (node.type === 'formula') { delete a.width; delete a.height; delete a.drop; }
   if (node.attrs && !Object.keys(a).length) delete node.attrs;
   // A comment's date comes back in LibreOffice's local time; a tracked deletion wears
   // its review look (strike, underline) as formatting; a run in a character style has
