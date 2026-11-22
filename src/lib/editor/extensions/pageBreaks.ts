@@ -1472,14 +1472,19 @@ export const PageBreaks = Extension.create({
             let hi = endPos;
             while (lo < hi) {
               const mid = (lo + hi) >> 1;
+              // A position inside an in-line text box stands for the box: its content's own
+              // lines are no lines of the block, and probing them skipped the line's start.
+              const $mid = editorView.state.doc.resolve(mid);
+              const probe = $mid.depth > blockDepth && $mid.node(blockDepth + 1).isInline ? $mid.before(blockDepth + 1) : mid;
+              const box = probe !== mid ? editorView.nodeDOM(probe) : null;
               let midTop: number;
               try {
-                midTop = coordsAt(editorView, mid).top;
+                midTop = box instanceof HTMLElement ? box.getBoundingClientRect().top : coordsAt(editorView, probe).top;
               } catch {
                 lo = mid + 1;
                 continue;
               }
-              if (midTop >= targetViewportTop - 0.5) hi = mid;
+              if (midTop >= targetViewportTop - 0.5) hi = Math.max(lo, probe);
               else lo = mid + 1;
             }
             // Inside an in-line text box the line starts before the box: a split in its
@@ -2322,7 +2327,9 @@ export const PageBreaks = Extension.create({
                   reason: 'pre-leaf-push-to-content-start',
                   naturalY: 0,
                 });
-              } else if (effectiveTop >= contentEnd) {
+              } else if (effectiveTop >= contentEnd && (leaf.kind === 'atomic' || leaf.naturalHeight <= CONTENT_HEIGHT)) {
+                // A page-tall splittable block goes to the line split below, which moves it on
+                // and splits it there.
                 const target = pageContentStart(page + 1, topAt(page + 1), grid);
                 const { docPos, row } = leafSpacer(leaf);
                 breaks.push({
@@ -2388,6 +2395,18 @@ export const PageBreaks = Extension.create({
                   const hang = leaf.hang ?? 0;
                   while (boundaryNatural + hang < leaf.naturalHeight) {
                     const split = findLineSplit(leaf.el, boundaryNatural + hang, scale, minLines, leaf.naturalHeight > CONTENT_HEIGHT);
+                    // A page-tall block whose first line misses this page (a tall in-line box,
+                    // or it starts below the page end) moves on whole and splits on from there.
+                    if (split === null && breaks.length === 0 && !pageOpener && leaf.naturalHeight > CONTENT_HEIGHT) {
+                      const { docPos, row } = leafSpacer(leaf);
+                      if (docPos === null) break;
+                      const target = pageContentStart(targetPage, topAt(targetPage), grid);
+                      breaks.push({ height: target - effectiveTop, docPos, row, bandOpenY: target, reason: 'leaf-jump-to-next-page', naturalY: 0 });
+                      extraShift += target - effectiveTop;
+                      boundaryNatural = CONTENT_HEIGHT;
+                      targetPage++;
+                      continue;
+                    }
                     if (split === null) break;
                     const target = pageContentStart(targetPage, topAt(targetPage), grid);
                     const h = target - (effectiveTop + extraShift + split.naturalLineTop);
