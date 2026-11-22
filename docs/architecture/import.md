@@ -171,8 +171,8 @@ LibreOffice re-save leg. Run `npm test` for importer changes and `npm run test:l
   293px wide stands on one line in a 302px frame, starting at the frame's edge).
 - A `draw:text-box` frame naming no style is in LibreOffice's `Frame` (probed: 0.2cm margins,
   0.15cm padding, hairline border, with or without `settings.xml`); a file that does not define
-  `Frame` gets the built-in one (`LO_FRAME_STYLE`, `styleResolver.ts`). An as-character box's
-  margins are its `wrapDist`: LibreOffice widens and heightens its place in the line by them.
+  `Frame` gets the built-in one (`LO_FRAME_STYLE`, `styleResolver.ts`). An as-character frame's
+  margins (any kind, `asCharGap`) are its `wrapDist`: LibreOffice widens and heightens its place in the line by them.
 - A picture alone in a paragraph *inside* an as-character box is an image line too
   (`imageLinePlugin` descends into a textblock that holds a box); unmarked, a picture as wide as
   the box wrapped the caret shim onto a line of its own, 47px on a figure box.

@@ -1,6 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { atomAttrTr } from './image';
+import { atomAttrTr, inlineMargin, parseWrapGap, wrapGapText, type WrapGap } from './image';
 import { cmToPx } from '../../storage/pageMargins';
 import { parseLatex } from '../../math/latex';
 import { mathmlDocument } from '../../math/mathml';
@@ -17,11 +17,14 @@ export interface FormulaAttrs {
   latex: string;
   /** Display formula: its own line, at its paragraph's alignment, as Word's m:oMathPara. */
   display: boolean;
-  /** The box a file stores for the formula, in cm, and how far its bottom hangs below
-   *  the baseline (null: centred on the character area). Gone once the source changes. */
+  /** The box a file stores for the formula, in cm, and how far the bottom of its margin
+   *  box hangs below the baseline (null: centred on the character area). Gone once the
+   *  source changes. */
   width?: number | null;
   height?: number | null;
   drop?: number | null;
+  /** The frame's margins in cm, taken into the line around the box (image.ts wrapGap). */
+  wrapDist?: WrapGap | null;
 }
 
 declare module '@tiptap/core' {
@@ -63,6 +66,11 @@ export const Formula = Node.create({
         parseHTML: (el: HTMLElement) => { const v = parseFloat(el.getAttribute(`data-box-${name}`) ?? ''); return Number.isFinite(v) ? v : null; },
         renderHTML: (attrs: Record<string, unknown>) => (attrs[name] == null ? {} : { [`data-box-${name}`]: String(attrs[name]) }),
       }])),
+      wrapDist: {
+        default: null,
+        parseHTML: (el: HTMLElement) => parseWrapGap(el.getAttribute('data-wrap-dist')),
+        renderHTML: (attrs: Record<string, unknown>) => (attrs.wrapDist == null ? {} : { 'data-wrap-dist': wrapGapText(attrs.wrapDist) }),
+      },
     };
   },
 
@@ -144,16 +152,17 @@ class FormulaView {
     const sized = !!width && !!height;
     this.dom.classList.toggle('formula-sized', sized);
     this.dom.classList.toggle('formula-mid', sized && drop == null);
-    if (!sized) { this.dom.removeAttribute('style'); return; }
+    const margin = inlineMargin(this.node.attrs.wrapDist);
+    if (!sized) { this.dom.setAttribute('style', margin && `margin:${margin}`); return; }
     // Centred on the character area the box only adds what it is taller than the line
     // (editor.css); with a drop its bottom hangs that far below the baseline.
     this.dom.style.cssText = `width:${cmToPx(width!)}px;` + (drop == null ? `--fh:${cmToPx(height!)}px`
-      : `height:${cmToPx(height!)}px;vertical-align:${-cmToPx(drop)}px`);
+      : `height:${cmToPx(height!)}px;vertical-align:${-cmToPx(drop)}px`) + (margin && `;margin:${margin}`);
   }
 
   update(node: PMNode) {
     if (node.type.name !== 'formula') return false;
-    if ((['latex', 'display', 'width', 'height', 'drop'] as const).some((k) => node.attrs[k] !== this.node.attrs[k])) {
+    if ((['latex', 'display', 'width', 'height', 'drop', 'wrapDist'] as const).some((k) => node.attrs[k] !== this.node.attrs[k])) {
       this.node = node;
       this.dom.setAttribute('data-formula', (node.attrs.latex as string) ?? '');
       if (node.attrs.display) this.dom.setAttribute('data-display', 'true');

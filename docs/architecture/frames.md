@@ -28,7 +28,7 @@ Both exporters write the file's own floating table back
 
 ## A box in the line
 
-An as-character box stands with its bottom margin edge on the baseline, so a line of text hangs its descent below it; alone on its line (`image-line`, as a picture) it hangs none, and its margins (`wrapDist`) widen and heighten its place (all probed). A block holding nothing but floats keeps its one line, which LibreOffice sets below a full-width band: its paragraph mark stays in flow a hair wide (`data-band-lineless`), as an empty line ignores floats in CSS.
+An as-character box stands with its bottom margin edge on the baseline, so a line of text hangs its descent below it; alone on its line (`image-line`, as a picture) it hangs none (probed). Every as-character frame's ODT margins — picture, formula, box, shape — widen and heighten its place by all four sides (`wrapDist`, `inlineMargin`; probed: 1cm each side moved the next word 2cm), and the ODT export writes them back. A DOCX `wp:inline`'s `distT/B/L/R` LibreOffice neither applies nor writes (probed, pictures and boxes), so the DOCX legs leave them out. A block holding nothing but floats keeps its one line, which LibreOffice sets below a full-width band: its paragraph mark stays in flow a hair wide (`data-band-lineless`), as an empty line ignores floats in CSS.
 
 ## A box in static HTML
 

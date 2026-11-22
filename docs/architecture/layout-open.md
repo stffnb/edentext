@@ -11,11 +11,6 @@ Delete an item once it is fixed, and this file once it is empty.
   LibreOffice differs) and add a small synthetic fixture; never fit the one document.
 - No real-world document name goes into the repository or a commit message.
 
-## Page splits
-
-- An as-character **picture** (or formula) frame's margins are not read; a text box's are (`wrapDist`). Not probed
-  whether LibreOffice widens a picture's place in the line by them as it does a box's.
-
 ## Not layout: a browser test that depends on real time
 
 `npm run test:dom` in Chromium feeds a fake microphone a recording of three voiced bursts, played once in real

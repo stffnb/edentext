@@ -13,7 +13,7 @@ import { builtinStyleSheet, DEFAULT_STYLE, screenFontName, type ParaProps, type 
 import { DEFAULT_OUTLINE_LEVEL, MAX_OUTLINE_LEVELS, type OutlineLevel, type OutlineNumbering } from '../styles/outlineNumbering';
 import { clampListLevels, LIST_LEVEL_STEP_CM, MAX_LIST_LEVELS, type ListLevelStyle, type ListStyle } from '../styles/listStyles';
 import { HEADER_SHADE } from '../editor/extensions/tableHeaderRow';
-import { colorModeOf, cropOf, fitInlineImage, framePx, stackRank, wrapGap, wrapGapAttr, type Crop } from '../editor/extensions/image';
+import { colorModeOf, cropOf, fitInlineImage, framePx, stackRank, wrapGap, wrapGapAttr, type Crop, type WrapGap } from '../editor/extensions/image';
 import { odfChartDataUrl } from './chart';
 import { formatTabStops, normalizeLeader } from '../editor/extensions/tabStops';
 import { isEmphasis, type CapsMode, type LineStyle, type Relief } from '../editor/extensions/textEffects';
@@ -343,12 +343,21 @@ function dynamicWrapRoom(el: Element, gp: PropMap, contentCm: number, small = fa
   return Math.max(x - margin('left'), contentCm - x - w - margin('right')) >= (small ? DYNAMIC_WRAP_SMALL_CM : DYNAMIC_WRAP_MIN_CM);
 }
 
+// In the line every frame's margins widen and heighten its place there, its bottom margin
+// edge on the baseline: picture, formula, box and shape alike (probed).
+function asCharGap(gp: PropMap): WrapGap | null {
+  const at = (side: string) => lengthToCm(gp[`fo:margin-${side}`] ?? gp['fo:margin']) ?? 0;
+  return wrapGapAttr(wrapGap({ top: at('top'), right: at('right'), bottom: at('bottom'), left: at('left') }));
+}
+
 function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, gp: PropMap, contentCm = 0, leftMarginCm = 0, heights?: { pageHeightCm: number; textHeightCm: number; zone?: boolean; wrapSmall?: boolean }): void {
   const deg = frameRotationDeg(el);
   if (deg) attrs.rotation = deg;
   const anchor = el.getAttributeNS(NS.text, 'anchor-type');
   if (anchor === 'as-char') {
     applyInlineVAlign(el, attrs, gp);
+    const gap = asCharGap(gp);
+    if (gap) attrs.wrapDist = gap;
     return;
   }
   const wrapVal = gp['style:wrap'];
@@ -735,12 +744,6 @@ function textBoxNode(frame: Element, textBoxEl: Element, ctx: Ctx): Node {
   const style = frame.getAttributeNS(NS.draw, 'style-name') || 'Frame';
   const gp = ctx.resolver.frameGraphicProps(style);
   applyFrameRotationAndWrap(frame, attrs, gp, ctx.contentWidthCm, ctx.leftMarginCm, ctx);
-  // In the line a box's margins widen and heighten its place there (probed).
-  if (frame.getAttributeNS(NS.text, 'anchor-type') === 'as-char') {
-    const at = (side: string) => lengthToCm(gp[`fo:margin-${side}`] ?? gp['fo:margin']) ?? 0;
-    const gap = wrapGapAttr(wrapGap({ top: at('top'), right: at('right'), bottom: at('bottom'), left: at('left') }));
-    if (gap) attrs.wrapDist = gap;
-  }
   boxWrapAlign(gp, attrs);
   boxPadding(gp, attrs);
   shapeStyleAttrs(gp, attrs, false);
@@ -766,7 +769,9 @@ function convertFormulaFrame(frame: Element, ctx: Ctx): Node | null {
   const got = parseMathml(mathEl);
   const latex = got.latex ?? astToLatex(got.ast);
   if (!latex.trim()) return null;
-  return { type: 'formula', attrs: { latex, display: aloneInParagraph(frame), ...formulaFrameBox(frame, ctx) } };
+  const gp = ctx.resolver.frameGraphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
+  const gap = (frame.getAttributeNS(NS.text, 'anchor-type') ?? gp['text:anchor-type']) === 'as-char' ? asCharGap(gp) : null;
+  return { type: 'formula', attrs: { latex, display: aloneInParagraph(frame), ...formulaFrameBox(frame, ctx), ...(gap ? { wrapDist: gap } : {}) } };
 }
 
 // The frame's stored box is what LibreOffice lays the line out with: it never re-typesets
@@ -783,9 +788,12 @@ function formulaFrameBox(frame: Element, ctx: Ctx): Record<string, number> {
   const y = lengthToCm(frame.getAttributeNS(NS.svg, 'y'));
   const r = (v: number) => Math.round(v * 1000) / 1000;
   const box = { width: r(width), height: r(height) };
-  if (pos === 'from-top') return y == null ? {} : { ...box, drop: r(y + height) };
-  if (pos === 'middle') return area ? box : { ...box, drop: r(height / 2) };
-  if (pos === 'bottom' && !area) return { ...box, drop: r(height) };
+  // The line places the margin box (probed: from-top's y is its top).
+  const gap = wrapGap(asCharGap(gp));
+  const outer = height + gap.top + gap.bottom;
+  if (pos === 'from-top') return y == null ? {} : { ...box, drop: r(y + outer) };
+  if (pos === 'middle') return area ? box : { ...box, drop: r(outer / 2) };
+  if (pos === 'bottom' && !area) return { ...box, drop: r(outer) };
   if (pos === 'top' && !area) return { ...box, drop: 0 };
   return {};
 }
@@ -1065,6 +1073,8 @@ function convertDrawGroup(g: Element, ctx: Ctx): Node[] {
   delete place.rotation;
 
   const inLine = !place.wrap && !place.anchorPage;
+  // Members are placed from the carrier's own box, which a margin in the line would move.
+  if (inLine) delete place.wrapDist;
   const fills = (b: ReturnType<typeof drawBox>) => [b.x - minX, b.y - minY, b.w - wCm, b.h - hCm].every((d) => Math.abs(d) < 0.01);
   const spacer = inLine && !fills(members[0].box);
   // Member offsets count from the group's own offset where it has one, else from the

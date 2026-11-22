@@ -190,6 +190,7 @@ const SCHEMA: Record<string, Entry> = {
   'formula.width': na('the box an imported file stores for a formula'),
   'formula.height': same('formula.width'),
   'formula.drop': same('formula.width'),
+  'formula.wrapDist': same('formula.width'),
   'formula.display': same('formula'),
   columns: check(['set_columns', { from: 1, count: 2 }], attr('columns', 'count', 2)),
   'columns.count': same('columns'),

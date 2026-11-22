@@ -49,6 +49,16 @@ describe('wrap gap', () => {
     });
   }
 
+  // DOCX has none to keep: LibreOffice reads and writes a wp:inline's dist as 0 (probed).
+  const formula = { type: 'formula', attrs: { latex: 'x=2', display: false, width: 2, height: 1, drop: 0.3, wrapDist: GAP } };
+  for (const frame of [image({ wrapDist: GAP }), box({ wrapDist: GAP }), formula]) {
+    it(`keeps all four margins of a ${frame.type} in the line (ODT)`, async () => {
+      const back = find(await odt(doc(frame)), frame.type).attrs;
+      expect(back.wrapDist).toEqual(GAP);
+      if (frame.type === 'formula') expect(back.drop).toBeCloseTo(0.3, 3);
+    });
+  }
+
   it('gives an ODT text box in the line without a style LibreOffice\'s Frame margins and padding', () => {
     const content = `<?xml version="1.0"?><office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
       xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"

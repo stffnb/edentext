@@ -362,6 +362,13 @@ export function startFreeMove(
 // character area, `offset` its top wrapOffsetY cm below the baseline.
 export type InlineVAlign = 'middle' | 'below' | 'text-top' | 'text-middle' | 'text-bottom' | 'offset';
 
+// An as-character frame's margins widen and heighten its place in the line, its bottom
+// margin edge on the baseline (probed): CSS margins on an inline-block, as they stand.
+export function inlineMargin(wrapDist: unknown): string {
+  const g = wrapGap(wrapDist);
+  return wrapGapAttr(g) ? `${g.top}cm ${g.right}cm ${g.bottom}cm ${g.left}cm` : '';
+}
+
 export function inlineVerticalAlign(vAlign: unknown, boxHeightPx: number, offsetYCm: unknown): string {
   if (!boxHeightPx) return '';
   switch (vAlign) {
@@ -913,8 +920,10 @@ class ImageView {
       const bh = Math.abs(w * Math.sin(rad)) + Math.abs(h * Math.cos(rad));
       this.dom.style.width = `${bw}px`;
       this.dom.style.height = `${bh}px`;
+      // The line aligns the frame's margin box, as LibreOffice does (probed with from-top).
+      const g = wrapGap(this.node.attrs.wrapDist);
       this.dom.style.verticalAlign =
-        inlineVerticalAlign(this.node.attrs.vAlign, bh, this.node.attrs.wrapOffsetY);
+        inlineVerticalAlign(this.node.attrs.vAlign, bh + cmToPx(g.top + g.bottom), this.node.attrs.wrapOffsetY);
       // A frame alone on its line is the whole line, so where it sits against a baseline
       // no longer means anything — except an offset, which still lengthens the line.
       this.dom.dataset.vAlign = String(this.node.attrs.vAlign ?? '');
@@ -995,7 +1004,7 @@ class ImageView {
       d.style.width = '100%';
       d.style.margin = frameMargins(wrap, null, 0, a.wrapOffsetY, a.wrapDist);
       this.sinkToOffset();
-    }
+    } else d.style.margin = inlineMargin(a.wrapDist);
     // The wrapper spans the column, so the picture's own x is the rotor's place in it
     // (the rotor is centred by CSS); every other mode positions the wrapper itself.
     const x = wrap === 'topBottom' && !a.wrapAlign ? a.wrapOffset : null;
