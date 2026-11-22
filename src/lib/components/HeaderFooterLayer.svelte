@@ -18,7 +18,7 @@
   import { pageDimsCm, type PageFormat } from '../storage/pageFormat';
   import { DEFAULT_PAGE_NUMBERING, isLeftPage, printedPageNumber, type PageNumbering } from '../storage/pageNumbering';
   import { formatOrdinal } from '../utils/orderedListTypes';
-  import { cssBorder } from '../editor/extensions/tableCellBorders';
+  import { cssBorder, borderOvershootPx } from '../editor/extensions/tableCellBorders';
   import { chapterOn, type ChapterDisplay, type ChapterStart } from '../utils/chapterField';
   import { t } from '../i18n/i18n.svelte';
   import { nameIsland } from '../i18n/shortcut';
@@ -214,13 +214,16 @@
   function frameVars(f: HfFrame | null, header: boolean, bandPx: number | null = null): string {
     if (!f) return '';
     const side = (v: string | null) => (v && cssBorder(v)) || 'none';
+    const over = (v: string | null) => (v ? borderOvershootPx(v) : 0);
     const px = (cm: number) => `${cmToPx(cm)}px`;
     const p = f.padding;
     return ` --hf-frame-bt: ${side(f.border.top)}; --hf-frame-br: ${side(f.border.right)};` +
       ` --hf-frame-bb: ${side(f.border.bottom)}; --hf-frame-bl: ${side(f.border.left)};` +
       ` --hf-frame-pad: ${px(p.top)} ${px(p.right)} ${px(p.bottom)} ${px(p.left)};` +
       (f.background ? ` --hf-frame-bg: ${f.background};` : '') +
-      ` --hf-frame-gap-${header ? 'b' : 't'}: ${px(f.dynamic ? 0 : f.gap)};` +
+      // A border reserves its declared width (probed: 0.05pt for a hairline, 2pt for 2pt);
+      // the browser lays out whole pixels, so the gap gives the difference back.
+      ` --hf-frame-gap-${header ? 'b' : 't'}: ${cmToPx(f.dynamic ? 0 : f.gap) - over(f.border.top) - over(f.border.bottom)}px;` +
       (bandPx == null ? '' : ` --hf-frame-min: ${Math.max(0, bandPx - cmToPx(f.gap))}px;`);
   }
   // A page's zone frame, filling the page's band.
@@ -326,14 +329,21 @@
     const boxes = Array.from(root.querySelectorAll<HTMLElement>('.hf-measure-box:not([data-filled])'));
     const filled = Array.from(root.querySelectorAll<HTMLElement>('.hf-measure-box[data-filled]'));
     const n = HF_ZONE_KEYS.length;
+    // The laid-out height in hundredths of a px: offsetHeight rounds to whole ones, and a
+    // rect is scaled by the zoom. A reserve rounded up costs a line on a page it nearly fits.
+    const heightOf = (el: HTMLElement | undefined): number => {
+      if (!el) return 0;
+      const h = parseFloat(getComputedStyle(el).height);
+      return Math.abs(h - el.offsetHeight) < 1 ? Math.round(h * 100) / 100 : el.offsetHeight;
+    };
     const read = () => {
-      const next = setSig.map((_, i) => HF_ZONE_KEYS.map((_, k) => boxes[i * n + k]?.offsetHeight ?? 0));
+      const next = setSig.map((_, i) => HF_ZONE_KEYS.map((_, k) => heightOf(boxes[i * n + k])));
       if (String(next) !== String(untrack(() => sourceHeights))) sourceHeights = next;
       // A copy no longer shown keeps its height while the zone and the fonts stay as they
       // are: a page count going back and forth must not fall back to the unfilled height.
       const own = version === filledVersion ? { ...untrack(() => filledHeights) } : {};
       filledVersion = version;
-      for (const el of filled) if (el.offsetHeight) own[el.dataset.filled!] = el.offsetHeight;
+      for (const el of filled) if (el.offsetHeight) own[el.dataset.filled!] = heightOf(el);
       if (JSON.stringify(own) !== JSON.stringify(untrack(() => filledHeights))) filledHeights = own;
       const past = setSig.map((_, i) => HF_ZONE_KEYS.map((key, k) => (key.startsWith('header') ? intrusion(boxes[i * n + k]) : rise(boxes[i * n + k]))));
       if (String(past) !== String(untrack(() => zoneIntrusions))) zoneIntrusions = past;

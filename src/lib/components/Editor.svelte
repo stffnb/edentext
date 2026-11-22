@@ -207,6 +207,9 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
   let hfZoneIntrusions = $state<number[][]>([]);
   // The pages whose zones are another height than their set's once their fields are filled.
   let hfPageZones = $state<PageZones[]>([]);
+  // A reach in hundredths of a px: rounded to whole ones, a zone reserved up to half a
+  // pixel more on every page than LibreOffice does.
+  const reachPx = (n: number): number => Math.round(n * 100) / 100;
   const pushed = (top: number, section: number, key: HfZoneKey): number =>
     top + (hfZoneIntrusions[section]?.[HF_ZONE_KEYS.indexOf(key)] ?? 0);
   function hfReachPx(doc: HfDoc, distPx: number, footer = false, measuredPx = 0): number {
@@ -304,7 +307,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
         Math.max(bottomOf(rest), reach('footer', fDist(restD), true), s.differentOddEven ? reach('footerEven', fDist(restD), true) : 0),
       ];
     }),
-  ].map((g) => g.map((n) => Math.round(n))));
+  ].map((g) => g.map(reachPx)));
   let sectionReach = $derived(sectionReaches.map((g) => g.join('|')).join(','));
 
   // Each section's own paper (px). A section that names neither format nor orientation
@@ -416,7 +419,7 @@ import { EMPTY_PAGE_DECOR, type PageDecor } from '../storage/pageDecor';
     const top = pushed(Math.max(cmToPx(m.top), z.headerPx ? cmToPx(d.header) + z.headerPx : 0), i, z.header);
     const bottom = Math.max(cmToPx(m.bottom), z.footerPx ? pushed(cmToPx(d.footer) + z.footerPx, i, z.footer) : 0);
     const band = sectionReaches[Math.min(i, sectionReaches.length - 1)];
-    const own = [Math.round(top), Math.round(bottom)];
+    const own = [reachPx(top), reachPx(bottom)];
     return own[0] === band[first ? 0 : 1] && own[1] === band[first ? 2 : 3] ? '' : [z.page, ...own].join('|');
   }).filter(Boolean).join(','));
 
