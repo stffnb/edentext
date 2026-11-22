@@ -197,6 +197,8 @@ type Ctx = {
   // settings.xml MinRowHeightInclBorder: a row height leaves the margins and a minimum
   // row's top border out, the editor's model; without it the height includes them.
   rowHeightInclBorder: boolean;
+  // settings.xml SurroundTextWrapSmall: optimal wrap needs only 300 twips beside a frame.
+  wrapSmall: boolean;
   // Master pages the body switches to, in order — one section each past the first.
   masterPages: string[];
   leadingMaster: string; // the master the document opens on: naming it first switches nothing
@@ -325,10 +327,11 @@ function pictureAlignX(frame: Element, attrs: Record<string, unknown>, gp: PropM
 }
 
 // LibreOffice's optimal wrap (`dynamic`) gives the text the roomier side, and none where
-// that side, less the frame's margins, is under 2cm (probed with frames at the left and
-// centred: 1.95cm of room stands alone between the lines, 2.05cm wraps).
+// that side, less the frame's margins, is under 2cm (probed: 1.95cm stands alone, 2.05cm
+// wraps) — 300 twips in a document that sets SurroundTextWrapSmall (probed at 1.86cm).
 const DYNAMIC_WRAP_MIN_CM = 2;
-function dynamicWrapRoom(el: Element, gp: PropMap, contentCm: number): boolean {
+const DYNAMIC_WRAP_SMALL_CM = 300 * 2.54 / 1440;
+function dynamicWrapRoom(el: Element, gp: PropMap, contentCm: number, small = false): boolean {
   const w = lengthToCm(el.getAttributeNS(NS.svg, 'width'));
   const hpos = gp['style:horizontal-pos'], rel = gp['style:horizontal-rel'];
   if (w == null || !contentCm || (rel && rel !== 'paragraph' && rel !== 'paragraph-content' && rel !== 'page-content')) return true;
@@ -337,10 +340,10 @@ function dynamicWrapRoom(el: Element, gp: PropMap, contentCm: number): boolean {
   const x = hpos === 'center' ? (contentCm - w) / 2 : hpos === 'right' ? contentCm - w - margin('right')
     : hpos === 'from-left' ? lengthToCm(el.getAttributeNS(NS.svg, 'x')) ?? 0 : !hpos || hpos === 'left' ? margin('left') : null;
   if (x == null) return true;
-  return Math.max(x - margin('left'), contentCm - x - w - margin('right')) >= DYNAMIC_WRAP_MIN_CM;
+  return Math.max(x - margin('left'), contentCm - x - w - margin('right')) >= (small ? DYNAMIC_WRAP_SMALL_CM : DYNAMIC_WRAP_MIN_CM);
 }
 
-function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, gp: PropMap, contentCm = 0, leftMarginCm = 0, heights?: { pageHeightCm: number; textHeightCm: number; zone?: boolean }): void {
+function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, gp: PropMap, contentCm = 0, leftMarginCm = 0, heights?: { pageHeightCm: number; textHeightCm: number; zone?: boolean; wrapSmall?: boolean }): void {
   const deg = frameRotationDeg(el);
   if (deg) attrs.rotation = deg;
   const anchor = el.getAttributeNS(NS.text, 'anchor-type');
@@ -351,7 +354,7 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
   const wrapVal = gp['style:wrap'];
   if (anchor || wrapVal) {
     attrs.wrap = wrapModeFromOdf(wrapVal, gp['style:horizontal-pos']);
-    if (wrapVal === 'dynamic' && !dynamicWrapRoom(el, gp, contentCm)) attrs.wrap = 'topBottom';
+    if (wrapVal === 'dynamic' && !dynamicWrapRoom(el, gp, contentCm, heights?.wrapSmall)) attrs.wrap = 'topBottom';
   }
   // "background" sits behind the text, "foreground" in front (frameGraphicProps).
   if (attrs.wrap === 'through' && gp['style:run-through'] === 'foreground') attrs.inFront = true;
@@ -1199,7 +1202,7 @@ export function importOdt(bytes: Uint8Array, convertedImages: ConvertedImages = 
   resolver.pageRtl = geo?.rtl ?? false;
   resolver.physicalEdges = odfPhysicalEdges(files);
   const contentWidthCm = contentWidthOf(geo);
-  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), listEnds: new Map(), warnings, seqRefNames: sequenceRefNames(body), files, imageCache: new Map(), convertedImages, contentWidthCm, docContentWidthCm: contentWidthCm, leftMarginCm: geo?.margins.left ?? 0, ...heightsOf(geo), pageRtl: geo?.rtl ?? false, breakDropsSpace: odfBreakDropsSpace(files), rowHeightInclBorder: /MinRowHeightInclBorder"[^>]*>true</.test(files['settings.xml'] ? strFromU8(files['settings.xml']) : ''), masterPages: [], leadingMaster: masters.leading ?? 'Standard', masterPageStarts: [], bodyBlocks: 0, openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentReplies: odfCommentReplies(body), revisions: odfRevisions(body), openInsertions: new Map(), openFormats: new Map(), notes: [], foldMarks: false };
+  const ctx: Ctx = { resolver, styleNames, usedStyles: new Set(), charStyleNames, usedCharStyles: new Set(), usedListStyles: new Set(), listEnds: new Map(), warnings, seqRefNames: sequenceRefNames(body), files, imageCache: new Map(), convertedImages, contentWidthCm, docContentWidthCm: contentWidthCm, leftMarginCm: geo?.margins.left ?? 0, ...heightsOf(geo), pageRtl: geo?.rtl ?? false, breakDropsSpace: odfBreakDropsSpace(files), rowHeightInclBorder: /MinRowHeightInclBorder"[^>]*>true</.test(files['settings.xml'] ? strFromU8(files['settings.xml']) : ''), wrapSmall: /SurroundTextWrapSmall"[^>]*>true</.test(files['settings.xml'] ? strFromU8(files['settings.xml']) : ''), masterPages: [], leadingMaster: masters.leading ?? 'Standard', masterPageStarts: [], bodyBlocks: 0, openBookmarks: new Map(), pointBookmarks: new Set(), openComments: new Map(), commentReplies: odfCommentReplies(body), revisions: odfRevisions(body), openInsertions: new Map(), openFormats: new Map(), notes: [], foldMarks: false };
   // Whole-document columns declared on the page layout instead of a
   // text:section: the body's wrappable runs are wrapped the way a section's would be.
   const pageCols = resolver.pageColumns();
