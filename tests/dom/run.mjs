@@ -556,8 +556,8 @@ try {
   const quiet = await page.evaluate(() => window.__passes);
   check(quiet === 0, `a recalc that finds the same layout announces no page count (${quiet} events)`);
 
-  // The block after a band-wrapped frame clears it; one after a page-anchored frame does
-  // not. Keyed on an attribute image.ts writes (a `:has()` restyles the whole document).
+  // The block after a band that leaves a side open clears it; after full-width bands only
+  // ('open') or a page-anchored frame it does not. Keyed on an attribute image.ts writes.
   const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNwaDgAAAKEAYEml6crAAAAAElFTkSuQmCC';
   const frame = (attrs) => ({ type: 'image', attrs: { src: PNG, width: 120, height: 60, ...attrs } });
   const block = (...content) => ({ type: 'paragraph', content });
@@ -568,14 +568,15 @@ try {
     block(words('above')), block(words('with '), frame({ wrap: 'topBottom' })), block(words('below')),
     block(frame({ wrap: 'topBottom', anchorPage: 1 })), block(words('after anchored')),
     block(frame({ wrap: 'topBottom' })), block(frame({ wrap: 'topBottom' })), block(words('after two')),
+    block(frame({ wrap: 'topBottom', wrapAlign: 'left' })), block(words('after a side band')),
   ] });
   await page.reload({ waitUntil: 'load' });
   await page.waitForSelector('.tiptap', { timeout: 15_000 });
   await settle(page, true);
   const bands = await page.evaluate(() => Array.from(document.querySelectorAll('.tiptap-host .tiptap > p'),
     (p) => `${p.getAttribute('data-wrap-band') ?? '-'}/${getComputedStyle(p).clear}`).join(' '));
-  check(bands === '-/none true/none -/both anchored/none -/none true/none true/none -/both',
-    `loaded from the autosave, the block after a band frame clears it, after an anchored one it does not (${bands})`);
+  check(bands === '-/none open/none -/none anchored/none -/none open/none open/none -/none true/none -/both',
+    `loaded from the autosave, the block after a side-open band clears it, after a full-width or anchored one it does not (${bands})`);
 
   // Another client's lines (y-sync's meta) added above a flowing break and taken back: the
   // layout of two passes before returns, and is placed again rather than taken for a ping-pong.
