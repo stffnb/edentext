@@ -39,7 +39,9 @@ note style declares a hanging pair (`fo:margin-left` with a negative `fo:text-in
 right by the indent. The hanging pair therefore stays the editor's — see
 `tests/render-parity/FINDINGS.md`. The **DOCX** export writes that style as the note
 paragraph's `w:pStyle` and defines it; only a note naming none falls to the stock
-`FootnoteText`/`EndnoteText`, whose 10pt the importer suppresses again.
+`FootnoteText`/`EndnoteText`, whose 10pt the importer suppresses again. A DOCX note
+paragraph naming no `w:pStyle` is in the default paragraph style, as anywhere else (probed:
+LibreOffice sets it at Normal's 12pt).
 
 **The sync plugin** (`appendTransaction`) keeps one note section, last, one note per anchor,
 in anchor order, and renumbers each class. Its passes run one after another — structure
