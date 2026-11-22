@@ -1642,6 +1642,7 @@ function convertParagraph(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault:
     for (const key of ['spaceBefore', 'spaceAfter', 'lineHeight']) if (attrs[key] === def[key]) delete attrs[key];
   }
   applyContextualSpacing(el, ppr, ctx, styleId, attrs);
+  applyAutoSpacing(el, ppr, ctx, styleId, attrs);
   const revMark = paragraphMarkRevisions(ppr, ctx);
   if (revMark) attrs.revMark = revMark;
   const change = fc(ppr, 'pPrChange');
@@ -1798,6 +1799,19 @@ function applyContextualSpacing(el: Element, ppr: Element | null, ctx: Ctx, styl
     !!sib && sib.namespaceURI === W && sib.localName === 'p' && styleIdOf(fc(sib, 'pPr'), ctx) === styleId;
   if (sameStyle(el.previousElementSibling)) attrs.spaceBefore = 0;
   if (sameStyle(el.nextElementSibling)) attrs.spaceAfter = 0;
+}
+
+// Automatic spacing is left out above the document's first paragraph and between two
+// numbered ones (LibreOffice, probed: list items sit line-tight, 14pt above the first).
+function applyAutoSpacing(el: Element, ppr: Element | null, ctx: Ctx, styleId: string | null, attrs: Record<string, unknown>): void {
+  const sp = fc(ppr, 'spacing'), own: ParaSpacing = sp ? readSpacing(sp) : {}, style = ctx.styles.paragraphSpacing(styleId);
+  const before = own.beforeAuto ?? style.beforeAuto, after = own.afterAuto ?? style.afterAuto;
+  if (!before && !after) return;
+  if (before && el.parentElement?.localName === 'body' && !el.previousElementSibling) attrs.spaceBefore = 0;
+  const numbered = (p: Element | null) => !!p && p.namespaceURI === W && p.localName === 'p' && (paragraphNum(p, ctx)?.numId ?? 0) !== 0;
+  if (!numbered(el)) return;
+  if (before && numbered(el.previousElementSibling)) attrs.spaceBefore = 0;
+  if (after && numbered(el.nextElementSibling)) attrs.spaceAfter = 0;
 }
 
 // Text runs without their own `key` render the block's; give them the style's `value`.

@@ -76,7 +76,8 @@ export type LevelDef = {
 
 // Paragraph spacing from a w:pPr/w:spacing (only the attributes actually present, so
 // omitted ones inherit up the style chain). before/after in twips, line per w:line.
-export type ParaSpacing = { before?: number; after?: number; line?: number; lineRule?: string };
+export type ParaSpacing = { before?: number; after?: number; line?: number; lineRule?: string; beforeAuto?: boolean; afterAuto?: boolean };
+const AUTO_SPACING_TWIPS = 280;
 
 export function wVal(el: Element): string | null {
   return el.getAttributeNS(W, 'val');
@@ -839,6 +840,13 @@ export function readSpacing(sp: Element): ParaSpacing {
   const out: ParaSpacing = {};
   const before = lines('before'); if (before != null) out.before = before;
   const after = lines('after'); if (after != null) out.after = after;
+  // Automatic spacing (HTML's) is 14pt and replaces the twips, as Word and LibreOffice read it.
+  for (const side of ['before', 'after'] as const) {
+    const auto = sp.getAttributeNS(W, side + 'Autospacing');
+    if (auto == null) continue;
+    out[`${side}Auto`] = !/^(0|false|off)$/.test(auto);
+    if (out[`${side}Auto`]) out[side] = AUTO_SPACING_TWIPS;
+  }
   const line = num('line'); if (line != null) out.line = line;
   const rule = sp.getAttributeNS(W, 'lineRule'); if (rule) out.lineRule = rule;
   return out;
