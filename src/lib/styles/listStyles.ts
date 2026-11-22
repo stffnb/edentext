@@ -5,6 +5,7 @@
 
 import { defaultBulletChar } from '../utils/bulletListTypes';
 import type { OrderedListType } from '../utils/orderedListTypes';
+import type { MarkerFormat } from '../editor/extensions/listMarker';
 
 // One level. `indentCm` is this level's extra step past the level above (signed),
 // the same relative model the node attr uses; absolute margins are derived.
@@ -18,6 +19,9 @@ export type ListLevelStyle = {
   hanging?: number;
   markerSuffix?: 'space' | 'nothing';
   startAt?: number;
+  // The label's own font, size, weight, slant and colour (ODF's text style and text
+  // properties on the level), over the item's first portion as a list's `markerFormat` is.
+  marker?: Partial<MarkerFormat>;
 };
 
 export type ListStyle = {

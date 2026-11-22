@@ -1,7 +1,7 @@
 // List import, export and round trip: label geometry, level indents, label formatting,
 // style spacing and items holding more than one block.
 import { describe, it, expect } from 'vitest';
-import { unzipSync, strFromU8 } from 'fflate';
+import { unzipSync, strFromU8, zipSync, strToU8 } from 'fflate';
 import { buildOdt } from '../../src/lib/export/odt';
 import { buildDocx } from '../../src/lib/export/docx';
 import { importOdt } from '../../src/lib/import/odt';
@@ -10,6 +10,9 @@ import { hasXmllint, validateOdt } from '../schemaValidate';
 import { docxOf, roundTrips } from '../docxFixture';
 
 type N = any;
+
+const ODF_NS = 'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" '
+  + 'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"';
 
 const NUM = (numId = 1) => `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${numId}"/></w:numPr>`;
 const numItem = (text: string, pPr = '', rPr = '') => `<w:p><w:pPr>${pPr}</w:pPr><w:r>${rPr ? `<w:rPr>${rPr}</w:rPr>` : ''}<w:t>${text}</w:t></w:r></w:p>`;
@@ -150,6 +153,30 @@ it("keeps a numbering level's own label formatting through import and both round
   const odt = unzipSync(await buildOdt(doc as never));
   expect(strFromU8(odt['content.xml'])).toContain('text:bullet-char="\uf0a8"');
   expect(strFromU8(odt['styles.xml'])).toContain('fo:font-family="Symbol"');
+});
+
+// A named ODT list style's level sets its label in its own font (the level's text
+// properties) at its text style's size; the registry keeps it, so the list stays named.
+it("keeps a named list style level's label formatting through import and both round trips", async () => {
+  const odt = zipSync({
+    'styles.xml': strToU8(`<?xml version="1.0"?><office:document-styles ${ODF_NS}><office:styles>
+      <style:style style:name="Big" style:family="text"><style:text-properties fo:font-size="16pt" fo:font-family="Liberation Sans"/></style:style>
+      <text:list-style style:name="Dots"><text:list-level-style-bullet text:level="1" text:style-name="Big" text:bullet-char="•">
+        <style:text-properties fo:font-family="DejaVu Serif"/></text:list-level-style-bullet></text:list-style>
+      </office:styles></office:document-styles>`),
+    'content.xml': strToU8(`<?xml version="1.0"?><office:document-content ${ODF_NS}><office:body><office:text>
+      <text:list text:style-name="Dots"><text:list-item><text:p>one</text:p></text:list-item></text:list>
+      </office:text></office:body></office:document-content>`),
+  });
+  const r = importOdt(odt);
+  const want = { fontFamily: 'DejaVu Serif', fontSize: '16pt' };
+  expect(r.styles.list.Dots.levels[0].marker).toEqual(want);
+  const [, back] = await roundTrips(r.content, r.styles);
+  expect(listOf(back).attrs).toMatchObject({ listStyleName: 'Dots' });
+  const again = importOdt(await buildOdt(r.content as never, undefined, undefined, undefined, undefined, undefined, r.styles));
+  expect(again.styles.list.Dots.levels[0].marker).toEqual(want);
+  const numberingXml = strFromU8(unzipSync(await buildDocx(r.content as never, undefined, 'portrait', undefined, null, 'A4', r.styles))['word/numbering.xml']);
+  expect(numberingXml).toMatch(/<w:lvl w:ilvl="0"[\s\S]*?<w:sz w:val="32"\/>[\s\S]*?<\/w:lvl>/);
 });
 
 // A list item carries no style name, so the spacing its own paragraph style gives it

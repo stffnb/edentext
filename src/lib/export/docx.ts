@@ -48,7 +48,7 @@ import { parseTabStops, type TabAlign } from '../editor/extensions/tabStops';
 import { emphasisToWord, isEmphasis, type TextEffectAttrs } from '../editor/extensions/textEffects';
 import { w14EffectsXml } from '../utils/w14Effects';
 import { firstLineCm, leftCm, rightCm } from '../editor/extensions/indent';
-import { charStyleProps, listMarkerFormat } from '../editor/extensions/listMarker';
+import { charStyleProps, listMarkerFormat, styleLevelMarker, type MarkerFormat } from '../editor/extensions/listMarker';
 import { effectiveOrderedDefAt, formatOrdinal, childCycle, orderedTypeDef, ROOT_ORDERED_CYCLE, type OrderedCycle } from '../utils/orderedListTypes';
 import { clampListLevels, DOCX_LIST_LEVELS, effectiveListLevel, listStyleMarginCm, listStyleOverridden, type ListStyle as ListStyleDef } from '../styles/listStyles';
 import { outlineIsEmpty, type OutlineNumbering } from '../styles/outlineNumbering';
@@ -393,8 +393,11 @@ function hexColor(input: string): string | undefined {
 
 // The level's number/bullet formatting (w:lvl/w:rPr) — Word carries it per level, so
 // only a list whose items agree has one (listMarkerFormat).
-function markerRunProps(node: TiptapNode): Writable<IRunStylePropertiesOptions> | undefined {
-  const format = listMarkerFormat(node, charStyleProps(exportSheet));
+function markerRunProps(node: TiptapNode, style: ListStyleDef | null = null, depth = 0): Writable<IRunStylePropertiesOptions> | undefined {
+  return formatRunProps(listMarkerFormat(node, charStyleProps(exportSheet), styleLevelMarker(node, style, depth + 1)));
+}
+
+function formatRunProps(format: Partial<MarkerFormat> | null | undefined): Writable<IRunStylePropertiesOptions> | undefined {
   if (!format) return undefined;
   const props: Writable<IRunStylePropertiesOptions> = {};
   if (format.fontFamily) props.font = format.fontFamily === SCREEN_FONT ? DOC_FONT : format.fontFamily;
@@ -457,10 +460,12 @@ class Numbering {
         };
         const suffix = def?.markerSuffix === 'space' ? LevelSuffix.SPACE : def?.markerSuffix === 'nothing' ? LevelSuffix.NOTHING : undefined;
         const alignment = def?.markerAlign === 'right' ? AlignmentType.RIGHT : AlignmentType.LEFT;
+        const run = formatRunProps(def?.marker);
         if (def?.kind === 'bullet') {
+          const label = symbolBullet(def.bulletChar ?? defaultBulletChar(l), run);
           levels.push({
-            level: l, format: LevelFormat.BULLET, text: def.bulletChar ?? defaultBulletChar(l),
-            alignment, style: { paragraph: { indent } }, ...(suffix ? { suffix } : {}),
+            level: l, format: LevelFormat.BULLET, text: label.text,
+            alignment, style: { paragraph: { indent }, ...(label.run ? { run: label.run } : {}) }, ...(suffix ? { suffix } : {}),
           });
         } else {
           const t = orderedTypeDef(style.multilevel ? 'decimal' : def?.numType ?? 'decimal');
@@ -469,7 +474,7 @@ class Numbering {
             format: ORDERED_FORMAT[t.numFormat] ?? LevelFormat.DECIMAL,
             text: style.multilevel ? Array.from({ length: l + 1 }, (_, i) => `%${i + 1}.`).join('') : `%${l + 1}${t.numSuffix}`,
             alignment, start: def?.startAt ?? 1,
-            style: { paragraph: { indent } }, ...(suffix ? { suffix } : {}),
+            style: { paragraph: { indent }, ...(textMarkerRun(run) ? { run: textMarkerRun(run) } : {}) }, ...(suffix ? { suffix } : {}),
           });
         }
       }
@@ -559,7 +564,7 @@ class Numbering {
       text = bulletCharOf(node, depth, style);
     }
     if (!restarts && l.format === format && l.text === text
-      && JSON.stringify(l.style?.run ?? null) === JSON.stringify(markerRunProps(node) ?? null)) return reference;
+      && JSON.stringify(l.style?.run ?? null) === JSON.stringify(markerRunProps(node, style, depth) ?? null)) return reference;
     const fork = this.newReference();
     this.map.get(fork)!.push(...levels.filter((lv) => lv.level < depth));
     return fork;
@@ -591,13 +596,13 @@ class Numbering {
           : `%${depth + 1}${def.numSuffix}`,
         alignment,
         start: typeof node.attrs?.start === 'number' ? node.attrs.start : eff.startAt ?? 1,
-        style: { paragraph: { indent }, run: textMarkerRun(markerRunProps(node)) },
+        style: { paragraph: { indent }, run: textMarkerRun(markerRunProps(node, style, depth)) },
         ...(suffix ? { suffix } : {}),
       });
     } else {
       // The Unicode char goes into w:lvlText literally, or as its private-use code
       // under a symbol font the label is set in.
-      const { text, run } = symbolBullet(bulletCharOf(node, depth, style), markerRunProps(node));
+      const { text, run } = symbolBullet(bulletCharOf(node, depth, style), markerRunProps(node, style, depth));
       levels.push({
         level: depth,
         format: LevelFormat.BULLET,

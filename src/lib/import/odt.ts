@@ -1,7 +1,7 @@
 import { strFromU8 } from 'fflate';
 import { markerFormatFromText, pruneImportedMarkers, type MarkerFormat } from '../editor/extensions/listMarker';
 import en from '../i18n/locales/en';
-import { StyleResolver, NS, WATERMARK_NAME, lengthToPt, lengthToCm, layerTextProps, langTagsOfProps, type PropMap } from './styleResolver';
+import { StyleResolver, NS, WATERMARK_NAME, lengthToPt, lengthToCm, layerTextProps, collectProps, langTagsOfProps, type PropMap } from './styleResolver';
 import { cjkDocFont, odfFromTag, tagFromOdf } from '../storage/documentLanguage';
 import { ASIAN_SCRIPT_RE, COMPLEX_SCRIPT_RE } from '../utils/script';
 import { GENERATOR, ODF_LOOK_ATTRS, normalizeColor, labelledItems } from '../export/odt';
@@ -2287,6 +2287,8 @@ function listStyleFromOdf(name: string, el: Element, builtin?: boolean, resolver
     prevMargin = margin;
     if (listLevelRightAligned(def)) level.markerAlign = 'right';
     Object.assign(level, listLevelLabel(def, d));
+    const marker = resolver && listLevelMarker(def, resolver).markerFormat;
+    if (marker) level.marker = marker;
     if (ordered) {
       if (parseInt(def.getAttributeNS(NS.text, 'display-levels') ?? '1', 10) > 1) multilevel = true;
       const key = orderedTypeFromFormat(odfNumFormatOf(def), def.getAttributeNS(NS.style, 'num-suffix'));
@@ -3707,7 +3709,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
       if (bulletChar) attrs.bulletChar = bulletChar;
       if (indent != null) attrs.indent = indent;
       if (listLevelRightAligned(levelDef)) attrs.markerAlign = 'right';
-      Object.assign(attrs, listLevelLabel(levelDef, depth), listLevelMarker(levelDef, ctx));
+      Object.assign(attrs, listLevelLabel(levelDef, depth), listLevelMarker(levelDef, ctx.resolver));
     }
     const node: Node = { type: 'bulletList', content: items };
     if (Object.keys(attrs).length) node.attrs = attrs;
@@ -3737,7 +3739,7 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
     if (listStyleType) attrs.listStyleType = listStyleType;
     if (indent != null) attrs.indent = indent;
     if (listLevelRightAligned(levelDef)) attrs.markerAlign = 'right';
-    Object.assign(attrs, listLevelLabel(levelDef, depth), listLevelMarker(levelDef, ctx));
+    Object.assign(attrs, listLevelLabel(levelDef, depth), listLevelMarker(levelDef, ctx.resolver));
   }
   // Each restart opens a list of its own, the same but for its start.
   const { start: _s, continueNumbering: _c, ...rest } = attrs;
@@ -3749,14 +3751,18 @@ function convertList(el: Element, ctx: Ctx, inheritedStyleName: string | null, d
   });
 }
 
-// The text style a level formats its label with, as the list's own marker format.
-function listLevelMarker(levelDef: Element | null, ctx: Ctx): { markerFormat?: Partial<MarkerFormat> } {
-  const name = levelDef?.getAttributeNS(NS.text, 'style-name');
-  const props = name ? ctx.resolver.spanTextProps(name) : null;
+// The text style a level formats its label with, its own text properties over it (the
+// bullet's font: LibreOffice sets the label in it, probed), as the list's marker format.
+function listLevelMarker(levelDef: Element | null, resolver: StyleResolver): { markerFormat?: Partial<MarkerFormat> } {
+  const name = levelDef?.getAttributeNS(NS.text, 'style-name') ?? null;
+  const own: PropMap = {};
+  if (levelDef) collectProps(levelDef, 'text-properties', own);
+  if (!name && !Object.keys(own).length) return {};
+  const props = layerTextProps(resolver.spanTextProps(name), own);
   // The family as a run reads it, which is what the first portion it is held against has.
-  const family = props && ctx.resolver.fontFamilyOf(props);
-  const own = props ? markerFormatFromText({ ...textPropsFromOdf(props, ctx.resolver), ...(family ? { fontFamily: family } : {}) }) : null;
-  return own ? { markerFormat: own } : {};
+  const family = resolver.fontFamilyOf(props);
+  const format = markerFormatFromText({ ...textPropsFromOdf(props, resolver), ...(family ? { fontFamily: family } : {}) });
+  return format ? { markerFormat: format } : {};
 }
 
 // fo:text-align="end" on the level properties: the label is set against the far end of

@@ -4,6 +4,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { cssFontFamily, resolveStyle, screenFontName, type StyleSheet, type TextProps } from '../../styles/styleSheet';
 import { blockStyleName } from './paragraphStyle';
+import type { ListStyle } from '../../styles/listStyles';
 
 // A list marker's direct formatting. CSS values, since that is what two of the three
 // consumers want; the DOCX exporter converts. The family is the plain name, not a CSS
@@ -104,8 +105,16 @@ export function pruneImportedMarkers(result: { content: unknown; styles: StyleSh
 // marker formatting per level, so only a uniform list can carry it. Left out, both
 // LibreOffice (first portion) and Word (paragraph mark) fall back to their own rule.
 // The list's own `markerFormat` goes over it.
-export function listMarkerFormat(list: JsonNode, charProps?: CharStyleProps): MarkerFormat | null {
-  return withOwnMarker(list.attrs?.markerFormat, portionMarkerFormat(list, charProps));
+export function listMarkerFormat(list: JsonNode, charProps?: CharStyleProps, level?: Partial<MarkerFormat> | null): MarkerFormat | null {
+  return withOwnMarker(list.attrs?.markerFormat, withOwnMarker(level, portionMarkerFormat(list, charProps)));
+}
+
+// The label format a named list style's level gives a list at `depth` (1-based), where
+// that level governs it: a list's own bullet or numbering type takes the depth over.
+export function styleLevelMarker(list: { type?: string | { name: string }; attrs?: Record<string, unknown> | null }, style: ListStyle | null | undefined, depth: number): Partial<MarkerFormat> | null {
+  const type = typeof list.type === 'string' ? list.type : list.type?.name;
+  if (type === 'orderedList' ? list.attrs?.listStyleType : list.attrs?.bulletChar) return null;
+  return style?.levels[depth - 1]?.marker ?? null;
 }
 
 function portionMarkerFormat(list: JsonNode, charProps?: CharStyleProps): MarkerFormat | null {
@@ -135,11 +144,24 @@ function markerStyle(format: MarkerFormat | null): string {
     + `--marker-color:${format?.color ?? 'initial'}`;
 }
 
-export function listMarkerDecos(doc: ProseMirrorNode, charProps?: CharStyleProps): DecorationSet {
+export function listMarkerDecos(doc: ProseMirrorNode, charProps?: CharStyleProps, sheet?: StyleSheet): DecorationSet {
   const decos: Decoration[] = [];
+  // Each list's named style and depth, as listStyle.ts resolves them: the outermost list's
+  // style, one level per list nested in an item.
+  const lists = new Map<number, { style: ListStyle | null; depth: number }>();
   doc.descendants((node, pos, parent) => {
-    if (node.type.name !== 'listItem') return;
-    const own = parent?.attrs.markerFormat as Partial<MarkerFormat> | null | undefined;
+    const name = node.type.name;
+    if (name === 'bulletList' || name === 'orderedList') {
+      const $pos = doc.resolve(pos);
+      const up = parent?.type.name === 'listItem' && $pos.depth > 1 ? lists.get($pos.before($pos.depth - 1)) : undefined;
+      lists.set(pos, up ? { style: up.style, depth: up.depth + 1 } : { style: sheet?.list[node.attrs.listStyleName as string] ?? null, depth: 1 });
+      return;
+    }
+    if (name !== 'listItem' || !parent) return;
+    const $pos = doc.resolve(pos);
+    const list = $pos.depth ? lists.get($pos.before($pos.depth)) : undefined;
+    const level = list ? styleLevelMarker(parent, list.style, list.depth) : null;
+    const own = withOwnMarker(parent.attrs.markerFormat, withOwnMarker(level, null));
     const format = withOwnMarker(own, itemMarkerFormat(node, charProps));
     // A level sized or set in a font apart from its text counts in the item's first line,
     // as both word processors set it; editor.css puts that marker in the line, not floated.
@@ -254,13 +276,14 @@ export const ListMarker = Extension.create<{ sheet: () => StyleSheet }>({
 
   addProseMirrorPlugins() {
     const props = () => charStyleProps(this.options.sheet());
+    const decos = (doc: ProseMirrorNode) => listMarkerDecos(doc, props(), this.options.sheet());
     return [
       new Plugin({
         key: listMarkerKey,
         state: {
-          init: (_, state) => listMarkerDecos(state.doc, props()),
+          init: (_, state) => decos(state.doc),
           apply: (tr, old) =>
-            tr.getMeta(SHEET_CHANGED) || (tr.docChanged && touchesList(tr)) ? listMarkerDecos(tr.doc, props())
+            tr.getMeta(SHEET_CHANGED) || (tr.docChanged && touchesList(tr)) ? decos(tr.doc)
             : tr.docChanged ? old.map(tr.mapping, tr.doc) : old,
         },
         props: {
