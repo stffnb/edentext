@@ -550,6 +550,12 @@
 .paper .tiptap [data-wrap-band='true'] + :not([data-page-break-spacer], [data-wrap-band]) {
   clear: both;
 }
+/* Only full-width bands open no gap beside them, so the next block runs in the room above
+   one; an empty line needs no width and would sit beside it, so it is given a hair. */
+.paper .tiptap [data-wrap-band='open'] + :has(> br.ProseMirror-trailingBreak:only-child)::before {
+  content: '\200b';
+  padding-left: 0.1px;
+}
 .paper .tiptap .image-rotor {
   position: absolute;
   left: 50%;

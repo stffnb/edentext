@@ -393,6 +393,7 @@ export function sinkToOffset(d: HTMLElement, y: unknown): number | null {
     d.dataset.bandY = String(down ? Math.round(cmToPx(y)) : 0);
     liftBand(d);
   } else { delete d.dataset.bandLift; delete d.dataset.bandY; }
+  if (wrap) d.style.shapeOutside = '';
   if (leads || !down) return down ? Math.round(cmToPx(y)) : null;
   let gap = Math.round(cmToPx(y));
   if (d.previousSibling) {
@@ -403,6 +404,9 @@ export function sinkToOffset(d: HTMLElement, y: unknown): number | null {
     gap = clamp(Math.round(cmToPx(y) - (wrap ? bandRise(p) : 0) - (d.getBoundingClientRect().top - box.top) / scale), d.dataset.wrap === 'through' ? 0 : 6, pageContentHeightPx());
   }
   d.style.marginTop = `${gap}px`;
+  // Lines run in the room above a band where they fit, between two bands too (probed in
+  // LibreOffice); the block after the anchor reaches it where it doesn't clear (editor.css).
+  if (wrap) d.style.shapeOutside = `inset(${gap}px 0 0 0) margin-box`;
   return gap;
 }
 
@@ -717,8 +721,10 @@ function blockImageLines(node: PMNode, pos: number, decos: Decoration[]): void {
   let images: number[] = [];
   let text = false;
   // 'true': a full-width float rides this block, so its successor clears the band;
-  // 'anchored': every such float is page-anchored — the successor must not clear.
-  let band: 'true' | 'anchored' | null = null;
+  // 'anchored': every such float is page-anchored — the successor must not clear;
+  // 'open': only full-width bands, so it runs in the room above one where it fits.
+  let band: 'true' | 'anchored' | 'open' | null = null;
+  let sideOrPair = false;
   const flush = () => {
     if (!text) for (const at of images) decos.push(Decoration.node(at, at + 1, { class: 'image-line' }));
     images = [];
@@ -726,15 +732,20 @@ function blockImageLines(node: PMNode, pos: number, decos: Decoration[]): void {
   };
   node.forEach((child, offset) => {
     if (child.type.name === 'hardBreak') flush();
-    else if (child.type.name === 'image') {
-      const wrap = child.attrs.wrap ?? 'inline';
+    else if (child.type.name === 'image' || child.type.name === 'textBox') {
+      const a = child.attrs, wrap = a.wrap ?? 'inline';
+      if (wrap === 'left' || wrap === 'right' || a.wrapAlign) sideOrPair = true;
+      if (child.type.name === 'textBox') {
+        // A box in the line holds text; out of it it shares none, as a wrapping picture does not.
+        if (wrap === 'inline') text = true;
+        return;
+      }
       if (wrap === 'inline') images.push(pos + 1 + offset);
-      if (wrap === 'topBottom' && band !== 'true') band = child.attrs.anchorPage ? 'anchored' : 'true';
-    } else if (child.type.name === 'textBox' && (child.attrs.wrap ?? 'inline') !== 'inline') {
-      // A box out of the line shares none, as a wrapping picture does not.
+      if (wrap === 'topBottom' && band !== 'true') band = a.anchorPage ? 'anchored' : 'true';
     } else if (child.isText ? child.text?.trim() : true) text = true;
   });
   flush();
+  if (band === 'true' && !sideOrPair) band = 'open';
   // The attribute editor.css keys the clearing on — an attribute, since a `:has()`
   // there makes Chromium restyle the whole document on every insertion.
   if (band) decos.push(Decoration.node(pos, pos + node.nodeSize, { 'data-wrap-band': band }));
