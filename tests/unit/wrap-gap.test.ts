@@ -5,6 +5,7 @@ import { importOdt } from '../../src/lib/import/odt';
 import { buildDocx } from '../../src/lib/export/docx';
 import { importDocx } from '../../src/lib/import/docx';
 import { wrapGap, parseWrapGap, wrapGapText } from '../../src/lib/editor/extensions/image';
+import { zipSync, strToU8 } from 'fflate';
 
 type N = any;
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -47,4 +48,15 @@ describe('wrap gap', () => {
       expect(back.attrs.wrapDist).toBe(0.32);
     });
   }
+
+  it('gives an ODT text box in the line without a style LibreOffice\'s Frame margins and padding', () => {
+    const content = `<?xml version="1.0"?><office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+      xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+      xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"><office:body><office:text><text:p>a<draw:frame
+      text:anchor-type="as-char" svg:width="3cm" svg:height="1cm"><draw:text-box><text:p>box</text:p></draw:text-box></draw:frame></text:p></office:text></office:body></office:document-content>`;
+    const back = find(importOdt(zipSync({ 'content.xml': strToU8(content) })).content as N, 'textBox');
+    const gap = wrapGap(back.attrs.wrapDist);
+    for (const side of ['top', 'right', 'bottom', 'left'] as const) expect(gap[side]).toBeCloseTo(0.2, 2);
+    expect(back.attrs.paddingCm ?? 0.15).toBe(0.15);
+  });
 });
