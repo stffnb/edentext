@@ -53,7 +53,7 @@ blocks with a `padding-top:0;margin-top:0` node decoration — geometrically, a 
 own spacer never measures as sitting at the page top, since `effectiveTop` excludes that push, so
 the mark follows from the break it got. The value itself rides `--space-before`
 (`storage/spacingModel.ts`); in the larger-of model a kept space is a margin outside the
-leaf box, so the push tests subtract it (`kept`). Which breaks keep it is decided on import.
+leaf box, so the push tests subtract it (`kept`). Which breaks keep it is decided on import. A table's space above (the wrapper's) follows the same rule (probed with and without `style:may-break-between-rows`: flush at an automatic page top, 1cm kept after `fo:break-before`): its first leaf, row or whole table, is measured from the wrapper's top and the page-top mark goes on the table node.
 
 **A pass must not read its own last answer.** Dropping that space shortens the block, which moves
 everything below it, which changes what sits at the *next* page top — so measuring the decorated

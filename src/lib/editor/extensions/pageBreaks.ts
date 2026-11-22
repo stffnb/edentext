@@ -1596,15 +1596,25 @@ export const PageBreaks = Extension.create({
             const keepNext = tableEl?.dataset?.keepNext === 'true';
             const keepRows = (tableEl?.dataset?.keepRows === 'true' || keepNext)
               && wrapperEl.offsetHeight - spacerHeight <= contentHeight;
+            // The table's space above is its first leaf's, measured from the wrapper's top
+            // with what a page top took off added back, as a paragraph's is.
+            const wcs = inTableCell ? null : getComputedStyle(wrapperEl);
+            const spaceAbove = wcs ? parseFloat(wcs.getPropertyValue('--space-before')) || 0 : 0;
+            const dropped = wcs && spaceAbove > 0.5
+              && parseFloat(wcs.paddingTop) < 0.5 && parseFloat(wcs.marginTop) < 0.5 ? spaceAbove : 0;
+            const droppedAbove = marginModel && dropped
+              ? Math.max(0, dropped - (leaves[leaves.length - 1]?.spaceAfter ?? 0)) : 0;
+            const tableTop = naturalTopOf(wrapperEl) + droppedAbove;
+            cumulativeDropped += marginModel ? droppedAbove : dropped;
             // Fallback: no rows found — measure the whole wrapper as one atomic leaf.
             if (realRows.length === 0 || keepRows) {
-              const top = naturalTopOf(wrapperEl);
               cumulativeSpacerHeight += spacerHeight;
               leaves.push({
                 el: wrapperEl,
                 kind: 'atomic',
-                naturalTop: top,
-                naturalHeight: wrapperEl.offsetHeight - spacerHeight,
+                naturalTop: tableTop,
+                naturalHeight: wrapperEl.offsetHeight - spacerHeight + (marginModel ? 0 : dropped),
+                spaceAbove,
                 keepNext: keepNext && !inTableCell && realRows.length > 0,
                 refs: refsWithin(wrapperEl),
               });
@@ -1650,11 +1660,13 @@ export const PageBreaks = Extension.create({
               openGroup = null;
               if (rowHeight <= contentHeight) {
                 // Row fits on a page → atomic leaf; the table breaks between rows.
+                const rowTop = naturalTopOf(tr);
                 const rowLeaf: Leaf = {
                   el: tr,
                   kind: 'atomic',
-                  naturalTop: naturalTopOf(tr),
-                  naturalHeight: rowHeight,
+                  naturalTop: seenRealRow ? rowTop : tableTop,
+                  naturalHeight: seenRealRow ? rowHeight : rowTop + rowHeight - tableTop,
+                  spaceAbove: seenRealRow ? 0 : spaceAbove,
                   tableRow: { columns, wrapperEl, isFirstRow: !seenRealRow },
                   forceBreakBefore: freshPage && !seenRealRow,
                   refs: refsWithin(tr),
@@ -2118,8 +2130,9 @@ export const PageBreaks = Extension.create({
                 const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
                 if (from !== null && node) sectionTops.push({ from, to: from + node.nodeSize, px: Math.round(sectionTop) });
               }
+              const blockEl = leaf.tableRow?.isFirstRow ? leaf.tableRow.wrapperEl : leaf.el;
               const kept = keeps && !leaf.inTableCell && !leaf.lifted ? Math.max(0,
-                (parseFloat(getComputedStyle(leaf.el).marginTop) || 0) - (leaves[i - 1]?.spaceAfter ?? 0)) : 0;
+                (parseFloat(getComputedStyle(blockEl).marginTop) || 0) - (leaves[i - 1]?.spaceAfter ?? 0)) : 0;
               // A section's first page uses its "first" reaches, every other page its
               // "rest" ones — page 1 is section 1's first page.
               if (leaf.sectionStart) {
@@ -2436,7 +2449,7 @@ export const PageBreaks = Extension.create({
                 && (breaks.some((b) => b.reason !== 'line-split')
                   || (breaks.length === 0 && Math.abs(effectiveTop - contentStart) < 0.5))
               ) {
-                const from = docPosBeforeElement(leaf.el);
+                const from = docPosBeforeElement(blockEl);
                 const node = from !== null ? editorView.state.doc.nodeAt(from) : null;
                 if (from !== null && node) {
                   pageTopBlocks.push({ from, to: from + node.nodeSize });
