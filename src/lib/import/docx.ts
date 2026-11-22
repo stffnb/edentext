@@ -2177,7 +2177,8 @@ function noteRefNode(wid: string | null, kind: NoteKind, ctx: Ctx, baseRun: RunP
   // default) equals a styleName-less note and is suppressed like any default-equal value.
   const firstPara = Array.from(note.children).find((c) => c.namespaceURI === W && c.localName === 'p');
   const pStyle = fc(fc(firstPara ?? null, 'pPr'), 'pStyle');
-  const styleId = pStyle ? wVal(pStyle) : null;
+  // A note paragraph naming no style is in the default one, as anywhere else (probed).
+  const styleId = pStyle ? wVal(pStyle) : ctx.styles.defaultParagraphStyle();
   const styleName = styleId && !isStockNoteStyle(ctx, styleId) ? ctx.styleNames.get(styleId) ?? null : null;
   if (styleId && styleName) ctx.usedStyles.add(styleId);
   ctx.notes.push({ id, kind, label, text, content, styleName });
