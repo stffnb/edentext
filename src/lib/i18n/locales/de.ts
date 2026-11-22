@@ -193,7 +193,7 @@ const de: Messages = {
     start: 'Sitzung starten',
     editLink: 'Mitschreiben',
     viewLink: 'Nur lesen',
-    linksHint: 'Wer den ersten Link öffnet, kann mit Ihnen schreiben. Mit dem zweiten lässt sich das Dokument nur mitlesen, nicht ändern.',
+    linksHint: 'Wer den ersten Link öffnet, kann das Dokument bearbeiten. Mit dem zweiten lässt sich das Dokument nur mitlesen, nicht ändern.',
     readingAlong: 'liest mit',
     readOnly: 'Nur lesen',
     readingHint: 'Sie sind über einen Link zum Mitlesen dabei: Jede Änderung erscheint sofort, bearbeiten können Sie das Dokument aber nicht.',
