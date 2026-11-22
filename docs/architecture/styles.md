@@ -102,3 +102,10 @@ sets a `--natural-line` takes the paragraph's line-height expression with that v
 fixed spacing stays fixed. The reverse stays: the paragraph's font is the CSS strut, so
 a paragraph whose runs are all in a shorter face than its own keeps its own line height.
 One run mixing scripts takes the western face's line even where the asian one is taller.
+LibreOffice sets a line at max(ascent) + max(descent + line gap) over its fonts, the
+spacing's extra on top; CSS splits each face's gap above and below, so a Courier run in a
+Times paragraph raised the line by its whole descent excess plus half the gap. The bundled
+Liberation Serif and Sans (and the Times New Roman and Arial faces they stand in for) fold
+the gap into their descent (`*-override` in `global.css`). Probed at 12pt, 100/115/200%:
+the Courier line is 0.5pt taller in LibreOffice; the editor's grew 1.68px, now 0.67px.
+A face loaded from the system without an `@font-face` of ours keeps the split.
