@@ -2672,6 +2672,8 @@ try {
     await fp.evaluate(() => document.querySelector('.tiptap-host .tiptap').editor.commands.setContent(
       '<p style="text-align: center"><strong><em>Source</em></strong> paragraph</p><p>target one here</p><p>target two here</p>'
       + '<table><tbody><tr><td><p>cell text</p></td><td><p>b</p></td></tr></tbody></table><p>end</p>'));
+    // A page still settling after the load takes no pointer events: a click would be lost.
+    await fp.waitForSelector('.paper:not(.settling)', { timeout: 15_000 });
     // A word's box on the page, and how it and its paragraph are drawn.
     const word = (text, scope = '.tiptap-host') => fp.evaluate(([w, s]) => {
       const walk = document.createTreeWalker(document.querySelector(s), NodeFilter.SHOW_TEXT);
