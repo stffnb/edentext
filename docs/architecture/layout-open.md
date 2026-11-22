@@ -1,9 +1,9 @@
-# Two reverted layout rules, to be redone
+# A reverted layout rule, to be redone
 
-Both rules match LibreOffice in isolation and pass the committed corpus, but each moved a private document away
-from LibreOffice. They are out of the tree until refined. Delete this file once both are back.
+The rule matches LibreOffice in isolation and passes the committed corpus, but moved a private document away
+from LibreOffice. It is out of the tree until refined. Delete this file once it is back.
 
-## How to work on them
+## How to work on it
 
 - The private documents live outside the repository; `tests/localDocs.mjs` finds them and `LAYOUT_LOCAL=core|all`
   selects the tier. Copy the folder to the machine that investigates; nothing in it may be changed.
@@ -12,18 +12,7 @@ from LibreOffice. They are out of the tree until refined. Delete this file once 
   LibreOffice differs) and add a small synthetic fixture; never fit the one document.
 - No real-world document name goes into the repository or a commit message.
 
-## 1. Lines in the room above or between band frames
-
-- Commit `48abdfd8`, reverted by `c3897257`. Its browser-test expectation `90f6c096` is reverted by `5b318f72`,
-  and the fixture `tests/corpus/30-band-gap.odt` with its baseline entry went with the revert.
-- Rule: a block whose frames are all full-width no-wrap bands does not clear them. A sunk band takes its gap as
-  `shape-outside: inset(...)` (`data-wrap-band="open"`), so a line goes where its height fits; its space below may
-  overlap the band. Probed in LibreOffice on ODT.
-- Regression: the 48-page DOCX of the core local set became 49 pages (LibreOffice 48).
-- Not found: which band lets a line in that the reference keeps out. Suspects, unverified: DOCX top-and-bottom
-  frames whose anchor paragraph is empty, and the space below a line, which the rule lets overlap the band.
-
-## 2. ODT shape text padding from named sides, a box ends at its last line
+## ODT shape text padding from named sides, a box ends at its last line
 
 - Commit `866e20ce`, reverted by `30dbd8f6`.
 - Rule: a shape takes padding as a frame does: none where its styles name none, and a side's own `fo:padding-*`
@@ -38,10 +27,10 @@ from LibreOffice. They are out of the tree until refined. Delete this file once 
   shorter there. The recorded page start is the editor's own earlier state, so compare page 23/24 against
   LibreOffice first to see which of the two starts is the right one before changing either rule.
 
-## What the reverts cost
+## What the revert costs
 
-The caption-shape height and the band-gap page starts are off again in the document that motivated both rules,
-a long ODT manual (645 pages against LibreOffice's 632).
+The caption-shape height is off again in the document that motivated the rule, a long ODT manual (645 pages
+against LibreOffice's 632 with the band rule also out; not re-measured since it is back).
 
 ## Other open items from the same session (page splits)
 
@@ -52,6 +41,8 @@ a long ODT manual (645 pages against LibreOffice's 632).
   the line box overflows or only the ink.
 - Page splits in documents with a header were not probed.
 - `tests/corpus/32-box-split.odt` has 5 pages in LibreOffice and 4 in the editor; not looked into.
+- `tests/corpus/33-band-keep.odt`: the editor fits one line more than LibreOffice under the captioned band on page
+  1 (page 2 starts at "After line 6.", LibreOffice "After line 5."); dev showed the same with a three-line caption.
 
 ## Not layout: a browser test that depends on real time
 

@@ -967,6 +967,15 @@
     "After paragraph 51."
    ]
   },
+  "tests/corpus/33-band-keep.odt": {
+   "pages": 2,
+   "lines": 71,
+   "ms": 800,
+   "starts": [
+    "Body line 1.",
+    "After line 6."
+   ]
+  },
   "tests/corpus/word/01-flow.docx": {
    "pages": 2,
    "lines": 120,
