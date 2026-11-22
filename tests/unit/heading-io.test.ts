@@ -190,6 +190,15 @@ describe('a heading and keep with next', () => {
   });
 });
 
+// The registry holds no keep, so a paragraph style's keep-with-next and keep-together ride
+// the block in ODT, as they do in DOCX.
+it("keeps an ODT paragraph style's keep flags on its blocks", () => {
+  const d = importOdt(odtOf(`
+   <style:style style:name="Lead" style:family="paragraph"><style:paragraph-properties fo:keep-with-next="always" fo:keep-together="always"/></style:style>`,
+  '<office:body><office:text><text:p text:style-name="Lead">a</text:p><text:p>b</text:p></office:text></office:body>')).content as N;
+  expect(d.content.map((p: N) => [p.attrs.keepNext ?? null, p.attrs.keepLines ?? null])).toEqual([[true, true], [null, null]]);
+});
+
 describe('a list on a heading', () => {
   // `headingList`: the list style Heading 1 itself carries, as a file converted from DOCX has it.
   // LibreOffice's bullet on a heading: the list style rides the heading's automatic style.

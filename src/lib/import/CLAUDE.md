@@ -19,7 +19,7 @@ warnings where it can be safely flattened or omitted.
 `StyleResolver` resolves named and automatic ODF styles through their parent chains;
 `DocxStyles` provides the equivalent DOCX resolution. Keep only values that differ from
 the resolved named style as direct formatting. Values equal to LibreOffice-compatible
-editor defaults must remain implicit, or each round trip accumulates formatting.
+editor defaults must remain implicit, or each round trip accumulates formatting. A style's keep-with-next and keep-together ride each block (`keepNext`, `keepLines`), as the registry has no keep; in ODT not the `Heading` class's own, which Title and Subtitle inherit and the export writes.
 
 Fit imported content to the editor schema without changing its semantic role: paragraph,
 heading, list, table, frame, note, and field paths have separate constraints. A DOCX `GOTOBUTTON`/`MACROBUTTON` without a result shows its instruction's text, a GOTOBUTTON's as a `#target` link (`buttonFieldFromInstr`). Keep ODF and

@@ -1896,11 +1896,9 @@ type BlockDefaults = {
   // The named style's line spacing as an ODF factor; a block declaring the same one adds
   // nothing, but a block that declares 100% under a 115% style is direct formatting.
   lineHeight: string;
-  // The style's own alignment and flow flags (Title centres, Heading keeps with next);
-  // null too where it names the edge its direction starts at, which a block follows.
+  // The style's own alignment (Title centres); null too where it names the edge its
+  // direction starts at, which a block follows.
   textAlign: string | null;
-  keepNext: boolean;
-  keepLines: boolean;
   boldByDefault: boolean;
   fonts: Set<string>;
   // The asian fonts the block already renders its CJK text in.
@@ -1975,8 +1973,6 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     indentPt: 0,
     lineHeight: '1',
     textAlign: null,
-    keepNext: false,
-    keepLines: false,
     // A heading is bold by default only where the registry keeps the bold built-in: a
     // file that declares its own heading style re-parents it, so bold is formatting.
     boldByDefault: (headingLevel != null && !resolver.styleParent(named)) || boldByDefault,
@@ -2012,8 +2008,6 @@ function blockDefaults(resolver: StyleResolver, named: string | null, headingLev
     indentPt: lengthToPt(para['fo:margin-left']) ?? 0,
     lineHeight: lineSpacing(para['fo:line-height']) ?? '1',
     textAlign: resolver.textAlign(para) === startEdge(resolver, para) ? null : resolver.textAlign(para),
-    keepNext: para['fo:keep-with-next'] === 'always',
-    keepLines: para['fo:keep-together'] === 'always',
     boldByDefault: weight ? weight === 'bold' || parseInt(weight, 10) >= 600 : fallback.boldByDefault,
     fonts,
     asianFonts,
@@ -2427,12 +2421,16 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   // paragraph-mark size), or text smaller than the style keeps the taller strut.
   const markSize = lengthToPt(baseTextProps['fo:font-size']);
   if (markSize != null && Math.abs(markSize - defaults.fontSizePt) > 0.05) attrs.fontSize = formatPt(markSize);
-  // Keep with next: a heading does that anyway (pageBreaks.ts), and what the block's
-  // own style supplies (Title keeps with next) is not direct formatting either.
-  if (!isHeading && !defaults.keepNext && paraProps['fo:keep-with-next'] === 'always') attrs.keepNext = true;
+  // Keep with next: a heading does that anyway (pageBreaks.ts). The style's rides the block
+  // too, as in the DOCX import: the registry has no keep, so suppressing it would lose it.
+  // Only the heading class's own (Title, Subtitle) is the built-in, which the export writes.
+  let headingClass: string | null = named;
+  while (headingClass && headingClass !== 'Heading') headingClass = resolver.styleParent(headingClass);
+  const keepOf = (k: string) => paraProps[k] === 'always' && (!headingClass || resolver.paraProps(headingClass)[k] !== 'always');
+  if (!isHeading && keepOf('fo:keep-with-next')) attrs.keepNext = true;
   // Unless a heading style the file defines drops it; an undefined one is the built-in.
   if (isHeading && paraProps['fo:keep-with-next'] !== 'always' && resolver.namedAncestor(styleName)) attrs.keepNext = false;
-  if (!defaults.keepLines && paraProps['fo:keep-together'] === 'always') attrs.keepLines = true;
+  if (keepOf('fo:keep-together')) attrs.keepLines = true;
   // "Don't hyphenate this paragraph" — only meaningful where the document hyphenates at
   // all; below that switch it is the default and no formatting.
   if (baseTextProps['fo:hyphenate'] === 'false' && resolver.documentHyphenation()) attrs.noHyphenation = true;
