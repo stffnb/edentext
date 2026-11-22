@@ -1,38 +1,17 @@
-# A reverted layout rule, to be redone
+# Open layout items
 
-The rule matches LibreOffice in isolation and passes the committed corpus, but moved a private document away
-from LibreOffice. It is out of the tree until refined. Delete this file once it is back.
+Items found while redoing two reverted layout rules (band-gap lines, ODT box padding), both back in the tree.
+Delete an item once it is fixed, and this file once it is empty.
 
-## How to work on it
+## How to work on them
 
 - The private documents live outside the repository; `tests/localDocs.mjs` finds them and `LAYOUT_LOCAL=core|all`
   selects the tier. Copy the folder to the machine that investigates; nothing in it may be changed.
-- Restore a rule with `git revert <revert commit>` and run `npm run test:layout -- <regex>` on the document.
 - A fix has to hold the general rule: probe the shape in LibreOffice (for DOCX, Word is the reference where
   LibreOffice differs) and add a small synthetic fixture; never fit the one document.
 - No real-world document name goes into the repository or a commit message.
 
-## ODT shape text padding from named sides, a box ends at its last line
-
-- Commit `866e20ce`, reverted by `30dbd8f6`.
-- Rule: a shape takes padding as a frame does: none where its styles name none, and a side's own `fo:padding-*`
-  beats a shorthand inherited from a common style. The export writes each side. A box's last block adds no space
-  below. Measured on a caption shape 44px tall where LibreOffice's ends at its 20px line.
-- Regression: in the 63-page ODT formula guide of the long local tier, page 24 starts one block earlier than the
-  recorded page start (63 pages before and after). A bisect names this commit as the first bad one.
-- The revert alone does not bring page 24 back: the bundled fonts' line gap below the baseline (`97e19f84`,
-  kept) moves the same page start. Measured on the reverted tree: still off with the three page-split fixes taken
-  out, right once `97e19f84` is taken out as well.
-- Not found: which box the padding rule makes shorter on pages 1-23, and which lines the font rule makes taller or
-  shorter there. The recorded page start is the editor's own earlier state, so compare page 23/24 against
-  LibreOffice first to see which of the two starts is the right one before changing either rule.
-
-## What the revert costs
-
-The caption-shape height is off again in the document that motivated the rule, a long ODT manual (645 pages
-against LibreOffice's 632 with the band rule also out; not re-measured since it is back).
-
-## Other open items from the same session (page splits)
+## Page splits
 
 - A text box as character at a page split: in one of 16 positions the line still reaches 0.7px into the footer
   zone. `topWithin` adds up rounded `offsetTop` values, so the pass places the paragraph about 1.35px higher than
