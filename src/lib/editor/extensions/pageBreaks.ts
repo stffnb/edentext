@@ -1300,8 +1300,9 @@ export const PageBreaks = Extension.create({
         const lineRange = document.createRange();
 
         // Walks text nodes and inline images inside `el`, skipping any that live inside
-        // a spacer widget, and returns one rect per visual line (in viewport coords).
-        function getLineRects(el: HTMLElement): { top: number; bottom: number }[] {
+        // a spacer widget, and returns one rect per visual line (in viewport coords), with
+        // `atom` when an in-line atom gives the line its top and its lowest atom's bottom.
+        function getLineRects(el: HTMLElement): { top: number; bottom: number; atom: boolean; atomBottom?: number }[] {
           const allRects: DOMRect[] = [];
           // An as-character image is a line box of its own: without it a paragraph of
           // images has no lines at all and can only paginate whole.
@@ -1353,7 +1354,7 @@ export const PageBreaks = Extension.create({
           // Trattatello) make ink boxes taller than the advance, so an overlap test would
           // chain paragraphs into one phantom line. Tolerance is a fraction of the advance.
           const tol = advance > 0 ? advance * 0.6 : 3;
-          const lines: { top: number; bottom: number }[] = [];
+          const lines: { top: number; bottom: number; atom: boolean; atomBottom?: number }[] = [];
           let lineTop = -Infinity;
           // How far down the current line still reaches: an image's own box (text beside
           // it starts well below the image top), otherwise the tolerance alone.
@@ -1361,13 +1362,16 @@ export const PageBreaks = Extension.create({
           for (const r of allRects) {
             const isAtom = atomRects.has(r);
             if (r.top - lineTop > tol && r.top >= lineEnd) {
-              lines.push({ top: r.top, bottom: r.bottom });
+              lines.push({ top: r.top, bottom: r.bottom, atom: isAtom, atomBottom: isAtom ? r.bottom : undefined });
               lineTop = r.top;
               lineEnd = isAtom ? r.bottom - 1 : r.top + tol;
             } else {
               const last = lines[lines.length - 1];
               last.bottom = Math.max(last.bottom, r.bottom);
-              if (isAtom) lineEnd = Math.max(lineEnd, r.bottom - 1);
+              if (isAtom) {
+                lineEnd = Math.max(lineEnd, r.bottom - 1);
+                last.atomBottom = Math.max(last.atomBottom ?? -Infinity, r.bottom);
+              }
             }
           }
           return lines;
@@ -1400,6 +1404,7 @@ export const PageBreaks = Extension.create({
           scale: number,
           minLines: number,
           tall = false,
+          hang = 0,
         ): { naturalLineTop: number; docPos: number; hyphen: boolean } | null {
           const lines = getLineRects(el);
           if (lines.length === 0) return null;
@@ -1428,7 +1433,8 @@ export const PageBreaks = Extension.create({
           }
 
           // A spacing above single half-leads each line's glyphs down by the block's lift
-          // (editor.css), so a line box starts that far above its glyphs.
+          // (editor.css), so a line box starts that far above its glyphs; an atom topping
+          // its line starts the line box itself.
           const cs = getComputedStyle(el);
           const lift = cs.position === 'relative' ? Math.max(0, -parseFloat(cs.top) || 0) : 0;
 
@@ -1438,13 +1444,17 @@ export const PageBreaks = Extension.create({
           const intraSpacerTotal = intraSpacers.reduce((s, sp) => s + sp.height, 0);
           const leafNaturalHeight = el.offsetHeight - intraSpacerTotal;
           function lineBoxBottomNatural(i: number): number {
-            if (i + 1 < lines.length) return toNatural(lines[i + 1].top) - lift;
+            if (i + 1 < lines.length) return toNatural(lines[i + 1].top) - (lines[i + 1].atom ? 0 : lift);
             return leafNaturalHeight;
           }
 
           let k = -1;
           for (let i = 0; i < lines.length; i++) {
-            if (lineBoxBottomNatural(i) > overflowDistance + 0.5) {
+            // A line's leading may hang past the page end (Leaf.hang), an in-line atom
+            // may not: it is drawn `lift` above its flow place, as the whole block is.
+            const atomBottom = lines[i].atomBottom;
+            const needs = Math.max(lineBoxBottomNatural(i) - hang, atomBottom === undefined ? -Infinity : toNatural(atomBottom) - lift);
+            if (needs > overflowDistance + 0.5) {
               k = i;
               break;
             }
@@ -1550,6 +1560,16 @@ export const PageBreaks = Extension.create({
           let cumulativeDropped = 0;
           // Only the first collected note opens a page; the rest follow it down.
           let seenCollected = false;
+
+          // The leading below a lifted block's last line (2 × lift) may hang past the page
+          // end, an in-line atom on that line may not: it is drawn `lift` above its flow place.
+          function atomHang(el: HTMLElement, lift: number): number {
+            if (!el.querySelector('.image-node, .textbox-node, .formula')) return 2 * lift;
+            const atomBottom = getLineRects(el).at(-1)?.atomBottom;
+            if (atomBottom === undefined) return 2 * lift;
+            const below = (el.getBoundingClientRect().bottom - atomBottom) / scaleFactor;
+            return Math.max(0, Math.min(2 * lift, below + lift));
+          }
 
           // A leaf's border-box top within .tiptap, in document px. Summing offsetTop up
           // the offsetParent chain is unaffected by .paper's transform:scale, so it's the
@@ -1903,7 +1923,7 @@ export const PageBreaks = Extension.create({
                 // padding or border holds the last line's leading inside the block.
                 const lift = cs.position === 'relative' ? -parseFloat(cs.top) || 0 : 0;
                 const hang = lift > 0 && !isAtomic && !inTableCell && floatBottom <= child.offsetHeight
-                  && parseFloat(cs.paddingBottom) < 0.5 && parseFloat(cs.borderBottomWidth) < 0.5 ? 2 * lift : 0;
+                  && parseFloat(cs.paddingBottom) < 0.5 && parseFloat(cs.borderBottomWidth) < 0.5 ? atomHang(child, lift) : 0;
                 leaves.push({
                   el: child,
                   kind: isAtomic ? 'atomic' : 'splittable',
@@ -2394,7 +2414,7 @@ export const PageBreaks = Extension.create({
                   const minLines = guarded ? MIN_KEPT_LINES : 1;
                   const hang = leaf.hang ?? 0;
                   while (boundaryNatural + hang < leaf.naturalHeight) {
-                    const split = findLineSplit(leaf.el, boundaryNatural + hang, scale, minLines, leaf.naturalHeight > CONTENT_HEIGHT);
+                    const split = findLineSplit(leaf.el, boundaryNatural, scale, minLines, leaf.naturalHeight > CONTENT_HEIGHT, hang);
                     // A page-tall block whose first line misses this page (a tall in-line box,
                     // or it starts below the page end) moves on whole and splits on from there.
                     if (split === null && breaks.length === 0 && !pageOpener && leaf.naturalHeight > CONTENT_HEIGHT) {
