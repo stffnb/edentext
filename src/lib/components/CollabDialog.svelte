@@ -10,6 +10,7 @@
   import { MAX_NAME } from '../collab/names';
   import { renameCollab } from '../collab/appSession.svelte';
   import { follow, following, jumpTo, whereIs } from '../collab/presence.svelte';
+  import Icon from './ribbon/Icon.svelte';
 
   // Starting a shared session, its link, who is there, and leaving (docs/architecture/collab.md).
   // A joiner that has the document is asked whether to keep it (`asking`); `opening` asks
@@ -79,7 +80,10 @@
   aria-label={t().collab.title}
 >
   <div class="body">
-    <h2>{t().collab.title}</h2>
+    <header class="head">
+      <h2>{t().collab.title}</h2>
+      {#if view && !naming && !opening && !asking}<span class="status" data-status={view.status}>{t().collab.status[view.status]}</span>{/if}
+    </header>
     {#if naming}
       <p>{t().collab.joinIntro}</p>
       {@render nameField(true)}
@@ -122,7 +126,6 @@
         {/if}
       </div>
     {:else}
-      <p class="status" data-status={view.status}>{t().collab.status[view.status]}</p>
       {#if view.paused}<p class="notice" data-notice="paused">{t().collab.pausedHint}</p>{/if}
       {#if view.reading}<p class="notice" data-notice="reading">{t().collab.readingHint}</p>{/if}
       {#if unwritten}<p class="notice" data-notice="unwritten">{t().collab.unwritten}</p>
@@ -132,16 +135,18 @@
         <div class="links">
           {#each links as l (l.which)}
             <label class="row" data-link={l.which}>
-              <span>{l.which === 'edit' ? t().collab.editLink : t().collab.viewLink}</span>
+              <span class="kind"><Icon name={l.which === 'edit' ? 'pencil' : 'lock'} size={14} />{l.which === 'edit' ? t().collab.editLink : t().collab.viewLink}</span>
               <input readonly dir="ltr" value={l.url} onfocus={(e) => e.currentTarget.select()} />
-              <button onclick={() => copy(l.which, l.url)}>{copied === l.which ? t().collab.copied : t().collab.copy}</button>
+              <button class="copy" class:done={copied === l.which} onclick={() => copy(l.which, l.url)}>
+                <Icon name={copied === l.which ? 'check' : 'copy'} size={14} />{copied === l.which ? t().collab.copied : t().collab.copy}</button>
             </label>
           {/each}
         </div>
         {#if !view.reading}<p class="muted">{t().collab.linksHint}</p>{/if}
       {/if}
-      <div class="peers">
-        <span class="label">{t().collab.here}</span>
+      <section class="peers">
+        <h3><Icon name="people" size={14} />{t().collab.here}</h3>
+        {@render nameField(false)}
         {#if view.peers.length || view.readers.length}
           <ul>
             {#each view.peers as p (p.id)}
@@ -159,13 +164,12 @@
             {/each}
           </ul>
         {:else}
-          <span class="muted">{t().collab.alone}</span>
+          <p class="muted">{t().collab.alone}</p>
         {/if}
-      </div>
-      {@render nameField(false)}
+      </section>
       <p class="muted">{view.keeps ? t().collab.leaveHint : t().collab.joinedHint}</p>
       <div class="actions">
-        <button data-cmd="collabLeave" onclick={leave}>{t().collab.leave}</button>
+        <button class="leave" data-cmd="collabLeave" onclick={leave}>{t().collab.leave}</button>
         <span class="spacer"></span>
         <button class="primary" onclick={() => (open = false)}>{t().common.ok}</button>
       </div>
@@ -195,10 +199,27 @@
     font-family: var(--font-sans);
     font-size: 0.85rem;
   }
-  h2 { font-size: 1rem; }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  h2 { font-size: 1.05rem; margin: 0; }
+  h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 0.8rem; font-weight: 600; }
   p { margin: 0; line-height: 1.45; }
   .muted { color: var(--color-text-muted); }
-  .status { font-weight: 600; }
+  /* A pill whose dot is green while the session is live and amber otherwise. */
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #d39b22; }
+  .status[data-status='live']::before { background: #2e9e5b; }
+  .status[data-status='closed']::before, .status[data-status='invalid']::before { background: #c0463c; }
   .notice {
     padding: 8px 10px;
     border-inline-start: 3px solid var(--color-primary);
@@ -227,10 +248,23 @@
   }
   .collab-notice .actions { padding-top: 0; }
 
-  /* One grid, so both links' fields line up whatever their labels' length. */
-  .links { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 8px; align-items: center; }
-  .row { display: contents; }
-  .row > span { color: var(--color-text-muted); white-space: nowrap; }
+  /* One card per link: what it allows above, the address and its copy button below. */
+  .links { display: flex; flex-direction: column; gap: 8px; }
+  .row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px 8px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface);
+  }
+  .row[data-link='edit'] { border-inline-start: 3px solid var(--color-primary); }
+  .kind { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-weight: 600; }
+  .row input { background: var(--color-bg, transparent); font-family: var(--font-mono, monospace); font-size: 0.75rem; }
+  .copy { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; white-space: nowrap; }
+  .copy.done { border-color: #2e9e5b; color: #2e9e5b; }
   input {
     flex: 1;
     min-width: 0;
@@ -245,10 +279,16 @@
 
   .name { display: flex; align-items: center; gap: 8px; }
   .name > span { color: var(--color-text-muted); white-space: nowrap; }
-  .peers { display: flex; gap: 8px; align-items: baseline; }
-  .peers .label { color: var(--color-text-muted); }
-  ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; }
-  li { display: flex; align-items: center; gap: 5px; }
+  .peers {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+  }
+  ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  li { display: flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; background: var(--color-surface); }
   .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; box-sizing: border-box; }
   .dot.ring { border: 2px solid; background: transparent; }
   li .muted::before { content: '·'; margin: 0 4px; }
@@ -267,6 +307,8 @@
     cursor: pointer;
   }
   button:hover { background: var(--color-btn-hover); }
+  .leave { border-color: transparent; background: none; color: #c0463c; padding-inline: 6px; }
+  .leave:hover { background: color-mix(in srgb, #c0463c 12%, transparent); }
   .primary {
     border-color: var(--color-primary);
     background: var(--color-primary);
