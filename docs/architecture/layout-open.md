@@ -29,9 +29,14 @@ from LibreOffice. They are out of the tree until refined. Delete this file once 
 - Rule: a shape takes padding as a frame does: none where its styles name none, and a side's own `fo:padding-*`
   beats a shorthand inherited from a common style. The export writes each side. A box's last block adds no space
   below. Measured on a caption shape 44px tall where LibreOffice's ends at its 20px line.
-- Regression: in the 63-page ODT formula guide of the long local tier, page 24 starts one block earlier than in
-  LibreOffice (63 pages before and after). Some box on pages 1-23 is now shorter than LibreOffice's.
-- Not found: which box. Compare box heights page by page against LibreOffice.
+- Regression: in the 63-page ODT formula guide of the long local tier, page 24 starts one block earlier than the
+  recorded page start (63 pages before and after). A bisect names this commit as the first bad one.
+- The revert alone does not bring page 24 back: the bundled fonts' line gap below the baseline (`97e19f84`,
+  kept) moves the same page start. Measured on the reverted tree: still off with the three page-split fixes taken
+  out, right once `97e19f84` is taken out as well.
+- Not found: which box the padding rule makes shorter on pages 1-23, and which lines the font rule makes taller or
+  shorter there. The recorded page start is the editor's own earlier state, so compare page 23/24 against
+  LibreOffice first to see which of the two starts is the right one before changing either rule.
 
 ## What the reverts cost
 
