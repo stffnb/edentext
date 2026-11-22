@@ -1389,13 +1389,17 @@ export const PageBreaks = Extension.create({
           const next = lines[keep];
           if (!next) return { h: whole, box: true };
           // To the next line's top, less a break already in between: the line box is what
-          // the split holds against the page end, and it ends below its glyphs.
-          let end = next.top;
+          // the split holds against the page end, and it ends below its glyphs. A line box
+          // starts `lift` above its glyphs, an atom topping its line starts it (findLineSplit).
+          const cs = getComputedStyle(el);
+          const lift = (cs.position === 'relative' ? Math.max(0, -parseFloat(cs.top) || 0) : 0) * scale;
+          const boxTop = (l: { top: number; atom: boolean }) => l.top - (l.atom ? 0 : lift);
+          let end = boxTop(next);
           for (const sp of el.querySelectorAll<HTMLElement>('[data-page-break-spacer]')) {
             const r = sp.getBoundingClientRect();
             if (r.top >= lines[0].top && r.top < next.top) end -= r.height;
           }
-          return { h: (end - lines[0].top) / scale, box: false };
+          return { h: (end - boxTop(lines[0])) / scale, box: false };
         }
 
         function findLineSplit(
