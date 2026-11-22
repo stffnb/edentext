@@ -398,9 +398,13 @@ function applyFrameRotationAndWrap(el: Element, attrs: Record<string, unknown>, 
   // Centred or set to the bottom of the page or its body: the top that puts it there.
   const room = heights && (fromPage ? heights.pageHeightCm : heights.textHeightCm)
     - (lengthToCm(el.getAttributeNS(NS.svg, 'height')) ?? 0);
+  // A band set to the top of its paragraph stands its own top margin below it (probed).
+  const bandTop = vpos === 'top' && attrs.wrap === 'topBottom' && (!rel || rel.startsWith('paragraph'))
+    ? lengthToCm(gp['fo:margin-top'] ?? gp['fo:margin']) ?? null : null;
+  if (rel === 'paragraph-content') fromContentTop.add(attrs);
   const y = vpos === 'from-top' && (!rel || rel.startsWith('paragraph') || rel === 'line' || fromPage || fromBody)
-    ? placedAt(el, 'y') : vpos === 'top' && (fromPage || fromBody) ? 0
-      : room != null && (fromPage || fromBody) && (vpos === 'middle' || vpos === 'bottom') ? (vpos === 'middle' ? room / 2 : room) : null;
+    ? placedAt(el, 'y') : vpos === 'top' && (fromPage || fromBody) ? 0 : bandTop
+      ?? (room != null && (fromPage || fromBody) && (vpos === 'middle' || vpos === 'bottom') ? (vpos === 'middle' ? room / 2 : room) : null);
   if (y != null && attrs.wrap && (fromPage || fromBody || y > 0 || ((attrs.wrap === 'through' || heights?.zone) && y < 0))) {
     attrs.wrapOffsetY = Math.round(y * 100) / 100;
     if (fromPage) attrs.wrapFromPage = true;
@@ -461,15 +465,21 @@ export function applyUniformRunFont(attrs: Record<string, unknown>, content: Inl
   }
 }
 
-// A top-and-bottom frame set below its paragraph's first line sinks behind the text: a
-// full-width float pushes every following line under itself, so the offset can only be
-// drawn as what stands above the frame. Higher up it overlaps the first line, which moves
-// below it, so it leads (`fontPt` sizes that line at single spacing).
-export function sinkOffsetFrames(content: { type: string; text?: string; attrs?: Record<string, unknown> }[], fontPt: number): void {
+// Frames whose file counts their vertical offset from the anchor's text, not its top.
+const fromContentTop = new WeakSet<object>();
+
+// A top-and-bottom frame a first line fits above (`fontPt` sizes it) sinks behind the
+// text, since a full-width float pushes every following line under itself; else it leads.
+// Offsets count from the block's top, `spaceCm` above its text; one from the text gains it.
+export function sinkOffsetFrames(content: { type: string; text?: string; attrs?: Record<string, unknown> }[], fontPt: number, spaceCm = 0): void {
   const lineCm = fontPt * 1.15 * 2.54 / 72;
+  const band = (n: { type: string; attrs?: Record<string, unknown> }) =>
+    (n.type === 'image' || n.type === 'textBox') && n.attrs?.wrap === 'topBottom';
+  if (spaceCm > 0) for (const n of content) {
+    if (band(n) && fromContentTop.has(n.attrs!)) n.attrs!.wrapOffsetY = Math.round(((n.attrs!.wrapOffsetY as number ?? 0) + spaceCm) * 100) / 100;
+  }
   const sinks = (n: { type: string; attrs?: Record<string, unknown> }) =>
-    (n.type === 'image' || n.type === 'textBox')
-    && n.attrs?.wrap === 'topBottom' && (n.attrs.wrapOffsetY as number) >= lineCm;
+    band(n) && (n.attrs!.wrapOffsetY as number) >= spaceCm + lineCm;
   if (!content.some(sinks)) return;
   const frames = content.filter(sinks).sort((a, b) => (a.attrs!.wrapOffsetY as number) - (b.attrs!.wrapOffsetY as number));
   for (const f of frames) content.splice(content.indexOf(f), 1);
@@ -2415,7 +2425,7 @@ function convertParaLike(el: Element, ctx: Ctx, kind: BlockKind, boldByDefault =
   for (const [k, v] of Object.entries(baked)) if (v != null) delete attrs[k];
   applyUniformRunFont(attrs, content, { fontSize: `${markSizePt ?? defaults.fontSizePt}pt`, fontFamily: markFont ?? null });
   for (const [k, v] of Object.entries(baked)) if (v != null && attrs[k] == null) attrs[k] = v;
-  sinkOffsetFrames(content, lengthToPt(attrs.fontSize as string | undefined) ?? defaults.fontSizePt);
+  sinkOffsetFrames(content, lengthToPt(attrs.fontSize as string | undefined) ?? defaults.fontSizePt, lengthToCm(paraProps['fo:margin-top']) ?? 0);
 
   const node: Node = { type: isHeading ? 'heading' : 'paragraph' };
   if (isHeading) attrs.level = level;

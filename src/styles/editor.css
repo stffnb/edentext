@@ -855,6 +855,15 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   padding-top: 0;
   margin-top: var(--space-before);
 }
+/* A band leading its block rises by the block's space above (pageBreaks.ts, liftBand), so
+   the text starts below the larger of the two. As padding that is this property; not
+   where there is none: a cell's or box's first block, columns, a joined border, a page top. */
+.paper .tiptap :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10) {
+  --frame-lift: 0px;
+}
+.paper:not([data-spacing-model='max']) .tiptap :is(p, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10):not([data-pjoin-prev], .columns-node *, :is(td, th, .textbox-content) > :first-child) {
+  --frame-lift: var(--space-before);
+}
 /* LibreOffice adds no space above the first block of a table cell (measured; its
    AddParaTableSpacingAtStart), Word does — so it follows the document's spacing model. */
 .paper:not([data-spacing-model='max']) .tiptap :is(td, th) > :first-child {

@@ -11,7 +11,7 @@ import { closeGroup } from '../undo';
 import { IDB_SRC, awaitImage, shownSrc } from '../../storage/imageStore';
 import { cmToPx } from '../../storage/pageMargins';
 import { changedRanges } from '../changedRanges';
-import { readVerticalMargins, placeFrameSoon, placeInColumn, freeDragX, sinkSideFloat, shiftToOffset } from './pageBreaks';
+import { readVerticalMargins, placeFrameSoon, placeInColumn, freeDragX, sinkSideFloat, shiftToOffset, liftBand, bandRise } from './pageBreaks';
 import { coordsAt } from './overlay';
 
 // Inline, as-character image, or a floating text-wrapped frame (wrap = flow mode);
@@ -378,18 +378,28 @@ export function inlineVerticalAlign(vAlign: unknown, boxHeightPx: number, offset
   }
 }
 
-// The offset counts from the anchor paragraph's top. Where text or an earlier frame
-// precedes this one (the importers sink frames behind the text: a full-width float pushes
-// every following line under itself) that part is already covered, so the rest is measured.
+// The offset counts from the anchor block's top, its space above included. Behind text or
+// an earlier frame (the importers sink frames) that part is covered, so the rest is
+// measured; a band leading the block rises by the space above, which editor.css hands down.
 export function sinkToOffset(d: HTMLElement, y: unknown): number | null {
   const p = d.parentElement;
-  if (typeof y !== 'number' || y <= 0 || !p) return null;
+  if (!p) return null;
+  const down = typeof y === 'number' && y > 0;
+  let before = d.previousSibling;
+  while (before instanceof Element && before.classList.contains('ProseMirror-separator')) before = before.previousSibling;
+  const wrap = d.dataset.wrap === 'topBottom';
+  const leads = !before && wrap;
+  if (leads) {
+    d.dataset.bandY = String(down ? Math.round(cmToPx(y)) : 0);
+    liftBand(d);
+  } else { delete d.dataset.bandLift; delete d.dataset.bandY; }
+  if (leads || !down) return down ? Math.round(cmToPx(y)) : null;
   let gap = Math.round(cmToPx(y));
   if (d.previousSibling) {
     d.style.marginTop = '0px';
     const box = p.getBoundingClientRect();
     const scale = box.width / p.offsetWidth || 1;
-    gap = clamp(Math.round(cmToPx(y) - (d.getBoundingClientRect().top - box.top) / scale), 6, pageContentHeightPx());
+    gap = clamp(Math.round(cmToPx(y) - (wrap ? bandRise(p) : 0) - (d.getBoundingClientRect().top - box.top) / scale), 6, pageContentHeightPx());
   }
   d.style.marginTop = `${gap}px`;
   return gap;
