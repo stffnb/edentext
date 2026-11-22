@@ -1305,9 +1305,11 @@ export const PageBreaks = Extension.create({
           const allRects: DOMRect[] = [];
           // An as-character image is a line box of its own: without it a paragraph of
           // images has no lines at all and can only paginate whole.
+          // So is an in-line text box or formula, whose own text lines are no lines of the
+          // block: counted, they made phantom lines a split could pick but never land on.
           const atomRects = new Set<DOMRect>();
-          for (const img of Array.from(el.querySelectorAll<HTMLElement>('.image-node'))) {
-            if (img.style.float) continue;
+          for (const img of Array.from(el.querySelectorAll<HTMLElement>('.image-node, .textbox-node, .formula'))) {
+            if (img.style.float || (!img.classList.contains('image-node') && (img.style.position || img.dataset.wrap))) continue;
             const rect = img.getBoundingClientRect();
             if (rect.width > 0 && rect.height > 0) {
               allRects.push(rect);
@@ -1319,6 +1321,9 @@ export const PageBreaks = Extension.create({
               let parent = node.parentElement;
               while (parent && parent !== el) {
                 if ((parent as HTMLElement).dataset?.pageBreakSpacer) {
+                  return NodeFilter.FILTER_REJECT;
+                }
+                if (parent.classList.contains('textbox-node') || parent.classList.contains('formula')) {
                   return NodeFilter.FILTER_REJECT;
                 }
                 parent = parent.parentElement;
@@ -1450,10 +1455,12 @@ export const PageBreaks = Extension.create({
 
           let startPos: number;
           let endPos: number;
+          let blockDepth: number;
           try {
             startPos = editorView.posAtDOM(el, 0);
             const $start = editorView.state.doc.resolve(startPos);
             endPos = startPos + $start.parent.content.size;
+            blockDepth = $start.depth;
           } catch {
             return null;
           }
@@ -1475,7 +1482,10 @@ export const PageBreaks = Extension.create({
               if (midTop >= targetViewportTop - 0.5) hi = mid;
               else lo = mid + 1;
             }
-            return lo;
+            // Inside an in-line text box the line starts before the box: a split in its
+            // content would keep the box, as tall as the line, on this page.
+            const $lo = editorView.state.doc.resolve(lo);
+            return $lo.depth > blockDepth && $lo.node(blockDepth + 1).isInline ? $lo.before(blockDepth + 1) : lo;
           };
           // An inline atom wrapping across lines (a cross-reference's text) has no position
           // at the start of its later lines: a spacer after it would keep that line here and

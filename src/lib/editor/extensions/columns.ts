@@ -62,8 +62,14 @@ export function groupLines(rects: LineRect[]): LineRect[] {
 }
 
 // The rendered lines of `el`, in viewport coordinates.
+// A text box's or formula's own text is no line of the block, so a split never lands in it.
 export function lineRects(el: Element): LineRect[] {
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => {
+      const box = n.parentElement?.closest('.textbox-node, .formula');
+      return box && el.contains(box) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    },
+  });
   const rects: LineRect[] = [];
   let textNode: globalThis.Node | null;
   while ((textNode = walker.nextNode())) {
