@@ -745,8 +745,10 @@ img[data-color-mode='watermark'] { filter: brightness(2); opacity: 0.15; }
   margin-top: 0;
   padding-top: 0;
 }
+/* A box grows to its last line, not past that block's space below, which a block's own
+   spacing doesn't change (probed: LibreOffice frames and shapes alike). */
 .paper .tiptap .textbox-content > :last-child {
-  margin-bottom: 0;
+  margin-bottom: 0 !important;
 }
 
 /* Multi-column section (columns.ts); column-count/gap come from the node's
