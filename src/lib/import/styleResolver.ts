@@ -897,8 +897,11 @@ export class StyleResolver {
 
     const zone = (local: string) => zoneIn(rest, local);
     const restLayout = rest && rest !== mp ? this.pageLayoutEl(rest.getAttributeNS(NS.style, 'name')) : layout;
+    // Without a first variant of its own, page one shows the running zone: a different
+    // first header leaves the footer shared, as LibreOffice shares each zone separately.
+    const anyFirst = !!(zoneIn(mp, 'header-first') || zoneIn(mp, 'footer-first'));
     const firstZone = (local: string): Element | null =>
-      zoneIn(mp, `${local}-first`) ?? (handover ? zoneIn(mp, local) : null);
+      zoneIn(mp, `${local}-first`) ?? (handover ? zoneIn(mp, local) : anyFirst ? zone(local) : null);
     const bandProps = (local: 'header-style' | 'footer-style', of: Element | null = layout): Element | null =>
       this.areaProps(of, local);
     // The band LibreOffice lays out is max(declared height, zone content + its gap), and

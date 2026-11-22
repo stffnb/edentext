@@ -1123,6 +1123,16 @@
     "the quick brown fox jumps over a lazy do",
     "Row 6:"
    ]
+  },
+  "tests/corpus/36-hf-first-shared.odt": {
+   "pages": 3,
+   "lines": 112,
+   "ms": 200,
+   "starts": [
+    "Line 1 of the body text",
+    "Line 45 of the body text",
+    "Line 92 of the body text"
+   ]
   }
  }
 }
