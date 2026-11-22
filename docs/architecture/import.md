@@ -49,6 +49,11 @@ ODF paragraph vertical margins resolve as a pair: when a style names one side, t
 come from the default style rather than its parent. Preserve that rule when resolving and when
 deciding whether an imported value is direct formatting. Contextual spacing becomes an explicit
 zero where the editor has no equivalent mode.
+DOCX automatic spacing (`w:beforeAutospacing`/`w:afterAutospacing`, Word's HTML spacing)
+is 14pt in place of the twips (`readSpacing`); it is an explicit zero above the body's first
+paragraph and between two numbered paragraphs (`applyAutoSpacing`), as LibreOffice lays such
+a file out (probed on a 212-page manual: list items line-tight, 14pt around the list, none
+above the cover title). Its first or last paragraph in a table cell is not probed yet.
 
 Named list styles apply to the outer list; their levels determine bullet or number kind. Import
 the definition into the style registry instead of flattening it. A list item's own heading is

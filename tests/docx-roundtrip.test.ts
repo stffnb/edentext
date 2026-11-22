@@ -1854,3 +1854,23 @@ describe('the look a document carries', () => {
     expect(bytes.length).toBeGreaterThan(0);
   });
 });
+
+describe('DOCX import: automatic paragraph spacing', () => {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const auto = '<w:spacing w:before="100" w:beforeAutospacing="1" w:after="100" w:afterAutospacing="1"/>';
+  const p = (t: string, num = '') => `<w:p><w:pPr>${num}${auto}</w:pPr><w:r><w:t>${t}</w:t></w:r></w:p>`;
+  const num = '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>';
+  const bytes = zipSync({
+    'word/document.xml': strToU8(`<?xml version="1.0"?><w:document ${W}><w:body>${p('First')}${p('Body')}${p('One', num)}${p('Two', num)}${p('After')}</w:body></w:document>`),
+    'word/numbering.xml': strToU8(`<?xml version="1.0"?><w:numbering ${W}><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/><w:lvlText w:val="-"/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`),
+  });
+  const blocks = walk(importDocx(bytes).content as N, 'paragraph');
+  const of = (t: string) => blocks.find((b) => walk(b, 'text')[0]?.text === t)!.attrs;
+
+  it('is 14pt, none above the first paragraph and none between list items', () => {
+    expect(of('First').spaceBefore ?? 0).toBe(0);
+    expect([of('Body').spaceBefore, of('Body').spaceAfter]).toEqual([14, 14]);
+    expect([of('One').spaceBefore, of('One').spaceAfter ?? 0]).toEqual([14, 0]);
+    expect([of('Two').spaceBefore ?? 0, of('Two').spaceAfter]).toEqual([0, 14]);
+  });
+});
