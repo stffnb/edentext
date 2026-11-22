@@ -2576,7 +2576,7 @@
       <button class="chat-btn" class:active={chatOpen()} data-cmd="chatToggle" aria-pressed={chatOpen()} onclick={() => setChatOpen(!chatOpen())}
         title={chatUnread() ? `${t().collab.chat.title} · ${t().collab.chat.unread(chatUnread())}` : t().collab.chat.title} aria-label={chatUnread() ? `${t().collab.chat.title} · ${t().collab.chat.unread(chatUnread())}` : t().collab.chat.title}>
         <Icon name="chat" size={14} />
-        {#if chatUnread() && !chatOpen()}<span class="chat-unread" class:mention={chatMentions() > 0}>{chatMentions() ? '@' : ''}{chatUnread() > 99 ? '99+' : chatUnread()}</span>{/if}
+        {#if chatUnread() && !chatOpen()}{#key chatUnread()}<span class="chat-unread" class:mention={chatMentions() > 0}>{chatMentions() ? '@' : ''}{chatUnread() > 99 ? '99+' : chatUnread()}</span>{/key}{/if}
       </button>
       {#if unseenMentions().length && !showComments()}
         <button class="chat-btn" data-cmd="mentions" onclick={() => goToMention(unseenMentions()[0])} title={t().collab.mentions(unseenMentions().length)} aria-label={t().collab.mentions(unseenMentions().length)}>
@@ -3328,6 +3328,15 @@
     line-height: 14px;
     text-align: center;
   }
+  /* Each new message re-creates the count, so it pops and rings again. */
+  .chat-btn .chat-unread { animation: chat-pop 0.9s ease-out 2; }
+  @keyframes chat-pop {
+    0% { transform: scale(0.4); box-shadow: 0 0 0 0 var(--color-primary); }
+    35% { transform: scale(1.5); }
+    60% { transform: scale(1); }
+    100% { transform: scale(1); box-shadow: 0 0 0 9px transparent; }
+  }
+  @media (prefers-reduced-motion: reduce) { .chat-btn .chat-unread { animation: none; } }
   /* Above the status bar's end, where the session button is; it takes no focus. */
   .chat-unread.mention { background: var(--color-text); color: var(--color-bg, #fff); }
   .collab-hint {
