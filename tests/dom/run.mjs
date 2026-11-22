@@ -899,7 +899,7 @@ try {
   });
   const freshCuts = await cuts();
   // Under two lines of the first page go: less than a join back asks for when they return.
-  await reflow('.tiptap .columns-node:first-of-type > p:first-child { padding-top: 36px !important }');
+  await reflow('.tiptap > p + .columns-node > p:first-child { padding-top: 36px !important }');
   await settle(page, true);
   const wideCuts = await cuts();
   await reflow(null);
