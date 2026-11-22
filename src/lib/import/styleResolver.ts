@@ -51,6 +51,16 @@ const ALIAS_BY_URI = new Map<string, string>(Object.entries(NS).map(([alias, uri
 
 export type PropMap = Record<string, string>;
 
+// LibreOffice's built-in "Frame" graphic style, as it writes it out.
+const LO_FRAME_STYLE: PropMap = {
+  'text:anchor-type': 'paragraph', 'svg:x': '0cm', 'svg:y': '0cm',
+  'fo:margin-left': '0.201cm', 'fo:margin-right': '0.201cm', 'fo:margin-top': '0.201cm', 'fo:margin-bottom': '0.201cm',
+  'style:wrap': 'parallel', 'style:number-wrapped-paragraphs': 'no-limit', 'style:wrap-contour': 'false',
+  'style:vertical-pos': 'top', 'style:vertical-rel': 'paragraph-content',
+  'style:horizontal-pos': 'center', 'style:horizontal-rel': 'paragraph-content',
+  'draw:fill': 'none', 'fo:padding': '0.15cm', 'fo:border': '0.06pt solid #000000',
+};
+
 type StyleEntry = {
   parent: string | null;
   next: string | null; // style:next-style-name
@@ -223,6 +233,12 @@ export class StyleResolver {
       if (fontDecls) this.scanFontFaces(fontDecls);
     }
     for (const c of containers) this.scanContainer(c, c.localName === 'styles');
+    // A text frame without a style takes LibreOffice's "Frame" (probed); a file that does not
+    // define it gets LibreOffice's built-in one.
+    if (!this.styles.has('graphic\0Frame')) {
+      this.styles.set('graphic\0Frame', { parent: null, next: null, text: {}, para: {}, misc: { ...LO_FRAME_STYLE } });
+      this.namedGraphicNames.add('Frame');
+    }
   }
 
   // Paragraph styles from <office:styles> — the file's named styles (as opposed to the

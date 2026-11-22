@@ -732,15 +732,22 @@ function textBoxNode(frame: Element, textBoxEl: Element, ctx: Ctx): Node {
   const hCm = minHCm ?? lengthToCm(frame.getAttributeNS(NS.svg, 'height'));
   if (hCm != null) attrs.height = framePx(cmToPx(hCm));
   if (minHCm == null && hCm != null) attrs.fixedHeight = true;
-  const gp = ctx.resolver.frameGraphicProps(frame.getAttributeNS(NS.draw, 'style-name'));
+  const style = frame.getAttributeNS(NS.draw, 'style-name') || 'Frame';
+  const gp = ctx.resolver.frameGraphicProps(style);
   applyFrameRotationAndWrap(frame, attrs, gp, ctx.contentWidthCm, ctx.leftMarginCm, ctx);
+  // In the line a box's margins widen and heighten its place there (probed).
+  if (frame.getAttributeNS(NS.text, 'anchor-type') === 'as-char') {
+    const at = (side: string) => lengthToCm(gp[`fo:margin-${side}`] ?? gp['fo:margin']) ?? 0;
+    const gap = wrapGapAttr(wrapGap({ top: at('top'), right: at('right'), bottom: at('bottom'), left: at('left') }));
+    if (gap) attrs.wrapDist = gap;
+  }
   boxWrapAlign(gp, attrs);
   boxPadding(gp, attrs);
   shapeStyleAttrs(gp, attrs, false);
   // A text frame without a fill under a common style still covers what lies behind it —
   // LibreOffice paints its surroundings' background there — unless draw:opacity lets it show.
   if (attrs.fillColor === null && !(parseFloat(gp['draw:opacity'] ?? '100') < 100)
-    && ctx.resolver.hasCommonGraphicStyle(frame.getAttributeNS(NS.draw, 'style-name'))) delete attrs.fillColor;
+    && ctx.resolver.hasCommonGraphicStyle(style)) delete attrs.fillColor;
   boxTextFlow(frame, ctx, attrs);
   return { type: 'textBox', attrs, content: textBoxContent(anchorBoxFrames(Array.from(textBoxEl.children)), ctx, wCm, attrs) };
 }

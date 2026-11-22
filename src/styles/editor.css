@@ -516,7 +516,8 @@
 /* Alone on its line (image.ts marks the frame) it sets the line height by itself: no
    descent hangs below it, and every vertical-pos but `offset` is moot (probed). Beats
    the node view's own inline alignment, which has no other way to know. */
-.paper .tiptap .image-node.image-line:not([data-v-align='offset']) {
+.paper .tiptap .image-node.image-line:not([data-v-align='offset']),
+.paper .tiptap .textbox-node.image-line {
   vertical-align: bottom !important;
 }
 /* ProseMirror's caret shim after a paragraph-ending image: an image wider than the line
@@ -549,6 +550,13 @@
    the partner frame (wrapAlign pair) shares the band. image.ts writes the attribute. */
 .paper .tiptap [data-wrap-band='true'] + :not([data-page-break-spacer], [data-wrap-band]) {
   clear: both;
+}
+/* A block of floats alone: its empty line would sit beside a band, so its paragraph mark
+   stays in flow a hair wide, in place of the shims that would open a line above the band. */
+.paper .tiptap [data-band-lineless] > :is(br.ProseMirror-trailingBreak, img.ProseMirror-separator) { display: none !important; }
+.paper .tiptap [data-band-lineless]::after {
+  position: static;
+  width: 0.1px;
 }
 /* Only full-width bands open no gap beside them, so the next block runs in the room above
    one; an empty line needs no width and would sit beside it, so it is given a hair. */

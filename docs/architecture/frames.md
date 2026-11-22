@@ -26,6 +26,14 @@ such a frame; a table beside text in a box is part of its text (`docs/architectu
 Both exporters write the file's own floating table back
 (`w:tblpPr` via the package's `float`, ODF's `draw:frame`/`draw:text-box`), not a shape.
 
+## A box in the line
+
+An as-character box stands with its bottom margin edge on the baseline, so a line of text
+hangs its descent below it; alone on its line (`image-line`, as a picture) it hangs none, and
+its margins (`wrapDist`) widen and heighten its place (all probed). A block holding nothing
+but floats keeps its one line, which LibreOffice sets below a full-width band: its paragraph
+mark stays in flow a hair wide (`data-band-lineless`), as an empty line ignores floats in CSS.
+
 ## A box in static HTML
 
 A box is inline and its content is blocks, and no `<p>` can hold those: the browser's parser breaks

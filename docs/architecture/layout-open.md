@@ -19,9 +19,8 @@ Delete an item once it is fixed, and this file once it is empty.
 - An inline fraction: in one layout a denominator glyph sits 3.6-5px past the footer zone top. Not decided whether
   the line box overflows or only the ink.
 - Page splits in documents with a header were not probed.
-- `tests/corpus/32-box-split.odt` has 5 pages in LibreOffice and 4 in the editor; not looked into.
-- `tests/corpus/33-band-keep.odt`: the editor fits one line more than LibreOffice under the captioned band on page
-  1 (page 2 starts at "After line 6.", LibreOffice "After line 5."); dev showed the same with a three-line caption.
+- An as-character **picture** (or formula) frame's margins are not read; a text box's are (`wrapDist`). Not probed
+  whether LibreOffice widens a picture's place in the line by them as it does a box's.
 
 ## Not layout: a browser test that depends on real time
 
