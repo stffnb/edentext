@@ -1374,16 +1374,16 @@ export const PageBreaks = Extension.create({
         }
 
         // What a keep-with-next block has to fit below itself, in unscaled doc px: as many
-        // lines of the successor as widow-orphan control would keep together anyway. An
-        // empty block falls back to its whole height.
-        function firstLinesHeight(el: HTMLElement, scale: number, want: number, whole?: number): number {
+        // lines of the successor as widow-orphan control would keep together anyway, from
+        // its first line; `box` when that is the whole block, from its box top (an empty one).
+        function firstLinesHeight(el: HTMLElement, scale: number, want: number, whole: number): { h: number; box: boolean } {
           const lines = getLineRects(el);
-          if (!lines.length) return el.offsetHeight;
+          if (!lines.length) return { h: el.offsetHeight, box: true };
           // A block with fewer lines than orphan and widow control demand together has
           // no legal split point at all, so the pair needs room for the whole of it.
           const keep = lines.length < want * 2 ? lines.length : want;
           const next = lines[keep];
-          if (!next) return whole ?? (lines[keep - 1].bottom - lines[0].top) / scale;
+          if (!next) return { h: whole, box: true };
           // To the next line's top, less a break already in between: the line box is what
           // the split holds against the page end, and it ends below its glyphs.
           let end = next.top;
@@ -1391,7 +1391,7 @@ export const PageBreaks = Extension.create({
             const r = sp.getBoundingClientRect();
             if (r.top >= lines[0].top && r.top < next.top) end -= r.height;
           }
-          return (end - lines[0].top) / scale;
+          return { h: (end - lines[0].top) / scale, box: false };
         }
 
         function findLineSplit(
@@ -2451,20 +2451,21 @@ export const PageBreaks = Extension.create({
                 breaks.length === 0 && leaf.keepNext && i + 1 < leaves.length
                 && effectiveTop > contentStart + 0.5
               ) {
-                // What the run needs below this block: its own space below, the kept blocks,
-                // then the last one's space above (its padding; an atomic leaf's height has
-                // it already) and its first lines.
-                const run = (j: number) => leaves[j].naturalTop - leaves[i + 1].naturalTop;
+                // What the run needs below this block: its space below, the kept blocks, the last
+                // one's space above (padding; an atomic leaf has it) and first lines. A box may begin
+                // beside this block's float: only what lies below its bottom counts, no line beside it.
+                const from = Math.max(leaves[i + 1].naturalTop, leaf.naturalTop + leaf.naturalHeight + (leaf.spaceAfter ?? 0));
+                const run = (j: number) => leaves[j].naturalTop - from;
                 const needs = (j: number) => {
                   const next = leaves[j];
                   const wantLines = next.el.getAttribute('data-widow-control') === 'false' ? 1 : MIN_KEPT_LINES;
                   if (next.indexHead !== undefined) return run(j) + next.indexHead;
                   // A block that cannot split needs the box the fit test holds against the page
                   // end, not its glyphs' extent, or it is pushed from under a block kept with it.
+                  if (next.kind === 'atomic') return run(j) + Math.min(next.naturalHeight, CONTENT_HEIGHT);
                   const pad = parseFloat(getComputedStyle(next.el).paddingTop) || 0;
-                  return run(j) + (next.kind === 'atomic'
-                    ? Math.min(next.naturalHeight, CONTENT_HEIGHT)
-                    : firstLinesHeight(next.el, scale, wantLines, next.naturalHeight - (next.hang ?? 0) - pad) + pad);
+                  const first = firstLinesHeight(next.el, scale, wantLines, next.naturalHeight - (next.hang ?? 0) - pad);
+                  return (first.box ? run(j) : Math.max(0, run(j))) + first.h + pad;
                 };
                 let last = i + 1;
                 if (!leaves[i - 1]?.keepNext) {
