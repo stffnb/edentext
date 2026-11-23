@@ -463,7 +463,6 @@
    Word, and MathML already carries the right baseline for its own box. */
 .paper .tiptap span.formula {
   display: inline-block;
-  vertical-align: baseline;
   cursor: pointer;
 }
 /* A display formula owns its line at its paragraph's alignment, as in LibreOffice. The
@@ -484,9 +483,11 @@
   position: relative;
 }
 /* Centred on the character area: one empty line of the text's own, padded by half of
-   what the box is taller, so a box within the line leaves the line as it is. */
-.paper .tiptap span.formula.formula-mid {
-  padding-block: max(0px, (var(--fh) - 1lh) / 2);
+   what the box is taller, so a box within the line leaves the line as it is. That line
+   already holds a spacing's extra, so the padding counts it in place of --fx. */
+.paper .tiptap span.formula.formula-mid:not([data-wrap]) {
+  --fx: 0px;
+  padding-block: max(0px, (var(--fh) - 1lh) / 2 + max(0px, (var(--line-factor) - 1) * var(--natural-line) * 0.5em));
 }
 .paper .tiptap span.formula.formula-mid::before {
   content: '\200b';
@@ -503,14 +504,21 @@
   border-radius: 2px;
 }
 
+/* A spacing above single adds (factor − 1) × the font's line to a line however tall its
+   frames make it (probed); CSS half-leads only the strut, so half of the extra rides each
+   side of a frame's margin box and its alignment counts to the box inside (inlineMargin). */
+.paper .tiptap :is(.image-node, .textbox-node, span.formula):not([data-wrap]) {
+  --fx: max(0px, (var(--line-factor) - 1) * var(--natural-line) * 0.5em);
+  margin-block: var(--fx);
+  vertical-align: calc(-1 * var(--fx));
+}
 /* Inline, as-character images (image.ts). The wrapper reserves the rotated bounding
-   box; the rotor holds the <img>, resize handles and rotate grip, rotating together. */
+   box; the rotor holds the <img>, resize handles and rotate grip, rotating together.
+   An as-char frame stands on the text baseline in LibreOffice and Word alike; the file
+   may say otherwise, and image.ts then overrides the alignment per frame. */
 .paper .tiptap .image-node {
   position: relative;
   display: inline-block;
-  /* An as-char frame stands on the text baseline in LibreOffice and Word alike; the
-     file may say otherwise, and image.ts then overrides this per frame. */
-  vertical-align: baseline;
   line-height: 0;
 }
 /* Alone on its line (image.ts marks the frame) it sets the line height by itself: no
