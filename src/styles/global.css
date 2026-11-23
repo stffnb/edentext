@@ -11,16 +11,16 @@
    default, and LibreOffice ships the identical file; this keeps the on-screen
    preview pixel-faithful to the export. (SIL Open Font License — see
    public/font-licenses/LICENSE-LiberationFonts.txt.) */
-/* LibreOffice sets a line at max(ascent) + max(descent + line gap) over its fonts; CSS splits
-   the gap above and below. Serif's and Sans' gap (the only bundled faces with one) therefore
-   rides their descent here, with their own and their aliases' faces. */
+/* LibreOffice sets a line at max(ascent + line gap) + max(descent) over its fonts and frames;
+   CSS splits the gap above and below. Serif's and Sans' gap (the only bundled faces with one)
+   therefore rides their ascent here, with their own and their aliases' faces. */
 @font-face {
   font-family: 'Liberation Serif';
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  ascent-override: 89.1113%;
-  descent-override: 25.8789%;
+  ascent-override: 93.3594%;
+  descent-override: 21.6309%;
   line-gap-override: 0%;
   src: url('../assets/fonts/LiberationSerif-Regular.ttf') format('truetype');
 }
@@ -29,8 +29,8 @@
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  ascent-override: 89.1113%;
-  descent-override: 25.8789%;
+  ascent-override: 93.3594%;
+  descent-override: 21.6309%;
   line-gap-override: 0%;
   src: url('../assets/fonts/LiberationSerif-Bold.ttf') format('truetype');
 }
@@ -39,8 +39,8 @@
   font-style: italic;
   font-weight: 400;
   font-display: swap;
-  ascent-override: 89.1113%;
-  descent-override: 25.8789%;
+  ascent-override: 93.3594%;
+  descent-override: 21.6309%;
   line-gap-override: 0%;
   src: url('../assets/fonts/LiberationSerif-Italic.ttf') format('truetype');
 }
@@ -49,8 +49,8 @@
   font-style: italic;
   font-weight: 700;
   font-display: swap;
-  ascent-override: 89.1113%;
-  descent-override: 25.8789%;
+  ascent-override: 93.3594%;
+  descent-override: 21.6309%;
   line-gap-override: 0%;
   src: url('../assets/fonts/LiberationSerif-BoldItalic.ttf') format('truetype');
 }
@@ -63,8 +63,8 @@
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  ascent-override: 90.5273%;
-  descent-override: 24.4629%;
+  ascent-override: 93.7988%;
+  descent-override: 21.1914%;
   line-gap-override: 0%;
   src: url('../assets/fonts/LiberationSans-Regular.ttf') format('truetype');
 }
@@ -73,8 +73,8 @@
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  ascent-override: 90.5273%;
-  descent-override: 24.4629%;
+  ascent-override: 93.7988%;
+  descent-override: 21.1914%;
   line-gap-override: 0%;
   src: url('../assets/fonts/LiberationSans-Bold.ttf') format('truetype');
 }
@@ -83,8 +83,8 @@
   font-style: italic;
   font-weight: 400;
   font-display: swap;
-  ascent-override: 90.5273%;
-  descent-override: 24.4629%;
+  ascent-override: 93.7988%;
+  descent-override: 21.1914%;
   line-gap-override: 0%;
   src: url('../assets/fonts/LiberationSans-Italic.ttf') format('truetype');
 }
@@ -93,8 +93,8 @@
   font-style: italic;
   font-weight: 700;
   font-display: swap;
-  ascent-override: 90.5273%;
-  descent-override: 24.4629%;
+  ascent-override: 93.7988%;
+  descent-override: 21.1914%;
   line-gap-override: 0%;
   src: url('../assets/fonts/LiberationSans-BoldItalic.ttf') format('truetype');
 }
@@ -225,8 +225,8 @@
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  ascent-override: 90.5273%;
-  descent-override: 24.4629%;
+  ascent-override: 93.7988%;
+  descent-override: 21.1914%;
   line-gap-override: 0%;
   src: local('Arial'), local('Liberation Sans'), url('../assets/fonts/LiberationSans-Regular.ttf') format('truetype');
 }
@@ -235,8 +235,8 @@
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  ascent-override: 90.5273%;
-  descent-override: 24.4629%;
+  ascent-override: 93.7988%;
+  descent-override: 21.1914%;
   line-gap-override: 0%;
   src: local('Arial Bold'), local('Liberation Sans Bold'), url('../assets/fonts/LiberationSans-Bold.ttf') format('truetype');
 }
@@ -245,8 +245,8 @@
   font-style: italic;
   font-weight: 400;
   font-display: swap;
-  ascent-override: 90.5273%;
-  descent-override: 24.4629%;
+  ascent-override: 93.7988%;
+  descent-override: 21.1914%;
   line-gap-override: 0%;
   src: local('Arial Italic'), local('Liberation Sans Italic'), url('../assets/fonts/LiberationSans-Italic.ttf') format('truetype');
 }
@@ -255,8 +255,8 @@
   font-style: italic;
   font-weight: 700;
   font-display: swap;
-  ascent-override: 90.5273%;
-  descent-override: 24.4629%;
+  ascent-override: 93.7988%;
+  descent-override: 21.1914%;
   line-gap-override: 0%;
   src: local('Arial Bold Italic'), local('Liberation Sans Bold Italic'), url('../assets/fonts/LiberationSans-BoldItalic.ttf') format('truetype');
 }
@@ -370,8 +370,8 @@
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  ascent-override: 89.1113%;
-  descent-override: 25.8789%;
+  ascent-override: 93.3594%;
+  descent-override: 21.6309%;
   line-gap-override: 0%;
   src: local('Times New Roman'), local('Liberation Serif'), url('../assets/fonts/LiberationSerif-Regular.ttf') format('truetype');
 }
@@ -380,8 +380,8 @@
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  ascent-override: 89.1113%;
-  descent-override: 25.8789%;
+  ascent-override: 93.3594%;
+  descent-override: 21.6309%;
   line-gap-override: 0%;
   src: local('Times New Roman Bold'), local('Liberation Serif Bold'), url('../assets/fonts/LiberationSerif-Bold.ttf') format('truetype');
 }
@@ -390,8 +390,8 @@
   font-style: italic;
   font-weight: 400;
   font-display: swap;
-  ascent-override: 89.1113%;
-  descent-override: 25.8789%;
+  ascent-override: 93.3594%;
+  descent-override: 21.6309%;
   line-gap-override: 0%;
   src: local('Times New Roman Italic'), local('Liberation Serif Italic'), url('../assets/fonts/LiberationSerif-Italic.ttf') format('truetype');
 }
@@ -400,8 +400,8 @@
   font-style: italic;
   font-weight: 700;
   font-display: swap;
-  ascent-override: 89.1113%;
-  descent-override: 25.8789%;
+  ascent-override: 93.3594%;
+  descent-override: 21.6309%;
   line-gap-override: 0%;
   src: local('Times New Roman Bold Italic'), local('Liberation Serif Bold Italic'), url('../assets/fonts/LiberationSerif-BoldItalic.ttf') format('truetype');
 }
