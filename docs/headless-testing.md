@@ -43,6 +43,9 @@ argument limits the run to the documents whose name matches. LibreOffice's count
 cached by the document's hash in `node_modules/.cache/layout-pages.json`: a count is the
 file's and never our code's, so a run after an editor change has nothing to convert —
 `--no-cache` after installing or removing a font, which does change what it renders.
+LibreOffice places a font's line gap per platform (`docs/architecture/styles.md`), so off
+Linux `LAYOUT_LO=docker` converts with CI's build in a container (`tests/layout/lo.Dockerfile`,
+the version read from `ci.yml`, the image built once); its counts are cached apart.
 **Local documents**, real-world files that may not be committed, lie in `edentext-testdocs/`
 beside the main checkout (`tests/localDocs.mjs`, `EDENTEXT_TESTDOCS`), with their own
 `layout-baseline.json` and the page-count cache, so no name reaches the repository. So that

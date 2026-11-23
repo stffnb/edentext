@@ -21,7 +21,19 @@ const NOCACHE = args.includes('--no-cache');
 const pattern = args.find((a) => !a.startsWith('--'));
 const only = pattern ? new RegExp(pattern) : null;
 const has = (tool) => { try { execSync(`command -v ${tool}`, { stdio: 'ignore' }); return true; } catch { return false; } };
-const LO = has('soffice') && has('pdfinfo');
+// LAYOUT_LO=docker converts with CI's Linux LibreOffice (lo.Dockerfile): LibreOffice places
+// a font's line gap per platform, and the Linux one is the reference.
+const DOCKER = process.env.LAYOUT_LO === 'docker';
+const LO = (DOCKER ? has('docker') : has('soffice')) && has('pdfinfo');
+function loImage() {
+  const version = /^\s*LO:\s*(\S+)/m.exec(readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8'))[1];
+  const tag = `edentext-layout-lo:${version}`;
+  try { execFileSync('docker', ['image', 'inspect', tag], { stdio: 'ignore' }); } catch {
+    console.log(`building ${tag} (once)`);
+    execFileSync('docker', ['build', '-t', tag, '--build-arg', `LO_VERSION=${version}`, '-f', join(ROOT, 'tests/layout/lo.Dockerfile'), join(ROOT, 'tests/layout')], { stdio: 'inherit' });
+  }
+  return tag;
+}
 const { check, failures } = checker();
 // Line breaking is the engine's and the platform's, so each keeps its own baseline.
 const BASE = join(ROOT, 'tests/layout/baseline.json');
@@ -90,7 +102,7 @@ if (!LO) console.log('soffice/pdfinfo missing: page counts are not held against 
 // editor keeps them; one soffice call for the whole batch, under unique names. A count
 // is the file's, never our code's, so only what the cache misses is converted.
 function loPages(paths) {
-  const key = sha;
+  const key = DOCKER ? (p) => `linux:${sha(p)}` : sha;
   const keys = new Map(paths.map((p) => [p, key(p)]));
   const pages = new Map();
   const todo = paths.filter((p) => {
@@ -105,7 +117,10 @@ function loPages(paths) {
   const named = todo.map((p, i) => { const f = join(inDir, `${i}-${basename(p)}`); copyFileSync(p, f); return f; });
   // Long documents take LibreOffice minutes each; past the limit, what it did convert counts.
   try {
-    execFileSync('soffice', ['--headless', '--norestore', `-env:UserInstallation=file://${work}/profile`, '--convert-to',
+    const [cmd, ...pre] = DOCKER
+      ? ['docker', 'run', '--rm', '--user', `${process.getuid()}:${process.getgid()}`, '-v', `${work}:${work}`, loImage(), 'soffice']
+      : ['soffice'];
+    execFileSync(cmd, [...pre, '--headless', '--norestore', `-env:UserInstallation=file://${work}/profile`, '--convert-to',
       'pdf:writer_pdf_Export:{"IsSkipEmptyPages":{"type":"boolean","value":"false"}}', '--outdir', out, ...named],
       { stdio: 'pipe', timeout: 900_000 + 300_000 * todo.filter(isLong).length });
   } catch (err) { console.log(`LibreOffice stopped: ${String(err.message).split('\n')[0]}`); }

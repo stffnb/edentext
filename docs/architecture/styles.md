@@ -102,11 +102,15 @@ sets a `--natural-line` takes the paragraph's line-height expression with that v
 fixed spacing stays fixed. The reverse stays: the paragraph's font is the CSS strut, so
 a paragraph whose runs are all in a shorter face than its own keeps its own line height.
 One run mixing scripts takes the western face's line even where the asian one is taller.
-LibreOffice 26.8 sets a line at max(ascent + line gap) + max(descent) over its fonts and
+LibreOffice on Linux sets a line at max(ascent + line gap) + max(descent) over its fonts and
 as-character frames, the spacing's extra on top; CSS splits each face's gap above and below.
 The bundled Liberation Serif and Sans (and the Times New Roman and Arial faces they stand in
 for) fold the gap into their ascent (`*-override` in `global.css`). Probed at 12pt on Linux:
 a Liberation Mono run makes the line 14.80pt (gap below would give 14.30), a 1cm frame on
 the baseline 30.95pt (frame + descent), one hanging from it 39.55pt (ascent + gap + frame),
 and a text line's glyphs start the gap below its top.
+The gap's side is LibreOffice's per platform, not per version or font file: 26.2 and
+26.8.1.1 on macOS put it below the descent (14.30, 31.45, 39.05pt, glyphs at the line top),
+26.8.1.1 on Linux above with Ubuntu's Liberation fonts and with its bundled ones alike.
+Linux, which CI runs, is the reference; `LAYOUT_LO=docker` gives other platforms its counts.
 A face loaded from the system without an `@font-face` of ours keeps the split.

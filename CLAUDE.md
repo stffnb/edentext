@@ -12,7 +12,7 @@ npm run check; npm test  # svelte-check type-check; Vitest once (tests/**/*.test
 npm run test:lo      # LibreOffice round trip, fuzz re-read, ODT/DOCX consistency (needs soffice)
 npm run test:smoke   # headless dist boot; BROWSER=firefox|webkit
 npm run test:dom     # browser pagination and editing; same BROWSER
-npm run test:layout  # LibreOffice page counts, layout invariants and page starts
+npm run test:layout  # LibreOffice page counts, layout invariants and page starts; off Linux LAYOUT_LO=docker
 npm run test:monkey  # random editing, undo/redo and save-read invariants
 npm run test:tabs; npm run test:npm; npm run test:collab  # two documents across reloads; npm packages in a fresh Vite project; shared sessions (undo per client, concurrent edits, relay)
 npm run test:coverage  # Vitest V8 coverage -> coverage/index.html; npm run bench:bigjoin times a big shared document (docs/architecture/collab-perf.md)
