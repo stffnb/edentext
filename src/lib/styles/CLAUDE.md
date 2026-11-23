@@ -31,3 +31,6 @@ A name with a weight, width, slant or vendor suffix (`Arial Bold`, `Arial-BoldMT
 base family's stack and class (`baseProfile`), as LibreOffice strips the suffix and never applies its
 weight (probed). Limitation: Chromium on macOS resolves PostScript names itself, so `Arial-BoldMT`
 renders bold there while LibreOffice sets it regular; CSS cannot refuse a name the platform knows.
+Missing Office faces render as bundled metric twins (`global.css`): Liberation for Times New Roman, Arial and Courier New,
+Carlito for Calibri, Caladea for Cambria, Gelasio for Georgia (with Georgia's ascent and descent). LibreOffice without the
+face substitutes what fontconfig offers (Noto Serif for Georgia: about 18% more pages), so its count there is not the file's.

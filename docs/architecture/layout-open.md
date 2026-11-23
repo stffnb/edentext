@@ -11,6 +11,14 @@ Delete an item once it is fixed, and this file once it is empty.
   LibreOffice differs) and add a small synthetic fixture; never fit the one document.
 - No real-world document name goes into the repository or a commit message.
 
+## Fonts the machine lacks
+
+- A missing **complex-script** face (a Hebrew ODT naming fonts the test machine lacks) falls back to the Hebrew of
+  the generic tail here, while LibreOffice takes fontconfig's best face for the script (Noto Sans Hebrew), which
+  sets fewer lines: editor 2 pages, LibreOffice 3. Not probed against a machine that has the faces, nor whether the
+  tail should prefer a script face. A small Chinese DOCX shows the same with CJK faces, and there Word's own PDF
+  agrees with the editor (2 pages, LibreOffice 3).
+
 ## Not layout: a browser test that depends on real time
 
 `npm run test:dom` in Chromium feeds a fake microphone a recording of three voiced bursts, played once in real
