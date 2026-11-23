@@ -364,23 +364,25 @@ export type InlineVAlign = 'middle' | 'below' | 'text-top' | 'text-middle' | 'te
 
 // An as-character frame's margins widen and heighten its place in the line, its bottom
 // margin edge on the baseline (probed): CSS margins on an inline-block, as they stand.
+// A spacing's extra (`--fx`, editor.css) rides above and below them.
 export function inlineMargin(wrapDist: unknown): string {
   const g = wrapGap(wrapDist);
-  return wrapGapAttr(g) ? `${g.top}cm ${g.right}cm ${g.bottom}cm ${g.left}cm` : '';
+  return wrapGapAttr(g) ? `calc(${g.top}cm + ${FX}) ${g.right}cm calc(${g.bottom}cm + ${FX}) ${g.left}cm` : '';
 }
+const FX = 'var(--fx, 0px)';
 
 export function inlineVerticalAlign(vAlign: unknown, boxHeightPx: number, offsetYCm: unknown): string {
   if (!boxHeightPx) return '';
   switch (vAlign) {
-    case 'middle': return `${-boxHeightPx / 2}px`;
-    case 'below': return `${-boxHeightPx}px`;
+    case 'middle': return `calc(${-boxHeightPx / 2}px - ${FX})`;
+    case 'below': return `calc(${-boxHeightPx}px - ${FX})`;
     case 'text-top': return 'text-top';
     case 'text-bottom': return 'text-bottom';
     // No CSS keyword centres on the character area; 0.36em stands in for half of
     // (ascent − descent), which Liberation Serif/Sans, Times and Arial all share.
-    case 'text-middle': return `calc(0.36em - ${boxHeightPx / 2}px)`;
+    case 'text-middle': return `calc(0.36em - ${boxHeightPx / 2}px - ${FX})`;
     case 'offset':
-      return typeof offsetYCm === 'number' ? `${-(cmToPx(offsetYCm) + boxHeightPx)}px` : '';
+      return typeof offsetYCm === 'number' ? `calc(${-(cmToPx(offsetYCm) + boxHeightPx)}px - ${FX})` : '';
     default: return '';
   }
 }

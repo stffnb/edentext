@@ -157,7 +157,7 @@ class FormulaView {
     // Centred on the character area the box only adds what it is taller than the line
     // (editor.css); with a drop its bottom hangs that far below the baseline.
     this.dom.style.cssText = `width:${cmToPx(width!)}px;` + (drop == null ? `--fh:${cmToPx(height!)}px`
-      : `height:${cmToPx(height!)}px;vertical-align:${-cmToPx(drop)}px`) + (margin && `;margin:${margin}`);
+      : `height:${cmToPx(height!)}px;vertical-align:calc(${-cmToPx(drop)}px - var(--fx, 0px))`) + (margin && `;margin:${margin}`);
   }
 
   update(node: PMNode) {

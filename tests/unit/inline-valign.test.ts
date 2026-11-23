@@ -20,13 +20,13 @@ const frame = (d: N) => d.content[0].content.find((n: N) => n.type === 'image');
 describe('an as-char frame’s vertical alignment', () => {
   it('lowers the box by what the alignment puts below the baseline', () => {
     expect(inlineVerticalAlign(null, 40, null)).toBe('');
-    expect(inlineVerticalAlign('middle', 40, null)).toBe('-20px');
-    expect(inlineVerticalAlign('below', 40, null)).toBe('-40px');
+    expect(inlineVerticalAlign('middle', 40, null)).toBe('calc(-20px - var(--fx, 0px))');
+    expect(inlineVerticalAlign('below', 40, null)).toBe('calc(-40px - var(--fx, 0px))');
     expect(inlineVerticalAlign('text-top', 40, null)).toBe('text-top');
     expect(inlineVerticalAlign('text-bottom', 40, null)).toBe('text-bottom');
-    expect(inlineVerticalAlign('text-middle', 40, null)).toBe('calc(0.36em - 20px)');
+    expect(inlineVerticalAlign('text-middle', 40, null)).toBe('calc(0.36em - 20px - var(--fx, 0px))');
     // The frame's top an offset below the baseline, so its bottom is that plus its height.
-    expect(parseFloat(inlineVerticalAlign('offset', 40, -0.529))).toBeCloseTo(-20, 0);
+    expect(parseFloat(inlineVerticalAlign('offset', 40, -0.529).slice(5))).toBeCloseTo(-20, 0);
   });
 
   it('round-trips through ODF', async () => {
