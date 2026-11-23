@@ -23,6 +23,7 @@ copied verbatim into the build, so the licenses ship wherever the fonts do.
 | Liberation Mono/Sans/Serif | OFL-1.1 | (c) 2010 Google Corporation; (c) 2012 Red Hat, Inc. (Reserved Font Name "Liberation") |
 | Carlito | OFL-1.1 | (c) 2013 The Carlito Project Authors (Reserved Font Name "Carlito") |
 | Caladea | OFL-1.1 | (c) 2012 The Caladea Project Authors |
+| Gelasio | OFL-1.1 | (c) 2022 The Gelasio Project Authors |
 | STIX Two Math | OFL-1.1 | (c) 2001–2021 The STIX Fonts Project Authors |
 | Noto Naskh Arabic | OFL-1.1 | (c) 2022 The Noto Project Authors |
 | `EdenSymbols.woff2` — bullet glyphs subset from DejaVu Sans | Bitstream Vera | (c) 2003 Bitstream, Inc. |

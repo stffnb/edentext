@@ -291,6 +291,49 @@
   src: local('Cambria Bold Italic'), local('Caladea Bold Italic'), url('../assets/fonts/Caladea-BoldItalic.ttf') format('truetype');
 }
 
+/* Georgia → Gelasio, its metric-compatible twin; the overrides give it Georgia's win
+   ascent and descent, as Gelasio's own are taller. */
+@font-face {
+  font-family: 'Georgia';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  ascent-override: 91.6992%;
+  descent-override: 21.9238%;
+  line-gap-override: 0%;
+  src: local('Georgia'), local('Gelasio'), url('../assets/fonts/Gelasio-Regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Georgia';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  ascent-override: 91.6992%;
+  descent-override: 21.9238%;
+  line-gap-override: 0%;
+  src: local('Georgia Bold'), local('Gelasio Bold'), url('../assets/fonts/Gelasio-Bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Georgia';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  ascent-override: 91.6992%;
+  descent-override: 21.9238%;
+  line-gap-override: 0%;
+  src: local('Georgia Italic'), local('Gelasio Italic'), url('../assets/fonts/Gelasio-Italic.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Georgia';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  ascent-override: 91.6992%;
+  descent-override: 21.9238%;
+  line-gap-override: 0%;
+  src: local('Georgia Bold Italic'), local('Gelasio Bold Italic'), url('../assets/fonts/Gelasio-BoldItalic.ttf') format('truetype');
+}
+
 /* Courier New → Liberation Mono */
 @font-face {
   font-family: 'Courier New';

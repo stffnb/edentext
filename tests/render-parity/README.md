@@ -133,14 +133,16 @@ what a run prints now.
 ```bash
 apt-get install -y --no-install-recommends libreoffice-writer poppler-utils
 npm install --no-save playwright-core && npx playwright-core install chromium
-cp src/assets/fonts/*.ttf /usr/local/share/fonts/ && fc-cache -f
+cp $(ls src/assets/fonts/*.ttf | grep -v Gelasio) /usr/local/share/fonts/ && fc-cache -f
 ```
 
 **The font step is required.** LibreOffice renders with system fonts; without
 the repo's own TTFs installed it substitutes DejaVu for Liberation Serif and every
 line breaks differently for a reason that is not a bug. With them, both engines
 resolve Times New Roman → Liberation Serif, Arial → Liberation Sans, Calibri →
-Carlito, Cambria → Caladea — the same files the editor bundles.
+Carlito, Cambria → Caladea — the same files the editor bundles. Georgia → Gelasio is the
+editor's alone: its face takes Georgia's line, shorter than Gelasio's own, so the install leaves Gelasio
+out; installed, it makes LibreOffice set fewer lines per page than the file's font does.
 
 Where the LibreOffice build ships those families itself (the macOS app bundle does:
 `Contents/Resources/fonts/truetype/`), it resolves them without fontconfig and the step
