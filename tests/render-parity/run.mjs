@@ -145,7 +145,7 @@ function corpus(args) {
     try {
       // `~$name` is the lock file a word processor leaves beside a document it has open —
       // opening a fixture to compare it by eye would otherwise add it to the corpus.
-      for (const f of readdirSync(abs)) if (/\.(docx|odt)$/i.test(f) && !f.startsWith('~$')) out.push(join(abs, f));
+      for (const f of readdirSync(abs)) if (/\.(docx|odt)$/i.test(f) && !/^(~\$|\._)/.test(f)) out.push(join(abs, f));
     } catch { out.push(abs); }
   }
   return out.filter((f) => !only || only.test(basename(f))).sort();

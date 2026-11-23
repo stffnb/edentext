@@ -18,7 +18,7 @@ export const LOCAL_DOCS = resolve(process.env.EDENTEXT_TESTDOCS ?? beside());
 // Documents too long for the everyday run lie in a subfolder, read only on request.
 export const LONG_DOCS = join(LOCAL_DOCS, 'long_documents');
 const list = (dir) => (existsSync(dir)
-  ? readdirSync(dir).filter((f) => /\.(odt|docx)$/i.test(f) && !f.startsWith('~$')).sort().map((f) => join(dir, f))
+  ? readdirSync(dir).filter((f) => /\.(odt|docx)$/i.test(f) && !/^(~\$|\._)/.test(f)).sort().map((f) => join(dir, f))
   : []);
 export const localDocs = () => list(LOCAL_DOCS);
 export const longDocs = () => list(LONG_DOCS);
