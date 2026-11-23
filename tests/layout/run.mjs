@@ -35,7 +35,7 @@ const known = baseline[KEY] ?? {};
 const fresh = {};
 
 const files = (dir) => (existsSync(dir)
-  ? readdirSync(dir).filter((f) => /\.(odt|docx)$/.test(f) && !f.startsWith('~$')).sort().map((f) => join(dir, f))
+  ? readdirSync(dir).filter((f) => /\.(odt|docx)$/.test(f) && !/^(~\$|\._)/.test(f)).sort().map((f) => join(dir, f))
   : []);
 const docs = [...files(join(ROOT, 'tests/corpus')), ...files(join(ROOT, 'tests/corpus/word')), ...files(join(ROOT, 'docs/showcase'))];
 // Local documents keep their record beside them. A run takes the new ones and the core
