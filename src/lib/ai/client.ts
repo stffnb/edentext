@@ -8,13 +8,19 @@ import type { Messages } from '../i18n/locales/en';
 
 /** `extra`: a provider's opaque per-call data (Gemini's thought signature), sent back as it came. */
 export type ToolCall = { id: string; name: string; args: string; extra?: unknown };
+/**
+ * `replay`: the provider's own record of a reply that called tools (its reasoning), sent back
+ * as it came for the rest of that turn; the history between questions keeps only the text.
+ */
 export type ChatMessage =
   | { role: 'user'; content: string }
-  | { role: 'assistant'; content: string; toolCalls?: ToolCall[] }
+  | { role: 'assistant'; content: string; toolCalls?: ToolCall[]; replay?: unknown }
   | { role: 'tool'; id: string; content: string };
 export type ToolDef = { name: string; description: string; parameters: Record<string, unknown> };
 export type ChatRequest = { system: string; messages: ChatMessage[]; tools?: ToolDef[] };
-export type ChatResult = { text: string; toolCalls: ToolCall[] };
+export type ChatResult = { text: string; toolCalls: ToolCall[]; replay?: unknown };
+
+type CompatReplay = { content?: unknown[]; reasoning_details?: unknown[] };
 
 export class AiError extends Error {
   constructor(readonly kind: 'network' | 'auth' | 'notFound' | 'rate' | 'http', readonly status = 0, detail = '') {
@@ -62,9 +68,11 @@ function openaiRequest(cfg: AiConfig, req: ChatRequest): RequestInit & { url: st
   for (const m of req.messages) {
     if (m.role === 'tool') messages.push({ role: 'tool', tool_call_id: m.id, content: m.content });
     else if (m.role === 'assistant' && m.toolCalls?.length) {
+      const r = m.replay as CompatReplay | undefined;
       messages.push({
         role: 'assistant',
-        content: m.content || null,
+        content: r?.content ?? (m.content || null),
+        ...(r?.reasoning_details ? { reasoning_details: r.reasoning_details } : {}),
         tool_calls: m.toolCalls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: c.args || '{}' }, ...(c.extra ? { extra_content: c.extra } : {}) })),
       });
     } else messages.push({ role: m.role, content: m.content });
@@ -88,7 +96,7 @@ function openaiRequest(cfg: AiConfig, req: ChatRequest): RequestInit & { url: st
 
 // OpenAI's own API takes tools from its reasoning models only on /responses; /chat/completions
 // answers 400. With `store: false` nothing stays on OpenAI's servers, so a reply's reasoning
-// items ride on its first tool call's `extra` and go back before its calls, as OpenAI asks.
+// items are its `replay`, sent back before its text and calls.
 export const isOpenaiApi = (cfg: AiConfig) => cfg.provider === 'openai' && /^https:\/\/([\w-]+\.)?api\.openai\.com(\/|$)/i.test(cfg.endpoint.trim());
 
 function responsesRequest(cfg: AiConfig, req: ChatRequest): RequestInit & { url: string } {
@@ -97,7 +105,7 @@ function responsesRequest(cfg: AiConfig, req: ChatRequest): RequestInit & { url:
     if (m.role === 'tool') input.push({ type: 'function_call_output', call_id: m.id, output: m.content });
     else {
       const calls = m.role === 'assistant' ? m.toolCalls ?? [] : [];
-      for (const c of calls) input.push(...((c.extra as { reasoning?: unknown[] } | undefined)?.reasoning ?? []));
+      if (m.role === 'assistant' && Array.isArray(m.replay)) input.push(...m.replay);
       if (m.content) input.push({ role: m.role, content: m.content });
       for (const c of calls) input.push({ type: 'function_call', call_id: c.id, name: c.name, arguments: c.args || '{}' });
     }
@@ -133,8 +141,7 @@ async function readResponses(body: ReadableStream<Uint8Array>, onText: (t: strin
     else if (json.type === 'response.failed') throw new AiError('http', 0, json.response?.error?.message ?? 'failed');
     else if (json.type === 'response.completed' || json.type === 'response.incomplete') break;
   }
-  if (calls.length && reasoning.length) calls[0].extra = { reasoning };
-  return { text, toolCalls: calls };
+  return { text, toolCalls: calls, ...(calls.length && reasoning.length ? { replay: reasoning } : {}) };
 }
 
 /** Ollama's own default port: its /v1 ignores a context size, so its native API is used. */
@@ -150,7 +157,8 @@ function ollamaRequest(cfg: AiConfig, req: ChatRequest): RequestInit & { url: st
     if (m.role === 'tool') messages.push({ role: 'tool', tool_name: names.get(m.id) ?? '', content: m.content });
     else if (m.role === 'assistant' && m.toolCalls?.length) {
       for (const c of m.toolCalls) names.set(c.id, c.name);
-      messages.push({ role: 'assistant', content: m.content, tool_calls: m.toolCalls.map((c) => ({ function: { name: c.name, arguments: parseArgs(c.args) } })) });
+      const thinking = (m.replay as { thinking?: string } | undefined)?.thinking;
+      messages.push({ role: 'assistant', content: m.content, ...(thinking ? { thinking } : {}), tool_calls: m.toolCalls.map((c) => ({ function: { name: c.name, arguments: parseArgs(c.args) } })) });
     } else messages.push({ role: m.role, content: m.content });
   }
   return {
@@ -169,6 +177,7 @@ function ollamaRequest(cfg: AiConfig, req: ChatRequest): RequestInit & { url: st
 
 async function readOllama(body: ReadableStream<Uint8Array>, onText: (t: string) => void): Promise<ChatResult> {
   let text = '';
+  let thinking = '';
   const calls: ToolCall[] = [];
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -184,6 +193,7 @@ async function readOllama(body: ReadableStream<Uint8Array>, onText: (t: string) 
       const json = JSON.parse(line);
       if (json.error) throw new AiError('http', 0, String(json.error));
       const msg = json.message;
+      if (typeof msg?.thinking === 'string') thinking += msg.thinking;
       if (typeof msg?.content === 'string' && msg.content) { text += msg.content; onText(msg.content); }
       for (const tc of msg?.tool_calls ?? []) {
         const a = tc.function?.arguments;
@@ -191,7 +201,7 @@ async function readOllama(body: ReadableStream<Uint8Array>, onText: (t: string) 
       }
     }
   }
-  return { text, toolCalls: calls };
+  return { text, toolCalls: calls, ...(calls.length && thinking ? { replay: { thinking } } : {}) };
 }
 
 type AnthropicBlock = Record<string, unknown>;
@@ -209,6 +219,7 @@ function anthropicRequest(cfg: AiConfig, req: ChatRequest): RequestInit & { url:
   for (const m of req.messages) {
     if (m.role === 'tool') push('user', [{ type: 'tool_result', tool_use_id: m.id, content: m.content }]);
     else if (m.role === 'user') push('user', [{ type: 'text', text: m.content }]);
+    else if (Array.isArray(m.replay)) push('assistant', m.replay as AnthropicBlock[]);
     else {
       push('assistant', [
         ...(m.content ? [{ type: 'text', text: m.content }] : []),
@@ -249,13 +260,27 @@ export function parseArgs(args: string): Record<string, unknown> {
 
 async function readOpenai(body: ReadableStream<Uint8Array>, onText: (t: string) => void): Promise<ChatResult> {
   let text = '';
+  let thinking = '';
+  let chunked = false;
   const calls: ToolCall[] = [];
+  // OpenRouter's reasoning, fragments of one item sharing an index; it goes back unchanged.
+  const details: Record<string, unknown>[] = [];
   for await (const ev of sseEvents(body)) {
     if (ev.data === '[DONE]') break;
     const json = JSON.parse(ev.data);
     if (json.error) throw new AiError('http', 0, json.error.message ?? String(json.error));
     const delta = json.choices?.[0]?.delta;
     // Mistral's reasoning models stream content as chunks, thinking ones among them.
+    if (Array.isArray(delta?.content)) {
+      chunked = true;
+      for (const c of delta.content) if (c?.type === 'thinking') for (const t of c.thinking ?? []) thinking += t?.text ?? '';
+    }
+    for (const d of delta?.reasoning_details ?? []) {
+      const same = typeof d.index === 'number' ? details.find((x) => x.index === d.index && x.type === d.type) : undefined;
+      if (!same) { details.push({ ...d }); continue; }
+      for (const k of ['text', 'summary', 'data'] as const) if (typeof d[k] === 'string') same[k] = String(same[k] ?? '') + d[k];
+      for (const k of ['signature', 'id', 'format'] as const) if (d[k] != null) same[k] = d[k];
+    }
     const part = Array.isArray(delta?.content) ? delta.content.filter((c: { type?: string }) => c?.type === 'text').map((c: { text?: string }) => c.text ?? '').join('') : delta?.content;
     if (typeof part === 'string' && part) { text += part; onText(part); }
     for (const tc of delta?.tool_calls ?? []) {
@@ -269,19 +294,33 @@ async function readOpenai(body: ReadableStream<Uint8Array>, onText: (t: string) 
       if (a) slot.args += typeof a === 'string' ? a : JSON.stringify(a);
     }
   }
-  return { text, toolCalls: calls.filter(Boolean).map((c, i) => ({ ...c, id: c.id || `call_${i}` })) };
+  const toolCalls = calls.filter(Boolean).map((c, i) => ({ ...c, id: c.id || `call_${i}` }));
+  const replay: CompatReplay = {
+    ...(chunked && thinking ? { content: [{ type: 'thinking', thinking: [{ type: 'text', text: thinking }] }, ...(text ? [{ type: 'text', text }] : [])] } : {}),
+    ...(details.length ? { reasoning_details: details } : {}),
+  };
+  return { text, toolCalls, ...(toolCalls.length && Object.keys(replay).length ? { replay } : {}) };
 }
 
 async function readAnthropic(body: ReadableStream<Uint8Array>, onText: (t: string) => void): Promise<ChatResult> {
   let text = '';
   const calls = new Map<number, ToolCall>();
+  // Every block in order, thinking with its signature, for the rest of the turn.
+  const blocks = new Map<number, AnthropicBlock>();
   for await (const ev of sseEvents(body)) {
     const json = JSON.parse(ev.data);
     if (json.type === 'error') throw new AiError('http', 0, json.error?.message ?? 'error');
-    if (json.type === 'content_block_start' && json.content_block?.type === 'tool_use') {
-      calls.set(json.index, { id: json.content_block.id, name: json.content_block.name, args: '' });
+    if (json.type === 'content_block_start') {
+      const cb = json.content_block ?? {};
+      blocks.set(json.index, cb.type === 'text' ? { type: 'text', text: '' } : cb.type === 'thinking' ? { type: 'thinking', thinking: cb.thinking ?? '', signature: cb.signature ?? '' } : { ...cb });
+      if (cb.type === 'tool_use') calls.set(json.index, { id: cb.id, name: cb.name, args: '' });
     } else if (json.type === 'content_block_delta') {
-      if (json.delta?.type === 'text_delta') { text += json.delta.text; onText(json.delta.text); }
+      const block = blocks.get(json.index);
+      if (json.delta?.type === 'text_delta') {
+        text += json.delta.text; onText(json.delta.text);
+        if (block) block.text += json.delta.text;
+      } else if (json.delta?.type === 'thinking_delta' && block) block.thinking += json.delta.thinking;
+      else if (json.delta?.type === 'signature_delta' && block) block.signature += json.delta.signature;
       else if (json.delta?.type === 'input_json_delta') {
         const call = calls.get(json.index);
         if (call) call.args += json.delta.partial_json;
@@ -292,7 +331,12 @@ async function readAnthropic(body: ReadableStream<Uint8Array>, onText: (t: strin
       if (stop === 'max_tokens' || stop === 'refusal') throw new AiError('http', 0, `stop_reason: ${stop}`);
     } else if (json.type === 'message_stop') break;
   }
-  return { text, toolCalls: [...calls.values()] };
+  const toolCalls = [...calls.values()];
+  // An empty text block, sent back, is a 400.
+  const ordered = [...blocks.entries()].sort(([a], [b]) => a - b).filter(([, b]) => b.type !== 'text' || b.text)
+    .map(([i, b]) => (b.type === 'tool_use' ? { ...b, input: parseArgs(calls.get(i)?.args ?? '') } : b));
+  const thought = ordered.some((b) => b.type === 'thinking' || b.type === 'redacted_thinking');
+  return { text, toolCalls, ...(toolCalls.length && thought ? { replay: ordered } : {}) };
 }
 
 async function httpError(res: Response): Promise<AiError> {
@@ -327,6 +371,10 @@ export async function streamChat(cfg: AiConfig, req: ChatRequest, onText: (t: st
   }
   if (!res.ok) {
     const err = await httpError(res);
+    // Replayed reasoning is only rebuilt from documented formats; refused, the turn goes on without it.
+    if (res.status === 400 && req.messages.some((m) => m.role === 'assistant' && m.replay)) {
+      return streamChat(cfg, { ...req, messages: req.messages.map((m) => (m.role === 'assistant' ? { ...m, replay: undefined } : m)) }, onText, signal);
+    }
     // Some local models take no tools at all; ask again without them. A turn that already
     // ran tools proves they are supported, so its 400 is a real error.
     if (res.status === 400 && req.tools?.length && !req.messages.some((m) => m.role === 'tool') && /tool|function/i.test(err.message)) {

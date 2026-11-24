@@ -179,22 +179,21 @@ After `/translate ` the `/` list offers the languages, filtered as typed; one se
 
 - **OpenAI** (`api.openai.com`, regional hosts too) is spoken to on `/responses` (`isOpenaiApi`):
   its reasoning models answer tools on `/chat/completions` with a 400, which the tool-less retry
-  below would hide. `store: false`: a reply's reasoning items ride on its first call's `extra`.
+  below would hide. `store: false`.
 - **Anthropic** needs `anthropic-dangerous-direct-browser-access: true` to answer a browser.
   Claude 5 thinks by default out of `max_tokens`, hence 32000; a reply stopped by `max_tokens`
   or `refusal` is an error, not a cut-off tool call run as `{}` or an empty answer.
-- **Ollama** on its default port is spoken to natively (`/api/chat`, JSON lines): its `/v1`
-  ignores a context size and loads the model with its own default, cutting a longer prompt
-  silently; the native call sends `num_ctx` from the context size. A tool result names its tool
-  (`tool_name`), as Ollama matches results by name.
-- **Ollama** accepts `app://` (the desktop shell) by default. A web origin has to be
-  listed in `OLLAMA_ORIGINS`; the network error says so for a localhost endpoint.
+- **Ollama** on its default port is spoken to natively (`/api/chat`, JSON lines, `num_ctx`): its
+  `/v1` ignores a context size, cutting a longer prompt silently. A tool result names its tool
+  (`tool_name`). A web origin has to be in `OLLAMA_ORIGINS` (`app://` is accepted by default).
+- **Reasoning** of a reply that called tools is its `replay`, sent back as it came for the rest
+  of the turn: OpenAI's items, Anthropic's blocks with signatures, OpenRouter's `reasoning_details`
+  (merged by `index`), Mistral's thinking chunks, Ollama's `thinking`. A 400 drops it once.
 - **Models without tool support**: a 400 that mentions tools is retried once without tools,
   unless the turn already ran tools.
 - **OpenRouter** gets `provider.require_parameters` with tools: otherwise a model none of whose
   providers take tools has them dropped silently.
 - **Mistral**'s reasoning models stream `delta.content` as chunks; only the text ones are read.
-- **Gemini 3** attaches a thought signature to each tool call (`extra_content`); it goes back
-  unchanged with the call, or the next round answers 400.
+  **Gemini 3**'s thought signature on a tool call (`extra_content`) goes back with it, or 400.
 
 Signing in with a ChatGPT subscription (Codex OAuth, desktop only) is not built.

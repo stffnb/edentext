@@ -94,7 +94,7 @@ describe('OpenAI-compatible', () => {
       tools: [{ name: 'format', description: 'd', parameters: { type: 'object' } }],
     }, () => {});
     const reasoning = [{ type: 'reasoning', id: 'rs_1', encrypted_content: 'enc' }];
-    expect(res).toEqual({ text: 'Hello', toolCalls: [{ id: 'c1', name: 'format', args: '{"from":2}', extra: { reasoning } }] });
+    expect(res).toEqual({ text: 'Hello', toolCalls: [{ id: 'c1', name: 'format', args: '{"from":2}' }], replay: reasoning });
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe('https://us.api.openai.com/v1/responses');
     const body = JSON.parse(init.body as string);
@@ -107,7 +107,7 @@ describe('OpenAI-compatible', () => {
     // The reply's reasoning goes back as it came, before its text and calls.
     const again = mockFetch(sse([{ type: 'response.completed', response: {} }]));
     await streamChat({ ...openai, endpoint: 'https://api.openai.com/v1' }, {
-      system: '', messages: [{ role: 'assistant', content: res.text, toolCalls: res.toolCalls }, { role: 'tool', id: 'c1', content: 'ok' }],
+      system: '', messages: [{ role: 'assistant', content: res.text, toolCalls: res.toolCalls, replay: res.replay }, { role: 'tool', id: 'c1', content: 'ok' }],
     }, () => {});
     expect(JSON.parse(again.mock.calls[0][1].body as string).input.map((i: { type?: string; role?: string }) => i.type ?? i.role))
       .toEqual(['reasoning', 'assistant', 'function_call', 'function_call_output']);
@@ -125,6 +125,30 @@ describe('OpenAI-compatible', () => {
       '[DONE]',
     ]));
     expect((await streamChat(openai, { system: '', messages: [] }, () => {})).text).toBe('Hello');
+  });
+
+  it('keeps Mistral’s thinking and OpenRouter’s reasoning details for the rest of the turn', async () => {
+    mockFetch(sse([
+      { choices: [{ delta: { content: [{ type: 'thinking', thinking: [{ type: 'text', text: 'h' }] }] } }] },
+      { choices: [{ delta: { content: [{ type: 'thinking', thinking: [{ type: 'text', text: 'm' }] }], reasoning_details: [{ type: 'reasoning.text', text: 'a', index: 0 }] } }] },
+      { choices: [{ delta: { reasoning_details: [{ type: 'reasoning.text', text: 'b', signature: 's', index: 0 }] } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: 'c1', function: { name: 'format', arguments: '{}' } }] } }] },
+      '[DONE]',
+    ]));
+    const res = await streamChat(openai, { system: '', messages: [] }, () => {});
+    expect(res.replay).toEqual({
+      content: [{ type: 'thinking', thinking: [{ type: 'text', text: 'hm' }] }],
+      reasoning_details: [{ type: 'reasoning.text', text: 'ab', signature: 's', index: 0 }],
+    });
+    // Refused, the turn goes on without what it sent back.
+    const fetch = mockFetch((init) => (JSON.parse(init.body as string).messages[1].reasoning_details
+      ? new Response('{"error":{"message":"invalid reasoning"}}', { status: 400 })
+      : new Response(sse(['[DONE]']))));
+    await streamChat(openai, { system: '', messages: [{ role: 'assistant', content: '', toolCalls: res.toolCalls, replay: res.replay }, { role: 'tool', id: 'c1', content: 'ok' }] }, () => {});
+    const sent = fetch.mock.calls.map(([, init]) => JSON.parse(init.body as string).messages[1]);
+    expect(sent[0]).toMatchObject({ content: res.replay && (res.replay as { content: unknown }).content, reasoning_details: [{ text: 'ab' }] });
+    expect(sent[1]).toMatchObject({ content: null });
+    expect(sent[1].reasoning_details).toBeUndefined();
   });
 
   it('asks OpenRouter for a provider that takes the tools', async () => {
@@ -200,6 +224,24 @@ describe('Anthropic', () => {
     expect(body.messages[1].content[1]).toEqual({ type: 'tool_use', id: 't0', name: 'format', input: { from: 1 } });
     // Both results and the next question share one user turn.
     expect(body.messages[2].content.map((b: { type: string }) => b.type)).toEqual(['tool_result', 'tool_result', 'text']);
+  });
+
+  it('sends a tool turn back with its thinking, blocks in order', async () => {
+    mockFetch(sse([
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'hm' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'sig' } },
+      { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_start', index: 2, content_block: { type: 'tool_use', id: 't1', name: 'format', input: {} } },
+      { type: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '{"from":1}' } },
+      { type: 'message_stop' },
+    ], { anthropic: true }));
+    const res = await streamChat(anthropic, { system: '', messages: [] }, () => {});
+    const replay = [{ type: 'thinking', thinking: 'hm', signature: 'sig' }, { type: 'tool_use', id: 't1', name: 'format', input: { from: 1 } }];
+    expect(res.replay).toEqual(replay);
+    const fetch = mockFetch(sse([{ type: 'message_stop' }], { anthropic: true }));
+    await streamChat(anthropic, { system: '', messages: [{ role: 'user', content: 'q' }, { role: 'assistant', content: '', toolCalls: res.toolCalls, replay: res.replay }, { role: 'tool', id: 't1', content: 'ok' }] }, () => {});
+    expect(JSON.parse(fetch.mock.calls[0][1].body as string).messages[1].content).toEqual(replay);
   });
 
   it.each(['max_tokens', 'refusal'])('reports a reply stopped by %s instead of running what it cut short', async (stop) => {
@@ -300,7 +342,8 @@ describe('installation presets', () => {
 describe('Ollama', () => {
   it('talks to the native API with the context size and reads its JSON lines', async () => {
     const fetch = mockFetch([
-      { message: { role: 'assistant', content: 'Hi' }, done: false },
+      { message: { role: 'assistant', content: '', thinking: 'h' }, done: false },
+      { message: { role: 'assistant', content: 'Hi', thinking: 'm' }, done: false },
       { message: { role: 'assistant', content: '', tool_calls: [{ function: { name: 'format', arguments: { from: 1, bold: true } } }] }, done: false },
       { done: true },
     ].map((l) => JSON.stringify(l)).join('\n'));
@@ -308,15 +351,16 @@ describe('Ollama', () => {
     const deltas: string[] = [];
     const res = await streamChat(cfg, {
       system: 'S',
-      messages: [{ role: 'user', content: 'q' }, { role: 'assistant', content: '', toolCalls: [{ id: 'c', name: 'format', args: '{"from":2}' }] }, { role: 'tool', id: 'c', content: 'ok' }],
+      messages: [{ role: 'user', content: 'q' }, { role: 'assistant', content: '', toolCalls: [{ id: 'c', name: 'format', args: '{"from":2}' }], replay: { thinking: 'x' } }, { role: 'tool', id: 'c', content: 'ok' }],
       tools: [{ name: 'format', description: 'd', parameters: {} }],
     }, (d) => deltas.push(d));
     expect(fetch.mock.calls[0][0]).toBe('http://localhost:11434/api/chat');
     const body = JSON.parse(String(fetch.mock.calls[0][1].body));
     expect(body.options).toEqual({ num_ctx: 16384 });
     expect(body.messages[2].tool_calls[0].function.arguments).toEqual({ from: 2 });
+    expect(body.messages[2].thinking).toBe('x');
     expect(body.messages[3]).toEqual({ role: 'tool', tool_name: 'format', content: 'ok' });
-    expect(res).toEqual({ text: 'Hi', toolCalls: [{ id: 'call_0', name: 'format', args: '{"from":1,"bold":true}' }] });
+    expect(res).toEqual({ text: 'Hi', toolCalls: [{ id: 'call_0', name: 'format', args: '{"from":1,"bold":true}' }], replay: { thinking: 'hm' } });
     expect(deltas).toEqual(['Hi']);
   });
 });

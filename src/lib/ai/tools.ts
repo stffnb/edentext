@@ -1202,7 +1202,7 @@ export async function runTurn(opts: {
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const res = await streamChat(opts.cfg, { system: chatSystemPrompt(chat ? 'chat' : 'edit'), messages: [...opts.history, ...turn], tools }, opts.onText, opts.signal);
       answer += res.text;
-      turn.push({ role: 'assistant', content: res.text, toolCalls: res.toolCalls });
+      turn.push({ role: 'assistant', content: res.text, toolCalls: res.toolCalls, replay: res.replay });
       if (!res.toolCalls.length) break;
       const before = editor.state.doc;
       reflowed = false;
