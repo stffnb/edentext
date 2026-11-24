@@ -117,6 +117,24 @@ describe('OpenAI-compatible', () => {
     expect((globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe('https://api.openai.com.evil.test/v1/chat/completions');
   });
 
+  it('reads content sent as chunks, leaving the thinking out', async () => {
+    mockFetch(sse([
+      { choices: [{ delta: { content: [{ type: 'thinking', thinking: [{ type: 'text', text: 'hmm' }] }] } }] },
+      { choices: [{ delta: { content: [{ type: 'thinking', thinking: [] }, { type: 'text', text: 'Hel' }] } }] },
+      { choices: [{ delta: { content: 'lo' } }] },
+      '[DONE]',
+    ]));
+    expect((await streamChat(openai, { system: '', messages: [] }, () => {})).text).toBe('Hello');
+  });
+
+  it('asks OpenRouter for a provider that takes the tools', async () => {
+    const fetch = mockFetch(sse(['[DONE]']));
+    const tools = [{ name: 'x', description: '', parameters: {} }];
+    await streamChat({ ...openai, endpoint: 'https://openrouter.ai/api/v1' }, { system: '', messages: [], tools }, () => {});
+    await streamChat(openai, { system: '', messages: [], tools }, () => {});
+    expect(fetch.mock.calls.map(([, init]) => JSON.parse(init.body as string).provider)).toEqual([{ require_parameters: true }, undefined]);
+  });
+
   it('asks again without tools when the model takes none', async () => {
     let calls = 0;
     mockFetch((init) => {
@@ -182,6 +200,16 @@ describe('Anthropic', () => {
     expect(body.messages[1].content[1]).toEqual({ type: 'tool_use', id: 't0', name: 'format', input: { from: 1 } });
     // Both results and the next question share one user turn.
     expect(body.messages[2].content.map((b: { type: string }) => b.type)).toEqual(['tool_result', 'tool_result', 'text']);
+  });
+
+  it.each(['max_tokens', 'refusal'])('reports a reply stopped by %s instead of running what it cut short', async (stop) => {
+    mockFetch(sse([
+      { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 't1', name: 'replace_text' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"para' } },
+      { type: 'message_delta', delta: { stop_reason: stop } },
+      { type: 'message_stop' },
+    ], { anthropic: true }));
+    await expect(streamChat(anthropic, { system: '', messages: [] }, () => {})).rejects.toBeInstanceOf(AiError);
   });
 });
 
@@ -287,7 +315,7 @@ describe('Ollama', () => {
     const body = JSON.parse(String(fetch.mock.calls[0][1].body));
     expect(body.options).toEqual({ num_ctx: 16384 });
     expect(body.messages[2].tool_calls[0].function.arguments).toEqual({ from: 2 });
-    expect(body.messages[3]).toEqual({ role: 'tool', content: 'ok' });
+    expect(body.messages[3]).toEqual({ role: 'tool', tool_name: 'format', content: 'ok' });
     expect(res).toEqual({ text: 'Hi', toolCalls: [{ id: 'call_0', name: 'format', args: '{"from":1,"bold":true}' }] });
     expect(deltas).toEqual(['Hi']);
   });

@@ -80,6 +80,8 @@ function openaiRequest(cfg: AiConfig, req: ChatRequest): RequestInit & { url: st
       stream: true,
       messages,
       ...(req.tools?.length ? { tools: req.tools.map((t) => ({ type: 'function', function: t })) } : {}),
+      // OpenRouter otherwise drops the tools silently where no provider of the model takes them.
+      ...(req.tools?.length && /^https:\/\/openrouter\.ai\//i.test(cfg.endpoint.trim()) ? { provider: { require_parameters: true } } : {}),
     }),
   };
 }
@@ -142,9 +144,12 @@ export const isOllama = (cfg: AiConfig) => cfg.provider === 'openai' && /^https?
 // context window as `num_ctx`, which it would otherwise cut the prompt to silently.
 function ollamaRequest(cfg: AiConfig, req: ChatRequest): RequestInit & { url: string } {
   const messages: unknown[] = [{ role: 'system', content: req.system }];
+  // A result names its tool; the ids are ours and repeat from round to round.
+  const names = new Map<string, string>();
   for (const m of req.messages) {
-    if (m.role === 'tool') messages.push({ role: 'tool', content: m.content });
+    if (m.role === 'tool') messages.push({ role: 'tool', tool_name: names.get(m.id) ?? '', content: m.content });
     else if (m.role === 'assistant' && m.toolCalls?.length) {
+      for (const c of m.toolCalls) names.set(c.id, c.name);
       messages.push({ role: 'assistant', content: m.content, tool_calls: m.toolCalls.map((c) => ({ function: { name: c.name, arguments: parseArgs(c.args) } })) });
     } else messages.push({ role: m.role, content: m.content });
   }
@@ -223,7 +228,8 @@ function anthropicRequest(cfg: AiConfig, req: ChatRequest): RequestInit & { url:
     },
     body: JSON.stringify({
       model: cfg.model.trim(),
-      max_tokens: 8192,
+      // Thinking, on by default since Claude 5, is paid out of the same budget.
+      max_tokens: 32000,
       stream: true,
       system: req.system,
       messages,
@@ -249,7 +255,9 @@ async function readOpenai(body: ReadableStream<Uint8Array>, onText: (t: string) 
     const json = JSON.parse(ev.data);
     if (json.error) throw new AiError('http', 0, json.error.message ?? String(json.error));
     const delta = json.choices?.[0]?.delta;
-    if (typeof delta?.content === 'string' && delta.content) { text += delta.content; onText(delta.content); }
+    // Mistral's reasoning models stream content as chunks, thinking ones among them.
+    const part = Array.isArray(delta?.content) ? delta.content.filter((c: { type?: string }) => c?.type === 'text').map((c: { text?: string }) => c.text ?? '').join('') : delta?.content;
+    if (typeof part === 'string' && part) { text += part; onText(part); }
     for (const tc of delta?.tool_calls ?? []) {
       // Fragments of one call share an index; a server that sends no index sends whole calls.
       const i = typeof tc.index === 'number' ? tc.index : calls.length;
@@ -278,6 +286,10 @@ async function readAnthropic(body: ReadableStream<Uint8Array>, onText: (t: strin
         const call = calls.get(json.index);
         if (call) call.args += json.delta.partial_json;
       }
+    } else if (json.type === 'message_delta') {
+      // Cut off, a tool call's arguments would run as {}; a refusal would read as an empty answer.
+      const stop = json.delta?.stop_reason;
+      if (stop === 'max_tokens' || stop === 'refusal') throw new AiError('http', 0, `stop_reason: ${stop}`);
     } else if (json.type === 'message_stop') break;
   }
   return { text, toolCalls: [...calls.values()] };
