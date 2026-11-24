@@ -75,6 +75,48 @@ describe('OpenAI-compatible', () => {
     expect(body.tools[0]).toEqual({ type: 'function', function: { name: 'format', description: 'd', parameters: { type: 'object' } } });
   });
 
+  it('speaks /responses to OpenAI’s own API, whose reasoning models take tools only there', async () => {
+    const fetch = mockFetch(sse([
+      { type: 'response.output_item.done', item: { type: 'reasoning', id: 'rs_1', encrypted_content: 'enc' } },
+      { type: 'response.output_text.delta', delta: 'Hel' },
+      { type: 'response.output_text.delta', delta: 'lo' },
+      { type: 'response.output_item.added', item: { type: 'function_call', call_id: 'c1', name: 'format', arguments: '' } },
+      { type: 'response.output_item.done', item: { type: 'function_call', call_id: 'c1', name: 'format', arguments: '{"from":2}' } },
+      { type: 'response.completed', response: {} },
+    ]));
+    const res = await streamChat({ ...openai, endpoint: 'https://us.api.openai.com/v1' }, {
+      system: 'S',
+      messages: [
+        { role: 'user', content: 'q' },
+        { role: 'assistant', content: '', toolCalls: [{ id: 'c0', name: 'read_paragraphs', args: '{}' }] },
+        { role: 'tool', id: 'c0', content: 'ok' },
+      ],
+      tools: [{ name: 'format', description: 'd', parameters: { type: 'object' } }],
+    }, () => {});
+    const reasoning = [{ type: 'reasoning', id: 'rs_1', encrypted_content: 'enc' }];
+    expect(res).toEqual({ text: 'Hello', toolCalls: [{ id: 'c1', name: 'format', args: '{"from":2}', extra: { reasoning } }] });
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe('https://us.api.openai.com/v1/responses');
+    const body = JSON.parse(init.body as string);
+    expect(body).toMatchObject({ instructions: 'S', store: false, tools: [{ type: 'function', name: 'format', description: 'd', parameters: { type: 'object' } }] });
+    expect(body.input).toEqual([
+      { role: 'user', content: 'q' },
+      { type: 'function_call', call_id: 'c0', name: 'read_paragraphs', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'c0', output: 'ok' },
+    ]);
+    // The reply's reasoning goes back as it came, before its text and calls.
+    const again = mockFetch(sse([{ type: 'response.completed', response: {} }]));
+    await streamChat({ ...openai, endpoint: 'https://api.openai.com/v1' }, {
+      system: '', messages: [{ role: 'assistant', content: res.text, toolCalls: res.toolCalls }, { role: 'tool', id: 'c1', content: 'ok' }],
+    }, () => {});
+    expect(JSON.parse(again.mock.calls[0][1].body as string).input.map((i: { type?: string; role?: string }) => i.type ?? i.role))
+      .toEqual(['reasoning', 'assistant', 'function_call', 'function_call_output']);
+    // A server that mimics the API elsewhere keeps /chat/completions.
+    mockFetch(sse(['[DONE]']));
+    await streamChat({ ...openai, endpoint: 'https://api.openai.com.evil.test/v1' }, { system: '', messages: [] }, () => {});
+    expect((globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe('https://api.openai.com.evil.test/v1/chat/completions');
+  });
+
   it('asks again without tools when the model takes none', async () => {
     let calls = 0;
     mockFetch((init) => {

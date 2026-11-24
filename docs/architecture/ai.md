@@ -1,8 +1,8 @@
 # AI assistant
 
 A Copilot-style assistant on a provider the user brings: an OpenAI-compatible
-`/chat/completions` server (OpenAI, Mistral, OpenRouter, Gemini, Ollama, LM Studio) or
-Anthropic's `/messages`. There is no edentext server; the browser talks to the provider
+`/chat/completions` server (Mistral, OpenRouter, Gemini, Ollama, LM Studio), OpenAI's
+`/responses` or Anthropic's `/messages`. There is no edentext server; the browser talks to the provider
 directly with the key from Settings ▸ AI.
 
 ## Kill switch
@@ -177,6 +177,10 @@ After `/translate ` the `/` list offers the languages, filtered as typed; one se
 
 ## Providers
 
+- **OpenAI** (`api.openai.com`, regional hosts too) is spoken to on `/responses` (`isOpenaiApi`):
+  its reasoning models answer tools on `/chat/completions` with a 400, which the tool-less retry
+  below would hide. `store: false`, so a reply's reasoning items
+  ride on its first tool call's `extra` and go back before its calls, as the API asks.
 - **Anthropic** needs `anthropic-dangerous-direct-browser-access: true` to answer a browser.
 - **Ollama** on its default port is spoken to natively (`/api/chat`, JSON lines): its `/v1`
   ignores a context size and loads the model with its own default, cutting a longer prompt
