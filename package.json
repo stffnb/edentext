@@ -33,8 +33,8 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
-    "@tsconfig/svelte": "^5.0.8",
-    "@vitest/coverage-v8": "^5.1.0",
+    "@tsconfig/svelte": "^5.0.9",
+    "@vitest/coverage-v8": "^5.1.1",
     "dictionary-de": "^3.0.0",
     "dictionary-el": "^4.0.0",
     "dictionary-en": "^4.0.0",
@@ -45,13 +45,13 @@
     "dictionary-ru": "^3.0.0",
     "dictionary-uk": "^4.0.0",
     "jsdom": "^31.0.1",
-    "playwright-core": "^1.65.0",
-    "svelte": "^5.57.3",
+    "playwright-core": "^1.65.1",
+    "svelte": "^5.58.0",
     "svelte-check": "^4.7.8",
     "typescript": "^6.0.3",
-    "vite": "^8.0.14",
+    "vite": "^8.3.8",
     "vitest": "^5.1.0",
-    "ws": "^8.22.2"
+    "ws": "^8.23.0"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
