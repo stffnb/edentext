@@ -319,6 +319,31 @@ describe('collaboration key', () => {
       vi.useRealTimers();
     }
   });
+
+  it('dials again when a dial brings no welcome, and leaves a welcomed line alone', async () => {
+    vi.useFakeTimers();
+    type Sock = { onopen?: () => void; onmessage?: ((ev: { data: unknown }) => void) | null; closed?: boolean };
+    const socks: Sock[] = [];
+    vi.stubGlobal('WebSocket', class { constructor() { socks.push(this as Sock); } send() {} close() { (this as Sock).closed = true; } });
+    try {
+      const ch = openChannel({ url: 'ws://relay', key: keyBytes(newKey())!, id: 1, onFrame: () => {}, onPeers: () => {}, onStatus: () => {}, onOpen: () => {} });
+      socks[0].onopen!();
+      vi.advanceTimersByTime(9000);
+      expect([!!socks[0].closed, socks.length]).toEqual([false, 1]);
+      vi.advanceTimersByTime(2000);
+      expect([!!socks[0].closed, socks.length]).toEqual([true, 2]);
+      // A relay without a beat: nothing but the welcome keeps the line.
+      socks[1].onopen!();
+      socks[1].onmessage!({ data: JSON.stringify({ t: 'welcome', peers: 1 }) });
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      vi.advanceTimersByTime(60_000);
+      expect([!!socks[1].closed, socks.length]).toEqual([false, 2]);
+      ch.close();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
 });
 
 // A Y.Text holding "xdog." inside a list, edited; `undo` takes back the last edit. Each run

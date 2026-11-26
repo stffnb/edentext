@@ -71,6 +71,9 @@ const MAX_WAIT = 30_000;
 // Back online, in view, or with that deadline LATE_MS overdue (a frozen tab), one silent for a
 // beat is dead once GRACE passes without a message, so a waking tab first hears what waited.
 const BEATS = 3;
+// A dial without a welcome after DIAL_MS is dropped and made again: a handshake lost on the
+// way never ends by itself, and the browser would wait on it for a minute or more.
+const DIAL_MS = 10_000;
 const LATE_MS = 2000;
 const GRACE = 1000;
 // The bulk lane sends while the socket holds less than LOW (a hidden tab's timers wake once a
@@ -364,6 +367,11 @@ export function openChannel(o: Options): Channel {
       timer = setTimeout(connect, wait * (0.8 + Math.random() * 0.4));
       wait = Math.min(wait * 2, MAX_WAIT);
     };
+    alive = setTimeout(() => {
+      sock.onopen = sock.onmessage = sock.onclose = null;
+      sock.close();
+      lost();
+    }, DIAL_MS);
     sock.onopen = () => { performance.mark('collab:socket'); sock.send(JSON.stringify({ t: 'hello', v: PROTOCOL, room, token: null, id: o.id, claim })); };
     const hear = async (ev: MessageEvent, at: number) => {
       if (typeof ev.data === 'string') {
@@ -371,6 +379,7 @@ export function openChannel(o: Options): Channel {
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg.t === 'welcome') {
           performance.mark('collab:welcome');
+          clearTimeout(alive);
           welcomed = ready = true;
           down = false;
           if (msg.frame) size = Math.max(PART_HEAD + MIN_PART, Math.min(MAX_PART, msg.frame - SEALING - TO));
