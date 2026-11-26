@@ -10,7 +10,7 @@
     "test": "node smoke.mjs"
   },
   "devDependencies": {
-    "electron": "^45.2.3",
+    "electron": "^45.4.1",
     "electron-builder": "^26.18.0"
   },
   "overrides": {
