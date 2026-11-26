@@ -42,8 +42,13 @@ export async function devServer(port) {
   if (await up()) return null;
   const proc = spawn('npx', ['vite', '--port', String(port), '--strictPort'],
     { cwd: ROOT, stdio: 'ignore', detached: true });
-  for (let i = 0; i < 120 && !(await up()); i++) await new Promise((r) => setTimeout(r, 500));
-  if (!(await up())) throw new Error('dev server did not start');
+  // Up twice in a row: on macOS a cold server answered once and then refused the next request.
+  let ok = 0;
+  for (let i = 0; i < 120 && ok < 2; i++) {
+    ok = (await up()) ? ok + 1 : 0;
+    if (ok < 2) await new Promise((r) => setTimeout(r, 500));
+  }
+  if (ok < 2) throw new Error('dev server did not start');
   await warm(`http://localhost:${port}`);
   return proc;
 }

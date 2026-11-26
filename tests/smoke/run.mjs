@@ -298,14 +298,21 @@ try {
   await tp.waitForFunction(() => document.querySelector('.tiptap table td')?.textContent.trim(), null, { timeout: 30_000 });
   const fresh = await tp.evaluate(() => [document.querySelector('.tiptap-host .tiptap').textContent.includes('Keep me'), document.querySelector('.doc-name-input')?.value]);
   check(!fresh[0] && fresh[1] === 'Company letter', `templates: a picked template opens as a new document under its name (${fresh})`);
-  const searched = async () => {
-    await tp.fill('.cmd-search input', 'template');
-    await tp.waitForSelector('#cmd-search-list [role="option"]', { timeout: 3000 }).catch(() => {});
+  // `want`: the hit to wait for. Typed again while it is missing: right after a document
+  // opened, the search at times shows nothing for what was typed.
+  const searched = async (want = '') => {
+    for (let i = 0; i < (want ? 5 : 1); i++) {
+      await tp.fill('.cmd-search input', '');
+      await tp.fill('.cmd-search input', 'template');
+      if (await tp.waitForFunction((w) => [...document.querySelectorAll('#cmd-search-list [role="option"]')].some((e) => e.textContent.trim().startsWith(w)),
+        want, { timeout: 3000 }).then(() => true, () => false)) break;
+    }
     const hits = await tp.$$eval('#cmd-search-list [role="option"]', (els) => els.map((e) => e.textContent.trim()));
     await tp.keyboard.press('Escape');
     return hits;
   };
-  check((await searched()).some((h) => /^New from template/.test(h)), 'templates: the command search offers New from Template');
+  const offered = await searched('New from template');
+  check(offered.some((h) => /^New from template/.test(h)), `templates: the command search offers New from Template (${offered})`);
   templates = { enabled: false };
   await tp.reload({ waitUntil: 'load' });
   await tp.waitForSelector('.tiptap', { timeout: 15_000 });
