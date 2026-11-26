@@ -74,8 +74,9 @@ function moved({ updated, removed }: { updated: number[]; removed: number[] }): 
   const id = followed;
   if (id === null) return;
   if (removed.includes(id) || !shared?.getStates().has(id)) { followed = null; return; }
-  // The caret is drawn once the cursor plugin has taken the change.
-  if (updated.includes(id)) setTimeout(() => { const el = followed === id && target(id); if (el) reveal(el, true); }, 30);
+  // The caret layer redraws in the frame after the change (carets.ts), so measuring waits
+  // one frame more: a fixed delay can read the caret where it was on a slow machine.
+  if (updated.includes(id)) requestAnimationFrame(() => requestAnimationFrame(() => { const el = followed === id && target(id); if (el) reveal(el, true); }));
 }
 
 /** Follows a session's awareness, or stops with null. */
