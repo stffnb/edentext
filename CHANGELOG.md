@@ -2,6 +2,78 @@
 
 <!-- Newest release first. New entries go here: ## [x.y.z] — YYYY-MM-DD -->
 
+## [0.16.0] — 2026-11-28
+
+EdenText 0.16.0 brings real-time collaboration, right-to-left writing and four more languages.
+Several people can work on one document at the same time, end-to-end encrypted, through a small
+relay that you host yourself. Arabic, Korean, Polish and Indonesian join the program and document
+languages, and pages, tables and the whole interface can run right to left. A vertical ruler
+stands beside the page, an installation can decide which templates there are, and the app starts
+faster. Many fixes bring frames, indexes, headers and page splits closer to how other word
+processors lay out the same file.
+
+Thanks to @heiwing and @theserialhobbyist for reporting #44 and #48.
+
+### Added
+- **Real-time collaboration**: File ▸ Collaborate opens a session and gives a link to pass on;
+  everyone with the link edits the same document, each with their own undo
+  - the session is end-to-end encrypted: the key is in the link's fragment and never reaches the
+    relay, which only passes sealed frames on
+  - a second link lets people read without editing
+  - the others show as circles in the status bar, with their carets and selections in the text;
+    you can go to someone's cursor or follow it
+  - a chat for the session, and `@Name` in a comment reaches the one named
+  - pictures travel beside the text, the ones nearest the view first, and typing goes before them
+  - a session needs a relay: the Docker image and the Helm chart bring one, and
+    `VITE_COLLAB_RELAY` names another at build time. edentext.app offers no sessions yet
+- **Relay** for collaboration (`npm run relay`): it keeps nothing, holds six people per session
+  by default and limits connections, dials and held data per address. An allowlist of page
+  origins keeps other sites out
+- **Right-to-left**: the page direction is a setting, and paragraphs, tables, tab stops, headers
+  and footers follow it in the editor, in DOCX and in ODT. The interface mirrors in a
+  right-to-left program language
+- **Arabic** as a program and document language, with Arabic list numbering, a bundled Noto Naskh
+  Arabic and a search that finds words regardless of vowel marks, tatweel and hamza forms
+- **Korean, Polish and Indonesian** as program and document languages, with Korean spell check
+  and Korean list numbering
+- **Rulers**: a vertical ruler beside the page, and both rulers stay on the caret's page while the
+  view scrolls
+- **Templates**: an installation or embedding host decides which templates there are; the Docker
+  image and the Helm chart preset them
+- Pictures of a pasted web page are fetched once and embedded in the document (#44)
+- The format painter picks the format at the caret and paints the next mouse selection
+- The AI assistant sends a tool turn's reasoning back to every provider
+
+### Changed
+- The app starts faster: the cached page answers a start while the network refreshes it behind,
+  one language catalog loads instead of twelve, and the installation presets load beside the app
+- Typing in long documents is faster: word count, page breaks, notes and tracked changes no
+  longer walk the whole document on every keystroke
+
+### Fixed
+- Frames and text boxes: in-line boxes, drawing groups, band anchors, ODT padding and margins and
+  ODF optimal wrap are laid out as other word processors lay them out
+- Page splits: keep-with-next, kept headings, in-line boxes and formulas, cross-references and
+  footnotes break where other word processors break them
+- Headers and footers reserve the height their filled fields give them, an ODF first page without
+  its own footer shows the running one, and a chapter field shows the heading's number and name
+- Indexes start under their heading, break between their rows, wrap long words and keep their
+  level styles in ODT
+- A section in columns pages the same on every open, also when a font arrives late
+- A layout that goes back and forth settles on one result, and a table with exact row heights no
+  longer flips
+- DOCX: automatic paragraph spacing, a page break before a content control, footer frames below
+  the margin and the direction of mixed text are read and written as Word has them
+- A missing Georgia renders as its metric twin Gelasio, and the bundled serif and sans carry
+  their line gap below the baseline
+- Quotes, date formats, decimal separators and measurement fields follow the language
+- Spell check and synonyms handle formatted and prefixed words
+- The AI assistant can change the document with OpenAI's reasoning models: it speaks OpenAI's
+  Responses API (#48). It also handles Mistral, OpenRouter, Anthropic and Ollama quirks
+- Undo in an open header or footer no longer throws
+- Escape closes pickers and dropdown menus in every browser
+- A glow or shadow no longer doubles under the spelling squiggle
+
 ## [0.15.0] — 2026-11-18
 
 EdenText 0.15.0 brings dictation, coloured text effects and npm packages. Text can be spoken into
